@@ -44,16 +44,20 @@ func TestMain(m *testing.M) {
 		fmt.Printf("failed to connect to test database: %v\n", err)
 		os.Exit(1)
 	}
-	defer pool.Close()
 
 	if err := pool.Ping(ctx); err != nil {
+		pool.Close()
 		fmt.Printf("failed to ping test database: %v\n", err)
 		os.Exit(1)
 	}
 
 	testDB = pool
 
-	os.Exit(m.Run())
+	// os.Exit does not run deferred functions, so the pool must be closed
+	// explicitly before exiting rather than via defer.
+	code := m.Run()
+	pool.Close()
+	os.Exit(code)
 }
 
 // newUUID generates a random RFC 4122 version-4 UUID string for test

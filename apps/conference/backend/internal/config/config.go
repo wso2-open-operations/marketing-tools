@@ -96,7 +96,7 @@ func Load() Config {
 	if appEnv == "" {
 		appEnv = "production"
 	}
-	tokenValidatorEnabled, _ := strconv.ParseBool(os.Getenv("TOKEN_VALIDATOR_ENABLED"))
+	tokenValidatorEnabled := boolWithDefault("TOKEN_VALIDATOR_ENABLED", false)
 
 	excludeEmployeeCoinAllocation := boolWithDefault("EXCLUDE_EMPLOYEE_COIN_ALLOCATION", true)
 	enableQrValidations := boolWithDefault("ENABLE_QR_VALIDATIONS", true)

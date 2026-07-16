@@ -23,8 +23,27 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"wso2-coin-backend/internal/config"
 	"wso2-coin-backend/internal/models"
 )
+
+func TestNewClient_SetsBaseURLAndTimeout(t *testing.T) {
+	c := NewClient(config.ExternalServiceConfig{
+		Endpoint: "https://wallet.example.com",
+		OAuth: config.OAuthClientConfig{
+			TokenURL:     "https://idp.example.com/oauth2/token",
+			ClientID:     "client-id",
+			ClientSecret: "client-secret",
+		},
+	})
+
+	if c.baseURL != "https://wallet.example.com" {
+		t.Errorf("baseURL = %q, want https://wallet.example.com", c.baseURL)
+	}
+	if c.httpClient.Timeout != oauthHTTPTimeout {
+		t.Errorf("httpClient.Timeout = %v, want %v", c.httpClient.Timeout, oauthHTTPTimeout)
+	}
+}
 
 func TestGetPrimaryWallet_Success(t *testing.T) {
 	const email = "user+test@wso2.com"

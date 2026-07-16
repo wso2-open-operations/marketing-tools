@@ -21,10 +21,14 @@ import (
 	"errors"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"wso2-coin-backend/internal/models"
 )
+
+// pgUniqueViolation is the Postgres SQLSTATE for a unique constraint violation.
+const pgUniqueViolation = "23505"
 
 // CoinAllocationRepo provides read/write access to the coin_allocation table.
 type CoinAllocationRepo struct {
@@ -54,7 +58,10 @@ func (r *CoinAllocationRepo) Exists(ctx context.Context, qrID, userUUID string) 
 }
 
 // Insert creates a new coin_allocation row and returns it with generated
-// id/created_at/updated_at populated.
+// id/created_at/updated_at populated. Returns ErrDuplicateAllocation if a row
+// for this (qr_id, user_uuid) pair already exists — this can happen even
+// after a caller's preceding Exists check passed, since two concurrent scans
+// of the same QR by the same user can both pass Exists before either inserts.
 func (r *CoinAllocationRepo) Insert(ctx context.Context, alloc models.CoinAllocation) (models.CoinAllocation, error) {
 	err := r.pool.QueryRow(ctx,
 		`INSERT INTO coin_allocation (qr_id, event_type, user_uuid, wallet_address, coins_allocated, transaction_status, event_data)
@@ -64,6 +71,10 @@ func (r *CoinAllocationRepo) Insert(ctx context.Context, alloc models.CoinAlloca
 		alloc.CoinsAllocated, string(alloc.TransactionStatus), []byte(alloc.EventData),
 	).Scan(&alloc.ID, &alloc.CreatedAt, &alloc.UpdatedAt)
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation {
+			return models.CoinAllocation{}, ErrDuplicateAllocation
+		}
 		return models.CoinAllocation{}, err
 	}
 	return alloc, nil

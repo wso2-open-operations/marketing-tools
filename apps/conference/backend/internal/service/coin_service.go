@@ -154,6 +154,12 @@ func (s *CoinService) ScanQR(ctx context.Context, userID, email, qrID string) er
 		EventData:         eventData,
 	}
 	if _, err := s.allocations.Insert(ctx, alloc); err != nil {
+		// A duplicate can slip past the earlier Exists check under a race
+		// (two concurrent scans of the same QR by the same user); the DB's
+		// unique constraint is the actual source of truth here.
+		if errors.Is(err, repository.ErrDuplicateAllocation) {
+			return ErrQRAlreadyScanned
+		}
 		return fmt.Errorf("service: inserting coin allocation: %w", err)
 	}
 

@@ -23,8 +23,27 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"wso2-coin-backend/internal/config"
 	"wso2-coin-backend/internal/models"
 )
+
+func TestNewClient_SetsBaseURLAndTimeout(t *testing.T) {
+	c := NewClient(config.ExternalServiceConfig{
+		Endpoint: "https://qr-portal.example.com",
+		OAuth: config.OAuthClientConfig{
+			TokenURL:     "https://idp.example.com/oauth2/token",
+			ClientID:     "client-id",
+			ClientSecret: "client-secret",
+		},
+	})
+
+	if c.baseURL != "https://qr-portal.example.com" {
+		t.Errorf("baseURL = %q, want https://qr-portal.example.com", c.baseURL)
+	}
+	if c.httpClient.Timeout != oauthHTTPTimeout {
+		t.Errorf("httpClient.Timeout = %v, want %v", c.httpClient.Timeout, oauthHTTPTimeout)
+	}
+}
 
 func TestGetQRCode_Success(t *testing.T) {
 	const qrID = "9a1f0f0a-1111-2222-3333-abcdefabcdef"

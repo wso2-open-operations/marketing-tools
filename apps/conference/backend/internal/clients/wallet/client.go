@@ -26,16 +26,24 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"time"
 
+	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
 
 	"wso2-coin-backend/internal/config"
 	"wso2-coin-backend/internal/models"
 )
 
-// maxErrBodyBytes caps how much of an error response body we read into an
-// error message, so a huge/unexpected body doesn't blow up logs.
-const maxErrBodyBytes = 2048
+const (
+	// maxErrBodyBytes caps how much of an error response body we read into an
+	// error message, so a huge/unexpected body doesn't blow up logs.
+	maxErrBodyBytes = 2048
+	// oauthHTTPTimeout bounds both the OAuth2 token fetch and the actual API
+	// request, so an unreachable IdP or upstream service can't hang the scan
+	// flow indefinitely.
+	oauthHTTPTimeout = 15 * time.Second
+)
 
 // Client is an HTTP client for the external Wallet service.
 type Client struct {
@@ -53,9 +61,14 @@ func NewClient(cfg config.ExternalServiceConfig) *Client {
 		ClientSecret: cfg.OAuth.ClientSecret,
 		TokenURL:     cfg.OAuth.TokenURL,
 	}
+	// oauth2.HTTPClient bounds the token-fetch request; the same timeout is
+	// applied to the returned client below to also bound the actual API call.
+	tokenFetchCtx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Timeout: oauthHTTPTimeout})
+	httpClient := oauthCfg.Client(tokenFetchCtx)
+	httpClient.Timeout = oauthHTTPTimeout
 	return &Client{
 		baseURL:    cfg.Endpoint,
-		httpClient: oauthCfg.Client(context.Background()),
+		httpClient: httpClient,
 	}
 }
 
@@ -76,9 +89,13 @@ func NewClientWithHTTPClient(baseURL string, httpClient *http.Client) *Client {
 // an error: it returns (nil, nil) so callers can distinguish "no wallet" from
 // "lookup failed". Any other non-2xx status is returned as an error.
 func (c *Client) GetPrimaryWallet(ctx context.Context, email string) (*models.Wallet, error) {
+	base, err := url.JoinPath(c.baseURL, "wallets", "primary")
+	if err != nil {
+		return nil, fmt.Errorf("wallet: building URL: %w", err)
+	}
 	query := url.Values{}
 	query.Set("email", email)
-	reqURL := c.baseURL + "/wallets/primary?" + query.Encode()
+	reqURL := base + "?" + query.Encode()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {

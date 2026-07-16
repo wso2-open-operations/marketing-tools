@@ -21,6 +21,7 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -95,6 +96,42 @@ func TestCoinAllocationRepo_ExistsAndInsert(t *testing.T) {
 	}
 	if !exists {
 		t.Errorf("Exists = false after insert, want true")
+	}
+}
+
+func TestCoinAllocationRepo_Insert_DuplicateReturnsErrDuplicateAllocation(t *testing.T) {
+	// Simulates the race where two concurrent scans of the same QR by the
+	// same user both pass an Exists check before either has inserted: the
+	// second Insert must fail on the DB's (qr_id, user_uuid) unique
+	// constraint, and the repository must translate that into
+	// ErrDuplicateAllocation rather than a raw driver error.
+	ctx := context.Background()
+	repo := NewCoinAllocationRepo(testDB)
+
+	userUUID := newTestUserUUID(t)
+	cleanupCoinAllocations(t, userUUID)
+
+	qrID := newUUID()
+	alloc := models.CoinAllocation{
+		QrID:              qrID,
+		EventType:         models.EventTypeGeneral,
+		UserUUID:          userUUID,
+		WalletAddress:     "0xabc123",
+		CoinsAllocated:    1,
+		TransactionStatus: models.TransactionStatusPending,
+		EventData:         json.RawMessage(`{}`),
+	}
+
+	if _, err := repo.Insert(ctx, alloc); err != nil {
+		t.Fatalf("first Insert returned error: %v", err)
+	}
+
+	_, err := repo.Insert(ctx, alloc)
+	if err == nil {
+		t.Fatal("expected second Insert of the same (qr_id, user_uuid) to fail")
+	}
+	if !errors.Is(err, ErrDuplicateAllocation) {
+		t.Errorf("expected ErrDuplicateAllocation, got %v", err)
 	}
 }
 

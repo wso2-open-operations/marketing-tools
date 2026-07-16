@@ -22,7 +22,27 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"wso2-coin-backend/internal/config"
 )
+
+func TestNewClient_SetsBaseURLAndTimeout(t *testing.T) {
+	c := NewClient(config.ExternalServiceConfig{
+		Endpoint: "https://transaction.example.com",
+		OAuth: config.OAuthClientConfig{
+			TokenURL:     "https://idp.example.com/oauth2/token",
+			ClientID:     "client-id",
+			ClientSecret: "client-secret",
+		},
+	})
+
+	if c.baseURL != "https://transaction.example.com" {
+		t.Errorf("baseURL = %q, want https://transaction.example.com", c.baseURL)
+	}
+	if c.httpClient.Timeout != oauthHTTPTimeout {
+		t.Errorf("httpClient.Timeout = %v, want %v", c.httpClient.Timeout, oauthHTTPTimeout)
+	}
+}
 
 func TestTransferToken_Success(t *testing.T) {
 	const recipient = "0xABCDEF1234567890"

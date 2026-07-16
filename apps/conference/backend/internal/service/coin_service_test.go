@@ -444,6 +444,22 @@ func TestScanQR_Success_EventDataShapePerEventType(t *testing.T) {
 	}
 }
 
+func TestScanQR_InsertDuplicate_MapsToErrQRAlreadyScanned(t *testing.T) {
+	// Simulates the race where Exists passed (no row yet) but a concurrent
+	// scan won the insert first, so this Insert hits the DB unique
+	// constraint. The repository surfaces this as ErrDuplicateAllocation;
+	// the service must translate it to the same user-facing error as the
+	// upfront Exists check, not a generic 500.
+	h := newHarness(defaultConfig(), time.Now())
+	h.allocations.insertErr = repository.ErrDuplicateAllocation
+
+	err := h.svc.ScanQR(context.Background(), testUserID, testEmail, "qr-1")
+
+	if !errors.Is(err, ErrQRAlreadyScanned) {
+		t.Fatalf("expected ErrQRAlreadyScanned, got %v", err)
+	}
+}
+
 func TestScanQR_InsertError_Propagates(t *testing.T) {
 	h := newHarness(defaultConfig(), time.Now())
 	wantErr := errors.New("insert failed")

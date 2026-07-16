@@ -32,15 +32,24 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"time"
 
+	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
 
 	"wso2-coin-backend/internal/config"
 )
 
-// maxErrBodyBytes caps how much of an error response body we read into an
-// error message, so a huge/unexpected body doesn't blow up logs.
-const maxErrBodyBytes = 2048
+const (
+	// maxErrBodyBytes caps how much of an error response body we read into an
+	// error message, so a huge/unexpected body doesn't blow up logs.
+	maxErrBodyBytes = 2048
+	// oauthHTTPTimeout bounds both the OAuth2 token fetch and the actual API
+	// request, so an unreachable IdP or upstream service can't hang the scan
+	// flow indefinitely.
+	oauthHTTPTimeout = 15 * time.Second
+)
 
 // Client is an HTTP client for the external Transaction/Blockchain service.
 type Client struct {
@@ -64,9 +73,14 @@ func NewClient(cfg config.ExternalServiceConfig) *Client {
 		ClientSecret: cfg.OAuth.ClientSecret,
 		TokenURL:     cfg.OAuth.TokenURL,
 	}
+	// oauth2.HTTPClient bounds the token-fetch request; the same timeout is
+	// applied to the returned client below to also bound the actual API call.
+	tokenFetchCtx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Timeout: oauthHTTPTimeout})
+	httpClient := oauthCfg.Client(tokenFetchCtx)
+	httpClient.Timeout = oauthHTTPTimeout
 	return &Client{
 		baseURL:    cfg.Endpoint,
-		httpClient: oauthCfg.Client(context.Background()),
+		httpClient: httpClient,
 	}
 }
 
@@ -84,7 +98,10 @@ func NewClientWithHTTPClient(baseURL string, httpClient *http.Client) *Client {
 // JSON body of {recipientWalletAddress, amount}. Any non-2xx response is
 // returned as an error.
 func (c *Client) TransferToken(ctx context.Context, recipientWalletAddress string, amount float64) error {
-	reqURL := c.baseURL + "/api/v1/blockchain/transfer-token"
+	reqURL, err := url.JoinPath(c.baseURL, "api", "v1", "blockchain", "transfer-token")
+	if err != nil {
+		return fmt.Errorf("transaction: building URL: %w", err)
+	}
 
 	payload, err := json.Marshal(TransferRequest{
 		RecipientWalletAddress: recipientWalletAddress,

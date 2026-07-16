@@ -22,3 +22,9 @@ import "errors"
 // not exist (or, for session lookups, exists but is not in a usable state
 // for the query being performed, e.g. an unscheduled session).
 var ErrNotFound = errors.New("not found")
+
+// ErrDuplicateAllocation is returned by CoinAllocationRepo.Insert when the
+// (qr_id, user_uuid) unique constraint is violated. Insert can hit this even
+// after a preceding Exists check passed, since two concurrent scans of the
+// same QR by the same user can both pass Exists before either has inserted.
+var ErrDuplicateAllocation = errors.New("coin allocation already exists for this qr_id and user_uuid")
