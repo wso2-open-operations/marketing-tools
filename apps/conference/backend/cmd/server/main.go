@@ -123,7 +123,7 @@ func main() {
 	r.Use(middleware.Logger(logger))
 	r.Use(gin.Recovery())
 
-	r.GET("/healthz", func(c *gin.Context) {
+	r.GET("/health", func(c *gin.Context) {
 		c.Status(http.StatusOK)
 	})
 
