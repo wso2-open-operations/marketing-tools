@@ -31,6 +31,7 @@ func clearEnv(t *testing.T) {
 		"QR_PORTAL_ENDPOINT", "QR_PORTAL_TOKEN_URL", "QR_PORTAL_CLIENT_ID", "QR_PORTAL_CLIENT_SECRET",
 		"WALLET_ENDPOINT", "WALLET_TOKEN_URL", "WALLET_CLIENT_ID", "WALLET_CLIENT_SECRET",
 		"TRANSACTION_ENDPOINT", "TRANSACTION_TOKEN_URL", "TRANSACTION_CLIENT_ID", "TRANSACTION_CLIENT_SECRET",
+		"PII_ENCRYPTION_KEY",
 	}
 	for _, k := range keys {
 		t.Setenv(k, "")
@@ -144,10 +145,50 @@ func TestValidate_OKWithRequiredFieldsInDevelopment(t *testing.T) {
 	t.Setenv("DB_NAME", "agenda_organizer")
 	t.Setenv("DB_SCHEMA", "marketingops")
 	t.Setenv("APP_ENV", "development")
+	t.Setenv("PII_ENCRYPTION_KEY", "Mm/1cft4jPwxSou2SJ2Kau3iZXYZfeCun8PVxfNOj74=")
 
 	cfg := Load()
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("expected no error, got %v", err)
+	}
+}
+
+func TestLoad_PIIEncryptionKeyDecodedFromBase64(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("PII_ENCRYPTION_KEY", "Mm/1cft4jPwxSou2SJ2Kau3iZXYZfeCun8PVxfNOj74=")
+
+	cfg := Load()
+	if len(cfg.PIIEncryptionKey) != 32 {
+		t.Fatalf("expected 32-byte decoded key, got %d bytes", len(cfg.PIIEncryptionKey))
+	}
+}
+
+func TestValidate_RequiresPIIEncryptionKey(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("DB_HOST", "localhost")
+	t.Setenv("DB_USER", "administrator")
+	t.Setenv("DB_NAME", "agenda_organizer")
+	t.Setenv("DB_SCHEMA", "marketingops")
+	t.Setenv("APP_ENV", "development")
+
+	cfg := Load()
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error when PII_ENCRYPTION_KEY is missing")
+	}
+}
+
+func TestValidate_RejectsMalformedPIIEncryptionKey(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("DB_HOST", "localhost")
+	t.Setenv("DB_USER", "administrator")
+	t.Setenv("DB_NAME", "agenda_organizer")
+	t.Setenv("DB_SCHEMA", "marketingops")
+	t.Setenv("APP_ENV", "development")
+	t.Setenv("PII_ENCRYPTION_KEY", "dG9vLXNob3J0") // base64("too-short"), not 32 bytes
+
+	cfg := Load()
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error for a PII_ENCRYPTION_KEY that doesn't decode to 32 bytes")
 	}
 }
 

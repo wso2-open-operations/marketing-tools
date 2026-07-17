@@ -86,6 +86,7 @@ func main() {
 	attendeeRepo := repository.NewAttendeeRepo(pool)
 	coinAllocationRepo := repository.NewCoinAllocationRepo(pool)
 	sessionRepo := repository.NewSessionRepo(pool, cfg.SessionSlotMinutes)
+	speakerRepo := repository.NewSpeakerRepo(pool, cfg.PIIEncryptionKey)
 
 	qrPortalClient := qrportal.NewClient(cfg.QRPortal)
 	walletClient := wallet.NewClient(cfg.Wallet)
@@ -104,6 +105,7 @@ func main() {
 	)
 
 	coinHandler := handlers.NewCoinHandler(coinService, coinAllocationRepo)
+	speakerHandler := handlers.NewSpeakerHandler(speakerRepo)
 
 	r := gin.New()
 
@@ -126,6 +128,13 @@ func main() {
 	r.GET("/health", func(c *gin.Context) {
 		c.Status(http.StatusOK)
 	})
+
+	// Public conference data, unauthenticated: the old Ballerina service's
+	// request interceptor never rejects a request missing x-jwt-assertion for
+	// these resources (see .claude/PLAN.md), so they stay outside the
+	// JWT-gated api group below.
+	r.GET("/speakers", speakerHandler.List)
+	r.GET("/speakers/:id", speakerHandler.Get)
 
 	api := r.Group("/")
 	api.Use(middleware.Auth(middleware.AuthConfig{

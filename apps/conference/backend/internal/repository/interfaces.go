@@ -43,9 +43,16 @@ type SessionRepository interface {
 	GetTimeWindow(ctx context.Context, sessionID string) (start, end time.Time, err error)
 }
 
+// SpeakerRepository is satisfied by *SpeakerRepo.
+type SpeakerRepository interface {
+	GetSpeaker(ctx context.Context, id string) (models.Speaker, error)
+	GetSpeakerSummary(ctx context.Context) ([]models.SpeakerSummary, error)
+}
+
 // Compile-time assertions that the concrete repos satisfy their interfaces.
 var (
 	_ AttendeeRepository       = (*AttendeeRepo)(nil)
 	_ CoinAllocationRepository = (*CoinAllocationRepo)(nil)
 	_ SessionRepository        = (*SessionRepo)(nil)
+	_ SpeakerRepository        = (*SpeakerRepo)(nil)
 )
