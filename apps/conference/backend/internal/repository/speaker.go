@@ -42,16 +42,19 @@ func NewSpeakerRepo(pool *pgxpool.Pool, piiKey []byte) *SpeakerRepo {
 	return &SpeakerRepo{pool: pool, piiKey: piiKey}
 }
 
-// GetSpeaker returns a single speaker by id, regardless of its visible flag
-// (matching the old Ballerina getSpeaker(id), which never filtered by
-// visibility). Returns ErrNotFound if no row matches.
+// GetSpeaker returns a single visible speaker by id. Unlike the old Ballerina
+// getSpeaker(id), this filters on visible = true: visible is a new access
+// boundary the old schema never had, and this route is public/unauthenticated,
+// so a hidden speaker's id must not be a back door around the same
+// visibility check GetSpeakerSummary enforces. Returns ErrNotFound if no
+// matching visible row exists.
 func (r *SpeakerRepo) GetSpeaker(ctx context.Context, id string) (models.Speaker, error) {
 	var speaker models.Speaker
 	var name, title, bio string
 	var photoURL *string
 
 	err := r.pool.QueryRow(ctx,
-		"SELECT id, name, title, bio, photo_url FROM speakers WHERE id = $1",
+		"SELECT id, name, title, bio, photo_url FROM speakers WHERE id = $1 AND visible",
 		id,
 	).Scan(&speaker.ID, &name, &title, &bio, &photoURL)
 	if err != nil {

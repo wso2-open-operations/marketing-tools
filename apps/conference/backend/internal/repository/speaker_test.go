@@ -148,21 +148,18 @@ func TestSpeakerRepo_GetSpeaker_NotFound(t *testing.T) {
 	}
 }
 
-func TestSpeakerRepo_GetSpeaker_ReturnsEvenWhenNotVisible(t *testing.T) {
-	// GetSpeaker (single fetch by id) matches Ballerina's unmodified
-	// getSpeaker(id) semantics: no visibility filtering, only
-	// GetSpeakerSummary applies that.
+func TestSpeakerRepo_GetSpeaker_NotFoundWhenNotVisible(t *testing.T) {
+	// visible is a public/private access boundary, not just a list-view
+	// filter: GetSpeaker must not let a hidden speaker's id bypass the same
+	// check GetSpeakerSummary enforces, since this route is unauthenticated.
 	ctx := context.Background()
 	repo := NewSpeakerRepo(testDB, speakerTestKey)
 
 	fixture := newSpeakerFixture(t, ctx, "Hidden Speaker", "", "", "", false)
 
-	speaker, err := repo.GetSpeaker(ctx, fixture.speakerID)
-	if err != nil {
-		t.Fatalf("GetSpeaker returned error: %v", err)
-	}
-	if speaker.Name != "Hidden Speaker" {
-		t.Errorf("Name = %q, want %q", speaker.Name, "Hidden Speaker")
+	_, err := repo.GetSpeaker(ctx, fixture.speakerID)
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("GetSpeaker error = %v, want ErrNotFound", err)
 	}
 }
 
