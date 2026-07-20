@@ -130,9 +130,9 @@ func main() {
 	})
 
 	// Public conference data, unauthenticated: the old Ballerina service's
-	// request interceptor never rejects a request missing x-jwt-assertion for
-	// these resources (see .claude/PLAN.md), so they stay outside the
-	// JWT-gated api group below.
+	// request interceptor never rejected requests missing x-jwt-assertion for
+	// these resources, so they stay outside the JWT-gated api group below to
+	// match that contract.
 	r.GET("/speakers", speakerHandler.List)
 	r.GET("/speakers/:id", speakerHandler.Get)
 

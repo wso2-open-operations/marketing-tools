@@ -65,13 +65,13 @@ func (r *SpeakerRepo) GetSpeaker(ctx context.Context, id string) (models.Speaker
 	}
 
 	if speaker.Name, err = r.decrypt(name); err != nil {
-		return models.Speaker{}, err
+		return models.Speaker{}, fmt.Errorf("decrypting name: %w", err)
 	}
 	if speaker.Description, err = r.decrypt(title); err != nil {
-		return models.Speaker{}, err
+		return models.Speaker{}, fmt.Errorf("decrypting title: %w", err)
 	}
 	if speaker.Bio, err = r.decrypt(bio); err != nil {
-		return models.Speaker{}, err
+		return models.Speaker{}, fmt.Errorf("decrypting bio: %w", err)
 	}
 	if photoURL != nil {
 		speaker.PhotoURL = *photoURL
@@ -112,15 +112,15 @@ func (r *SpeakerRepo) GetSpeakerSummary(ctx context.Context) ([]models.SpeakerSu
 		if !ok {
 			decryptedName, err := r.decrypt(name)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("decrypting name: %w", err)
 			}
 			decryptedTitle, err := r.decrypt(title)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("decrypting title: %w", err)
 			}
 			decryptedBio, err := r.decrypt(bio)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("decrypting bio: %w", err)
 			}
 
 			summary = &models.SpeakerSummary{

@@ -75,6 +75,9 @@ type Config struct {
 	// the base64 PII_ENCRYPTION_KEY env var; must be exactly 32 bytes
 	// (AES-256) once decoded.
 	PIIEncryptionKey []byte
+	// piiKeyDecodeErr holds a base64 decode failure from Load(), so Validate()
+	// can report the actual problem instead of a misleading length mismatch.
+	piiKeyDecodeErr error
 
 	// External integrations
 	QRPortal    ExternalServiceConfig
@@ -125,7 +128,7 @@ func Load() Config {
 	// Decoded best-effort here; Validate() is where a missing/malformed key
 	// is actually rejected, matching this file's existing Load()-is-tolerant,
 	// Validate()-is-strict split.
-	piiEncryptionKey, _ := base64.StdEncoding.DecodeString(os.Getenv("PII_ENCRYPTION_KEY"))
+	piiEncryptionKey, piiKeyDecodeErr := base64.StdEncoding.DecodeString(os.Getenv("PII_ENCRYPTION_KEY"))
 
 	return Config{
 		DBHost:     os.Getenv("DB_HOST"),
@@ -150,6 +153,7 @@ func Load() Config {
 		SessionEndTimeOffsetMinutes:   sessionEndTimeOffsetMinutes,
 		SessionSlotMinutes:            sessionSlotMinutes,
 		PIIEncryptionKey:              piiEncryptionKey,
+		piiKeyDecodeErr:               piiKeyDecodeErr,
 
 		QRPortal: ExternalServiceConfig{
 			Endpoint: os.Getenv("QR_PORTAL_ENDPOINT"),
@@ -235,6 +239,9 @@ func (c Config) Validate() error {
 	}
 	if c.DBSchema == "" {
 		return errors.New("DB_SCHEMA is required")
+	}
+	if c.piiKeyDecodeErr != nil {
+		return fmt.Errorf("PII_ENCRYPTION_KEY: invalid base64: %w", c.piiKeyDecodeErr)
 	}
 	if len(c.PIIEncryptionKey) != 32 {
 		return errors.New("PII_ENCRYPTION_KEY is required and must decode to exactly 32 bytes")

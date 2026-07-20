@@ -73,10 +73,11 @@ func DecryptPII(ciphertext string, key []byte) (string, error) {
 	return string(plaintext), nil
 }
 
-// EncryptPII encrypts plaintext into the same versioned format DecryptPII
-// expects. It exists mainly to support round-trip testing of the scheme;
-// nothing in this service currently writes encrypted PII.
-func EncryptPII(plaintext string, key []byte) (string, error) {
+// encryptPII encrypts plaintext into the same versioned format DecryptPII
+// expects. Nothing in this service currently writes encrypted PII at
+// runtime; this exists to support round-trip testing of the scheme (see
+// pii_test.go and the exported EncryptPII in testsupport.go).
+func encryptPII(plaintext string, key []byte) (string, error) {
 	block, err := newAESBlock(key)
 	if err != nil {
 		return "", err

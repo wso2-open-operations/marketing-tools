@@ -18,6 +18,7 @@ package config
 
 import (
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -145,7 +146,7 @@ func TestValidate_OKWithRequiredFieldsInDevelopment(t *testing.T) {
 	t.Setenv("DB_NAME", "agenda_organizer")
 	t.Setenv("DB_SCHEMA", "marketingops")
 	t.Setenv("APP_ENV", "development")
-	t.Setenv("PII_ENCRYPTION_KEY", "Mm/1cft4jPwxSou2SJ2Kau3iZXYZfeCun8PVxfNOj74=")
+	t.Setenv("PII_ENCRYPTION_KEY", "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=")
 
 	cfg := Load()
 	if err := cfg.Validate(); err != nil {
@@ -155,7 +156,7 @@ func TestValidate_OKWithRequiredFieldsInDevelopment(t *testing.T) {
 
 func TestLoad_PIIEncryptionKeyDecodedFromBase64(t *testing.T) {
 	clearEnv(t)
-	t.Setenv("PII_ENCRYPTION_KEY", "Mm/1cft4jPwxSou2SJ2Kau3iZXYZfeCun8PVxfNOj74=")
+	t.Setenv("PII_ENCRYPTION_KEY", "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=")
 
 	cfg := Load()
 	if len(cfg.PIIEncryptionKey) != 32 {
@@ -189,6 +190,25 @@ func TestValidate_RejectsMalformedPIIEncryptionKey(t *testing.T) {
 	cfg := Load()
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("expected error for a PII_ENCRYPTION_KEY that doesn't decode to 32 bytes")
+	}
+}
+
+func TestValidate_RejectsInvalidBase64PIIEncryptionKey(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("DB_HOST", "localhost")
+	t.Setenv("DB_USER", "administrator")
+	t.Setenv("DB_NAME", "agenda_organizer")
+	t.Setenv("DB_SCHEMA", "marketingops")
+	t.Setenv("APP_ENV", "development")
+	t.Setenv("PII_ENCRYPTION_KEY", "not-valid-base64!!!")
+
+	cfg := Load()
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for invalid base64 PII_ENCRYPTION_KEY")
+	}
+	if !strings.Contains(err.Error(), "invalid base64") {
+		t.Errorf("error = %q, want it to mention invalid base64", err.Error())
 	}
 }
 

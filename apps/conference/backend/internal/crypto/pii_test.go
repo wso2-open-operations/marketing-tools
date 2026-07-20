@@ -21,8 +21,9 @@ import (
 	"testing"
 )
 
-// testKey is a throwaway 32-byte AES-256 key, not used anywhere real.
-var testKey = mustDecodeKey("Mm/1cft4jPwxSou2SJ2Kau3iZXYZfeCun8PVxfNOj74=")
+// testKey is a synthetic 32-byte key (sequential bytes) used only by this
+// test file. It has no relationship to any real PII_ENCRYPTION_KEY.
+var testKey = mustDecodeKey("AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=")
 
 func mustDecodeKey(b64 string) []byte {
 	k, err := base64.StdEncoding.DecodeString(b64)
@@ -33,17 +34,16 @@ func mustDecodeKey(b64 string) []byte {
 }
 
 func TestDecryptPII_KnownVectors(t *testing.T) {
-	// These two ciphertexts were pulled from real rows in the shared
-	// marketingops.speakers table during investigation, and decrypted with
-	// the same key present in this service's .env (PII_ENCRYPTION_KEY). They
-	// pin the exact wire format: 1-byte version + 12-byte GCM nonce +
-	// ciphertext + 16-byte tag, base64-encoded, no AAD.
+	// These ciphertexts were generated once via EncryptPII(plaintext, testKey)
+	// and hardcoded here as golden vectors, so this test also pins the exact
+	// wire format: 1-byte version + 12-byte GCM nonce + ciphertext + 16-byte
+	// tag, base64-encoded, no AAD.
 	cases := []struct {
 		ciphertext string
 		want       string
 	}{
-		{"Ae7+z1RiFkxOn7mn79tPM1H7LPhi02iAZjeCx9RlkiVmJVN8zP0v", "Jay Howell"},
-		{"AWGIKfPy4ccteFWLwB3Q9K7tr0y3AAEVBIcPEZNXQep4iYzL/EbWw9E=", "Ganesh Hegde"},
+		{"AUERhocGoKc+AsBmrtoRAyx6j4j6ZL47TqXO4EEgHpe1O874J47+GMc=", "Ada Lovelace"},
+		{"AfM2VVvHG8CzCeEH+2bpb6EzjObcABQLxT0XWB6DndfseysWAwQt9Q==", "Alan Turing"},
 	}
 
 	for _, c := range cases {
@@ -60,9 +60,9 @@ func TestDecryptPII_KnownVectors(t *testing.T) {
 func TestDecryptPII_RoundTrip(t *testing.T) {
 	plaintext := "Round trip test with unicode: café ☕"
 
-	ciphertext, err := EncryptPII(plaintext, testKey)
+	ciphertext, err := encryptPII(plaintext, testKey)
 	if err != nil {
-		t.Fatalf("EncryptPII returned error: %v", err)
+		t.Fatalf("encryptPII returned error: %v", err)
 	}
 
 	got, err := DecryptPII(ciphertext, testKey)
@@ -75,14 +75,14 @@ func TestDecryptPII_RoundTrip(t *testing.T) {
 }
 
 func TestDecryptPII_RejectsWrongKeyLength(t *testing.T) {
-	_, err := DecryptPII("Ae7+z1RiFkxOn7mn79tPM1H7LPhi02iAZjeCx9RlkiVmJVN8zP0v", []byte("too-short"))
+	_, err := DecryptPII("AUERhocGoKc+AsBmrtoRAyx6j4j6ZL47TqXO4EEgHpe1O874J47+GMc=", []byte("too-short"))
 	if err == nil {
 		t.Fatal("expected error for non-32-byte key, got nil")
 	}
 }
 
 func TestDecryptPII_RejectsUnknownVersionByte(t *testing.T) {
-	raw, err := base64.StdEncoding.DecodeString("Ae7+z1RiFkxOn7mn79tPM1H7LPhi02iAZjeCx9RlkiVmJVN8zP0v")
+	raw, err := base64.StdEncoding.DecodeString("AUERhocGoKc+AsBmrtoRAyx6j4j6ZL47TqXO4EEgHpe1O874J47+GMc=")
 	if err != nil {
 		t.Fatalf("failed to decode fixture: %v", err)
 	}
@@ -113,7 +113,7 @@ func TestDecryptPII_RejectsInvalidBase64(t *testing.T) {
 }
 
 func TestDecryptPII_RejectsTamperedTag(t *testing.T) {
-	raw, err := base64.StdEncoding.DecodeString("Ae7+z1RiFkxOn7mn79tPM1H7LPhi02iAZjeCx9RlkiVmJVN8zP0v")
+	raw, err := base64.StdEncoding.DecodeString("AUERhocGoKc+AsBmrtoRAyx6j4j6ZL47TqXO4EEgHpe1O874J47+GMc=")
 	if err != nil {
 		t.Fatalf("failed to decode fixture: %v", err)
 	}

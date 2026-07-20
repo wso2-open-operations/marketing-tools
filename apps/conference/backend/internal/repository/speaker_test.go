@@ -30,7 +30,7 @@ import (
 // speakerTestKey is a throwaway 32-byte AES-256 key used only by this test
 // file to encrypt fixture rows; it has no relationship to any real
 // PII_ENCRYPTION_KEY.
-var speakerTestKey = mustDecodeTestKey("Mm/1cft4jPwxSou2SJ2Kau3iZXYZfeCun8PVxfNOj74=")
+var speakerTestKey = mustDecodeTestKey("AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=")
 
 func mustDecodeTestKey(b64 string) []byte {
 	k, err := base64.StdEncoding.DecodeString(b64)
