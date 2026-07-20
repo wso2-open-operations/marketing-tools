@@ -85,7 +85,7 @@ func main() {
 
 	attendeeRepo := repository.NewAttendeeRepo(pool)
 	coinAllocationRepo := repository.NewCoinAllocationRepo(pool)
-	sessionRepo := repository.NewSessionRepo(pool, cfg.SessionSlotMinutes)
+	sessionRepo := repository.NewSessionRepo(pool, cfg.SessionSlotMinutes, cfg.PIIEncryptionKey)
 	speakerRepo := repository.NewSpeakerRepo(pool, cfg.PIIEncryptionKey)
 
 	qrPortalClient := qrportal.NewClient(cfg.QRPortal)
@@ -106,6 +106,7 @@ func main() {
 
 	coinHandler := handlers.NewCoinHandler(coinService, coinAllocationRepo)
 	speakerHandler := handlers.NewSpeakerHandler(speakerRepo)
+	sessionHandler := handlers.NewSessionHandler(sessionRepo)
 
 	r := gin.New()
 
@@ -135,6 +136,8 @@ func main() {
 	// match that contract.
 	r.GET("/speakers", speakerHandler.List)
 	r.GET("/speakers/:id", speakerHandler.Get)
+	r.GET("/sessions/current", sessionHandler.Current)
+	r.GET("/sessions/:id", sessionHandler.Get)
 
 	api := r.Group("/")
 	api.Use(middleware.Auth(middleware.AuthConfig{
