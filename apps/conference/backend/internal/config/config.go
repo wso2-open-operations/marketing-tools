@@ -17,6 +17,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -69,6 +70,15 @@ type Config struct {
 	// a different slot size.
 	SessionSlotMinutes int
 
+	// PIIEncryptionKey decrypts PII fields (e.g. speaker name/title/bio) that
+	// are encrypted at rest in the shared marketingops schema. Decoded from
+	// the base64 PII_ENCRYPTION_KEY env var; must be exactly 32 bytes
+	// (AES-256) once decoded.
+	PIIEncryptionKey []byte
+	// piiKeyDecodeErr holds a base64 decode failure from Load(), so Validate()
+	// can report the actual problem instead of a misleading length mismatch.
+	piiKeyDecodeErr error
+
 	// External integrations
 	QRPortal    ExternalServiceConfig
 	Wallet      ExternalServiceConfig
@@ -115,6 +125,11 @@ func Load() Config {
 		}
 	}
 
+	// Decoded best-effort here; Validate() is where a missing/malformed key
+	// is actually rejected, matching this file's existing Load()-is-tolerant,
+	// Validate()-is-strict split.
+	piiEncryptionKey, piiKeyDecodeErr := base64.StdEncoding.DecodeString(os.Getenv("PII_ENCRYPTION_KEY"))
+
 	return Config{
 		DBHost:     os.Getenv("DB_HOST"),
 		DBPort:     dbPort,
@@ -137,6 +152,8 @@ func Load() Config {
 		EnableQrValidations:           enableQrValidations,
 		SessionEndTimeOffsetMinutes:   sessionEndTimeOffsetMinutes,
 		SessionSlotMinutes:            sessionSlotMinutes,
+		PIIEncryptionKey:              piiEncryptionKey,
+		piiKeyDecodeErr:               piiKeyDecodeErr,
 
 		QRPortal: ExternalServiceConfig{
 			Endpoint: os.Getenv("QR_PORTAL_ENDPOINT"),
@@ -222,6 +239,12 @@ func (c Config) Validate() error {
 	}
 	if c.DBSchema == "" {
 		return errors.New("DB_SCHEMA is required")
+	}
+	if c.piiKeyDecodeErr != nil {
+		return fmt.Errorf("PII_ENCRYPTION_KEY: invalid base64: %w", c.piiKeyDecodeErr)
+	}
+	if len(c.PIIEncryptionKey) != 32 {
+		return errors.New("PII_ENCRYPTION_KEY is required and must decode to exactly 32 bytes")
 	}
 	if c.TokenValidatorEnabled {
 		if c.JWKSEndpoint == "" {
