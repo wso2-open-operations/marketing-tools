@@ -43,6 +43,14 @@ type SessionRepository interface {
 	GetTimeWindow(ctx context.Context, sessionID string) (start, end time.Time, err error)
 }
 
+// SessionReader is satisfied by *SessionRepo. Kept separate from
+// SessionRepository (consumed by CoinService for the O2C scan flow) per the
+// same interface-segregation pattern as SpeakerRepository.
+type SessionReader interface {
+	GetSession(ctx context.Context, id string) (models.Session, error)
+	GetSessionPresenters(ctx context.Context) ([]models.SessionPresenters, error)
+}
+
 // SpeakerRepository is satisfied by *SpeakerRepo.
 type SpeakerRepository interface {
 	GetSpeaker(ctx context.Context, id string) (models.Speaker, error)
@@ -54,5 +62,6 @@ var (
 	_ AttendeeRepository       = (*AttendeeRepo)(nil)
 	_ CoinAllocationRepository = (*CoinAllocationRepo)(nil)
 	_ SessionRepository        = (*SessionRepo)(nil)
+	_ SessionReader            = (*SessionRepo)(nil)
 	_ SpeakerRepository        = (*SpeakerRepo)(nil)
 )
