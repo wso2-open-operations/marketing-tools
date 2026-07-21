@@ -153,12 +153,18 @@ func (r *EventRepo) GetEventAgendas(ctx context.Context, eventID string) ([]mode
 
 		session := models.Session{
 			ID:            *sessionID,
-			Kind:          *kind,
-			Title:         *title,
-			Description:   *description,
 			DayID:         dayID,
 			DurationSlots: *durationSlots,
 			SlotIndex:     slotIndex,
+		}
+		if kind != nil {
+			session.Kind = *kind
+		}
+		if title != nil {
+			session.Title = *title
+		}
+		if description != nil {
+			session.Description = *description
 		}
 		if category != nil {
 			session.Category = *category

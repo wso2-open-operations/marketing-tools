@@ -32,9 +32,8 @@ type EventReader interface {
 	GetEventAgendas(ctx context.Context, eventID string) ([]models.EventAgenda, error)
 }
 
-// EventHandler exposes the public, unauthenticated event/agenda HTTP
-// endpoints, matching the old Ballerina service where these routes never
-// touch the JWT or resource context (see .claude/PLAN.md).
+// EventHandler handles authenticated event/agenda HTTP endpoints.
+// Routes are registered under the JWT-gated api group in main.go.
 type EventHandler struct {
 	reader EventReader
 }

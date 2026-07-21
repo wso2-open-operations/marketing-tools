@@ -130,8 +130,7 @@ func main() {
 
 	// /health stays outside the JWT-gated group: load balancer/k8s liveness
 	// and readiness probes hit this without a JWT, so gating it would break
-	// infra health checks rather than just API access (user-confirmed
-	// 2026-07-21, see .claude/PROGRESS.md).
+	// infra health checks rather than just API access.
 	r.GET("/health", func(c *gin.Context) {
 		c.Status(http.StatusOK)
 	})

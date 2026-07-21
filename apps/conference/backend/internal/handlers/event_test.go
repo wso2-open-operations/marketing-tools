@@ -106,8 +106,11 @@ func TestEventHandler_Agendas_PassesEventIDThrough(t *testing.T) {
 func TestEventHandler_Agendas_PassesLiteralCurrentThrough(t *testing.T) {
 	reader := &fakeEventReader{agendas: []models.EventAgenda{}}
 	h := NewEventHandler(reader)
-	doRequest(newEventTestRouter(h), http.MethodGet, "/events/current/agendas", nil)
+	rec := doRequest(newEventTestRouter(h), http.MethodGet, "/events/current/agendas", nil)
 
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
 	if reader.lastEventID != "current" {
 		t.Errorf("lastEventID = %q, want %q", reader.lastEventID, "current")
 	}
@@ -152,6 +155,19 @@ func TestEventHandler_LegacyAgendas_ExplicitEventIDTakesPrecedenceOverIsCurrentF
 	reader := &fakeEventReader{agendas: []models.EventAgenda{}}
 	h := NewEventHandler(reader)
 	rec := doRequest(newEventTestRouter(h), http.MethodGet, "/event-agendas?eventId=event-1&isCurrent=false", nil)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if reader.lastEventID != "event-1" {
+		t.Errorf("lastEventID = %q, want %q", reader.lastEventID, "event-1")
+	}
+}
+
+func TestEventHandler_LegacyAgendas_ExplicitEventIDTakesPrecedenceOverIsCurrentTrue(t *testing.T) {
+	reader := &fakeEventReader{agendas: []models.EventAgenda{}}
+	h := NewEventHandler(reader)
+	rec := doRequest(newEventTestRouter(h), http.MethodGet, "/event-agendas?eventId=event-1&isCurrent=true", nil)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
