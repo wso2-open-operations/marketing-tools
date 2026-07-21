@@ -128,21 +128,13 @@ func main() {
 	r.Use(middleware.Logger(logger))
 	r.Use(gin.Recovery())
 
+	// /health stays outside the JWT-gated group: load balancer/k8s liveness
+	// and readiness probes hit this without a JWT, so gating it would break
+	// infra health checks rather than just API access (user-confirmed
+	// 2026-07-21, see .claude/PROGRESS.md).
 	r.GET("/health", func(c *gin.Context) {
 		c.Status(http.StatusOK)
 	})
-
-	// Public conference data, unauthenticated: the old Ballerina service's
-	// request interceptor never rejected requests missing x-jwt-assertion for
-	// these resources, so they stay outside the JWT-gated api group below to
-	// match that contract.
-	r.GET("/speakers", speakerHandler.List)
-	r.GET("/speakers/:id", speakerHandler.Get)
-	r.GET("/sessions/current", sessionHandler.Current)
-	r.GET("/sessions/:id", sessionHandler.Get)
-	r.GET("/events", eventHandler.List)
-	r.GET("/events/:eventId/agendas", eventHandler.Agendas)
-	r.GET("/event-agendas", eventHandler.LegacyAgendas)
 
 	api := r.Group("/")
 	api.Use(middleware.Auth(middleware.AuthConfig{
@@ -153,6 +145,14 @@ func main() {
 		TokenValidatorEnabled: cfg.TokenValidatorEnabled,
 	}))
 	{
+		api.GET("/speakers", speakerHandler.List)
+		api.GET("/speakers/:id", speakerHandler.Get)
+		api.GET("/sessions/current", sessionHandler.Current)
+		api.GET("/sessions/:id", sessionHandler.Get)
+		api.GET("/events", eventHandler.List)
+		api.GET("/events/:eventId/agendas", eventHandler.Agendas)
+		api.GET("/event-agendas", eventHandler.LegacyAgendas)
+
 		api.POST("/qr/scan", coinHandler.Scan)
 		api.GET("/qr/history", coinHandler.History)
 		api.GET("/qr/summary", coinHandler.Summary)
