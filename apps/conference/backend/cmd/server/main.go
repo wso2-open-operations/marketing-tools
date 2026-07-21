@@ -87,6 +87,7 @@ func main() {
 	coinAllocationRepo := repository.NewCoinAllocationRepo(pool)
 	sessionRepo := repository.NewSessionRepo(pool, cfg.SessionSlotMinutes, cfg.PIIEncryptionKey)
 	speakerRepo := repository.NewSpeakerRepo(pool, cfg.PIIEncryptionKey)
+	eventRepo := repository.NewEventRepo(pool, cfg.SessionSlotMinutes)
 
 	qrPortalClient := qrportal.NewClient(cfg.QRPortal)
 	walletClient := wallet.NewClient(cfg.Wallet)
@@ -107,6 +108,7 @@ func main() {
 	coinHandler := handlers.NewCoinHandler(coinService, coinAllocationRepo)
 	speakerHandler := handlers.NewSpeakerHandler(speakerRepo)
 	sessionHandler := handlers.NewSessionHandler(sessionRepo)
+	eventHandler := handlers.NewEventHandler(eventRepo)
 
 	r := gin.New()
 
@@ -138,6 +140,9 @@ func main() {
 	r.GET("/speakers/:id", speakerHandler.Get)
 	r.GET("/sessions/current", sessionHandler.Current)
 	r.GET("/sessions/:id", sessionHandler.Get)
+	r.GET("/events", eventHandler.List)
+	r.GET("/events/:eventId/agendas", eventHandler.Agendas)
+	r.GET("/event-agendas", eventHandler.LegacyAgendas)
 
 	api := r.Group("/")
 	api.Use(middleware.Auth(middleware.AuthConfig{

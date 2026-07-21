@@ -80,10 +80,20 @@ func (r *SessionRepo) GetTimeWindow(ctx context.Context, sessionID string) (star
 		return time.Time{}, time.Time{}, ErrNotFound
 	}
 
-	dayMidnight := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, time.UTC)
-	start = dayMidnight.Add(time.Duration(*startMinute+*slotIndex*r.slotMinutes) * time.Minute)
-	end = dayMidnight.Add(time.Duration(*startMinute+(*slotIndex+durationSlots)*r.slotMinutes) * time.Minute)
+	start, end = computeSessionWindow(*date, *startMinute, *slotIndex, durationSlots, r.slotMinutes)
 	return start, end, nil
+}
+
+// computeSessionWindow computes a scheduled session's wall-clock start/end
+// time from its day's date + start_minute, plus slot_index/duration_slots
+// converted to minutes via slotMinutes. Shared by GetTimeWindow, GetSession,
+// and EventRepo.GetEventAgendas (three real call sites for the same
+// arithmetic — see .claude/PLAN.md).
+func computeSessionWindow(date time.Time, startMinute, slotIndex, durationSlots, slotMinutes int) (start, end time.Time) {
+	dayMidnight := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, time.UTC)
+	start = dayMidnight.Add(time.Duration(startMinute+slotIndex*slotMinutes) * time.Minute)
+	end = dayMidnight.Add(time.Duration(startMinute+(slotIndex+durationSlots)*slotMinutes) * time.Minute)
+	return start, end
 }
 
 // GetSession returns a single session by id, computing StartTime/EndTime
@@ -150,9 +160,7 @@ func (r *SessionRepo) GetSession(ctx context.Context, id string) (models.Session
 	s.SlotIndex = slotIndex
 
 	if slotIndex != nil && date != nil && startMinute != nil {
-		dayMidnight := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, time.UTC)
-		start := dayMidnight.Add(time.Duration(*startMinute+*slotIndex*r.slotMinutes) * time.Minute)
-		end := dayMidnight.Add(time.Duration(*startMinute+(*slotIndex+s.DurationSlots)*r.slotMinutes) * time.Minute)
+		start, end := computeSessionWindow(*date, *startMinute, *slotIndex, s.DurationSlots, r.slotMinutes)
 		s.StartTime = &start
 		s.EndTime = &end
 	}
