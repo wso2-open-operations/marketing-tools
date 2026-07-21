@@ -64,6 +64,23 @@ type EventReader interface {
 	GetEventAgendas(ctx context.Context, eventID string) ([]models.EventAgenda, error)
 }
 
+// AttendeeProfileReader is satisfied by *AttendeeProfileRepo (the new
+// attendees profile table -- kept separate from AttendeeRepository above,
+// which owns the unrelated agenda_attendee registration marker).
+type AttendeeProfileReader interface {
+	Insert(ctx context.Context, payload models.AttendeeInsert, idpUUID string) error
+	GetByEmail(ctx context.Context, email string) (models.Attendee, error)
+	GetByUUID(ctx context.Context, idpUUID string) (models.Attendee, error)
+	PatchByEmail(ctx context.Context, email string, patch models.AttendeePatch, updatedBy string) error
+	Search(ctx context.Context, filter models.AttendeeSearchFilter, excludedUUID string) (models.AttendeeSearchResult, error)
+}
+
+// ConnectionReader is satisfied by *ConnectionRepo.
+type ConnectionReader interface {
+	Get(ctx context.Context, userUUID string) (models.UserConnectionsInfo, error)
+	Upsert(ctx context.Context, initiatorUUID, recipientUUID string, status models.ConnectionStatus) error
+}
+
 // Compile-time assertions that the concrete repos satisfy their interfaces.
 var (
 	_ AttendeeRepository       = (*AttendeeRepo)(nil)
@@ -72,4 +89,6 @@ var (
 	_ SessionReader            = (*SessionRepo)(nil)
 	_ SpeakerRepository        = (*SpeakerRepo)(nil)
 	_ EventReader              = (*EventRepo)(nil)
+	_ AttendeeProfileReader    = (*AttendeeProfileRepo)(nil)
+	_ ConnectionReader         = (*ConnectionRepo)(nil)
 )

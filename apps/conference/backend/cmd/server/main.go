@@ -88,6 +88,8 @@ func main() {
 	sessionRepo := repository.NewSessionRepo(pool, cfg.SessionSlotMinutes, cfg.PIIEncryptionKey)
 	speakerRepo := repository.NewSpeakerRepo(pool, cfg.PIIEncryptionKey)
 	eventRepo := repository.NewEventRepo(pool, cfg.SessionSlotMinutes)
+	attendeeProfileRepo := repository.NewAttendeeProfileRepo(pool, cfg.PIIEncryptionKey)
+	connectionRepo := repository.NewConnectionRepo(pool, attendeeProfileRepo)
 
 	qrPortalClient := qrportal.NewClient(cfg.QRPortal)
 	walletClient := wallet.NewClient(cfg.Wallet)
@@ -109,6 +111,8 @@ func main() {
 	speakerHandler := handlers.NewSpeakerHandler(speakerRepo)
 	sessionHandler := handlers.NewSessionHandler(sessionRepo)
 	eventHandler := handlers.NewEventHandler(eventRepo)
+	attendeeHandler := handlers.NewAttendeeHandler(attendeeProfileRepo)
+	connectionHandler := handlers.NewConnectionHandler(connectionRepo, attendeeProfileRepo)
 
 	r := gin.New()
 
@@ -155,6 +159,15 @@ func main() {
 		api.POST("/qr/scan", coinHandler.Scan)
 		api.GET("/qr/history", coinHandler.History)
 		api.GET("/qr/summary", coinHandler.Summary)
+
+		api.POST("/attendees", attendeeHandler.Create)
+		api.PATCH("/attendees", attendeeHandler.Patch)
+		api.GET("/attendees/me", attendeeHandler.Me)
+		api.GET("/user-profile", attendeeHandler.Profile)
+		api.POST("/attendees/search", attendeeHandler.Search)
+
+		api.GET("/users/me/connections", connectionHandler.Get)
+		api.POST("/users/me/connections", connectionHandler.Create)
 	}
 
 	srv := &http.Server{
