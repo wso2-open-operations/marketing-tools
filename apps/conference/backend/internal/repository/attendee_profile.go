@@ -85,9 +85,9 @@ func (r *AttendeeProfileRepo) Insert(ctx context.Context, payload models.Attende
 			email, idp_uuid, member_id, title, company, country,
 			first_name, last_name, is_partner, profile_url,
 			created_by, updated_by
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
+		) VALUES ($1, $2, NULLIF($3, ''), $4, $5, $6, $7, $8, $9, $10, $11, $11)
 		ON CONFLICT (email) DO UPDATE SET
-			idp_uuid = $2, member_id = $3, title = $4, company = $5, country = $6,
+			idp_uuid = $2, member_id = NULLIF($3, ''), title = $4, company = $5, country = $6,
 			first_name = $7, last_name = $8, is_partner = $9, profile_url = $10,
 			updated_by = $11, updated_at = NOW()`,
 		payload.Email, idpUUID, payload.MemberID, title, company, country,

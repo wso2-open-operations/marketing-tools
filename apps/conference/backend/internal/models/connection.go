@@ -26,6 +26,16 @@ const (
 	ConnectionAccepted ConnectionStatus = 1
 )
 
+// IsValid reports whether s is one of the defined connection statuses.
+func (s ConnectionStatus) IsValid() bool {
+	switch s {
+	case ConnectionRejected, ConnectionPending, ConnectionAccepted:
+		return true
+	default:
+		return false
+	}
+}
+
 // ConnectionUserInfo describes the other party in a connection, enriched
 // from that user's attendee profile.
 type ConnectionUserInfo struct {

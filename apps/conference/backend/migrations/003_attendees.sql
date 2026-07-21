@@ -29,8 +29,8 @@ CREATE TABLE attendees (
   last_name    TEXT,
   is_partner   BOOLEAN NOT NULL DEFAULT FALSE,
   profile_url  TEXT,
-  created_by   UUID,
-  updated_by   UUID,
+  created_by   TEXT,
+  updated_by   TEXT,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

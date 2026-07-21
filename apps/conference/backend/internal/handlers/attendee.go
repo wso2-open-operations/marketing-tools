@@ -100,11 +100,6 @@ func (h *AttendeeHandler) Patch(c *gin.Context) {
 		return
 	}
 
-	if _, err := h.repo.GetByEmail(c.Request.Context(), email); err != nil {
-		h.respondAttendeeError(c, "fetching attendee failed", err)
-		return
-	}
-
 	if err := h.repo.PatchByEmail(c.Request.Context(), email, patch, user.UserID); err != nil {
 		h.respondAttendeeError(c, "patching attendee failed", err)
 		return
@@ -178,6 +173,10 @@ func (h *AttendeeHandler) Search(c *gin.Context) {
 	body.ItemsPerPage = 1000
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid request body"})
+		return
+	}
+	if body.StartIndex < 1 || body.ItemsPerPage < 1 {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "startIndex and itemsPerPage must be positive"})
 		return
 	}
 	if body.UUID != nil {

@@ -21,6 +21,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -85,6 +86,11 @@ func (h *ConnectionHandler) Create(c *gin.Context) {
 		return
 	}
 
+	if !req.Status.IsValid() {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid connection status"})
+		return
+	}
+
 	if err := h.connections.Upsert(c.Request.Context(), user.UserID, req.UserID, req.Status); err != nil {
 		slog.ErrorContext(c.Request.Context(), "upserting connection failed", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "internal error"})
@@ -104,7 +110,7 @@ func (h *ConnectionHandler) Create(c *gin.Context) {
 
 	c.JSON(http.StatusCreated, models.ConnectionUserInfo{
 		UserID: req.UserID,
-		Name:   target.FirstName + " " + target.LastName,
+		Name:   strings.TrimSpace(target.FirstName + " " + target.LastName),
 		Email:  target.Email,
 	})
 }
