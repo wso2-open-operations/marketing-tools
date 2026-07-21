@@ -57,6 +57,13 @@ type SpeakerRepository interface {
 	GetSpeakerSummary(ctx context.Context) ([]models.SpeakerSummary, error)
 }
 
+// EventReader is satisfied by *EventRepo. Kept as its own interface per the
+// existing interface-segregation pattern.
+type EventReader interface {
+	GetEvents(ctx context.Context) ([]models.Event, error)
+	GetEventAgendas(ctx context.Context, eventID string) ([]models.EventAgenda, error)
+}
+
 // Compile-time assertions that the concrete repos satisfy their interfaces.
 var (
 	_ AttendeeRepository       = (*AttendeeRepo)(nil)
@@ -64,4 +71,5 @@ var (
 	_ SessionRepository        = (*SessionRepo)(nil)
 	_ SessionReader            = (*SessionRepo)(nil)
 	_ SpeakerRepository        = (*SpeakerRepo)(nil)
+	_ EventReader              = (*EventRepo)(nil)
 )
