@@ -20,6 +20,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"regexp"
 
 	"github.com/gin-gonic/gin"
 
@@ -31,6 +32,11 @@ import (
 type FeedbackReader interface {
 	Insert(ctx context.Context, in models.FeedbackInsert) error
 }
+
+// sessionIDPattern matches the textual form of a UUID. session_id is a UUID
+// column; without this check a malformed value reaches Postgres and its
+// conversion error surfaces as a 500 instead of a 400.
+var sessionIDPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 // FeedbackHandler exposes the feedback HTTP endpoint.
 type FeedbackHandler struct {
@@ -66,20 +72,27 @@ func (h *FeedbackHandler) Create(c *gin.Context) {
 		return
 	}
 
-	if req.FeedbackType == models.FeedbackSession && req.SessionID == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"message": "sessionId is required for session feedback"})
-		return
-	}
-
 	in := models.FeedbackInsert{
 		UserUUID:     user.UserID,
 		FeedbackType: req.FeedbackType,
-		SessionID:    req.SessionID,
 		Rating:       req.Rating,
 		Comment:      req.Comment,
 	}
 
-	if req.FeedbackType == models.FeedbackEvent {
+	// SessionID/EventID are populated exclusively based on FeedbackType,
+	// never both -- a client sending a sessionId on an EVENT-type request
+	// has it ignored, not persisted alongside the resolved event_id.
+	if req.FeedbackType == models.FeedbackSession {
+		if req.SessionID == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "sessionId is required for session feedback"})
+			return
+		}
+		if !sessionIDPattern.MatchString(*req.SessionID) {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "sessionId must be a valid UUID"})
+			return
+		}
+		in.SessionID = req.SessionID
+	} else {
 		currentEvents, err := h.events.GetEvents(c.Request.Context())
 		if err != nil {
 			slog.ErrorContext(c.Request.Context(), "fetching current event failed", "error", err)

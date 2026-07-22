@@ -67,7 +67,7 @@ func TestFeedbackHandler_Create_SessionFeedbackWithSessionID(t *testing.T) {
 	h := NewFeedbackHandler(feedback, &fakeEventReader{})
 	r := newFeedbackTestRouter(h, testUser)
 
-	sessionID := "session-1"
+	sessionID := "11111111-1111-1111-1111-111111111111"
 	w := doRequest(r, http.MethodPost, "/feedback", models.FeedbackRequest{
 		SessionID: &sessionID, Rating: 5, FeedbackType: models.FeedbackSession,
 	})
@@ -123,6 +123,40 @@ func TestFeedbackHandler_Create_SessionFeedbackWithoutSessionIDIs400(t *testing.
 	}
 }
 
+func TestFeedbackHandler_Create_MalformedSessionIDIs400(t *testing.T) {
+	h := NewFeedbackHandler(&fakeFeedbackReader{}, &fakeEventReader{})
+	r := newFeedbackTestRouter(h, testUser)
+
+	sessionID := "not-a-uuid"
+	w := doRequest(r, http.MethodPost, "/feedback", models.FeedbackRequest{
+		SessionID: &sessionID, Rating: 5, FeedbackType: models.FeedbackSession,
+	})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestFeedbackHandler_Create_EventFeedbackIgnoresProvidedSessionID(t *testing.T) {
+	feedback := &fakeFeedbackReader{}
+	events := &fakeEventReader{events: []models.Event{{ID: "current-event", IsCurrent: true}}}
+	h := NewFeedbackHandler(feedback, events)
+	r := newFeedbackTestRouter(h, testUser)
+
+	sessionID := "11111111-1111-1111-1111-111111111111"
+	w := doRequest(r, http.MethodPost, "/feedback", models.FeedbackRequest{
+		SessionID: &sessionID, Rating: 4, FeedbackType: models.FeedbackEvent,
+	})
+	if w.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d, body: %s", w.Code, http.StatusCreated, w.Body.String())
+	}
+	if feedback.inserted.SessionID != nil {
+		t.Errorf("SessionID = %v, want nil -- an EVENT request's sessionId must never be persisted", feedback.inserted.SessionID)
+	}
+	if feedback.inserted.EventID == nil || *feedback.inserted.EventID != "current-event" {
+		t.Errorf("EventID = %v, want %q", feedback.inserted.EventID, "current-event")
+	}
+}
+
 func TestFeedbackHandler_Create_InvalidFeedbackTypeIs400(t *testing.T) {
 	h := NewFeedbackHandler(&fakeFeedbackReader{}, &fakeEventReader{})
 	r := newFeedbackTestRouter(h, testUser)
@@ -152,7 +186,7 @@ func TestFeedbackHandler_Create_RepoErrorMapsTo500(t *testing.T) {
 	h := NewFeedbackHandler(&fakeFeedbackReader{insertErr: errBoom}, &fakeEventReader{})
 	r := newFeedbackTestRouter(h, testUser)
 
-	sessionID := "session-1"
+	sessionID := "11111111-1111-1111-1111-111111111111"
 	w := doRequest(r, http.MethodPost, "/feedback", models.FeedbackRequest{
 		SessionID: &sessionID, Rating: 5, FeedbackType: models.FeedbackSession,
 	})

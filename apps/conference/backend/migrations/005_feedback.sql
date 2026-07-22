@@ -25,5 +25,12 @@ CREATE TABLE feedback (
   event_id      UUID,
   rating        INT NOT NULL,
   comment       TEXT,
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  -- Defense in depth alongside the handler's own exclusivity check: a
+  -- SESSION row must carry session_id only, an EVENT row event_id only --
+  -- never both, never neither.
+  CHECK (
+    (feedback_type = 'SESSION' AND session_id IS NOT NULL AND event_id IS NULL) OR
+    (feedback_type = 'EVENT' AND event_id IS NOT NULL AND session_id IS NULL)
+  )
 );

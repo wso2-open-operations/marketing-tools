@@ -49,6 +49,7 @@ func TestFeedbackRepo_Insert_SessionFeedbackStoresSessionIDNotEventID(t *testing
 	}); err != nil {
 		t.Fatalf("Insert returned error: %v", err)
 	}
+	cleanupFeedback(t, userUUID)
 
 	var gotType string
 	var gotRating int
@@ -61,7 +62,6 @@ func TestFeedbackRepo_Insert_SessionFeedbackStoresSessionIDNotEventID(t *testing
 	if err != nil {
 		t.Fatalf("failed to query inserted row: %v", err)
 	}
-	cleanupFeedback(t, userUUID)
 
 	if gotType != string(models.FeedbackSession) {
 		t.Errorf("feedback_type = %q, want %q", gotType, models.FeedbackSession)
@@ -95,6 +95,7 @@ func TestFeedbackRepo_Insert_EventFeedbackStoresEventIDNotSessionID(t *testing.T
 	}); err != nil {
 		t.Fatalf("Insert returned error: %v", err)
 	}
+	cleanupFeedback(t, userUUID)
 
 	var gotType string
 	var gotComment, gotSessionID, gotEventID *string
@@ -105,7 +106,6 @@ func TestFeedbackRepo_Insert_EventFeedbackStoresEventIDNotSessionID(t *testing.T
 	if err != nil {
 		t.Fatalf("failed to query inserted row: %v", err)
 	}
-	cleanupFeedback(t, userUUID)
 
 	if gotType != string(models.FeedbackEvent) {
 		t.Errorf("feedback_type = %q, want %q", gotType, models.FeedbackEvent)
