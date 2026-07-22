@@ -64,6 +64,11 @@ type EventReader interface {
 	GetEventAgendas(ctx context.Context, eventID string) ([]models.EventAgenda, error)
 }
 
+// FeedbackReader is satisfied by *FeedbackRepo.
+type FeedbackReader interface {
+	Insert(ctx context.Context, in models.FeedbackInsert) error
+}
+
 // Compile-time assertions that the concrete repos satisfy their interfaces.
 var (
 	_ AttendeeRepository       = (*AttendeeRepo)(nil)
@@ -72,4 +77,5 @@ var (
 	_ SessionReader            = (*SessionRepo)(nil)
 	_ SpeakerRepository        = (*SpeakerRepo)(nil)
 	_ EventReader              = (*EventRepo)(nil)
+	_ FeedbackReader           = (*FeedbackRepo)(nil)
 )

@@ -88,6 +88,7 @@ func main() {
 	sessionRepo := repository.NewSessionRepo(pool, cfg.SessionSlotMinutes, cfg.PIIEncryptionKey)
 	speakerRepo := repository.NewSpeakerRepo(pool, cfg.PIIEncryptionKey)
 	eventRepo := repository.NewEventRepo(pool, cfg.SessionSlotMinutes)
+	feedbackRepo := repository.NewFeedbackRepo(pool)
 
 	qrPortalClient := qrportal.NewClient(cfg.QRPortal)
 	walletClient := wallet.NewClient(cfg.Wallet)
@@ -109,6 +110,7 @@ func main() {
 	speakerHandler := handlers.NewSpeakerHandler(speakerRepo)
 	sessionHandler := handlers.NewSessionHandler(sessionRepo)
 	eventHandler := handlers.NewEventHandler(eventRepo)
+	feedbackHandler := handlers.NewFeedbackHandler(feedbackRepo, eventRepo)
 
 	r := gin.New()
 
@@ -155,6 +157,8 @@ func main() {
 		api.POST("/qr/scan", coinHandler.Scan)
 		api.GET("/qr/history", coinHandler.History)
 		api.GET("/qr/summary", coinHandler.Summary)
+
+		api.POST("/feedback", feedbackHandler.Create)
 	}
 
 	srv := &http.Server{
