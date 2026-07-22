@@ -60,9 +60,9 @@ func TestDecryptPII_KnownVectors(t *testing.T) {
 func TestDecryptPII_RoundTrip(t *testing.T) {
 	plaintext := "Round trip test with unicode: café ☕"
 
-	ciphertext, err := encryptPII(plaintext, testKey)
+	ciphertext, err := EncryptPII(plaintext, testKey)
 	if err != nil {
-		t.Fatalf("encryptPII returned error: %v", err)
+		t.Fatalf("EncryptPII returned error: %v", err)
 	}
 
 	got, err := DecryptPII(ciphertext, testKey)

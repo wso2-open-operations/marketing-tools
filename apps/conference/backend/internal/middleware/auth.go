@@ -36,8 +36,10 @@ const userInfoKey contextKey = "user-info"
 
 // UserInfo holds the authenticated user's identity extracted from the JWT.
 type UserInfo struct {
-	Email  string
-	UserID string // JWT sub claim
+	Email      string
+	UserID     string // JWT sub claim
+	GivenName  string
+	FamilyName string
 }
 
 // AuthConfig holds JWT validation configuration.
@@ -51,6 +53,8 @@ type AuthConfig struct {
 
 type jwtClaims struct {
 	Email                string `json:"email"`
+	GivenName            string `json:"given_name"`
+	FamilyName           string `json:"family_name"`
 	jwt.RegisteredClaims        // Sub carries the user UUID
 }
 
@@ -131,7 +135,9 @@ func extractUserInfo(tokenStr string, cfg AuthConfig, keyFunc jwt.Keyfunc) (*Use
 	}
 
 	return &UserInfo{
-		Email:  c.Email,
-		UserID: c.Subject,
+		Email:      c.Email,
+		UserID:     c.Subject,
+		GivenName:  c.GivenName,
+		FamilyName: c.FamilyName,
 	}, nil
 }

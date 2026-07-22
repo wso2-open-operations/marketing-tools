@@ -14,12 +14,14 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Package crypto decrypts PII fields (speaker name/title/bio, etc.) that are
-// encrypted at rest in the shared marketingops schema by whatever process
-// writes them. The wire format was reverse-engineered from real data: a
-// 1-byte version marker, a 12-byte AES-GCM nonce, then the AES-256-GCM
-// ciphertext with its 16-byte tag appended, all base64-encoded, with no
-// additional authenticated data.
+// Package crypto encrypts and decrypts PII fields (speaker name/title/bio,
+// attendee name/title/company/country, etc.) at rest in the shared
+// marketingops schema. The wire format was reverse-engineered from real
+// speaker data, which some other process had already written: a 1-byte
+// version marker, a 12-byte AES-GCM nonce, then the AES-256-GCM ciphertext
+// with its 16-byte tag appended, all base64-encoded, with no additional
+// authenticated data. This package reuses that same format for fields it
+// writes itself.
 package crypto
 
 import (
@@ -73,11 +75,10 @@ func DecryptPII(ciphertext string, key []byte) (string, error) {
 	return string(plaintext), nil
 }
 
-// encryptPII encrypts plaintext into the same versioned format DecryptPII
-// expects. Nothing in this service currently writes encrypted PII at
-// runtime; this exists to support round-trip testing of the scheme (see
-// pii_test.go and the exported EncryptPII in testsupport.go).
-func encryptPII(plaintext string, key []byte) (string, error) {
+// EncryptPII encrypts plaintext into the same versioned format DecryptPII
+// expects (version byte + nonce + ciphertext + tag, base64-encoded, no AAD),
+// using key (must be exactly 32 bytes, for AES-256).
+func EncryptPII(plaintext string, key []byte) (string, error) {
 	block, err := newAESBlock(key)
 	if err != nil {
 		return "", err
