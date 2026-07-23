@@ -90,6 +90,7 @@ func main() {
 	eventRepo := repository.NewEventRepo(pool, cfg.SessionSlotMinutes)
 	attendeeProfileRepo := repository.NewAttendeeProfileRepo(pool, cfg.PIIEncryptionKey)
 	connectionRepo := repository.NewConnectionRepo(pool, attendeeProfileRepo)
+	feedbackRepo := repository.NewFeedbackRepo(pool)
 
 	qrPortalClient := qrportal.NewClient(cfg.QRPortal)
 	walletClient := wallet.NewClient(cfg.Wallet)
@@ -113,6 +114,7 @@ func main() {
 	eventHandler := handlers.NewEventHandler(eventRepo)
 	attendeeHandler := handlers.NewAttendeeHandler(attendeeProfileRepo)
 	connectionHandler := handlers.NewConnectionHandler(connectionRepo, attendeeProfileRepo)
+	feedbackHandler := handlers.NewFeedbackHandler(feedbackRepo, eventRepo)
 
 	r := gin.New()
 
@@ -168,6 +170,8 @@ func main() {
 
 		api.GET("/users/me/connections", connectionHandler.Get)
 		api.POST("/users/me/connections", connectionHandler.Create)
+
+		api.POST("/feedback", feedbackHandler.Create)
 	}
 
 	srv := &http.Server{

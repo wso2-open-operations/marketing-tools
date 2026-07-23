@@ -81,6 +81,11 @@ type ConnectionReader interface {
 	Upsert(ctx context.Context, initiatorUUID, recipientUUID string, status models.ConnectionStatus) error
 }
 
+// FeedbackReader is satisfied by *FeedbackRepo.
+type FeedbackReader interface {
+	Insert(ctx context.Context, in models.FeedbackInsert) error
+}
+
 // Compile-time assertions that the concrete repos satisfy their interfaces.
 var (
 	_ AttendeeRepository       = (*AttendeeRepo)(nil)
@@ -91,4 +96,5 @@ var (
 	_ EventReader              = (*EventRepo)(nil)
 	_ AttendeeProfileReader    = (*AttendeeProfileRepo)(nil)
 	_ ConnectionReader         = (*ConnectionRepo)(nil)
+	_ FeedbackReader           = (*FeedbackRepo)(nil)
 )
