@@ -20,6 +20,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 func clearEnv(t *testing.T) {
@@ -33,6 +34,9 @@ func clearEnv(t *testing.T) {
 		"WALLET_ENDPOINT", "WALLET_TOKEN_URL", "WALLET_CLIENT_ID", "WALLET_CLIENT_SECRET",
 		"TRANSACTION_ENDPOINT", "TRANSACTION_TOKEN_URL", "TRANSACTION_CLIENT_ID", "TRANSACTION_CLIENT_SECRET",
 		"PII_ENCRYPTION_KEY",
+		"AI_MATCHMAKING_SERVICE_URL", "AI_PERSONALIZE_AGENT_SERVICE_URL", "AI_PICKED_FOR_YOU_SERVICE_URL", "AI_CHAT_SERVICE_URL",
+		"AI_REQUEST_TIMEOUT_SECONDS",
+		"AI_ENABLED_CHAT_ASSISTANT", "AI_ENABLED_PERSONALIZED_AGENDA", "AI_ENABLED_MATCH_MAKER", "AI_ENABLED_O2_BAR",
 	}
 	for _, k := range keys {
 		t.Setenv(k, "")
@@ -128,6 +132,74 @@ func TestLoad_ExternalClientConfigs(t *testing.T) {
 	}
 	if cfg.QRPortal.OAuth.ClientSecret != "qr-secret" {
 		t.Errorf("QRPortal.OAuth.ClientSecret = %q", cfg.QRPortal.OAuth.ClientSecret)
+	}
+}
+
+func TestLoad_AIAgentDefaults(t *testing.T) {
+	clearEnv(t)
+
+	cfg := Load()
+
+	if cfg.AIAgent.MatchmakingServiceURL != "" || cfg.AIAgent.PersonalizeAgentServiceURL != "" ||
+		cfg.AIAgent.PickedForYouServiceURL != "" || cfg.AIAgent.ChatServiceURL != "" {
+		t.Errorf("expected empty AIAgent service URLs by default, got %+v", cfg.AIAgent)
+	}
+	if cfg.AIAgent.RequestTimeout != 120*time.Second {
+		t.Errorf("expected default AIAgent.RequestTimeout 120s, got %v", cfg.AIAgent.RequestTimeout)
+	}
+	if cfg.AIFeatureStatus.EnabledChatAssistant || cfg.AIFeatureStatus.EnabledPersonalizedAgenda ||
+		cfg.AIFeatureStatus.EnabledMatchMaker || cfg.AIFeatureStatus.EnabledO2Bar {
+		t.Errorf("expected every AIFeatureStatus flag to default to false, got %+v", cfg.AIFeatureStatus)
+	}
+}
+
+func TestLoad_AIAgentConfigFromEnv(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("AI_MATCHMAKING_SERVICE_URL", "https://matchmaking.example.com")
+	t.Setenv("AI_PERSONALIZE_AGENT_SERVICE_URL", "https://personalize.example.com")
+	t.Setenv("AI_PICKED_FOR_YOU_SERVICE_URL", "https://pickedforyou.example.com")
+	t.Setenv("AI_CHAT_SERVICE_URL", "https://chat.example.com")
+	t.Setenv("AI_REQUEST_TIMEOUT_SECONDS", "30")
+	t.Setenv("AI_ENABLED_CHAT_ASSISTANT", "true")
+	t.Setenv("AI_ENABLED_PERSONALIZED_AGENDA", "true")
+	t.Setenv("AI_ENABLED_MATCH_MAKER", "true")
+	t.Setenv("AI_ENABLED_O2_BAR", "true")
+
+	cfg := Load()
+
+	if cfg.AIAgent.MatchmakingServiceURL != "https://matchmaking.example.com" {
+		t.Errorf("MatchmakingServiceURL = %q", cfg.AIAgent.MatchmakingServiceURL)
+	}
+	if cfg.AIAgent.PersonalizeAgentServiceURL != "https://personalize.example.com" {
+		t.Errorf("PersonalizeAgentServiceURL = %q", cfg.AIAgent.PersonalizeAgentServiceURL)
+	}
+	if cfg.AIAgent.PickedForYouServiceURL != "https://pickedforyou.example.com" {
+		t.Errorf("PickedForYouServiceURL = %q", cfg.AIAgent.PickedForYouServiceURL)
+	}
+	if cfg.AIAgent.ChatServiceURL != "https://chat.example.com" {
+		t.Errorf("ChatServiceURL = %q", cfg.AIAgent.ChatServiceURL)
+	}
+	if cfg.AIAgent.RequestTimeout != 30*time.Second {
+		t.Errorf("RequestTimeout = %v, want 30s", cfg.AIAgent.RequestTimeout)
+	}
+	if !cfg.AIFeatureStatus.EnabledChatAssistant || !cfg.AIFeatureStatus.EnabledPersonalizedAgenda ||
+		!cfg.AIFeatureStatus.EnabledMatchMaker || !cfg.AIFeatureStatus.EnabledO2Bar {
+		t.Errorf("expected every AIFeatureStatus flag true, got %+v", cfg.AIFeatureStatus)
+	}
+}
+
+func TestValidate_DoesNotRequireAIAgentFields(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("DB_HOST", "localhost")
+	t.Setenv("DB_USER", "administrator")
+	t.Setenv("DB_NAME", "agenda_organizer")
+	t.Setenv("DB_SCHEMA", "marketingops")
+	t.Setenv("APP_ENV", "development")
+	t.Setenv("PII_ENCRYPTION_KEY", "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=")
+
+	cfg := Load()
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected no error with blank AIAgent config, got %v", err)
 	}
 }
 

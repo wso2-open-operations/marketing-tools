@@ -1,0 +1,59 @@
+// Copyright (c) 2026 WSO2 LLC. (https://www.wso2.com).
+//
+// WSO2 LLC. licenses this file to you under the Apache License,
+// Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+package handlers
+
+import (
+	"context"
+	"log/slog"
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+
+	"wso2-coin-backend/internal/models"
+)
+
+// AppConfigReader is satisfied by *repository.AppConfigRepo.
+type AppConfigReader interface {
+	List(ctx context.Context) ([]models.AppConfig, error)
+}
+
+// AppConfigHandler exposes the read-only app-configs HTTP endpoint. There is
+// no write route through this API, matching the old service exactly (see
+// .claude/PLAN.md).
+type AppConfigHandler struct {
+	configs AppConfigReader
+}
+
+// NewAppConfigHandler constructs an AppConfigHandler.
+func NewAppConfigHandler(configs AppConfigReader) *AppConfigHandler {
+	return &AppConfigHandler{configs: configs}
+}
+
+// List handles GET /app-configs, returning every row verbatim regardless of
+// what any given key means -- no filtering, no pagination.
+func (h *AppConfigHandler) List(c *gin.Context) {
+	configs, err := h.configs.List(c.Request.Context())
+	if err != nil {
+		slog.ErrorContext(c.Request.Context(), "fetching app configs failed", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "internal error"})
+		return
+	}
+	if configs == nil {
+		configs = []models.AppConfig{}
+	}
+	c.JSON(http.StatusOK, configs)
+}

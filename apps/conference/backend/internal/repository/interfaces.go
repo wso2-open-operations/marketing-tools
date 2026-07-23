@@ -86,6 +86,11 @@ type FeedbackReader interface {
 	Insert(ctx context.Context, in models.FeedbackInsert) error
 }
 
+// AppConfigReader is satisfied by *AppConfigRepo.
+type AppConfigReader interface {
+	List(ctx context.Context) ([]models.AppConfig, error)
+}
+
 // Compile-time assertions that the concrete repos satisfy their interfaces.
 var (
 	_ AttendeeRepository       = (*AttendeeRepo)(nil)
@@ -97,4 +102,5 @@ var (
 	_ AttendeeProfileReader    = (*AttendeeProfileRepo)(nil)
 	_ ConnectionReader         = (*ConnectionRepo)(nil)
 	_ FeedbackReader           = (*FeedbackRepo)(nil)
+	_ AppConfigReader          = (*AppConfigRepo)(nil)
 )

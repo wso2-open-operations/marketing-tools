@@ -94,6 +94,9 @@ func TestAuth_UnverifiedMode_DecodesValidToken(t *testing.T) {
 	if got.UserID != "user-uuid-123" {
 		t.Errorf("UserID = %q, want user-uuid-123", got.UserID)
 	}
+	if got.RawToken != token {
+		t.Errorf("RawToken = %q, want the literal incoming header value %q", got.RawToken, token)
+	}
 }
 
 func TestAuth_UnverifiedMode_MissingEmailClaim_Returns401(t *testing.T) {
