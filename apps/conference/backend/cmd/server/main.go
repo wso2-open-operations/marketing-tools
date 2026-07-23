@@ -26,6 +26,7 @@ import (
 	"syscall"
 	"time"
 
+	"wso2-coin-backend/internal/clients/aiagent"
 	"wso2-coin-backend/internal/clients/qrportal"
 	"wso2-coin-backend/internal/clients/wallet"
 	"wso2-coin-backend/internal/config"
@@ -91,9 +92,11 @@ func main() {
 	attendeeProfileRepo := repository.NewAttendeeProfileRepo(pool, cfg.PIIEncryptionKey)
 	connectionRepo := repository.NewConnectionRepo(pool, attendeeProfileRepo)
 	feedbackRepo := repository.NewFeedbackRepo(pool)
+	appConfigRepo := repository.NewAppConfigRepo(pool)
 
 	qrPortalClient := qrportal.NewClient(cfg.QRPortal)
 	walletClient := wallet.NewClient(cfg.Wallet)
+	aiAgentClient := aiagent.NewClient(cfg.AIAgent)
 
 	coinService := service.NewCoinService(
 		attendeeRepo,
@@ -115,6 +118,8 @@ func main() {
 	attendeeHandler := handlers.NewAttendeeHandler(attendeeProfileRepo)
 	connectionHandler := handlers.NewConnectionHandler(connectionRepo, attendeeProfileRepo)
 	feedbackHandler := handlers.NewFeedbackHandler(feedbackRepo, eventRepo)
+	appConfigHandler := handlers.NewAppConfigHandler(appConfigRepo)
+	aiAgentHandler := handlers.NewAIAgentHandler(aiAgentClient, attendeeProfileRepo, cfg.AIFeatureStatus)
 
 	r := gin.New()
 
@@ -172,6 +177,16 @@ func main() {
 		api.POST("/users/me/connections", connectionHandler.Create)
 
 		api.POST("/feedback", feedbackHandler.Create)
+
+		api.GET("/app-configs", appConfigHandler.List)
+
+		api.GET("/ai-maintenance-status", aiAgentHandler.MaintenanceStatus)
+		api.GET("/users/me/matches", aiAgentHandler.Matches)
+		api.GET("/o2bar/recommendations", aiAgentHandler.O2BarRecommendationsGet)
+		api.POST("/o2bar/recommendations", aiAgentHandler.O2BarRecommendationsPost)
+		api.POST("/users/profile", aiAgentHandler.PersonalizedProfile)
+		api.GET("/agenda/recommendations", aiAgentHandler.AgendaRecommendations)
+		api.POST("/assistant/chat", aiAgentHandler.Chat)
 	}
 
 	srv := &http.Server{

@@ -40,6 +40,11 @@ type UserInfo struct {
 	UserID     string // JWT sub claim
 	GivenName  string
 	FamilyName string
+	// RawToken is the literal incoming x-jwt-assertion value, before any
+	// parsing. The AI agent routes forward this verbatim to external AI
+	// services (pure pass-through auth, see .claude/PLAN.md) -- everything
+	// else uses the parsed claims above instead.
+	RawToken string
 }
 
 // AuthConfig holds JWT validation configuration.
@@ -85,6 +90,7 @@ func Auth(cfg AuthConfig) gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
 			return
 		}
+		info.RawToken = tokenStr
 
 		ctx := context.WithValue(c.Request.Context(), userInfoKey, info)
 		c.Request = c.Request.WithContext(ctx)

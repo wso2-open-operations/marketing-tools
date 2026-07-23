@@ -23,6 +23,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // OAuthClientConfig holds OAuth2 client-credentials settings for an external service.
@@ -37,6 +38,30 @@ type OAuthClientConfig struct {
 type ExternalServiceConfig struct {
 	Endpoint string
 	OAuth    OAuthClientConfig
+}
+
+// AIAgentConfig holds the base URLs for the external AI agent services
+// (matchmaking, personalize, picked-for-you, chat) and the shared request
+// timeout applied to all of them. Deliberately no OAuth sub-struct: unlike
+// QRPortal/Wallet/Transaction, nothing in the AI agent integration uses
+// OAuth2 -- auth is pure pass-through of the caller's own JWT (see
+// .claude/PLAN.md).
+type AIAgentConfig struct {
+	MatchmakingServiceURL      string
+	PersonalizeAgentServiceURL string
+	PickedForYouServiceURL     string
+	ChatServiceURL             string
+	RequestTimeout             time.Duration
+}
+
+// AIFeatureStatus mirrors the old Ballerina AiFeatureStatus configurable --
+// each flag defaults to false ("everything disabled") since that's the safe
+// default for a port, unlike the old service which required all 4 configured.
+type AIFeatureStatus struct {
+	EnabledChatAssistant      bool
+	EnabledPersonalizedAgenda bool
+	EnabledMatchMaker         bool
+	EnabledO2Bar              bool
 }
 
 type Config struct {
@@ -83,6 +108,10 @@ type Config struct {
 	QRPortal    ExternalServiceConfig
 	Wallet      ExternalServiceConfig
 	Transaction ExternalServiceConfig
+
+	// AI Features
+	AIAgent         AIAgentConfig
+	AIFeatureStatus AIFeatureStatus
 }
 
 func Load() Config {
@@ -129,6 +158,13 @@ func Load() Config {
 	// is actually rejected, matching this file's existing Load()-is-tolerant,
 	// Validate()-is-strict split.
 	piiEncryptionKey, piiKeyDecodeErr := base64.StdEncoding.DecodeString(os.Getenv("PII_ENCRYPTION_KEY"))
+
+	aiRequestTimeoutSeconds := 120
+	if v := os.Getenv("AI_REQUEST_TIMEOUT_SECONDS"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil {
+			aiRequestTimeoutSeconds = parsed
+		}
+	}
 
 	return Config{
 		DBHost:     os.Getenv("DB_HOST"),
@@ -178,6 +214,20 @@ func Load() Config {
 				ClientID:     os.Getenv("TRANSACTION_CLIENT_ID"),
 				ClientSecret: os.Getenv("TRANSACTION_CLIENT_SECRET"),
 			},
+		},
+
+		AIAgent: AIAgentConfig{
+			MatchmakingServiceURL:      os.Getenv("AI_MATCHMAKING_SERVICE_URL"),
+			PersonalizeAgentServiceURL: os.Getenv("AI_PERSONALIZE_AGENT_SERVICE_URL"),
+			PickedForYouServiceURL:     os.Getenv("AI_PICKED_FOR_YOU_SERVICE_URL"),
+			ChatServiceURL:             os.Getenv("AI_CHAT_SERVICE_URL"),
+			RequestTimeout:             time.Duration(aiRequestTimeoutSeconds) * time.Second,
+		},
+		AIFeatureStatus: AIFeatureStatus{
+			EnabledChatAssistant:      boolWithDefault("AI_ENABLED_CHAT_ASSISTANT", false),
+			EnabledPersonalizedAgenda: boolWithDefault("AI_ENABLED_PERSONALIZED_AGENDA", false),
+			EnabledMatchMaker:         boolWithDefault("AI_ENABLED_MATCH_MAKER", false),
+			EnabledO2Bar:              boolWithDefault("AI_ENABLED_O2_BAR", false),
 		},
 	}
 }
