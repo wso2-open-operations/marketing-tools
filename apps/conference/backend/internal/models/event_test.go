@@ -34,13 +34,34 @@ func TestEvent_JSONShape(t *testing.T) {
 		t.Fatalf("Unmarshal returned error: %v", err)
 	}
 
-	for _, key := range []string{"id", "name", "isCurrent"} {
+	for _, key := range []string{"id", "name", "isCurrent", "timezone"} {
 		if _, ok := got[key]; !ok {
 			t.Errorf("expected JSON key %q, got keys %v", key, got)
 		}
 	}
 	if _, ok := got["location"]; ok {
 		t.Errorf("expected no %q key (dropped, no equivalent in new schema), got %v", "location", got)
+	}
+}
+
+func TestEvent_VenueFields(t *testing.T) {
+	// Present when set...
+	e := Event{ID: "e1", Name: "WSO2Con", IsCurrent: true, Timezone: "Asia/Colombo", VenueName: "BMICH", VenueAddress: "Bauddhaloka Mawatha, Colombo"}
+	var got map[string]any
+	b, _ := json.Marshal(e)
+	_ = json.Unmarshal(b, &got)
+	if got["venueName"] != "BMICH" || got["venueAddress"] != "Bauddhaloka Mawatha, Colombo" {
+		t.Errorf("venue fields = %v / %v, want them populated", got["venueName"], got["venueAddress"])
+	}
+	// ...omitted when empty.
+	b, _ = json.Marshal(Event{ID: "e1", Name: "N", Timezone: "UTC"})
+	got = map[string]any{}
+	_ = json.Unmarshal(b, &got)
+	if _, ok := got["venueName"]; ok {
+		t.Errorf("venueName should be omitted when empty, got %v", got)
+	}
+	if _, ok := got["venueAddress"]; ok {
+		t.Errorf("venueAddress should be omitted when empty, got %v", got)
 	}
 }
 
@@ -65,7 +86,7 @@ func TestEventAgenda_JSONShape(t *testing.T) {
 		t.Fatalf("Unmarshal returned error: %v", err)
 	}
 
-	for _, key := range []string{"id", "eventId", "name", "date", "sessions"} {
+	for _, key := range []string{"id", "eventId", "timezone", "name", "date", "sessions"} {
 		if _, ok := got[key]; !ok {
 			t.Errorf("expected JSON key %q, got keys %v", key, got)
 		}

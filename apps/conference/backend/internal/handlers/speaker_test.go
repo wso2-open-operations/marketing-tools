@@ -36,9 +36,11 @@ type fakeSpeakerReader struct {
 	summaryErr error
 	speaker    models.Speaker
 	speakerErr error
+	lastFilter models.SpeakerFilter
 }
 
-func (f *fakeSpeakerReader) GetSpeakerSummary(ctx context.Context) ([]models.SpeakerSummary, error) {
+func (f *fakeSpeakerReader) GetSpeakerSummary(ctx context.Context, filter models.SpeakerFilter) ([]models.SpeakerSummary, error) {
+	f.lastFilter = filter
 	return f.summary, f.summaryErr
 }
 
@@ -56,7 +58,7 @@ func newSpeakerTestRouter(h *SpeakerHandler) *gin.Engine {
 func TestSpeakerHandler_List_ReturnsSummaries(t *testing.T) {
 	reader := &fakeSpeakerReader{
 		summary: []models.SpeakerSummary{
-			{ID: "speaker-1", Name: "Jay Howell", SessionSpeakers: []models.SessionSpeakerWithEvent{}},
+			{ID: "speaker-1", Name: "Jay Howell", Sessions: []models.SpeakerSession{}},
 		},
 	}
 	h := NewSpeakerHandler(reader)
@@ -72,6 +74,22 @@ func TestSpeakerHandler_List_ReturnsSummaries(t *testing.T) {
 	}
 	if len(got) != 1 || got[0].ID != "speaker-1" {
 		t.Errorf("unexpected body: %+v", got)
+	}
+}
+
+func TestSpeakerHandler_List_PassesEventIDAndQueryToReader(t *testing.T) {
+	reader := &fakeSpeakerReader{summary: []models.SpeakerSummary{}}
+	h := NewSpeakerHandler(reader)
+	rec := doRequest(newSpeakerTestRouter(h), http.MethodGet, "/speakers?eventId=evt-1&q=ada", nil)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if reader.lastFilter.EventID != "evt-1" {
+		t.Errorf("filter.EventID = %q, want %q", reader.lastFilter.EventID, "evt-1")
+	}
+	if reader.lastFilter.Query != "ada" {
+		t.Errorf("filter.Query = %q, want %q", reader.lastFilter.Query, "ada")
 	}
 }
 

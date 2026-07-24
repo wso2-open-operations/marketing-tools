@@ -31,7 +31,7 @@ import (
 // SessionReader reads session data. Satisfied by *repository.SessionRepo.
 type SessionReader interface {
 	GetSession(ctx context.Context, id string) (models.Session, error)
-	GetSessionPresenters(ctx context.Context) ([]models.SessionPresenters, error)
+	GetCurrentSessions(ctx context.Context) ([]models.Session, error)
 }
 
 // SessionHandler exposes the public, unauthenticated session HTTP endpoints
@@ -61,16 +61,18 @@ func (h *SessionHandler) Get(c *gin.Context) {
 	}
 }
 
-// Current handles GET /sessions/current.
+// Current handles GET /sessions/current. It returns every session in the
+// current conference as Session objects (the same shape as the agenda
+// endpoints), ordered by start time.
 func (h *SessionHandler) Current(c *gin.Context) {
-	presenters, err := h.reader.GetSessionPresenters(c.Request.Context())
+	sessions, err := h.reader.GetCurrentSessions(c.Request.Context())
 	if err != nil {
-		slog.ErrorContext(c.Request.Context(), "fetching session presenters failed", "error", err)
+		slog.ErrorContext(c.Request.Context(), "fetching current sessions failed", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "internal error"})
 		return
 	}
-	if presenters == nil {
-		presenters = []models.SessionPresenters{}
+	if sessions == nil {
+		sessions = []models.Session{}
 	}
-	c.JSON(http.StatusOK, presenters)
+	c.JSON(http.StatusOK, sessions)
 }

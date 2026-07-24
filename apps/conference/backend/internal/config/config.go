@@ -95,6 +95,20 @@ type Config struct {
 	// a different slot size.
 	SessionSlotMinutes int
 
+	// VenueTimezone is the IANA name of the conference venue's timezone
+	// (VENUE_TIMEZONE env, default "UTC"). Session times are stored as a
+	// day date + slot offset with no zone in the shared schema, so the wall
+	// clock has to be anchored to a zone somewhere; this is that anchor until
+	// conference_config gains a real venue_timezone column upstream. It's also
+	// surfaced verbatim in the event/agenda payloads so the frontend stops
+	// hardcoding its own REACT_APP_TIMEZONE.
+	VenueTimezone string
+	// VenueLocation is VenueTimezone parsed via time.LoadLocation. nil only
+	// when parsing failed, in which case venueTZLoadErr is set and Validate()
+	// rejects the config.
+	VenueLocation  *time.Location
+	venueTZLoadErr error
+
 	// PIIEncryptionKey decrypts PII fields (e.g. speaker name/title/bio) that
 	// are encrypted at rest in the shared marketingops schema. Decoded from
 	// the base64 PII_ENCRYPTION_KEY env var; must be exactly 32 bytes
@@ -159,6 +173,14 @@ func Load() Config {
 	// Validate()-is-strict split.
 	piiEncryptionKey, piiKeyDecodeErr := base64.StdEncoding.DecodeString(os.Getenv("PII_ENCRYPTION_KEY"))
 
+	venueTimezone := os.Getenv("VENUE_TIMEZONE")
+	if venueTimezone == "" {
+		venueTimezone = "UTC"
+	}
+	// Same tolerant-Load/strict-Validate split as the PII key: a bad zone name
+	// is remembered here and reported by Validate() rather than panicking.
+	venueLocation, venueTZLoadErr := time.LoadLocation(venueTimezone)
+
 	aiRequestTimeoutSeconds := 120
 	if v := os.Getenv("AI_REQUEST_TIMEOUT_SECONDS"); v != "" {
 		if parsed, err := strconv.Atoi(v); err == nil {
@@ -188,6 +210,9 @@ func Load() Config {
 		EnableQrValidations:           enableQrValidations,
 		SessionEndTimeOffsetMinutes:   sessionEndTimeOffsetMinutes,
 		SessionSlotMinutes:            sessionSlotMinutes,
+		VenueTimezone:                 venueTimezone,
+		VenueLocation:                 venueLocation,
+		venueTZLoadErr:                venueTZLoadErr,
 		PIIEncryptionKey:              piiEncryptionKey,
 		piiKeyDecodeErr:               piiKeyDecodeErr,
 
@@ -295,6 +320,9 @@ func (c Config) Validate() error {
 	}
 	if len(c.PIIEncryptionKey) != 32 {
 		return errors.New("PII_ENCRYPTION_KEY is required and must decode to exactly 32 bytes")
+	}
+	if c.venueTZLoadErr != nil {
+		return fmt.Errorf("VENUE_TIMEZONE %q is not a loadable IANA timezone: %w", c.VenueTimezone, c.venueTZLoadErr)
 	}
 	if c.TokenValidatorEnabled {
 		if c.JWKSEndpoint == "" {

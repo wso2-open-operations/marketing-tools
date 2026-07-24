@@ -20,6 +20,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
+	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -30,16 +33,24 @@ import (
 
 // SpeakerRepo provides read access to the speakers/session_speakers tables.
 // name/title/bio are encrypted at rest (see internal/crypto); piiKey decrypts
-// them on read.
+// them on read. loc anchors each embedded session's times to the venue
+// timezone (see config.Config.VenueLocation).
 type SpeakerRepo struct {
-	pool   *pgxpool.Pool
-	piiKey []byte
+	pool        *pgxpool.Pool
+	piiKey      []byte
+	slotMinutes int
+	loc         *time.Location
 }
 
 // NewSpeakerRepo constructs a SpeakerRepo backed by the given pool, decrypting
-// PII fields with piiKey (see config.Config.PIIEncryptionKey).
-func NewSpeakerRepo(pool *pgxpool.Pool, piiKey []byte) *SpeakerRepo {
-	return &SpeakerRepo{pool: pool, piiKey: piiKey}
+// PII fields with piiKey (see config.Config.PIIEncryptionKey). slotMinutes/loc
+// compute and anchor the times of the sessions embedded on each speaker; a nil
+// loc defaults to UTC.
+func NewSpeakerRepo(pool *pgxpool.Pool, piiKey []byte, slotMinutes int, loc *time.Location) *SpeakerRepo {
+	if loc == nil {
+		loc = time.UTC
+	}
+	return &SpeakerRepo{pool: pool, piiKey: piiKey, slotMinutes: slotMinutes, loc: loc}
 }
 
 // GetSpeaker returns a single visible speaker by id. Unlike the old Ballerina
@@ -80,17 +91,29 @@ func (r *SpeakerRepo) GetSpeaker(ctx context.Context, id string) (models.Speaker
 	return speaker, nil
 }
 
-// GetSpeakerSummary returns every speaker with visible = true, each with the
-// full list of sessions they're attached to. A speaker with no sessions still
-// appears, with an empty (never nil) SessionSpeakers slice.
-func (r *SpeakerRepo) GetSpeakerSummary(ctx context.Context) ([]models.SpeakerSummary, error) {
+// GetSpeakerSummary returns visible speakers, each with the sessions they're
+// attached to embedded as resolved SpeakerSession objects (title + real
+// times) so the client needs no join back to sessions (FE.md 3.2). A speaker
+// with no sessions still appears (with an empty, never nil, Sessions slice)
+// unless an EventID filter is set.
+//
+// filter.EventID restricts to speakers with at least one session in that
+// conference_config (showing only those sessions). filter.Query is a
+// case-insensitive substring match on the decrypted name. Both name ordering
+// and the name search run in Go because name is encrypted at rest -- an SQL
+// ORDER BY / ILIKE over the ciphertext would be meaningless. Result is sorted
+// by name; each speaker's sessions are sorted by start time.
+func (r *SpeakerRepo) GetSpeakerSummary(ctx context.Context, filter models.SpeakerFilter) ([]models.SpeakerSummary, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT sp.id, sp.name, sp.title, sp.bio, sp.photo_url, ss.session_id, s.config_id
+		`SELECT sp.id, sp.name, sp.title, sp.bio, sp.photo_url,
+		        s.id, s.title, s.slot_index, s.duration_slots, d.date, d.start_minute, cc.timezone
 		 FROM speakers sp
 		 LEFT JOIN session_speakers ss ON ss.speaker_id = sp.id
 		 LEFT JOIN sessions s ON s.id = ss.session_id
-		 WHERE sp.visible
-		 ORDER BY sp.id`,
+		 LEFT JOIN conference_days d ON d.id = s.day_id
+		 LEFT JOIN conference_config cc ON cc.id = s.config_id
+		 WHERE sp.visible AND ($1 = '' OR s.config_id = $1::uuid)`,
+		filter.EventID,
 	)
 	if err != nil {
 		return nil, err
@@ -102,9 +125,12 @@ func (r *SpeakerRepo) GetSpeakerSummary(ctx context.Context) ([]models.SpeakerSu
 
 	for rows.Next() {
 		var id, name, title, bio string
-		var photoURL, sessionID, configID *string
+		var photoURL, sessionID, sessionTitle, cfgTZ *string
+		var slotIndex, durationSlots, startMinute *int
+		var date *time.Time
 
-		if err := rows.Scan(&id, &name, &title, &bio, &photoURL, &sessionID, &configID); err != nil {
+		if err := rows.Scan(&id, &name, &title, &bio, &photoURL,
+			&sessionID, &sessionTitle, &slotIndex, &durationSlots, &date, &startMinute, &cfgTZ); err != nil {
 			return nil, err
 		}
 
@@ -124,11 +150,11 @@ func (r *SpeakerRepo) GetSpeakerSummary(ctx context.Context) ([]models.SpeakerSu
 			}
 
 			summary = &models.SpeakerSummary{
-				ID:              id,
-				Name:            decryptedName,
-				Description:     decryptedTitle,
-				Bio:             decryptedBio,
-				SessionSpeakers: make([]models.SessionSpeakerWithEvent, 0),
+				ID:          id,
+				Name:        decryptedName,
+				Description: decryptedTitle,
+				Bio:         decryptedBio,
+				Sessions:    make([]models.SpeakerSession, 0),
 			}
 			if photoURL != nil {
 				summary.PhotoURL = *photoURL
@@ -137,23 +163,51 @@ func (r *SpeakerRepo) GetSpeakerSummary(ctx context.Context) ([]models.SpeakerSu
 			order = append(order, id)
 		}
 
-		if sessionID != nil && configID != nil {
-			summary.SessionSpeakers = append(summary.SessionSpeakers, models.SessionSpeakerWithEvent{
-				SpeakerID: id,
-				SessionID: *sessionID,
-				EventID:   *configID,
-			})
+		if sessionID != nil {
+			sess := models.SpeakerSession{ID: *sessionID}
+			if sessionTitle != nil {
+				sess.Title = *sessionTitle
+			}
+			if slotIndex != nil && durationSlots != nil && date != nil && startMinute != nil {
+				start, end := computeSessionWindow(*date, *startMinute, *slotIndex, *durationSlots, r.slotMinutes, resolveLoc(cfgTZ, r.loc))
+				sess.StartTime = &start
+				sess.EndTime = &end
+			}
+			summary.Sessions = append(summary.Sessions, sess)
 		}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 
+	q := strings.ToLower(strings.TrimSpace(filter.Query))
 	summaries := make([]models.SpeakerSummary, 0, len(order))
 	for _, id := range order {
-		summaries = append(summaries, *bySpeaker[id])
+		s := bySpeaker[id]
+		if q != "" && !strings.Contains(strings.ToLower(s.Name), q) {
+			continue
+		}
+		sort.SliceStable(s.Sessions, func(i, j int) bool {
+			return sessionStartsBefore(s.Sessions[i], s.Sessions[j])
+		})
+		summaries = append(summaries, *s)
 	}
+	sort.SliceStable(summaries, func(i, j int) bool {
+		return strings.ToLower(summaries[i].Name) < strings.ToLower(summaries[j].Name)
+	})
 	return summaries, nil
+}
+
+// sessionStartsBefore orders SpeakerSessions by start time, with unscheduled
+// sessions (nil StartTime) sorting last.
+func sessionStartsBefore(a, b models.SpeakerSession) bool {
+	if a.StartTime == nil {
+		return false
+	}
+	if b.StartTime == nil {
+		return true
+	}
+	return a.StartTime.Before(*b.StartTime)
 }
 
 func (r *SpeakerRepo) decrypt(ciphertext string) (string, error) {

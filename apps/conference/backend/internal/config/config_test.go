@@ -37,6 +37,7 @@ func clearEnv(t *testing.T) {
 		"AI_MATCHMAKING_SERVICE_URL", "AI_PERSONALIZE_AGENT_SERVICE_URL", "AI_PICKED_FOR_YOU_SERVICE_URL", "AI_CHAT_SERVICE_URL",
 		"AI_REQUEST_TIMEOUT_SECONDS",
 		"AI_ENABLED_CHAT_ASSISTANT", "AI_ENABLED_PERSONALIZED_AGENDA", "AI_ENABLED_MATCH_MAKER", "AI_ENABLED_O2_BAR",
+		"VENUE_TIMEZONE",
 	}
 	for _, k := range keys {
 		t.Setenv(k, "")
@@ -77,6 +78,60 @@ func TestLoad_Defaults(t *testing.T) {
 	}
 	if cfg.SessionSlotMinutes != 5 {
 		t.Errorf("expected SessionSlotMinutes default 5, got %d", cfg.SessionSlotMinutes)
+	}
+}
+
+func TestLoad_VenueTimezoneDefaultsToUTC(t *testing.T) {
+	clearEnv(t)
+
+	cfg := Load()
+
+	if cfg.VenueTimezone != "UTC" {
+		t.Errorf("expected default VenueTimezone UTC, got %q", cfg.VenueTimezone)
+	}
+	if cfg.VenueLocation == nil {
+		t.Fatal("expected VenueLocation to be non-nil")
+	}
+	if _, offset := time.Now().In(cfg.VenueLocation).Zone(); offset != 0 {
+		t.Errorf("expected UTC offset 0, got %d", offset)
+	}
+}
+
+func TestLoad_VenueTimezoneFromEnv(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("VENUE_TIMEZONE", "Asia/Colombo")
+
+	cfg := Load()
+
+	if cfg.VenueTimezone != "Asia/Colombo" {
+		t.Errorf("VenueTimezone = %q, want Asia/Colombo", cfg.VenueTimezone)
+	}
+	if cfg.VenueLocation == nil {
+		t.Fatal("expected VenueLocation to be non-nil")
+	}
+	// Asia/Colombo is a fixed +05:30 (no DST): 5*3600 + 30*60 = 19800s.
+	if _, offset := time.Date(2026, 7, 1, 0, 0, 0, 0, cfg.VenueLocation).Zone(); offset != 19800 {
+		t.Errorf("Asia/Colombo offset = %d, want 19800", offset)
+	}
+}
+
+func TestValidate_RejectsInvalidVenueTimezone(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("DB_HOST", "localhost")
+	t.Setenv("DB_USER", "administrator")
+	t.Setenv("DB_NAME", "agenda_organizer")
+	t.Setenv("DB_SCHEMA", "marketingops")
+	t.Setenv("APP_ENV", "development")
+	t.Setenv("PII_ENCRYPTION_KEY", "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=")
+	t.Setenv("VENUE_TIMEZONE", "Not/ARealZone")
+
+	cfg := Load()
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected error for an unloadable VENUE_TIMEZONE")
+	}
+	if !strings.Contains(err.Error(), "VENUE_TIMEZONE") {
+		t.Errorf("error = %q, want it to mention VENUE_TIMEZONE", err.Error())
 	}
 }
 

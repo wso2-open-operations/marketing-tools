@@ -86,9 +86,9 @@ func main() {
 
 	attendeeRepo := repository.NewAttendeeRepo(pool)
 	coinAllocationRepo := repository.NewCoinAllocationRepo(pool)
-	sessionRepo := repository.NewSessionRepo(pool, cfg.SessionSlotMinutes, cfg.PIIEncryptionKey)
-	speakerRepo := repository.NewSpeakerRepo(pool, cfg.PIIEncryptionKey)
-	eventRepo := repository.NewEventRepo(pool, cfg.SessionSlotMinutes)
+	sessionRepo := repository.NewSessionRepo(pool, cfg.SessionSlotMinutes, cfg.PIIEncryptionKey, cfg.VenueLocation)
+	speakerRepo := repository.NewSpeakerRepo(pool, cfg.PIIEncryptionKey, cfg.SessionSlotMinutes, cfg.VenueLocation)
+	eventRepo := repository.NewEventRepo(pool, cfg.SessionSlotMinutes, cfg.VenueLocation, cfg.VenueTimezone, cfg.PIIEncryptionKey)
 	attendeeProfileRepo := repository.NewAttendeeProfileRepo(pool, cfg.PIIEncryptionKey)
 	connectionRepo := repository.NewConnectionRepo(pool, attendeeProfileRepo)
 	feedbackRepo := repository.NewFeedbackRepo(pool)

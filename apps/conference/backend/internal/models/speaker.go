@@ -16,6 +16,8 @@
 
 package models
 
+import "time"
+
 // Speaker represents a single conference speaker, as returned by
 // GET /speakers/:id. The old Ballerina schema had a separate email and
 // description column; the new marketingops.speakers table has neither, so
@@ -29,24 +31,37 @@ type Speaker struct {
 	PhotoURL    string `json:"photoUrl"`
 }
 
-// SessionSpeakerWithEvent links a speaker to a session they're speaking at.
-// The old Ballerina sessionspeaker row had a surrogate int id and an eventId
-// via a since-removed event table; the new schema's session_speakers has a
-// composite (session_id, speaker_id) primary key with no surrogate id, so
-// EventID is populated from the owning session's config_id instead.
-type SessionSpeakerWithEvent struct {
-	SpeakerID string `json:"speakerId"`
-	SessionID string `json:"sessionId"`
-	EventID   string `json:"eventId"`
+// SpeakerSession is a session embedded on a speaker in GET /speakers, resolved
+// server-side (title + real times) so SpeakerDetails renders without a client
+// join back to the sessions it only had ids for (FE.md 3.2). Replaces the old
+// bare {speakerId, sessionId, eventId} reference shape.
+type SpeakerSession struct {
+	ID        string     `json:"id"`
+	Title     string     `json:"title"`
+	StartTime *time.Time `json:"startTime,omitempty"`
+	EndTime   *time.Time `json:"endTime,omitempty"`
 }
 
-// SpeakerSummary represents one entry of GET /speakers, including every
-// session the speaker is attached to.
+// SpeakerSummary represents one entry of GET /speakers, with each session the
+// speaker is attached to embedded as a resolved SpeakerSession.
 type SpeakerSummary struct {
-	ID              string                    `json:"id"`
-	Name            string                    `json:"name"`
-	Description     string                    `json:"description,omitempty"`
-	Bio             string                    `json:"bio"`
-	PhotoURL        string                    `json:"photoUrl"`
-	SessionSpeakers []SessionSpeakerWithEvent `json:"sessionSpeakers"`
+	ID          string           `json:"id"`
+	Name        string           `json:"name"`
+	Description string           `json:"description,omitempty"`
+	Bio         string           `json:"bio"`
+	PhotoURL    string           `json:"photoUrl"`
+	Sessions    []SpeakerSession `json:"sessions"`
+}
+
+// SpeakerFilter narrows GET /speakers server-side so the client stops
+// over-fetching and filtering in the browser (FE.md 3.3, .claude/PLAN.md
+// Phase B). An empty field means "no filter on that axis".
+type SpeakerFilter struct {
+	// EventID restricts to speakers with at least one session in this
+	// conference_config id (and shows only those sessions).
+	EventID string
+	// Query is a case-insensitive substring match on the (decrypted) speaker
+	// name. Matched in Go, not SQL: name is encrypted at rest, so an SQL ILIKE
+	// over the ciphertext is meaningless.
+	Query string
 }

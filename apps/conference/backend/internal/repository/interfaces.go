@@ -48,13 +48,13 @@ type SessionRepository interface {
 // same interface-segregation pattern as SpeakerRepository.
 type SessionReader interface {
 	GetSession(ctx context.Context, id string) (models.Session, error)
-	GetSessionPresenters(ctx context.Context) ([]models.SessionPresenters, error)
+	GetCurrentSessions(ctx context.Context) ([]models.Session, error)
 }
 
 // SpeakerRepository is satisfied by *SpeakerRepo.
 type SpeakerRepository interface {
 	GetSpeaker(ctx context.Context, id string) (models.Speaker, error)
-	GetSpeakerSummary(ctx context.Context) ([]models.SpeakerSummary, error)
+	GetSpeakerSummary(ctx context.Context, filter models.SpeakerFilter) ([]models.SpeakerSummary, error)
 }
 
 // EventReader is satisfied by *EventRepo. Kept as its own interface per the

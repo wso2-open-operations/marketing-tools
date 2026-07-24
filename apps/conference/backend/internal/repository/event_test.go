@@ -21,6 +21,7 @@ package repository
 import (
 	"context"
 	"testing"
+	"time"
 )
 
 // eventFixture inserts an isolated conference_config row for a single test,
@@ -82,7 +83,7 @@ func (f *eventFixture) insertSession(t *testing.T, ctx context.Context, dayID st
 
 func TestEventRepo_GetEvents_OrdersByStartDateDescendingWithLatestCurrent(t *testing.T) {
 	ctx := context.Background()
-	repo := NewEventRepo(testDB, 5)
+	repo := NewEventRepo(testDB, 5, time.UTC, "UTC", speakerTestKey)
 
 	// Dates far outside any real or other-test data so ordering is
 	// deterministic regardless of what else exists in this shared dev DB.
@@ -116,9 +117,50 @@ func TestEventRepo_GetEvents_OrdersByStartDateDescendingWithLatestCurrent(t *tes
 	}
 }
 
+func TestEventRepo_GetEvents_ReadsTimezoneAndVenueColumns(t *testing.T) {
+	ctx := context.Background()
+	repo := NewEventRepo(testDB, 5, time.UTC, "UTC", speakerTestKey)
+
+	var configID string
+	if err := testDB.QueryRow(ctx,
+		`INSERT INTO conference_config (name, start_date, timezone, venue_name, venue_address)
+		 VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+		"TDD Venue Conference", "2099-12-01", "Asia/Colombo", "BMICH", "Colombo",
+	).Scan(&configID); err != nil {
+		t.Fatalf("failed to insert config: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = testDB.Exec(context.Background(), "DELETE FROM conference_config WHERE id = $1", configID)
+	})
+
+	events, err := repo.GetEvents(ctx)
+	if err != nil {
+		t.Fatalf("GetEvents returned error: %v", err)
+	}
+	var found bool
+	for _, e := range events {
+		if e.ID != configID {
+			continue
+		}
+		found = true
+		if e.Timezone != "Asia/Colombo" {
+			t.Errorf("Timezone = %q, want Asia/Colombo (from the column)", e.Timezone)
+		}
+		if e.VenueName != "BMICH" {
+			t.Errorf("VenueName = %q, want BMICH", e.VenueName)
+		}
+		if e.VenueAddress != "Colombo" {
+			t.Errorf("VenueAddress = %q, want Colombo", e.VenueAddress)
+		}
+	}
+	if !found {
+		t.Fatalf("expected config %s in GetEvents result", configID)
+	}
+}
+
 func TestEventRepo_GetEventAgendas_ResolvesCurrentToLatestStartDate(t *testing.T) {
 	ctx := context.Background()
-	repo := NewEventRepo(testDB, 5)
+	repo := NewEventRepo(testDB, 5, time.UTC, "UTC", speakerTestKey)
 
 	older := newEventFixture(t, ctx, "TDD Older Conference", "2020-02-01")
 	older.insertDay(t, ctx, 0, "2020-02-01", "Day 1", 480)
@@ -148,7 +190,7 @@ func TestEventRepo_GetEventAgendas_ResolvesCurrentToLatestStartDate(t *testing.T
 
 func TestEventRepo_GetEventAgendas_ByExplicitEventID(t *testing.T) {
 	ctx := context.Background()
-	repo := NewEventRepo(testDB, 5)
+	repo := NewEventRepo(testDB, 5, time.UTC, "UTC", speakerTestKey)
 
 	// Even though this config isn't the latest by start_date, requesting it
 	// by explicit id must still return its days.
@@ -179,7 +221,7 @@ func TestEventRepo_GetEventAgendas_ByExplicitEventID(t *testing.T) {
 
 func TestEventRepo_GetEventAgendas_UnknownEventIDReturnsEmptyNoError(t *testing.T) {
 	ctx := context.Background()
-	repo := NewEventRepo(testDB, 5)
+	repo := NewEventRepo(testDB, 5, time.UTC, "UTC", speakerTestKey)
 
 	agendas, err := repo.GetEventAgendas(ctx, newUUID())
 	if err != nil {
@@ -192,7 +234,7 @@ func TestEventRepo_GetEventAgendas_UnknownEventIDReturnsEmptyNoError(t *testing.
 
 func TestEventRepo_GetEventAgendas_DayWithZeroSessionsHasEmptySessionsArray(t *testing.T) {
 	ctx := context.Background()
-	repo := NewEventRepo(testDB, 5)
+	repo := NewEventRepo(testDB, 5, time.UTC, "UTC", speakerTestKey)
 
 	fixture := newEventFixture(t, ctx, "TDD Empty Day Conference", "2200-01-01")
 	dayID := fixture.insertDay(t, ctx, 0, "2200-01-01", "Day 1", 480)
@@ -214,8 +256,8 @@ func TestEventRepo_GetEventAgendas_DayWithZeroSessionsHasEmptySessionsArray(t *t
 
 func TestEventRepo_GetEventAgendas_NestedSessionTimeWindowMatchesGetSession(t *testing.T) {
 	ctx := context.Background()
-	eventRepo := NewEventRepo(testDB, 5)
-	sessionRepo := NewSessionRepo(testDB, 5, speakerTestKey)
+	eventRepo := NewEventRepo(testDB, 5, time.UTC, "UTC", speakerTestKey)
+	sessionRepo := NewSessionRepo(testDB, 5, speakerTestKey, time.UTC)
 
 	fixture := newEventFixture(t, ctx, "TDD Window Match Conference", "2300-01-01")
 	dayID := fixture.insertDay(t, ctx, 0, "2300-01-01", "Day 1", 480)

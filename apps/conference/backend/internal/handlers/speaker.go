@@ -31,7 +31,7 @@ import (
 // SpeakerReader reads speaker data. Satisfied by *repository.SpeakerRepo.
 type SpeakerReader interface {
 	GetSpeaker(ctx context.Context, id string) (models.Speaker, error)
-	GetSpeakerSummary(ctx context.Context) ([]models.SpeakerSummary, error)
+	GetSpeakerSummary(ctx context.Context, filter models.SpeakerFilter) ([]models.SpeakerSummary, error)
 }
 
 // SpeakerHandler exposes the public, unauthenticated speaker HTTP endpoints
@@ -46,9 +46,15 @@ func NewSpeakerHandler(reader SpeakerReader) *SpeakerHandler {
 	return &SpeakerHandler{reader: reader}
 }
 
-// List handles GET /speakers.
+// List handles GET /speakers. Optional query params: eventId (restrict to
+// speakers in that conference) and q (case-insensitive name search). Both are
+// applied server-side so the client stops over-fetching and filtering itself.
 func (h *SpeakerHandler) List(c *gin.Context) {
-	summaries, err := h.reader.GetSpeakerSummary(c.Request.Context())
+	filter := models.SpeakerFilter{
+		EventID: c.Query("eventId"),
+		Query:   c.Query("q"),
+	}
+	summaries, err := h.reader.GetSpeakerSummary(c.Request.Context(), filter)
 	if err != nil {
 		slog.ErrorContext(c.Request.Context(), "fetching speaker summary failed", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "internal error"})
