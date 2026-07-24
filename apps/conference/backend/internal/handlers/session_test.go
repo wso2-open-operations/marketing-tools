@@ -29,18 +29,18 @@ import (
 )
 
 type fakeSessionReader struct {
-	session       models.Session
-	sessionErr    error
-	presenters    []models.SessionPresenters
-	presentersErr error
+	session    models.Session
+	sessionErr error
+	current    []models.Session
+	currentErr error
 }
 
 func (f *fakeSessionReader) GetSession(ctx context.Context, id string) (models.Session, error) {
 	return f.session, f.sessionErr
 }
 
-func (f *fakeSessionReader) GetSessionPresenters(ctx context.Context) ([]models.SessionPresenters, error) {
-	return f.presenters, f.presentersErr
+func (f *fakeSessionReader) GetCurrentSessions(ctx context.Context) ([]models.Session, error) {
+	return f.current, f.currentErr
 }
 
 func newSessionTestRouter(h *SessionHandler) *gin.Engine {
@@ -86,10 +86,10 @@ func TestSessionHandler_Get_OtherErrorReturns500(t *testing.T) {
 	}
 }
 
-func TestSessionHandler_Current_ReturnsPresenters(t *testing.T) {
+func TestSessionHandler_Current_ReturnsSessions(t *testing.T) {
 	reader := &fakeSessionReader{
-		presenters: []models.SessionPresenters{
-			{ID: "session-1", Name: "Intro to WSO2", Presenters: []string{"Jay Howell"}},
+		current: []models.Session{
+			{ID: "session-1", Kind: "session", Title: "Intro to WSO2"},
 		},
 	}
 	h := NewSessionHandler(reader)
@@ -99,7 +99,7 @@ func TestSessionHandler_Current_ReturnsPresenters(t *testing.T) {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
 
-	var got []models.SessionPresenters
+	var got []models.Session
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("failed to unmarshal response: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestSessionHandler_Current_ReturnsPresenters(t *testing.T) {
 }
 
 func TestSessionHandler_Current_EmptyResultReturnsEmptyArrayNotNull(t *testing.T) {
-	h := NewSessionHandler(&fakeSessionReader{presenters: nil})
+	h := NewSessionHandler(&fakeSessionReader{current: nil})
 	rec := doRequest(newSessionTestRouter(h), http.MethodGet, "/sessions/current", nil)
 
 	if rec.Code != http.StatusOK {
@@ -121,7 +121,7 @@ func TestSessionHandler_Current_EmptyResultReturnsEmptyArrayNotNull(t *testing.T
 }
 
 func TestSessionHandler_Current_RepositoryErrorReturns500(t *testing.T) {
-	h := NewSessionHandler(&fakeSessionReader{presentersErr: errBoom})
+	h := NewSessionHandler(&fakeSessionReader{currentErr: errBoom})
 	rec := doRequest(newSessionTestRouter(h), http.MethodGet, "/sessions/current", nil)
 
 	if rec.Code != http.StatusInternalServerError {

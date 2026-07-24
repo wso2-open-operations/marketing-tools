@@ -18,6 +18,7 @@ package models
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 )
@@ -85,7 +86,7 @@ func TestSession_OptionalFieldsOmittedWhenEmpty(t *testing.T) {
 	}
 
 	for _, key := range []string{
-		"category", "startTime", "endTime", "dayId", "trackId", "slotIndex",
+		"description", "category", "startTime", "endTime", "dayId", "trackId", "slotIndex",
 		"roomId", "articleUrl", "articleLabel", "videoUrl", "videoLabel",
 	} {
 		if _, ok := got[key]; ok {
@@ -97,10 +98,19 @@ func TestSession_OptionalFieldsOmittedWhenEmpty(t *testing.T) {
 	}
 }
 
-func TestSessionPresenters_JSONShape(t *testing.T) {
-	sp := SessionPresenters{ID: "session-1", Name: "Intro to WSO2", Presenters: []string{"Jay Howell"}}
+// A session time expressed in a non-UTC venue zone must serialize with that
+// zone's real offset, not a fake Z. This is the contract the frontend's
+// parseConferenceTime timezone-patching hack (FE.md 3.4) exists to work
+// around; once the offset is present the client can Date-parse directly.
+func TestSession_StartTimeSerializesWithZoneOffset(t *testing.T) {
+	colombo, err := time.LoadLocation("Asia/Colombo") // fixed +05:30, no DST
+	if err != nil {
+		t.Skipf("tzdata for Asia/Colombo unavailable: %v", err)
+	}
+	start := time.Date(2026, 7, 1, 9, 0, 0, 0, colombo)
+	s := Session{ID: "s1", Kind: "session", Title: "T", DurationSlots: 6, StartTime: &start}
 
-	b, err := json.Marshal(sp)
+	b, err := json.Marshal(s)
 	if err != nil {
 		t.Fatalf("Marshal returned error: %v", err)
 	}
@@ -109,14 +119,58 @@ func TestSessionPresenters_JSONShape(t *testing.T) {
 	if err := json.Unmarshal(b, &got); err != nil {
 		t.Fatalf("Unmarshal returned error: %v", err)
 	}
+	startStr, _ := got["startTime"].(string)
+	if !strings.HasSuffix(startStr, "+05:30") {
+		t.Errorf("startTime = %q, want a +05:30 offset, not a fake Z", startStr)
+	}
+	if strings.HasSuffix(startStr, "Z") {
+		t.Errorf("startTime = %q ends in Z; the naive-UTC bug is still present", startStr)
+	}
+}
 
-	for _, key := range []string{"id", "name", "presenters"} {
-		if _, ok := got[key]; !ok {
-			t.Errorf("expected JSON key %q, got keys %v", key, got)
+// A session embeds its speakers so the client needs no session<->speaker join
+// (FE.md 3.2). The embedded shape is {id, name, photoUrl, isModerator} with
+// string ids.
+func TestSession_EmbedsSpeakers(t *testing.T) {
+	s := Session{
+		ID: "s1", Kind: "session", Title: "T", DurationSlots: 6,
+		Speakers: []SessionSpeaker{{ID: "sp1", Name: "Ada Lovelace", PhotoURL: "https://x/a.webp", IsModerator: true}},
+	}
+
+	b, err := json.Marshal(s)
+	if err != nil {
+		t.Fatalf("Marshal returned error: %v", err)
+	}
+
+	var got struct {
+		Speakers []map[string]any `json:"speakers"`
+	}
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatalf("Unmarshal returned error: %v", err)
+	}
+	if len(got.Speakers) != 1 {
+		t.Fatalf("speakers = %v, want a single element", got.Speakers)
+	}
+	for _, key := range []string{"id", "name", "photoUrl", "isModerator"} {
+		if _, ok := got.Speakers[0][key]; !ok {
+			t.Errorf("embedded speaker missing key %q, got %v", key, got.Speakers[0])
 		}
 	}
-	presenters, ok := got["presenters"].([]any)
-	if !ok || len(presenters) != 1 || presenters[0] != "Jay Howell" {
-		t.Errorf("presenters = %v, want [\"Jay Howell\"]", got["presenters"])
+	if id, ok := got.Speakers[0]["id"].(string); !ok || id != "sp1" {
+		t.Errorf("speaker id = %v, want string \"sp1\"", got.Speakers[0]["id"])
+	}
+}
+
+// The empty-string-as-absent sentinel (FE.md 3.6) must not reappear: an empty
+// category serializes to an omitted key, never "".
+func TestSession_EmptyCategoryIsOmittedNotEmptyString(t *testing.T) {
+	s := Session{ID: "s1", Kind: "session", Title: "T", DurationSlots: 1, Category: ""}
+
+	b, err := json.Marshal(s)
+	if err != nil {
+		t.Fatalf("Marshal returned error: %v", err)
+	}
+	if strings.Contains(string(b), `"category"`) {
+		t.Errorf("category key present for an empty category; want it omitted: %s", b)
 	}
 }

@@ -73,8 +73,8 @@ func TestSpeakerSummary_JSONShape(t *testing.T) {
 		Name:     "Jay Howell",
 		Bio:      "Works on integration.",
 		PhotoURL: "https://example.com/jay.webp",
-		SessionSpeakers: []SessionSpeakerWithEvent{
-			{SpeakerID: "speaker-1", SessionID: "session-1", EventID: "config-1"},
+		Sessions: []SpeakerSession{
+			{ID: "session-1", Title: "Intro to WSO2"},
 		},
 	}
 
@@ -88,26 +88,29 @@ func TestSpeakerSummary_JSONShape(t *testing.T) {
 		t.Fatalf("Unmarshal returned error: %v", err)
 	}
 
-	sessionSpeakers, ok := got["sessionSpeakers"].([]any)
-	if !ok || len(sessionSpeakers) != 1 {
-		t.Fatalf("expected one sessionSpeakers entry, got %v", got["sessionSpeakers"])
+	sessions, ok := got["sessions"].([]any)
+	if !ok || len(sessions) != 1 {
+		t.Fatalf("expected one sessions entry, got %v", got["sessions"])
 	}
-	entry, ok := sessionSpeakers[0].(map[string]any)
+	entry, ok := sessions[0].(map[string]any)
 	if !ok {
-		t.Fatalf("expected sessionSpeakers[0] to be an object, got %T", sessionSpeakers[0])
+		t.Fatalf("expected sessions[0] to be an object, got %T", sessions[0])
 	}
-	for _, key := range []string{"speakerId", "sessionId", "eventId"} {
+	for _, key := range []string{"id", "title"} {
 		if _, ok := entry[key]; !ok {
-			t.Errorf("expected JSON key %q in sessionSpeakers entry, got %v", key, entry)
+			t.Errorf("expected JSON key %q in sessions entry, got %v", key, entry)
 		}
 	}
-	if _, ok := entry["id"]; ok {
-		t.Errorf("expected no surrogate id key (new schema has no equivalent), got %v", entry)
+	// The old bare-reference keys are gone: sessions are resolved objects now.
+	for _, key := range []string{"speakerId", "eventId"} {
+		if _, ok := entry[key]; ok {
+			t.Errorf("expected no %q key on the embedded session, got %v", key, entry)
+		}
 	}
 }
 
-func TestSpeakerSummary_SessionSpeakersAlwaysPresentEvenWhenEmpty(t *testing.T) {
-	s := SpeakerSummary{ID: "speaker-1", Name: "No Sessions Yet"}
+func TestSpeakerSummary_SessionsAlwaysPresentEvenWhenEmpty(t *testing.T) {
+	s := SpeakerSummary{ID: "speaker-1", Name: "No Sessions Yet", Sessions: []SpeakerSession{}}
 
 	b, err := json.Marshal(s)
 	if err != nil {
@@ -118,7 +121,11 @@ func TestSpeakerSummary_SessionSpeakersAlwaysPresentEvenWhenEmpty(t *testing.T) 
 	if err := json.Unmarshal(b, &got); err != nil {
 		t.Fatalf("Unmarshal returned error: %v", err)
 	}
-	if _, ok := got["sessionSpeakers"]; !ok {
-		t.Errorf("expected sessionSpeakers key to always be present (matches Ballerina's non-optional field), got %v", got)
+	sessions, ok := got["sessions"].([]any)
+	if !ok {
+		t.Fatalf("expected sessions key to always be present as an array, got %v", got["sessions"])
+	}
+	if len(sessions) != 0 {
+		t.Errorf("expected empty sessions array, got %v", sessions)
 	}
 }

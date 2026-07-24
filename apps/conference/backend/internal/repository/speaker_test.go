@@ -23,8 +23,10 @@ import (
 	"encoding/base64"
 	"errors"
 	"testing"
+	"time"
 
 	"wso2-coin-backend/internal/crypto"
+	"wso2-coin-backend/internal/models"
 )
 
 // speakerTestKey is a throwaway 32-byte AES-256 key used only by this test
@@ -116,7 +118,7 @@ func (f *speakerFixture) attachToSession(t *testing.T, ctx context.Context) (ses
 
 func TestSpeakerRepo_GetSpeaker_DecryptsFields(t *testing.T) {
 	ctx := context.Background()
-	repo := NewSpeakerRepo(testDB, speakerTestKey)
+	repo := NewSpeakerRepo(testDB, speakerTestKey, 5, time.UTC)
 
 	fixture := newSpeakerFixture(t, ctx, "Jay Howell", "Principal Engineer", "Works on integration.", "https://example.com/jay.webp", true)
 
@@ -140,7 +142,7 @@ func TestSpeakerRepo_GetSpeaker_DecryptsFields(t *testing.T) {
 
 func TestSpeakerRepo_GetSpeaker_NotFound(t *testing.T) {
 	ctx := context.Background()
-	repo := NewSpeakerRepo(testDB, speakerTestKey)
+	repo := NewSpeakerRepo(testDB, speakerTestKey, 5, time.UTC)
 
 	_, err := repo.GetSpeaker(ctx, newUUID())
 	if !errors.Is(err, ErrNotFound) {
@@ -153,7 +155,7 @@ func TestSpeakerRepo_GetSpeaker_NotFoundWhenNotVisible(t *testing.T) {
 	// filter: GetSpeaker must not let a hidden speaker's id bypass the same
 	// check GetSpeakerSummary enforces, since this route is unauthenticated.
 	ctx := context.Background()
-	repo := NewSpeakerRepo(testDB, speakerTestKey)
+	repo := NewSpeakerRepo(testDB, speakerTestKey, 5, time.UTC)
 
 	fixture := newSpeakerFixture(t, ctx, "Hidden Speaker", "", "", "", false)
 
@@ -165,12 +167,12 @@ func TestSpeakerRepo_GetSpeaker_NotFoundWhenNotVisible(t *testing.T) {
 
 func TestSpeakerRepo_GetSpeakerSummary_FiltersToVisibleOnly(t *testing.T) {
 	ctx := context.Background()
-	repo := NewSpeakerRepo(testDB, speakerTestKey)
+	repo := NewSpeakerRepo(testDB, speakerTestKey, 5, time.UTC)
 
 	visible := newSpeakerFixture(t, ctx, "Visible Speaker", "", "", "", true)
 	hidden := newSpeakerFixture(t, ctx, "Hidden Speaker", "", "", "", false)
 
-	summaries, err := repo.GetSpeakerSummary(ctx)
+	summaries, err := repo.GetSpeakerSummary(ctx, models.SpeakerFilter{})
 	if err != nil {
 		t.Fatalf("GetSpeakerSummary returned error: %v", err)
 	}
@@ -187,65 +189,63 @@ func TestSpeakerRepo_GetSpeakerSummary_FiltersToVisibleOnly(t *testing.T) {
 	}
 }
 
-func TestSpeakerRepo_GetSpeakerSummary_IncludesSessionSpeakers(t *testing.T) {
+// Scoping by eventId returns only speakers in that conference, each with its
+// sessions embedded as resolved {id, title, ...} objects. Scoping also keeps
+// this test off the shared DB's real (differently-encrypted) speaker rows.
+func TestSpeakerRepo_GetSpeakerSummary_ScopedByEventEmbedsResolvedSessions(t *testing.T) {
 	ctx := context.Background()
-	repo := NewSpeakerRepo(testDB, speakerTestKey)
+	repo := NewSpeakerRepo(testDB, speakerTestKey, 5, time.UTC)
 
 	fixture := newSpeakerFixture(t, ctx, "Speaker With Session", "", "", "", true)
 	sessionID, configID := fixture.attachToSession(t, ctx)
 
-	summaries, err := repo.GetSpeakerSummary(ctx)
+	summaries, err := repo.GetSpeakerSummary(ctx, models.SpeakerFilter{EventID: configID})
 	if err != nil {
 		t.Fatalf("GetSpeakerSummary returned error: %v", err)
 	}
 
-	var found bool
-	for _, s := range summaries {
-		if s.ID != fixture.speakerID {
-			continue
-		}
-		found = true
-		if len(s.SessionSpeakers) != 1 {
-			t.Fatalf("expected 1 sessionSpeakers entry, got %d", len(s.SessionSpeakers))
-		}
-		ss := s.SessionSpeakers[0]
-		if ss.SpeakerID != fixture.speakerID {
-			t.Errorf("SpeakerID = %q, want %q", ss.SpeakerID, fixture.speakerID)
-		}
-		if ss.SessionID != sessionID {
-			t.Errorf("SessionID = %q, want %q", ss.SessionID, sessionID)
-		}
-		if ss.EventID != configID {
-			t.Errorf("EventID = %q, want %q (mapped from sessions.config_id)", ss.EventID, configID)
-		}
+	if len(summaries) != 1 {
+		t.Fatalf("len(summaries) = %d, want exactly 1 (scoped to this event)", len(summaries))
 	}
-	if !found {
-		t.Fatalf("expected speaker %s in summary", fixture.speakerID)
+	s := summaries[0]
+	if s.ID != fixture.speakerID {
+		t.Fatalf("speaker id = %q, want %q", s.ID, fixture.speakerID)
+	}
+	if len(s.Sessions) != 1 {
+		t.Fatalf("expected 1 embedded session, got %d", len(s.Sessions))
+	}
+	if s.Sessions[0].ID != sessionID {
+		t.Errorf("session id = %q, want %q", s.Sessions[0].ID, sessionID)
+	}
+	if s.Sessions[0].Title != "TDD Speaker Test Session" {
+		t.Errorf("session title = %q, want %q", s.Sessions[0].Title, "TDD Speaker Test Session")
 	}
 }
 
-func TestSpeakerRepo_GetSpeakerSummary_EmptySessionSpeakersIsNotNil(t *testing.T) {
+// The ?q= name search matches on the decrypted name (name is encrypted at
+// rest, so it can't be an SQL ILIKE). Scoped by eventId to stay off real rows.
+func TestSpeakerRepo_GetSpeakerSummary_QueryFiltersByDecryptedName(t *testing.T) {
 	ctx := context.Background()
-	repo := NewSpeakerRepo(testDB, speakerTestKey)
+	repo := NewSpeakerRepo(testDB, speakerTestKey, 5, time.UTC)
 
-	fixture := newSpeakerFixture(t, ctx, "No Sessions Yet", "", "", "", true)
+	fixture := newSpeakerFixture(t, ctx, "Ada Lovelace", "", "", "", true)
+	_, configID := fixture.attachToSession(t, ctx)
 
-	summaries, err := repo.GetSpeakerSummary(ctx)
+	// A matching query returns the speaker.
+	got, err := repo.GetSpeakerSummary(ctx, models.SpeakerFilter{EventID: configID, Query: "lovelace"})
 	if err != nil {
 		t.Fatalf("GetSpeakerSummary returned error: %v", err)
 	}
-
-	for _, s := range summaries {
-		if s.ID != fixture.speakerID {
-			continue
-		}
-		if s.SessionSpeakers == nil {
-			t.Errorf("expected non-nil (empty) SessionSpeakers slice, got nil")
-		}
-		if len(s.SessionSpeakers) != 0 {
-			t.Errorf("expected 0 sessionSpeakers entries, got %d", len(s.SessionSpeakers))
-		}
-		return
+	if len(got) != 1 || got[0].ID != fixture.speakerID {
+		t.Errorf("query 'lovelace' returned %+v, want the one matching speaker", got)
 	}
-	t.Fatalf("expected speaker %s in summary", fixture.speakerID)
+
+	// A non-matching query excludes it.
+	got, err = repo.GetSpeakerSummary(ctx, models.SpeakerFilter{EventID: configID, Query: "zzz-no-match"})
+	if err != nil {
+		t.Fatalf("GetSpeakerSummary returned error: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("non-matching query returned %+v, want empty", got)
+	}
 }

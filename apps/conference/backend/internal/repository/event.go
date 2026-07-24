@@ -32,13 +32,25 @@ import (
 type EventRepo struct {
 	pool        *pgxpool.Pool
 	slotMinutes int
+	loc         *time.Location
+	venueTZ     string
+	piiKey      []byte
 }
 
 // NewEventRepo constructs an EventRepo backed by the given pool. slotMinutes
 // is used the same way as SessionRepo's, to compute each nested session's
-// StartTime/EndTime.
-func NewEventRepo(pool *pgxpool.Pool, slotMinutes int) *EventRepo {
-	return &EventRepo{pool: pool, slotMinutes: slotMinutes}
+// StartTime/EndTime. loc anchors those times to the venue timezone and
+// venueTZ is its IANA name, surfaced in the payload as Timezone so the client
+// stops hardcoding its own. piiKey decrypts the names of speakers embedded on
+// each nested session (see .claude/PLAN.md Phase B). A nil loc defaults to UTC.
+func NewEventRepo(pool *pgxpool.Pool, slotMinutes int, loc *time.Location, venueTZ string, piiKey []byte) *EventRepo {
+	if loc == nil {
+		loc = time.UTC
+	}
+	if venueTZ == "" {
+		venueTZ = loc.String()
+	}
+	return &EventRepo{pool: pool, slotMinutes: slotMinutes, loc: loc, venueTZ: venueTZ, piiKey: piiKey}
 }
 
 // GetEvents returns every conference_config row, ordered by start_date
@@ -47,7 +59,7 @@ func NewEventRepo(pool *pgxpool.Pool, slotMinutes int) *EventRepo {
 // rule already established for GET /sessions/current.
 func (r *EventRepo) GetEvents(ctx context.Context) ([]models.Event, error) {
 	rows, err := r.pool.Query(ctx,
-		"SELECT id, name FROM conference_config ORDER BY start_date DESC",
+		"SELECT id, name, timezone, venue_name, venue_address FROM conference_config ORDER BY start_date DESC",
 	)
 	if err != nil {
 		return nil, err
@@ -57,10 +69,24 @@ func (r *EventRepo) GetEvents(ctx context.Context) ([]models.Event, error) {
 	events := make([]models.Event, 0)
 	for rows.Next() {
 		var e models.Event
-		if err := rows.Scan(&e.ID, &e.Name); err != nil {
+		var tz string
+		var venueName, venueAddress *string
+		if err := rows.Scan(&e.ID, &e.Name, &tz, &venueName, &venueAddress); err != nil {
 			return nil, err
 		}
 		e.IsCurrent = len(events) == 0
+		// The conference_config.timezone column is the source of truth; the
+		// env-configured venueTZ is only a fallback for an empty value.
+		e.Timezone = tz
+		if e.Timezone == "" {
+			e.Timezone = r.venueTZ
+		}
+		if venueName != nil {
+			e.VenueName = *venueName
+		}
+		if venueAddress != nil {
+			e.VenueAddress = *venueAddress
+		}
 		events = append(events, e)
 	}
 	if err := rows.Err(); err != nil {
@@ -93,12 +119,16 @@ func (r *EventRepo) GetEventAgendas(ctx context.Context, eventID string) ([]mode
 	}
 
 	rows, err := r.pool.Query(ctx,
-		`SELECT d.id, d.date, d.label, d.start_minute,
+		`SELECT d.id, d.date, d.label, d.start_minute, cc.timezone,
 		        s.id, s.kind, s.title, s.description, s.category,
 		        s.track_id, s.room_id, s.slot_index, s.duration_slots,
-		        s.article_url, s.article_label, s.video_url, s.video_label
+		        s.article_url, s.article_label, s.video_url, s.video_label,
+		        t.color, r.name
 		 FROM conference_days d
+		 JOIN conference_config cc ON cc.id = d.config_id
 		 LEFT JOIN sessions s ON s.day_id = d.id
+		 LEFT JOIN tracks t ON t.id = s.track_id
+		 LEFT JOIN rooms r ON r.id = s.room_id
 		 WHERE d.config_id = $1
 		 ORDER BY d.day_index, s.slot_index`,
 		configID,
@@ -116,18 +146,31 @@ func (r *EventRepo) GetEventAgendas(ctx context.Context, eventID string) ([]mode
 		var date time.Time
 		var label *string
 		var startMinute int
+		var cfgTZ string
 		var sessionID, kind, title, description *string
 		var category, trackID, roomID *string
 		var slotIndex, durationSlots *int
 		var articleURL, articleLabel, videoURL, videoLabel *string
+		var trackColor, roomName *string
 
 		if err := rows.Scan(
-			&dayID, &date, &label, &startMinute,
+			&dayID, &date, &label, &startMinute, &cfgTZ,
 			&sessionID, &kind, &title, &description, &category,
 			&trackID, &roomID, &slotIndex, &durationSlots,
 			&articleURL, &articleLabel, &videoURL, &videoLabel,
+			&trackColor, &roomName,
 		); err != nil {
 			return nil, err
+		}
+
+		// conference_config.timezone is the source of truth; the env venueTZ/loc
+		// is only a fallback for an empty value (the column is NOT NULL, so this
+		// is defensive).
+		tz := r.venueTZ
+		loc := r.loc
+		if cfgTZ != "" {
+			tz = cfgTZ
+			loc = locationFor(cfgTZ)
 		}
 
 		agenda, ok := byDay[dayID]
@@ -135,6 +178,7 @@ func (r *EventRepo) GetEventAgendas(ctx context.Context, eventID string) ([]mode
 			agenda = &models.EventAgenda{
 				ID:       dayID,
 				EventID:  configID,
+				Timezone: tz,
 				Date:     date.Format("2006-01-02"),
 				Sessions: make([]models.Session, 0),
 			}
@@ -175,6 +219,12 @@ func (r *EventRepo) GetEventAgendas(ctx context.Context, eventID string) ([]mode
 		if roomID != nil {
 			session.RoomID = *roomID
 		}
+		if trackColor != nil {
+			session.TrackColor = *trackColor
+		}
+		if roomName != nil {
+			session.RoomName = *roomName
+		}
 		if articleURL != nil {
 			session.ArticleURL = *articleURL
 		}
@@ -189,7 +239,7 @@ func (r *EventRepo) GetEventAgendas(ctx context.Context, eventID string) ([]mode
 		}
 
 		if slotIndex != nil {
-			start, end := computeSessionWindow(date, startMinute, *slotIndex, *durationSlots, r.slotMinutes)
+			start, end := computeSessionWindow(date, startMinute, *slotIndex, *durationSlots, r.slotMinutes, loc)
 			session.StartTime = &start
 			session.EndTime = &end
 		}
@@ -203,6 +253,27 @@ func (r *EventRepo) GetEventAgendas(ctx context.Context, eventID string) ([]mode
 	result := make([]models.EventAgenda, 0, len(order))
 	for _, id := range order {
 		result = append(result, *byDay[id])
+	}
+
+	// Embed each nested session's speakers in one round trip (see Phase B).
+	sessionIDs := make([]string, 0)
+	for i := range result {
+		for j := range result[i].Sessions {
+			sessionIDs = append(sessionIDs, result[i].Sessions[j].ID)
+		}
+	}
+	speakers, err := fetchSessionSpeakers(ctx, r.pool, r.piiKey, sessionIDs)
+	if err != nil {
+		return nil, err
+	}
+	for i := range result {
+		for j := range result[i].Sessions {
+			s := speakers[result[i].Sessions[j].ID]
+			if s == nil {
+				s = make([]models.SessionSpeaker, 0)
+			}
+			result[i].Sessions[j].Speakers = s
+		}
 	}
 	return result, nil
 }

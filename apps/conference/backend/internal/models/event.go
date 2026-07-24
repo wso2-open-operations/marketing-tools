@@ -20,11 +20,19 @@ package models
 // Ballerina schema's `event` had a `location` column; the new
 // conference_config table has no equivalent, so it's dropped (see
 // .claude/PLAN.md). IsCurrent is computed as the config with the latest
-// start_date, not a stored column.
+// start_date, not a stored column. Timezone/VenueName/VenueAddress come from
+// the real upstream conference_config columns (added by the schema-owning
+// team). Timezone is the IANA venue timezone the nested session instants are
+// expressed in, so the client reads it from the payload instead of hardcoding
+// its own (see .claude/PLAN.md Phase A/G). VenueName/VenueAddress are omitted
+// when unset.
 type Event struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	IsCurrent bool   `json:"isCurrent"`
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	IsCurrent    bool   `json:"isCurrent"`
+	Timezone     string `json:"timezone"`
+	VenueName    string `json:"venueName,omitempty"`
+	VenueAddress string `json:"venueAddress,omitempty"`
 }
 
 // EventAgenda represents a single conference day and its scheduled sessions,
@@ -36,6 +44,7 @@ type Event struct {
 type EventAgenda struct {
 	ID       string    `json:"id"`
 	EventID  string    `json:"eventId"`
+	Timezone string    `json:"timezone"`
 	Name     string    `json:"name,omitempty"`
 	Date     string    `json:"date"`
 	Sessions []Session `json:"sessions"`
