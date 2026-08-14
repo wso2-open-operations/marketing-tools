@@ -1,0 +1,13 @@
+# +required Schema version
+schemaVersion: 1.2
+
+endpoints:
+  - name: attendee-registration
+    displayName: Conference Attendee Registration App
+    service:
+      basePath: /
+      port: 8080
+    type: REST
+    networkVisibilities:
+      - Public
+    schemaFilePath: openapi.yaml
