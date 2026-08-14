@@ -44,6 +44,12 @@ type Config struct {
 	SheetsURL                   string
 	SheetsRegistrationSheetName string
 	SheetsRegistrationSheetID   int
+
+	// AuthorizedRole mirrors authorization.bal's `configurable string
+	// authorizedRole = ?;` from the original Ballerina service. It was never
+	// read anywhere in that service's interceptor logic — kept here,
+	// unused, for parity rather than ported as dead code.
+	AuthorizedRole string
 }
 
 func Load() Config {
@@ -91,6 +97,8 @@ func Load() Config {
 		SheetsURL:                   os.Getenv("SHEETS_URL"),
 		SheetsRegistrationSheetName: os.Getenv("SHEETS_REGISTRATION_SHEET_NAME"),
 		SheetsRegistrationSheetID:   getEnvInt("SHEETS_REGISTRATION_SHEET_ID", 0),
+
+		AuthorizedRole: os.Getenv("AUTHORIZED_ROLE"),
 	}
 }
 
@@ -132,6 +140,9 @@ func (c Config) Validate() error {
 	}
 	if c.SheetsSpreadsheetID == "" {
 		return errors.New("SHEETS_SPREADSHEET_ID is required")
+	}
+	if c.AuthorizedRole == "" {
+		return errors.New("AUTHORIZED_ROLE is required")
 	}
 	return nil
 }
