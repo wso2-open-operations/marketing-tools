@@ -7,7 +7,10 @@
 
 package config
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func validConfig() Config {
 	return Config{
@@ -67,6 +70,9 @@ func TestLoad_Defaults(t *testing.T) {
 	t.Setenv("DB_PORT", "")
 	t.Setenv("LOG_LEVEL", "")
 	t.Setenv("APP_ENV", "")
+	t.Setenv("DB_MAX_OPEN_CONNS", "")
+	t.Setenv("DB_MAX_CONN_LIFETIME_SECONDS", "")
+	t.Setenv("DB_MAX_IDLE_CONNS", "")
 
 	c := Load()
 	if c.Port != "8080" {
@@ -80,5 +86,17 @@ func TestLoad_Defaults(t *testing.T) {
 	}
 	if c.AppEnv != "production" {
 		t.Errorf("AppEnv default = %q, want production", c.AppEnv)
+	}
+	if c.DBMaxOpenConns != 10 {
+		t.Errorf("DBMaxOpenConns default = %d, want 10", c.DBMaxOpenConns)
+	}
+	if c.DBMaxConnLifetimeSeconds != 100.0 {
+		t.Errorf("DBMaxConnLifetimeSeconds default = %v, want 100.0", c.DBMaxConnLifetimeSeconds)
+	}
+	if c.DBMaxIdleConns != 5 {
+		t.Errorf("DBMaxIdleConns default = %d, want 5", c.DBMaxIdleConns)
+	}
+	if got, want := c.ConnMaxLifetime(), 100*time.Second; got != want {
+		t.Errorf("ConnMaxLifetime() = %v, want %v", got, want)
 	}
 }

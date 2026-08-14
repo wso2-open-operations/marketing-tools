@@ -10,16 +10,34 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 )
 
-// Connect opens a MySQL connection pool and verifies connectivity.
-func Connect(ctx context.Context, dsn string) (*sql.DB, error) {
+// PoolConfig tunes the MySQL connection pool, mirroring the original
+// Ballerina service's sql:ConnectionPool config (maxOpenConnections,
+// maxConnectionLifeTime, minIdleConnections).
+type PoolConfig struct {
+	MaxOpenConns    int
+	ConnMaxLifetime time.Duration
+	// MaxIdleConns mirrors minIdleConnections. Go's database/sql only
+	// exposes a maximum idle pool size, not a maintained minimum — this
+	// caps idle connections at the given count rather than guaranteeing
+	// that many stay open, unlike the original driver's pool.
+	MaxIdleConns int
+}
+
+// Connect opens a MySQL connection pool, applies the given pool tuning, and
+// verifies connectivity.
+func Connect(ctx context.Context, dsn string, pool PoolConfig) (*sql.DB, error) {
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		return nil, err
 	}
+	db.SetMaxOpenConns(pool.MaxOpenConns)
+	db.SetConnMaxLifetime(pool.ConnMaxLifetime)
+	db.SetMaxIdleConns(pool.MaxIdleConns)
 	if err := db.PingContext(ctx); err != nil {
 		db.Close()
 		return nil, err

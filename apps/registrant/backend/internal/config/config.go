@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"time"
 )
 
 type Config struct {
@@ -25,6 +26,14 @@ type Config struct {
 	DBUser     string
 	DBPassword string
 	DBName     string
+
+	// DB connection pool, mirroring the original Ballerina service's
+	// sql:ConnectionPool config. Defaults match that service's actual
+	// production values (maxOpenConnections=10, maxConnectionLifeTime=100s,
+	// minIdleConnections=5).
+	DBMaxOpenConns           int
+	DBMaxConnLifetimeSeconds float64
+	DBMaxIdleConns           int
 
 	// Email service
 	EmailServiceEndpoint   string
@@ -81,6 +90,10 @@ func Load() Config {
 		DBPassword: os.Getenv("DB_PASSWORD"),
 		DBName:     os.Getenv("DB_NAME"),
 
+		DBMaxOpenConns:           getEnvInt("DB_MAX_OPEN_CONNS", 10),
+		DBMaxConnLifetimeSeconds: getEnvFloat("DB_MAX_CONN_LIFETIME_SECONDS", 100.0),
+		DBMaxIdleConns:           getEnvInt("DB_MAX_IDLE_CONNS", 5),
+
 		EmailServiceEndpoint:   os.Getenv("EMAIL_SERVICE_ENDPOINT"),
 		EmailFrom:              os.Getenv("EMAIL_FROM"),
 		EmailOAuthTokenURL:     os.Getenv("EMAIL_OAUTH_TOKEN_URL"),
@@ -112,6 +125,24 @@ func getEnvInt(key string, def int) int {
 		return def
 	}
 	return v
+}
+
+func getEnvFloat(key string, def float64) float64 {
+	raw := os.Getenv(key)
+	if raw == "" {
+		return def
+	}
+	v, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		return def
+	}
+	return v
+}
+
+// ConnMaxLifetime converts DBMaxConnLifetimeSeconds (matching the original
+// service's decimal-seconds config) into a time.Duration for database/sql.
+func (c Config) ConnMaxLifetime() time.Duration {
+	return time.Duration(c.DBMaxConnLifetimeSeconds * float64(time.Second))
 }
 
 // DSN assembles a go-sql-driver/mysql data source name from individual vars.

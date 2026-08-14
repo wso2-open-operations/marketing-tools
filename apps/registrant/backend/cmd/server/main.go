@@ -63,7 +63,11 @@ func main() {
 
 	slog.Info("logger initialised", "level", cfg.LogLevel, "env", cfg.AppEnv)
 
-	db, err := repository.Connect(context.Background(), cfg.DSN())
+	db, err := repository.Connect(context.Background(), cfg.DSN(), repository.PoolConfig{
+		MaxOpenConns:    cfg.DBMaxOpenConns,
+		ConnMaxLifetime: cfg.ConnMaxLifetime(),
+		MaxIdleConns:    cfg.DBMaxIdleConns,
+	})
 	if err != nil {
 		slog.Error("db connect", "error", err)
 		os.Exit(1)
