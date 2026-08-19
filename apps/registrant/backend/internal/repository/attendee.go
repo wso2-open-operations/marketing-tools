@@ -10,30 +10,31 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"strings"
+
+	"attendee-registration/internal/crypto"
 )
 
-// GetAttendeeSummary returns one row per agenda registration for the
-// current event, joined back to its agenda name.
+// GetAttendeeSummary returns one row per agenda (session) registration for
+// the current event, joined back to its session title. attendee_id is
+// encrypted at rest, so this decrypts each row here to produce Username and
+// to classify UserType, since neither can be done in SQL against
+// ciphertext.
 func (r *Repository) GetAttendeeSummary(ctx context.Context) ([]AttendeeSummary, error) {
 	const q = `
 		SELECT
-			a.name AS agenda,
-			aa.attendee_id AS username,
-			aa.updated_by AS scannedBy,
-			CASE
-				WHEN aa.attendee_id LIKE ? THEN 'Internal'
-				ELSE 'External'
-			END AS userType
+			s.title AS agenda,
+			ar.attendee_id AS username,
+			ar.updated_by AS scannedBy
 		FROM
-			agenda_attendee aa
-			JOIN agenda a ON aa.agenda_id = a.id
-			JOIN event e ON a.eventId = e.id
+			attendee_registration ar
+			JOIN sessions s ON ar.session_id = s.id
 		WHERE
-			e.isCurrent = 1
+			s.config_id = (SELECT id FROM conference_config ORDER BY start_date DESC LIMIT 1)
 		ORDER BY
-			a.name`
+			s.title`
 
-	rows, err := r.db.QueryContext(ctx, q, "%"+wso2Domain+"%")
+	rows, err := r.db.QueryContext(ctx, q)
 	if err != nil {
 		return nil, err
 	}
@@ -42,9 +43,20 @@ func (r *Repository) GetAttendeeSummary(ctx context.Context) ([]AttendeeSummary,
 	summaries := []AttendeeSummary{}
 	for rows.Next() {
 		var s AttendeeSummary
+		var encrypted string
 		var scannedBy sql.NullString
-		if err := rows.Scan(&s.Agenda, &s.Username, &scannedBy, &s.UserType); err != nil {
+		if err := rows.Scan(&s.Agenda, &encrypted, &scannedBy); err != nil {
 			return nil, err
+		}
+		email, err := crypto.Decrypt(encrypted)
+		if err != nil {
+			return nil, err
+		}
+		s.Username = email
+		if strings.HasSuffix(email, wso2Domain) {
+			s.UserType = "Internal"
+		} else {
+			s.UserType = "External"
 		}
 		if scannedBy.Valid {
 			s.ScannedBy = &scannedBy.String

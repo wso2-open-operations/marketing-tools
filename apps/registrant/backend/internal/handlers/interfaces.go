@@ -21,7 +21,7 @@ type AgendaRepository interface {
 	GetAgendas(ctx context.Context, eventID string) ([]repository.Agenda, error)
 	InsertAgendaAttendee(ctx context.Context, attendeeID, agendaID, userEmail string) error
 	GetAgendaAttendee(ctx context.Context, attendeeID, agendaID string) (*repository.AgendaAttendee, error)
-	GetAgendaAttendeeCount(ctx context.Context, agendaID int) (repository.AgendaAttendeeCount, error)
+	GetAgendaAttendeeCount(ctx context.Context, agendaID string) (repository.AgendaAttendeeCount, error)
 	GetCurrentEvent(ctx context.Context) (repository.Event, error)
 }
 

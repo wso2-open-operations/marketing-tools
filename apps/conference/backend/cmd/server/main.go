@@ -86,7 +86,7 @@ func main() {
 
 	slog.Info("db connected")
 
-	attendeeRepo := repository.NewAttendeeRepo(pool)
+	attendeeRepo := repository.NewAttendeeRepo(pool, cfg.PIIEncryptionKey)
 	coinAllocationRepo := repository.NewCoinAllocationRepo(pool)
 	sessionRepo := repository.NewSessionRepo(pool, cfg.SessionSlotMinutes, cfg.PIIEncryptionKey, cfg.VenueLocation)
 	speakerRepo := repository.NewSpeakerRepo(pool, cfg.PIIEncryptionKey, cfg.SessionSlotMinutes, cfg.VenueLocation)

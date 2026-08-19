@@ -8,15 +8,21 @@
 package config
 
 import (
+	"bytes"
+	"errors"
 	"testing"
 	"time"
 )
+
+var testPIIKey = bytes.Repeat([]byte("k"), 32)
 
 func validConfig() Config {
 	return Config{
 		DBHost:               "localhost",
 		DBUser:               "root",
 		DBName:               "conference",
+		DBSchema:             "marketingops",
+		PIIEncryptionKey:     testPIIKey,
 		EmailServiceEndpoint: "https://email.example.com",
 		EmailFrom:            "noreply@example.com",
 		SheetsSpreadsheetID:  "sheet-id",
@@ -33,6 +39,17 @@ func TestValidate_MissingFields(t *testing.T) {
 		{"missing db host", func(c *Config) { c.DBHost = "" }, "DB_HOST is required"},
 		{"missing db user", func(c *Config) { c.DBUser = "" }, "DB_USER is required"},
 		{"missing db name", func(c *Config) { c.DBName = "" }, "DB_NAME is required"},
+		{"missing db schema", func(c *Config) { c.DBSchema = "" }, "DB_SCHEMA is required"},
+		{
+			"missing pii key",
+			func(c *Config) { c.PIIEncryptionKey = nil },
+			"PII_ENCRYPTION_KEY is required and must decode to exactly 32 bytes",
+		},
+		{
+			"short pii key",
+			func(c *Config) { c.PIIEncryptionKey = []byte("too-short") },
+			"PII_ENCRYPTION_KEY is required and must decode to exactly 32 bytes",
+		},
 		{"missing email endpoint", func(c *Config) { c.EmailServiceEndpoint = "" }, "EMAIL_SERVICE_ENDPOINT is required"},
 		{"missing email from", func(c *Config) { c.EmailFrom = "" }, "EMAIL_FROM is required"},
 		{"missing spreadsheet id", func(c *Config) { c.SheetsSpreadsheetID = "" }, "SHEETS_SPREADSHEET_ID is required"},
@@ -51,6 +68,14 @@ func TestValidate_MissingFields(t *testing.T) {
 	}
 }
 
+func TestValidate_BadKeyBase64(t *testing.T) {
+	c := validConfig()
+	c.piiKeyDecodeErr = errors.New("bad base64")
+	if err := c.Validate(); err == nil {
+		t.Fatal("Validate() expected error for bad base64 key, got nil")
+	}
+}
+
 func TestValidate_OK(t *testing.T) {
 	if err := validConfig().Validate(); err != nil {
 		t.Fatalf("Validate() unexpected error: %v", err)
@@ -58,16 +83,26 @@ func TestValidate_OK(t *testing.T) {
 }
 
 func TestDSN(t *testing.T) {
-	c := Config{DBUser: "root", DBPassword: "pw", DBHost: "localhost", DBPort: "3306", DBName: "conference"}
-	want := "root:pw@tcp(localhost:3306)/conference?parseTime=true"
+	c := Config{
+		DBUser: "root", DBHost: "localhost", DBPort: "5432",
+		DBName: "agenda_organizer", DBSchema: "marketingops", DBSSLMode: "disable",
+	}
+	want := "host=localhost port=5432 user=root dbname=agenda_organizer sslmode=disable options=--search_path=marketingops"
 	if got := c.DSN(); got != want {
-		t.Fatalf("DSN() = %q, want %q", got, want)
+		t.Fatalf("DSN() without password = %q, want %q", got, want)
+	}
+
+	c.DBPassword = "secret"
+	want = "host=localhost port=5432 user=root password=secret dbname=agenda_organizer sslmode=disable options=--search_path=marketingops"
+	if got := c.DSN(); got != want {
+		t.Fatalf("DSN() with password = %q, want %q", got, want)
 	}
 }
 
 func TestLoad_Defaults(t *testing.T) {
 	t.Setenv("PORT", "")
 	t.Setenv("DB_PORT", "")
+	t.Setenv("DB_SSLMODE", "")
 	t.Setenv("LOG_LEVEL", "")
 	t.Setenv("APP_ENV", "")
 	t.Setenv("DB_MAX_OPEN_CONNS", "")
@@ -78,8 +113,11 @@ func TestLoad_Defaults(t *testing.T) {
 	if c.Port != "8080" {
 		t.Errorf("Port default = %q, want 8080", c.Port)
 	}
-	if c.DBPort != "3306" {
-		t.Errorf("DBPort default = %q, want 3306", c.DBPort)
+	if c.DBPort != "5432" {
+		t.Errorf("DBPort default = %q, want 5432", c.DBPort)
+	}
+	if c.DBSSLMode != "require" {
+		t.Errorf("DBSSLMode default = %q, want require", c.DBSSLMode)
 	}
 	if c.LogLevel != "info" {
 		t.Errorf("LogLevel default = %q, want info", c.LogLevel)

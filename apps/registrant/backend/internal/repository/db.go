@@ -12,10 +12,10 @@ import (
 	"database/sql"
 	"time"
 
-	_ "github.com/go-sql-driver/mysql"
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-// PoolConfig tunes the MySQL connection pool, mirroring the original
+// PoolConfig tunes the Postgres connection pool, mirroring the original
 // Ballerina service's sql:ConnectionPool config (maxOpenConnections,
 // maxConnectionLifeTime, minIdleConnections).
 type PoolConfig struct {
@@ -28,10 +28,10 @@ type PoolConfig struct {
 	MaxIdleConns int
 }
 
-// Connect opens a MySQL connection pool, applies the given pool tuning, and
-// verifies connectivity.
+// Connect opens a Postgres connection pool (via pgx's database/sql driver),
+// applies the given pool tuning, and verifies connectivity.
 func Connect(ctx context.Context, dsn string, pool PoolConfig) (*sql.DB, error) {
-	db, err := sql.Open("mysql", dsn)
+	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, err
 	}

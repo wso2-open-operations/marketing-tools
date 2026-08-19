@@ -7,17 +7,20 @@
 
 package repository
 
-// Agenda is a scheduled session day for an event.
+// Agenda is a scheduled session for an event. Sourced from the shared
+// sessions/conference_days tables -- registrant no longer owns an agenda
+// table.
 type Agenda struct {
-	ID   int    `json:"id"`
+	ID   string `json:"id"`
 	Name string `json:"name"`
 	Date string `json:"date"`
 }
 
-// AgendaAttendee records that an attendee has been registered for an agenda.
+// AgendaAttendee records that an attendee has been registered for an agenda
+// (a session, per the shared schema).
 type AgendaAttendee struct {
 	AttendeeID string `json:"attendeeId"`
-	AgendaID   int    `json:"agendaId"`
+	AgendaID   string `json:"agendaId"`
 }
 
 // AgendaAttendeeCount breaks down an agenda's registered attendees by

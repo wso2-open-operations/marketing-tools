@@ -10,7 +10,6 @@ package handlers
 import (
 	"log/slog"
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 )
@@ -91,13 +90,7 @@ func (h *AgendaHandler) AttendeeCount(c *gin.Context) {
 		return
 	}
 
-	// The Ballerina route typed this path segment as `int`, so a non-numeric
-	// value never reached the handler (404 from routing). Mirror that here.
-	agendaID, err := strconv.Atoi(c.Param("agendaId"))
-	if err != nil {
-		c.Status(http.StatusNotFound)
-		return
-	}
+	agendaID := c.Param("agendaId")
 
 	count, err := h.repo.GetAgendaAttendeeCount(c.Request.Context(), agendaID)
 	if err != nil {

@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"attendee-registration/internal/config"
+	"attendee-registration/internal/crypto"
 	"attendee-registration/internal/email"
 	"attendee-registration/internal/handlers"
 	"attendee-registration/internal/middleware"
@@ -36,6 +37,11 @@ func main() {
 
 	if err := cfg.Validate(); err != nil {
 		slog.Error("invalid config", "error", err)
+		os.Exit(1)
+	}
+
+	if err := crypto.Init(cfg.PIIEncryptionKey); err != nil {
+		slog.Error("crypto init", "error", err)
 		os.Exit(1)
 	}
 

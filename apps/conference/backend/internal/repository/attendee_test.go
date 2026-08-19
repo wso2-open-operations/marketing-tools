@@ -21,25 +21,36 @@ package repository
 import (
 	"context"
 	"testing"
+
+	"wso2-coin-backend/internal/crypto"
 )
+
+var attendeeTestKey = mustDecodeTestKey("AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=")
 
 func TestAttendeeRepo_IsRegistered(t *testing.T) {
 	ctx := context.Background()
-	repo := NewAttendeeRepo(testDB)
+	repo := NewAttendeeRepo(testDB, attendeeTestKey)
 
 	const registeredEmail = "attendee@example.com"
 	const unregisteredEmail = "nobody@example.com"
 
-	_, err := testDB.Exec(ctx, "DELETE FROM agenda_attendee WHERE attendee_id = $1", registeredEmail)
+	fixture := newSessionFixture(t, ctx, "2026-09-01", 540)
+	sessionID := fixture.insertUnscheduledSession(t, ctx)
+
+	encrypted, err := crypto.EncryptPII(registeredEmail, attendeeTestKey)
 	if err != nil {
-		t.Fatalf("failed to pre-clean fixture row: %v", err)
+		t.Fatalf("failed to encrypt fixture email: %v", err)
 	}
-	_, err = testDB.Exec(ctx, "INSERT INTO agenda_attendee (attendee_id) VALUES ($1)", registeredEmail)
+	_, err = testDB.Exec(ctx,
+		"INSERT INTO attendee_registration (attendee_id, session_id, updated_by) VALUES ($1, $2, $3)",
+		encrypted, sessionID, "tdd-test",
+	)
 	if err != nil {
 		t.Fatalf("failed to insert fixture row: %v", err)
 	}
 	t.Cleanup(func() {
-		_, _ = testDB.Exec(context.Background(), "DELETE FROM agenda_attendee WHERE attendee_id = $1", registeredEmail)
+		_, _ = testDB.Exec(context.Background(),
+			"DELETE FROM attendee_registration WHERE session_id = $1", sessionID)
 	})
 
 	ok, err := repo.IsRegistered(ctx, registeredEmail)

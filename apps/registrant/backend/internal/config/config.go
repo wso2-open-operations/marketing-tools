@@ -8,6 +8,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -20,12 +21,26 @@ type Config struct {
 	LogLevel string
 	AppEnv   string
 
-	// Database (MySQL)
+	// Database (Postgres, shared agenda_organizer/marketingops schema with
+	// apps/conference/backend)
 	DBHost     string
 	DBPort     string
 	DBUser     string
 	DBPassword string
 	DBName     string
+	DBSchema   string
+	DBSSLMode  string
+
+	// PIIEncryptionKey encrypts/decrypts attendee_id in attendee_registration
+	// (AES-256-GCM, see internal/crypto). Decoded from the base64
+	// PII_ENCRYPTION_KEY env var; must be exactly 32 bytes once decoded, and
+	// must match the value apps/conference/backend is configured with, since
+	// its IsRegistered check decrypts rows this service writes.
+	PIIEncryptionKey []byte
+	// piiKeyDecodeErr holds a base64 decode failure from Load(), so
+	// Validate() can report the actual problem instead of a misleading
+	// length mismatch.
+	piiKeyDecodeErr error
 
 	// DB connection pool, mirroring the original Ballerina service's
 	// sql:ConnectionPool config. Defaults match that service's actual
@@ -68,7 +83,11 @@ func Load() Config {
 	}
 	dbPort := os.Getenv("DB_PORT")
 	if dbPort == "" {
-		dbPort = "3306"
+		dbPort = "5432"
+	}
+	dbSSLMode := os.Getenv("DB_SSLMODE")
+	if dbSSLMode == "" {
+		dbSSLMode = "require"
 	}
 	logLevel := os.Getenv("LOG_LEVEL")
 	if logLevel == "" {
@@ -78,6 +97,11 @@ func Load() Config {
 	if appEnv == "" {
 		appEnv = "production"
 	}
+
+	// Decoded best-effort here; Validate() is where a missing/malformed key
+	// is actually rejected, matching this file's existing Load()-is-tolerant,
+	// Validate()-is-strict split.
+	piiEncryptionKey, piiKeyDecodeErr := base64.StdEncoding.DecodeString(os.Getenv("PII_ENCRYPTION_KEY"))
 
 	return Config{
 		Port:     port,
@@ -89,6 +113,11 @@ func Load() Config {
 		DBUser:     os.Getenv("DB_USER"),
 		DBPassword: os.Getenv("DB_PASSWORD"),
 		DBName:     os.Getenv("DB_NAME"),
+		DBSchema:   os.Getenv("DB_SCHEMA"),
+		DBSSLMode:  dbSSLMode,
+
+		PIIEncryptionKey: piiEncryptionKey,
+		piiKeyDecodeErr:  piiKeyDecodeErr,
 
 		DBMaxOpenConns:           getEnvInt("DB_MAX_OPEN_CONNS", 10),
 		DBMaxConnLifetimeSeconds: getEnvFloat("DB_MAX_CONN_LIFETIME_SECONDS", 100.0),
@@ -145,11 +174,20 @@ func (c Config) ConnMaxLifetime() time.Duration {
 	return time.Duration(c.DBMaxConnLifetimeSeconds * float64(time.Second))
 }
 
-// DSN assembles a go-sql-driver/mysql data source name from individual vars.
+// DSN assembles a libpq keyword=value connection string from individual
+// vars, matching apps/conference/backend's format for the same shared
+// database. The keyword=value format avoids URL-encoding issues with
+// special characters in passwords.
 func (c Config) DSN() string {
+	if c.DBPassword != "" {
+		return fmt.Sprintf(
+			"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s options=--search_path=%s",
+			c.DBHost, c.DBPort, c.DBUser, c.DBPassword, c.DBName, c.DBSSLMode, c.DBSchema,
+		)
+	}
 	return fmt.Sprintf(
-		"%s:%s@tcp(%s:%s)/%s?parseTime=true",
-		c.DBUser, c.DBPassword, c.DBHost, c.DBPort, c.DBName,
+		"host=%s port=%s user=%s dbname=%s sslmode=%s options=--search_path=%s",
+		c.DBHost, c.DBPort, c.DBUser, c.DBName, c.DBSSLMode, c.DBSchema,
 	)
 }
 
@@ -162,6 +200,15 @@ func (c Config) Validate() error {
 	}
 	if c.DBName == "" {
 		return errors.New("DB_NAME is required")
+	}
+	if c.DBSchema == "" {
+		return errors.New("DB_SCHEMA is required")
+	}
+	if c.piiKeyDecodeErr != nil {
+		return fmt.Errorf("PII_ENCRYPTION_KEY: invalid base64: %w", c.piiKeyDecodeErr)
+	}
+	if len(c.PIIEncryptionKey) != 32 {
+		return errors.New("PII_ENCRYPTION_KEY is required and must decode to exactly 32 bytes")
 	}
 	if c.EmailServiceEndpoint == "" {
 		return errors.New("EMAIL_SERVICE_ENDPOINT is required")
