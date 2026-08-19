@@ -10,31 +10,14 @@ package sheets
 // Config holds the Google Sheets OAuth2 application configuration and the
 // spreadsheet/sheet identifiers this package operates on.
 type Config struct {
-	ClientID              string
-	ClientSecret          string
-	RefreshToken          string
-	TokenURL              string
-	SpreadsheetID         string
-	SheetID               int64
-	SheetName             string
-	SheetURL              string
-	RegistrationSheetName string
-	RegistrationSheetID   int64
-}
-
-// columnData indexes the registration sheet's columns.
-var columnData = struct {
-	Email      int
-	UUID       int
-	QRImage    int
-	WalletPass int
-	InviteSent int
-}{
-	Email:      0,
-	UUID:       1,
-	QRImage:    2,
-	WalletPass: 3,
-	InviteSent: 4,
+	ClientID      string
+	ClientSecret  string
+	RefreshToken  string
+	TokenURL      string
+	SpreadsheetID string
+	SheetID       int64
+	SheetName     string
+	SheetURL      string
 }
 
 // AttendeeSummary is one row of the attendee report synced to the sheet.
@@ -45,14 +28,4 @@ type AttendeeSummary struct {
 	Username  string
 	ScannedBy *string
 	UserType  string
-}
-
-// Attendee is a registration row read from/written to the registration
-// sheet.
-type Attendee struct {
-	Email         string
-	UUID          string
-	QRImageURL    string
-	WalletPassURL string
-	IsInviteSent  bool
 }

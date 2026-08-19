@@ -88,17 +88,6 @@ paths:
           description: Missing or invalid payload
         "500":
           description: Internal server error
-  /invitations/notifications:
-    post:
-      summary: Send invitation emails to attendees not yet notified
-      operationId: sendInvitationNotifications
-      responses:
-        "200":
-          description: >
-            Processed; per-attendee send/update failures are logged and
-            skipped rather than failing the whole request.
-        "500":
-          description: Internal server error
 components:
   securitySchemes:
     jwtAssertion:

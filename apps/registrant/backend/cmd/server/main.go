@@ -19,7 +19,6 @@ import (
 
 	"attendee-registration/internal/config"
 	"attendee-registration/internal/crypto"
-	"attendee-registration/internal/email"
 	"attendee-registration/internal/handlers"
 	"attendee-registration/internal/middleware"
 	"attendee-registration/internal/repository"
@@ -86,33 +85,21 @@ func main() {
 	agendaH := handlers.NewAgendaHandler(repo)
 
 	sheetsClient, err := sheets.NewClient(context.Background(), sheets.Config{
-		ClientID:              cfg.SheetsClientID,
-		ClientSecret:          cfg.SheetsClientSecret,
-		RefreshToken:          cfg.SheetsRefreshToken,
-		TokenURL:              cfg.SheetsTokenURL,
-		SpreadsheetID:         cfg.SheetsSpreadsheetID,
-		SheetID:               int64(cfg.SheetsSheetID),
-		SheetName:             cfg.SheetsSheetName,
-		SheetURL:              cfg.SheetsURL,
-		RegistrationSheetName: cfg.SheetsRegistrationSheetName,
-		RegistrationSheetID:   int64(cfg.SheetsRegistrationSheetID),
+		ClientID:      cfg.SheetsClientID,
+		ClientSecret:  cfg.SheetsClientSecret,
+		RefreshToken:  cfg.SheetsRefreshToken,
+		TokenURL:      cfg.SheetsTokenURL,
+		SpreadsheetID: cfg.SheetsSpreadsheetID,
+		SheetID:       int64(cfg.SheetsSheetID),
+		SheetName:     cfg.SheetsSheetName,
+		SheetURL:      cfg.SheetsURL,
 	})
 	if err != nil {
 		slog.Error("sheets client init", "error", err)
 		os.Exit(1)
 	}
 
-	emailClient := email.NewClient(email.ServiceConfig{
-		Endpoint: cfg.EmailServiceEndpoint,
-		From:     cfg.EmailFrom,
-		OAuth: email.OAuth2Config{
-			TokenURL:     cfg.EmailOAuthTokenURL,
-			ClientID:     cfg.EmailOAuthClientID,
-			ClientSecret: cfg.EmailOAuthClientSecret,
-		},
-	})
-
-	syncH := handlers.NewSyncHandler(repo, sheetsClient, emailClient, cfg.EmailFrom)
+	syncH := handlers.NewSyncHandler(repo, sheetsClient)
 
 	r := gin.New()
 	r.Use(gin.Recovery())
@@ -124,7 +111,6 @@ func main() {
 		api.POST("/agendas/:agendaId/attendees", agendaH.RegisterAttendee)
 		api.GET("/agendas/:agendaId/attendees/count", agendaH.AttendeeCount)
 		api.POST("/attendees/sync", syncH.SyncAttendees)
-		api.POST("/invitations/notifications", syncH.SendInvitationNotifications)
 	}
 
 	srv := &http.Server{

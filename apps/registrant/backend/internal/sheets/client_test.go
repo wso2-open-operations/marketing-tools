@@ -40,86 +40,9 @@ func newTestClient(t *testing.T, cfg Config, handler http.HandlerFunc) *Client {
 
 func testConfig() Config {
 	return Config{
-		SpreadsheetID:         "sheet-id",
-		SheetID:               1,
-		SheetName:             "Summary",
-		RegistrationSheetName: "Registrations",
-		RegistrationSheetID:   2,
-	}
-}
-
-func TestGetSheetData(t *testing.T) {
-	c := newTestClient(t, testConfig(), func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		switch {
-		case r.Method == http.MethodGet && !strings.Contains(r.URL.Path, "/values/"):
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"sheets": []map[string]any{
-					{"properties": map[string]any{"gridProperties": map[string]any{"rowCount": 10}}},
-				},
-			})
-		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/values/"):
-			if !strings.Contains(r.URL.Path, "Registrations") {
-				t.Errorf("expected registration sheet in range, got path %q", r.URL.Path)
-			}
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"values": [][]any{
-					{"a@wso2.com", "uuid-1", "qr1", "wallet1", "true"},
-					{"b@example.com", "uuid-2", "qr2", "wallet2", "false"},
-				},
-			})
-		default:
-			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
-		}
-	})
-
-	got, err := c.GetSheetData(context.Background())
-	if err != nil {
-		t.Fatalf("GetSheetData failed: %v", err)
-	}
-	if len(got) != 2 {
-		t.Fatalf("expected 2 attendees, got %d", len(got))
-	}
-	if got[0].Email != "a@wso2.com" || !got[0].IsInviteSent {
-		t.Errorf("attendee 0 = %+v", got[0])
-	}
-}
-
-func TestGetSheetData_NoSheets(t *testing.T) {
-	c := newTestClient(t, testConfig(), func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"sheets": []map[string]any{}})
-	})
-
-	_, err := c.GetSheetData(context.Background())
-	if err == nil {
-		t.Fatal("expected error for spreadsheet with no sheets")
-	}
-}
-
-func TestUpdateAttendeeData(t *testing.T) {
-	var gotPath, gotBody string
-	c := newTestClient(t, testConfig(), func(w http.ResponseWriter, r *http.Request) {
-		gotPath = r.URL.Path + "?" + r.URL.RawQuery
-		body := map[string]any{}
-		_ = json.NewDecoder(r.Body).Decode(&body)
-		b, _ := json.Marshal(body)
-		gotBody = string(b)
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"updatedRows": 1})
-	})
-
-	err := c.UpdateAttendeeData(context.Background(), 3, Attendee{
-		Email: "a@wso2.com", UUID: "uuid-1", QRImageURL: "qr", WalletPassURL: "wallet", IsInviteSent: true,
-	})
-	if err != nil {
-		t.Fatalf("UpdateAttendeeData failed: %v", err)
-	}
-	if !strings.Contains(gotPath, "Registrations") || !strings.Contains(gotPath, "A3%3AE3") && !strings.Contains(gotPath, "A3:E3") {
-		t.Errorf("unexpected request path: %q", gotPath)
-	}
-	if !strings.Contains(gotBody, "a@wso2.com") || !strings.Contains(gotBody, "true") {
-		t.Errorf("unexpected request body: %q", gotBody)
+		SpreadsheetID: "sheet-id",
+		SheetID:       1,
+		SheetName:     "Summary",
 	}
 }
 

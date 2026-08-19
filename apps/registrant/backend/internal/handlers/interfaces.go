@@ -10,7 +10,6 @@ package handlers
 import (
 	"context"
 
-	"attendee-registration/internal/email"
 	"attendee-registration/internal/repository"
 	"attendee-registration/internal/sheets"
 )
@@ -33,11 +32,4 @@ type SummaryRepository interface {
 // SheetsClient is satisfied by *sheets.Client.
 type SheetsClient interface {
 	SyncAttendeeSummary(ctx context.Context, summaries []sheets.AttendeeSummary, timeZoneOffset float64) error
-	GetSheetData(ctx context.Context) ([]sheets.Attendee, error)
-	UpdateAttendeeData(ctx context.Context, rowIndex int, attendee sheets.Attendee) error
-}
-
-// EmailClient is satisfied by *email.Client.
-type EmailClient interface {
-	Send(ctx context.Context, payload email.Payload) error
 }

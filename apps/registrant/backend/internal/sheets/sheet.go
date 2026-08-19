@@ -10,8 +10,6 @@ package sheets
 import (
 	"context"
 	"fmt"
-	"strconv"
-	"strings"
 
 	sheetsapi "google.golang.org/api/sheets/v4"
 )
@@ -21,7 +19,6 @@ const (
 	sheetHeaderUsername  = "Username"
 	sheetHeaderUserType  = "Type"
 	sheetHeaderScannedBy = "Scanned By"
-	a1NotationPrefix     = "A2:Z"
 )
 
 // SyncAttendeeSummary replaces the summary sheet's contents with a fresh
@@ -75,69 +72,4 @@ func buildSyncRows(summaries []AttendeeSummary, lastUpdatedText string) [][]inte
 		data = append(data, []interface{}{s.Agenda, s.Username, s.UserType, scannedBy})
 	}
 	return data
-}
-
-// GetSheetData returns every registration row from the registration sheet.
-func (c *Client) GetSheetData(ctx context.Context) ([]Attendee, error) {
-	spreadsheet, err := c.svc.Spreadsheets.Get(c.config.SpreadsheetID).Context(ctx).Do()
-	if err != nil {
-		return nil, fmt.Errorf("get spreadsheet: %w", err)
-	}
-	if len(spreadsheet.Sheets) == 0 {
-		return nil, fmt.Errorf("spreadsheet has no sheets")
-	}
-	rowCount := spreadsheet.Sheets[0].Properties.GridProperties.RowCount
-	a1Notation := fmt.Sprintf("%s%d", a1NotationPrefix, rowCount)
-	rangeStr := fmt.Sprintf("%s!%s", quoteSheetName(c.config.RegistrationSheetName), a1Notation)
-
-	valueRange, err := c.svc.Spreadsheets.Values.Get(c.config.SpreadsheetID, rangeStr).Context(ctx).Do()
-	if err != nil {
-		return nil, fmt.Errorf("get sheet range: %w", err)
-	}
-	return parseAttendeeRows(valueRange.Values), nil
-}
-
-// parseAttendeeRows converts raw sheet rows into Attendee records, skipping
-// any row that doesn't have all five expected columns.
-func parseAttendeeRows(rows [][]interface{}) []Attendee {
-	attendees := []Attendee{}
-	for _, row := range rows {
-		if len(row) < 5 {
-			continue
-		}
-		attendees = append(attendees, Attendee{
-			Email:         fmt.Sprint(row[columnData.Email]),
-			UUID:          fmt.Sprint(row[columnData.UUID]),
-			QRImageURL:    fmt.Sprint(row[columnData.QRImage]),
-			WalletPassURL: fmt.Sprint(row[columnData.WalletPass]),
-			IsInviteSent:  fmt.Sprint(row[columnData.InviteSent]) == "true",
-		})
-	}
-	return attendees
-}
-
-// UpdateAttendeeData overwrites the given 1-based row of the registration
-// sheet with attendee's values.
-func (c *Client) UpdateAttendeeData(ctx context.Context, rowIndex int, attendee Attendee) error {
-	rangeStr := fmt.Sprintf("%s!A%d:E%d", quoteSheetName(c.config.RegistrationSheetName), rowIndex, rowIndex)
-	values := [][]interface{}{{
-		attendee.Email,
-		attendee.UUID,
-		attendee.QRImageURL,
-		attendee.WalletPassURL,
-		strconv.FormatBool(attendee.IsInviteSent),
-	}}
-	_, err := c.svc.Spreadsheets.Values.Update(c.config.SpreadsheetID, rangeStr, &sheetsapi.ValueRange{Values: values}).
-		ValueInputOption("RAW").Context(ctx).Do()
-	if err != nil {
-		return fmt.Errorf("update sheet row: %w", err)
-	}
-	return nil
-}
-
-// quoteSheetName wraps a sheet name in single quotes (doubling any embedded
-// quote) as required by A1 notation ranges once the name contains spaces or
-// other special characters.
-func quoteSheetName(name string) string {
-	return "'" + strings.ReplaceAll(name, "'", "''") + "'"
 }

@@ -18,15 +18,13 @@ var testPIIKey = bytes.Repeat([]byte("k"), 32)
 
 func validConfig() Config {
 	return Config{
-		DBHost:               "localhost",
-		DBUser:               "root",
-		DBName:               "conference",
-		DBSchema:             "marketingops",
-		PIIEncryptionKey:     testPIIKey,
-		EmailServiceEndpoint: "https://email.example.com",
-		EmailFrom:            "noreply@example.com",
-		SheetsSpreadsheetID:  "sheet-id",
-		AuthorizedRole:       "admin-role",
+		DBHost:              "localhost",
+		DBUser:              "root",
+		DBName:              "conference",
+		DBSchema:            "marketingops",
+		PIIEncryptionKey:    testPIIKey,
+		SheetsSpreadsheetID: "sheet-id",
+		AuthorizedRole:      "admin-role",
 	}
 }
 
@@ -50,8 +48,6 @@ func TestValidate_MissingFields(t *testing.T) {
 			func(c *Config) { c.PIIEncryptionKey = []byte("too-short") },
 			"PII_ENCRYPTION_KEY is required and must decode to exactly 32 bytes",
 		},
-		{"missing email endpoint", func(c *Config) { c.EmailServiceEndpoint = "" }, "EMAIL_SERVICE_ENDPOINT is required"},
-		{"missing email from", func(c *Config) { c.EmailFrom = "" }, "EMAIL_FROM is required"},
 		{"missing spreadsheet id", func(c *Config) { c.SheetsSpreadsheetID = "" }, "SHEETS_SPREADSHEET_ID is required"},
 		{"missing authorized role", func(c *Config) { c.AuthorizedRole = "" }, "AUTHORIZED_ROLE is required"},
 	}
