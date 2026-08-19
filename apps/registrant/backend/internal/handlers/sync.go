@@ -1,9 +1,18 @@
-// Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com). All Rights Reserved.
+// Copyright (c) 2026 WSO2 LLC. (https://www.wso2.com).
 //
-// This software is the property of WSO2 LLC. and its suppliers, if any.
-// Dissemination of any information or reproduction of any material contained
-// herein in any form is strictly forbidden, unless permitted by WSO2 expressly.
-// You may not alter or remove any copyright or other notice from copies of this content.
+// WSO2 LLC. licenses this file to you under the Apache License,
+// Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 package handlers
 
@@ -27,7 +36,9 @@ func NewSyncHandler(repo SummaryRepository, sheetsClient SheetsClient) *SyncHand
 }
 
 type attendeeSyncPayload struct {
-	TimeZoneOffset float64 `json:"timeZoneOffset"`
+	// Pointer + binding:"required" so an explicit 0 stays valid while an
+	// omitted field is rejected (a bare float64 can't distinguish the two).
+	TimeZoneOffset *float64 `json:"timeZoneOffset" binding:"required"`
 }
 
 // SyncAttendees handles POST /attendees/sync.
@@ -60,7 +71,7 @@ func (h *SyncHandler) SyncAttendees(c *gin.Context) {
 		}
 	}
 
-	if err := h.sheets.SyncAttendeeSummary(c.Request.Context(), sheetSummaries, payload.TimeZoneOffset); err != nil {
+	if err := h.sheets.SyncAttendeeSummary(c.Request.Context(), sheetSummaries, *payload.TimeZoneOffset); err != nil {
 		slog.ErrorContext(c.Request.Context(), "Error syncing attendee summary to the sheet.", "error", err)
 		c.Status(http.StatusInternalServerError)
 		return

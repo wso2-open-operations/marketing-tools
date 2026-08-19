@@ -1,9 +1,18 @@
-// Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com). All Rights Reserved.
+// Copyright (c) 2026 WSO2 LLC. (https://www.wso2.com).
 //
-// This software is the property of WSO2 LLC. and its suppliers, if any.
-// Dissemination of any information or reproduction of any material contained
-// herein in any form is strictly forbidden, unless permitted by WSO2 expressly.
-// You may not alter or remove any copyright or other notice from copies of this content.
+// WSO2 LLC. licenses this file to you under the Apache License,
+// Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 package handlers
 
@@ -87,6 +96,21 @@ func TestSyncAttendees(t *testing.T) {
 
 		if w.Code != http.StatusInternalServerError {
 			t.Fatalf("status = %d, want 500", w.Code)
+		}
+	})
+
+	t.Run("400 missing timeZoneOffset", func(t *testing.T) {
+		h := NewSyncHandler(&mockSummaryRepo{}, &mockSheetsClient{})
+		r := newSyncRouter(h)
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/attendees/sync", bytes.NewBufferString(`{}`))
+		req.Header.Set("Content-Type", "application/json")
+		req = withUserInfo(req, "admin@wso2.com")
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", w.Code)
 		}
 	})
 

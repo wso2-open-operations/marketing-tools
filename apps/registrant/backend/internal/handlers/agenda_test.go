@@ -1,9 +1,18 @@
-// Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com). All Rights Reserved.
+// Copyright (c) 2026 WSO2 LLC. (https://www.wso2.com).
 //
-// This software is the property of WSO2 LLC. and its suppliers, if any.
-// Dissemination of any information or reproduction of any material contained
-// herein in any form is strictly forbidden, unless permitted by WSO2 expressly.
-// You may not alter or remove any copyright or other notice from copies of this content.
+// WSO2 LLC. licenses this file to you under the Apache License,
+// Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 package handlers
 
@@ -86,7 +95,7 @@ func TestListCurrentAgendas(t *testing.T) {
 		r := newAgendaRouter(NewAgendaHandler(repo))
 
 		w := httptest.NewRecorder()
-		req := withUserInfo(httptest.NewRequest(http.MethodGet, "/events/current/agendas", nil), "test@wso2.com")
+		req := withUserInfo(httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/events/current/agendas", nil), "test@wso2.com")
 		r.ServeHTTP(w, req)
 
 		if w.Code != http.StatusOK {
@@ -105,7 +114,7 @@ func TestListCurrentAgendas(t *testing.T) {
 		r := newAgendaRouter(NewAgendaHandler(&mockAgendaRepo{}))
 
 		w := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/events/current/agendas", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/events/current/agendas", nil)
 		r.ServeHTTP(w, req)
 
 		if w.Code != http.StatusInternalServerError {
@@ -122,7 +131,7 @@ func TestListCurrentAgendas(t *testing.T) {
 		r := newAgendaRouter(NewAgendaHandler(repo))
 
 		w := httptest.NewRecorder()
-		req := withUserInfo(httptest.NewRequest(http.MethodGet, "/events/current/agendas", nil), "test@wso2.com")
+		req := withUserInfo(httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/events/current/agendas", nil), "test@wso2.com")
 		r.ServeHTTP(w, req)
 
 		if w.Code != http.StatusInternalServerError {
@@ -140,7 +149,7 @@ func TestListCurrentAgendas(t *testing.T) {
 		r := newAgendaRouter(NewAgendaHandler(repo))
 
 		w := httptest.NewRecorder()
-		req := withUserInfo(httptest.NewRequest(http.MethodGet, "/events/current/agendas", nil), "test@wso2.com")
+		req := withUserInfo(httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/events/current/agendas", nil), "test@wso2.com")
 		r.ServeHTTP(w, req)
 
 		if w.Code != http.StatusInternalServerError {
@@ -165,7 +174,7 @@ func TestRegisterAttendee(t *testing.T) {
 
 		body, _ := json.Marshal(registerAttendeePayload{AttendeeID: "attendee@wso2.com"})
 		w := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPost, "/agendas/session-1/attendees", bytes.NewReader(body))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/agendas/session-1/attendees", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		req = withUserInfo(req, "admin@wso2.com")
 		r.ServeHTTP(w, req)
@@ -188,7 +197,7 @@ func TestRegisterAttendee(t *testing.T) {
 
 		body, _ := json.Marshal(registerAttendeePayload{AttendeeID: "attendee@wso2.com"})
 		w := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPost, "/agendas/session-1/attendees", bytes.NewReader(body))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/agendas/session-1/attendees", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		req = withUserInfo(req, "admin@wso2.com")
 		r.ServeHTTP(w, req)
@@ -202,7 +211,7 @@ func TestRegisterAttendee(t *testing.T) {
 		r := newAgendaRouter(NewAgendaHandler(&mockAgendaRepo{}))
 
 		w := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPost, "/agendas/session-1/attendees", bytes.NewBufferString("{}"))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/agendas/session-1/attendees", bytes.NewBufferString("{}"))
 		req.Header.Set("Content-Type", "application/json")
 		req = withUserInfo(req, "admin@wso2.com")
 		r.ServeHTTP(w, req)
@@ -217,7 +226,7 @@ func TestRegisterAttendee(t *testing.T) {
 
 		body, _ := json.Marshal(registerAttendeePayload{AttendeeID: "attendee@wso2.com"})
 		w := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPost, "/agendas/session-1/attendees", bytes.NewReader(body))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/agendas/session-1/attendees", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		r.ServeHTTP(w, req)
 
@@ -236,7 +245,7 @@ func TestRegisterAttendee(t *testing.T) {
 
 		body, _ := json.Marshal(registerAttendeePayload{AttendeeID: "attendee@wso2.com"})
 		w := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPost, "/agendas/session-1/attendees", bytes.NewReader(body))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/agendas/session-1/attendees", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		req = withUserInfo(req, "admin@wso2.com")
 		r.ServeHTTP(w, req)
@@ -259,7 +268,7 @@ func TestRegisterAttendee(t *testing.T) {
 
 		body, _ := json.Marshal(registerAttendeePayload{AttendeeID: "attendee@wso2.com"})
 		w := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPost, "/agendas/session-1/attendees", bytes.NewReader(body))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/agendas/session-1/attendees", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		req = withUserInfo(req, "admin@wso2.com")
 		r.ServeHTTP(w, req)
@@ -283,7 +292,7 @@ func TestAttendeeCount(t *testing.T) {
 		r := newAgendaRouter(NewAgendaHandler(repo))
 
 		w := httptest.NewRecorder()
-		req := withUserInfo(httptest.NewRequest(http.MethodGet, "/agendas/session-1/attendees/count", nil), "test@wso2.com")
+		req := withUserInfo(httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/agendas/session-1/attendees/count", nil), "test@wso2.com")
 		r.ServeHTTP(w, req)
 
 		if w.Code != http.StatusOK {
@@ -303,7 +312,7 @@ func TestAttendeeCount(t *testing.T) {
 		r := newAgendaRouter(NewAgendaHandler(&mockAgendaRepo{}))
 
 		w := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/agendas/session-1/attendees/count", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/agendas/session-1/attendees/count", nil)
 		r.ServeHTTP(w, req)
 
 		if w.Code != http.StatusInternalServerError {
@@ -320,7 +329,7 @@ func TestAttendeeCount(t *testing.T) {
 		r := newAgendaRouter(NewAgendaHandler(repo))
 
 		w := httptest.NewRecorder()
-		req := withUserInfo(httptest.NewRequest(http.MethodGet, "/agendas/session-1/attendees/count", nil), "test@wso2.com")
+		req := withUserInfo(httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/agendas/session-1/attendees/count", nil), "test@wso2.com")
 		r.ServeHTTP(w, req)
 
 		if w.Code != http.StatusInternalServerError {

@@ -3,8 +3,8 @@ info:
   title: Conference Attendee Registration App
   version: 0.1.0
   description: >
-    QR-based agenda check-in, attendee summary reporting, and invitation
-    email dispatch for conference attendees.
+    QR-based agenda check-in and attendee summary reporting for conference
+    attendees.
 servers:
   - url: /
 security:
@@ -59,7 +59,7 @@ paths:
           in: path
           required: true
           schema:
-            type: integer
+            type: string
       responses:
         "200":
           description: Attendee counts
@@ -67,8 +67,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AgendaAttendeeCount"
-        "404":
-          description: agendaId is not a valid integer
         "500":
           description: Internal server error
   /attendees/sync:
@@ -103,7 +101,7 @@ components:
       type: object
       properties:
         id:
-          type: integer
+          type: string
         name:
           type: string
         date:
