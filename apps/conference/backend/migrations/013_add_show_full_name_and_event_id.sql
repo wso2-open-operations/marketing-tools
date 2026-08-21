@@ -19,3 +19,6 @@ ALTER TABLE attendees
     ADD COLUMN show_full_name BOOLEAN NOT NULL DEFAULT FALSE;
 -- Add unique index for idempotency key
 CREATE UNIQUE INDEX IF NOT EXISTS shop_order_idempotency_idx ON shop_order (user_uuid, idempotency_key) WHERE idempotency_key IS NOT NULL;
+
+-- Add event_id to coin_allocation
+ALTER TABLE coin_allocation ADD COLUMN event_id TEXT;

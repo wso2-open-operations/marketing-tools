@@ -34,8 +34,8 @@ type CoinAllocationRepository interface {
 	Exists(ctx context.Context, qrID, userUUID string) (bool, error)
 	Insert(ctx context.Context, alloc models.CoinAllocation) (models.CoinAllocation, error)
 	UpdateStatus(ctx context.Context, qrID, userUUID string, status models.TransactionStatus) error
-	History(ctx context.Context, userUUID string) ([]models.CoinAllocationHistory, error)
-	Summary(ctx context.Context, userUUID string) (models.CoinAllocationSummary, error)
+	History(ctx context.Context, userUUID, eventID string) ([]models.CoinAllocationHistory, error)
+	Summary(ctx context.Context, userUUID, eventID string) (models.CoinAllocationSummary, error)
 }
 
 // SessionRepository is satisfied by *SessionRepo.
@@ -62,6 +62,7 @@ type SpeakerRepository interface {
 type EventReader interface {
 	GetEvents(ctx context.Context) ([]models.Event, error)
 	GetEventAgendas(ctx context.Context, eventID string) ([]models.EventAgenda, error)
+	GetCurrentEvent(ctx context.Context) (models.Event, error)
 }
 
 // AttendeeProfileReader is satisfied by *AttendeeProfileRepo (the new
@@ -108,7 +109,7 @@ type ActivityReader interface {
 type ShopRepository interface {
 	CurrentShopEvent(ctx context.Context) (eventID string, isOpen bool, err error)
 	ListItems(ctx context.Context, eventID string) ([]models.ShopItem, error)
-	OrderHistory(ctx context.Context, userUUID string) ([]models.ShopOrder, error)
+	OrderHistory(ctx context.Context, userUUID, eventID string) ([]models.ShopOrder, error)
 	Checkout(ctx context.Context, p CheckoutParams) (orderID string, total float64, err error)
 	ConfirmOrder(
 		ctx context.Context,
@@ -119,7 +120,7 @@ type ShopRepository interface {
 }
 
 type LeaderboardReader interface {
-	GetLeaderboard(ctx context.Context, limit int) ([]models.LeaderboardEntry, error)
+	GetLeaderboard(ctx context.Context, limit int, eventID string) ([]models.LeaderboardEntry, error)
 	GetPreferences(ctx context.Context, userUUID string) (bool, error)
 	UpdatePreferences(ctx context.Context, userUUID string, showFullName bool) error
 }

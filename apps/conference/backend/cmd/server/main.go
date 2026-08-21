@@ -112,6 +112,7 @@ func main() {
 		attendeeRepo,
 		coinAllocationRepo,
 		sessionRepo,
+		eventRepo,
 		qrPortalClient,
 		walletClient,
 		service.ScanConfig{
@@ -129,7 +130,7 @@ func main() {
 	
 	// Start the cron job for cancelling stale shop orders
 	go shopService.Start(context.Background())
-	coinHandler := handlers.NewCoinHandler(coinService, coinAllocationRepo, qrPortalClient, cfg.AdminRoles)
+	coinHandler := handlers.NewCoinHandler(coinService, coinAllocationRepo, qrPortalClient, eventRepo, cfg.AdminRoles)
 	speakerHandler := handlers.NewSpeakerHandler(speakerRepo)
 	sessionHandler := handlers.NewSessionHandler(sessionRepo)
 	eventHandler := handlers.NewEventHandler(eventRepo)
@@ -143,7 +144,7 @@ func main() {
 	shopHandler := handlers.NewShopHandler(shopService)
 	walletHandler := handlers.NewWalletHandler(walletClient, transactionClient)
 	aiAgentHandler := handlers.NewAIAgentHandler(aiAgentClient, attendeeProfileRepo, cfg.AIFeatureStatus, sessionRepo)
-	leaderboardHandler := handlers.NewLeaderboardHandler(leaderboardRepo)
+	leaderboardHandler := handlers.NewLeaderboardHandler(leaderboardRepo, eventRepo)
 
 	r := gin.New()
 

@@ -64,6 +64,7 @@ type CoinService struct {
 	attendees   repository.AttendeeRepository
 	allocations repository.CoinAllocationRepository
 	sessions    repository.SessionRepository
+	events      repository.EventReader
 	qrPortal    QRPortalClient
 	wallets     WalletClient
 	cfg         ScanConfig
@@ -78,6 +79,7 @@ func NewCoinService(
 	attendees repository.AttendeeRepository,
 	allocations repository.CoinAllocationRepository,
 	sessions repository.SessionRepository,
+	events repository.EventReader,
 	qrPortal QRPortalClient,
 	wallets WalletClient,
 	cfg ScanConfig,
@@ -86,6 +88,7 @@ func NewCoinService(
 		attendees:   attendees,
 		allocations: allocations,
 		sessions:    sessions,
+		events:      events,
 		qrPortal:    qrPortal,
 		wallets:     wallets,
 		cfg:         cfg,
@@ -144,8 +147,14 @@ func (s *CoinService) ScanQR(ctx context.Context, userID, email, qrID string, jw
 		return fmt.Errorf("service: building event data: %w", err)
 	}
 
+	currentEvent, err := s.events.GetCurrentEvent(ctx)
+	if err != nil {
+		return fmt.Errorf("service: fetching current event: %w", err)
+	}
+
 	alloc := models.CoinAllocation{
 		QrID:              qrID,
+		EventID:           currentEvent.ID,
 		EventType:         qrCode.Info.EventType,
 		UserUUID:          userID,
 		WalletAddress:     wallet.WalletAddress,

@@ -102,6 +102,7 @@ type WalletBalance struct {
 type CoinAllocation struct {
 	ID                string            `json:"id"`
 	QrID              string            `json:"qrId"`
+	EventID           string            `json:"eventId"`
 	EventType         EventType         `json:"eventType"`
 	UserUUID          string            `json:"userUuid"`
 	WalletAddress     string            `json:"walletAddress"`
