@@ -18,33 +18,50 @@ package repository
 
 import (
 	"context"
-	"errors"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"wso2-coin-backend/internal/crypto"
 )
 
-// AttendeeRepo provides read access to the agenda_attendee table, which is
+// AttendeeRepo provides read access to the attendee_registration table
+// (renamed from agenda_attendee, now owned by apps/registrant/backend),
 // the registration list synced from the agenda-organizer app.
 type AttendeeRepo struct {
-	pool *pgxpool.Pool
+	pool   *pgxpool.Pool
+	piiKey []byte
 }
 
-// NewAttendeeRepo constructs an AttendeeRepo backed by the given pool.
-func NewAttendeeRepo(pool *pgxpool.Pool) *AttendeeRepo {
-	return &AttendeeRepo{pool: pool}
+// NewAttendeeRepo constructs an AttendeeRepo backed by the given pool,
+// decrypting attendee_id with piiKey (see config.Config.PIIEncryptionKey).
+func NewAttendeeRepo(pool *pgxpool.Pool, piiKey []byte) *AttendeeRepo {
+	return &AttendeeRepo{pool: pool, piiKey: piiKey}
 }
 
-// IsRegistered reports whether the given email/attendee id is a registered
-// attendee. A missing row is not an error; it simply reports false.
+// IsRegistered reports whether the given email/attendee id has at least one
+// registration row. attendee_id is encrypted at rest with a random nonce
+// per row, so identical plaintext never produces identical ciphertext -- a
+// SQL WHERE can't filter by it, so this decrypts rows until it finds a
+// match instead.
 func (r *AttendeeRepo) IsRegistered(ctx context.Context, email string) (bool, error) {
-	var one int
-	err := r.pool.QueryRow(ctx, "SELECT 1 FROM agenda_attendee WHERE attendee_id = $1 LIMIT 1", email).Scan(&one)
+	rows, err := r.pool.Query(ctx, "SELECT attendee_id FROM attendee_registration")
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return false, nil
-		}
 		return false, err
 	}
-	return true, nil
+	defer rows.Close()
+
+	for rows.Next() {
+		var encrypted string
+		if err := rows.Scan(&encrypted); err != nil {
+			return false, err
+		}
+		decrypted, err := crypto.DecryptPII(encrypted, r.piiKey)
+		if err != nil {
+			return false, err
+		}
+		if decrypted == email {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
 }

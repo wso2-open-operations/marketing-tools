@@ -1,0 +1,132 @@
+openapi: 3.0.3
+info:
+  title: Conference Attendee Registration App
+  version: 0.1.0
+  description: >
+    QR-based agenda check-in and attendee summary reporting for conference
+    attendees.
+servers:
+  - url: /
+security:
+  - jwtAssertion: []
+paths:
+  /events/current/agendas:
+    get:
+      summary: List agendas for the current event
+      operationId: listCurrentAgendas
+      responses:
+        "200":
+          description: List of agendas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Agenda"
+        "500":
+          description: Internal server error
+  /agendas/{agendaId}/attendees:
+    post:
+      summary: Register an attendee to an agenda
+      operationId: registerAttendee
+      parameters:
+        - name: agendaId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgendaAttendeePayload"
+      responses:
+        "201":
+          description: Registered successfully
+        "400":
+          description: Missing or invalid payload
+        "409":
+          description: Attendee already registered for the agenda
+        "500":
+          description: Internal server error
+  /agendas/{agendaId}/attendees/count:
+    get:
+      summary: Get attendee count for an agenda
+      operationId: getAgendaAttendeeCount
+      parameters:
+        - name: agendaId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Attendee counts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgendaAttendeeCount"
+        "500":
+          description: Internal server error
+  /attendees/sync:
+    post:
+      summary: Sync attendee summary to the reporting sheet
+      operationId: syncAttendees
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AttendeeSyncPayload"
+      responses:
+        "200":
+          description: Synced successfully
+        "400":
+          description: Missing or invalid payload
+        "500":
+          description: Internal server error
+components:
+  securitySchemes:
+    jwtAssertion:
+      type: apiKey
+      in: header
+      name: x-jwt-assertion
+      description: >
+        Invoker identity JWT. The payload is decoded for the caller's email;
+        the signature is not verified by this service (trust boundary is the
+        gateway in front of it).
+  schemas:
+    Agenda:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        date:
+          type: string
+      required: [id, name, date]
+    AgendaAttendeePayload:
+      type: object
+      properties:
+        attendeeId:
+          type: string
+      required: [attendeeId]
+    AgendaAttendeeCount:
+      type: object
+      properties:
+        internalCount:
+          type: integer
+        externalCount:
+          type: integer
+        totalCount:
+          type: integer
+      required: [internalCount, externalCount, totalCount]
+    AttendeeSyncPayload:
+      type: object
+      properties:
+        timeZoneOffset:
+          type: number
+          description: Time offset in hours of the invoker
+      required: [timeZoneOffset]
