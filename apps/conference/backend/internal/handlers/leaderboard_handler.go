@@ -30,11 +30,12 @@ import (
 )
 
 type LeaderboardHandler struct {
-	repo repository.LeaderboardReader
+	repo   repository.LeaderboardReader
+	events repository.EventReader
 }
 
-func NewLeaderboardHandler(repo repository.LeaderboardReader) *LeaderboardHandler {
-	return &LeaderboardHandler{repo: repo}
+func NewLeaderboardHandler(repo repository.LeaderboardReader, events repository.EventReader) *LeaderboardHandler {
+	return &LeaderboardHandler{repo: repo, events: events}
 }
 
 func (h *LeaderboardHandler) GetLeaderboard(c *gin.Context) {
@@ -49,7 +50,14 @@ func (h *LeaderboardHandler) GetLeaderboard(c *gin.Context) {
 		limit = parsed
 	}
 
-	entries, err := h.repo.GetLeaderboard(c.Request.Context(), limit)
+	currentEvent, err := h.events.GetCurrentEvent(c.Request.Context())
+	if err != nil {
+		slog.ErrorContext(c.Request.Context(), "failed to get current event", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "internal error"})
+		return
+	}
+
+	entries, err := h.repo.GetLeaderboard(c.Request.Context(), limit, currentEvent.ID)
 	if err != nil {
 		slog.ErrorContext(c.Request.Context(), "failed to get leaderboard", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "internal error"})

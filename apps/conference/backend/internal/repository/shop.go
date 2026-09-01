@@ -178,7 +178,7 @@ func (r *ShopRepo) ListItems(ctx context.Context, eventID string) ([]models.Shop
 //
 // Unit price comes from shop_order_item.unit_price, frozen at checkout, never
 // from the item's current price.
-func (r *ShopRepo) OrderHistory(ctx context.Context, userUUID string) ([]models.ShopOrder, error) {
+func (r *ShopRepo) OrderHistory(ctx context.Context, userUUID, eventID string) ([]models.ShopOrder, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT o.id, o.event_id, o.status, o.total_coins_amount, o.created_on,
 		        o.transaction_hash,
@@ -191,9 +191,10 @@ func (r *ShopRepo) OrderHistory(ctx context.Context, userUUID string) ([]models.
 		 FROM shop_order o
 		 LEFT JOIN shop_order_item oi ON oi.order_id = o.id
 		 LEFT JOIN shop_item i ON i.id = oi.item_id
-		 WHERE o.user_uuid = $1
+		 WHERE o.user_uuid = $1 AND o.event_id = $2 AND o.status IN ('CONFIRMED', 'FULFILLED')
 		 ORDER BY o.created_on DESC, o.id, oi.item_id`,
 		userUUID,
+		eventID,
 	)
 	if err != nil {
 		return nil, err

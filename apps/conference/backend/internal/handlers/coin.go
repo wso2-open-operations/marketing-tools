@@ -27,6 +27,7 @@ import (
 
 	"wso2-coin-backend/internal/middleware"
 	"wso2-coin-backend/internal/models"
+	"wso2-coin-backend/internal/repository"
 	"wso2-coin-backend/internal/service"
 )
 
@@ -37,8 +38,8 @@ type CoinScanner interface {
 
 // CoinHistoryReader reads a user's coin allocation history/summary. Satisfied by *repository.CoinAllocationRepo.
 type CoinHistoryReader interface {
-	History(ctx context.Context, userUUID string) ([]models.CoinAllocationHistory, error)
-	Summary(ctx context.Context, userUUID string) (models.CoinAllocationSummary, error)
+	History(ctx context.Context, userUUID, eventID string) ([]models.CoinAllocationHistory, error)
+	Summary(ctx context.Context, userUUID, eventID string) (models.CoinAllocationSummary, error)
 }
 
 // CoinHandler exposes the WSO2 Coin / O2C HTTP endpoints.
@@ -51,12 +52,13 @@ type CoinHandler struct {
 	scanner    CoinScanner
 	reader     CoinHistoryReader
 	catalog    QrCatalogReader
+	events     repository.EventReader
 	adminRoles []string
 }
 
 // NewCoinHandler constructs a CoinHandler.
-func NewCoinHandler(scanner CoinScanner, reader CoinHistoryReader, catalog QrCatalogReader, adminRoles []string) *CoinHandler {
-	return &CoinHandler{scanner: scanner, reader: reader, catalog: catalog, adminRoles: adminRoles}
+func NewCoinHandler(scanner CoinScanner, reader CoinHistoryReader, catalog QrCatalogReader, events repository.EventReader, adminRoles []string) *CoinHandler {
+	return &CoinHandler{scanner: scanner, reader: reader, catalog: catalog, events: events, adminRoles: adminRoles}
 }
 
 // Scan handles POST /qr/scan.
@@ -98,7 +100,14 @@ func (h *CoinHandler) History(c *gin.Context) {
 		return
 	}
 
-	history, err := h.reader.History(c.Request.Context(), user.UserID)
+	currentEvent, err := h.events.GetCurrentEvent(c.Request.Context())
+	if err != nil {
+		slog.ErrorContext(c.Request.Context(), "failed to get current event", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "internal error"})
+		return
+	}
+
+	history, err := h.reader.History(c.Request.Context(), user.UserID, currentEvent.ID)
 	if err != nil {
 		slog.ErrorContext(c.Request.Context(), "fetching coin allocation history failed", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "internal error"})
@@ -118,7 +127,14 @@ func (h *CoinHandler) Summary(c *gin.Context) {
 		return
 	}
 
-	summary, err := h.reader.Summary(c.Request.Context(), user.UserID)
+	currentEvent, err := h.events.GetCurrentEvent(c.Request.Context())
+	if err != nil {
+		slog.ErrorContext(c.Request.Context(), "failed to get current event", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "internal error"})
+		return
+	}
+
+	summary, err := h.reader.Summary(c.Request.Context(), user.UserID, currentEvent.ID)
 	if err != nil {
 		slog.ErrorContext(c.Request.Context(), "fetching coin allocation summary failed", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "internal error"})

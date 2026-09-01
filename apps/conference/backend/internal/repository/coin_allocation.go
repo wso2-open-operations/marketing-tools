@@ -64,10 +64,10 @@ func (r *CoinAllocationRepo) Exists(ctx context.Context, qrID, userUUID string) 
 // of the same QR by the same user can both pass Exists before either inserts.
 func (r *CoinAllocationRepo) Insert(ctx context.Context, alloc models.CoinAllocation) (models.CoinAllocation, error) {
 	err := r.pool.QueryRow(ctx,
-		`INSERT INTO coin_allocation (qr_id, event_type, user_uuid, wallet_address, coins_allocated, transaction_status, event_data)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7)
+		`INSERT INTO coin_allocation (qr_id, event_id, event_type, user_uuid, wallet_address, coins_allocated, transaction_status, event_data)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
 		 RETURNING id, created_at, updated_at`,
-		alloc.QrID, string(alloc.EventType), alloc.UserUUID, alloc.WalletAddress,
+		alloc.QrID, alloc.EventID, string(alloc.EventType), alloc.UserUUID, alloc.WalletAddress,
 		alloc.CoinsAllocated, string(alloc.TransactionStatus), []byte(alloc.EventData),
 	).Scan(&alloc.ID, &alloc.CreatedAt, &alloc.UpdatedAt)
 	if err != nil {
@@ -93,15 +93,16 @@ func (r *CoinAllocationRepo) UpdateStatus(ctx context.Context, qrID, userUUID st
 // History returns GENERAL-event-type rows for this user, folding
 // FAILED/PROCESSING into PENDING for display, ordered by created_at
 // descending.
-func (r *CoinAllocationRepo) History(ctx context.Context, userUUID string) ([]models.CoinAllocationHistory, error) {
+func (r *CoinAllocationRepo) History(ctx context.Context, userUUID, eventID string) ([]models.CoinAllocationHistory, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT coins_allocated, created_at,
 		        CASE WHEN transaction_status IN ('FAILED','PROCESSING') THEN 'PENDING' ELSE transaction_status END AS status,
 		        event_data->>'eventTypeName' AS event_type_name
 		 FROM coin_allocation
-		 WHERE user_uuid = $1 AND event_type = 'GENERAL'
+		 WHERE user_uuid = $1 AND event_id = $2 AND event_type = 'GENERAL'
 		 ORDER BY created_at DESC`,
 		userUUID,
+		eventID,
 	)
 	if err != nil {
 		return nil, err
@@ -131,15 +132,16 @@ func (r *CoinAllocationRepo) History(ctx context.Context, userUUID string) ([]mo
 // Summary sums coins for GENERAL-event-type rows: totalPending = sum where
 // status in (PENDING,PROCESSING,FAILED), totalTransferred = sum where
 // status = TRANSFERRED.
-func (r *CoinAllocationRepo) Summary(ctx context.Context, userUUID string) (models.CoinAllocationSummary, error) {
+func (r *CoinAllocationRepo) Summary(ctx context.Context, userUUID, eventID string) (models.CoinAllocationSummary, error) {
 	var summary models.CoinAllocationSummary
 	err := r.pool.QueryRow(ctx,
 		`SELECT
 		    COALESCE(SUM(coins_allocated) FILTER (WHERE transaction_status IN ('PENDING','PROCESSING','FAILED')), 0) AS total_pending,
 		    COALESCE(SUM(coins_allocated) FILTER (WHERE transaction_status = 'TRANSFERRED'), 0) AS total_transferred
 		 FROM coin_allocation
-		 WHERE user_uuid = $1 AND event_type = 'GENERAL'`,
+		 WHERE user_uuid = $1 AND event_id = $2 AND event_type = 'GENERAL'`,
 		userUUID,
+		eventID,
 	).Scan(&summary.TotalPending, &summary.TotalTransferred)
 	if err != nil {
 		return models.CoinAllocationSummary{}, err

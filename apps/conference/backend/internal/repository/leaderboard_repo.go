@@ -40,7 +40,7 @@ func NewLeaderboardRepo(pool *pgxpool.Pool, piiKey []byte) *LeaderboardRepo {
 
 const maxLeaderboardLimit = 100
 
-func (r *LeaderboardRepo) GetLeaderboard(ctx context.Context, limit int) ([]models.LeaderboardEntry, error) {
+func (r *LeaderboardRepo) GetLeaderboard(ctx context.Context, limit int, eventID string) ([]models.LeaderboardEntry, error) {
 	if limit <= 0 {
 		limit = 10
 	}
@@ -55,13 +55,13 @@ func (r *LeaderboardRepo) GetLeaderboard(ctx context.Context, limit int) ([]mode
 			a.first_name, a.last_name, a.show_full_name
 		FROM coin_allocation c
 		JOIN attendees a ON c.user_uuid = a.idp_uuid::uuid
-		WHERE c.transaction_status != 'FAILED'
+		WHERE c.event_id = $1 AND c.transaction_status = 'TRANSFERRED'
 		GROUP BY c.user_uuid, a.first_name, a.last_name, a.show_full_name
 		ORDER BY total_coins DESC
-		LIMIT $1
+		LIMIT $2
 	`
 
-	rows, err := r.pool.Query(ctx, query, limit)
+	rows, err := r.pool.Query(ctx, query, eventID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("query leaderboard: %w", err)
 	}

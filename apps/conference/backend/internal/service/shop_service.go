@@ -164,7 +164,15 @@ func (s *ShopService) Catalog(ctx context.Context) (models.ShopCatalog, error) {
 
 // OrderHistory returns every order the caller has placed, newest first.
 func (s *ShopService) OrderHistory(ctx context.Context, userUUID string) ([]models.ShopOrder, error) {
-	orders, err := s.shop.OrderHistory(ctx, userUUID)
+	eventID, _, err := s.shop.CurrentShopEvent(ctx)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return []models.ShopOrder{}, nil
+		}
+		return nil, fmt.Errorf("service: resolving current shop event: %w", err)
+	}
+
+	orders, err := s.shop.OrderHistory(ctx, userUUID, eventID)
 	if err != nil {
 		return nil, fmt.Errorf("service: listing shop orders: %w", err)
 	}
@@ -262,7 +270,13 @@ func (s *ShopService) ConfirmCheckout(ctx context.Context, userUUID, email strin
 		bgCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
-		orders, err := s.shop.OrderHistory(bgCtx, userUUID)
+		eventID, _, err := s.shop.CurrentShopEvent(bgCtx)
+		if err != nil {
+			slog.Error("failed to get current event for confirmation email", "order_id", orderID, "error", err)
+			return
+		}
+
+		orders, err := s.shop.OrderHistory(bgCtx, userUUID, eventID)
 		if err != nil {
 			slog.Error("failed to get order for email", "order_id", orderID, "error", err)
 			return
