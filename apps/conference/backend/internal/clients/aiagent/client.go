@@ -14,8 +14,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Package aiagent provides an HTTP client for the external AI agent
-// services (matchmaking, personalize, picked-for-you, chat). Unlike
+// Package aiagent provides an HTTP client for the external AI agent service.
+// Matchmaking, personalize, picked-for-you and chat are one consolidated
+// service serving all of those paths off a single root with no path prefix,
+// so every call in this package shares one base URL. Unlike
 // qrportal/wallet/transaction, auth here is pure pass-through of the
 // caller's own JWT via the x-jwt-assertion header -- no OAuth2 client
 // credentials at all (see .claude/PLAN.md).
@@ -38,13 +40,10 @@ import (
 // error message, so a huge/unexpected body doesn't blow up logs.
 const maxErrBodyBytes = 2048
 
-// Client is an HTTP client for the external AI agent services.
+// Client is an HTTP client for the external AI agent service.
 type Client struct {
-	matchmakingBaseURL      string
-	personalizeAgentBaseURL string
-	pickedForYouBaseURL     string
-	chatBaseURL             string
-	httpClient              *http.Client
+	baseURL    string
+	httpClient *http.Client
 }
 
 // NewClient builds a production Client bounded by cfg.RequestTimeout.
@@ -57,26 +56,23 @@ func NewClient(cfg config.AIAgentConfig) *Client {
 // client, but is also how NewClient assembles the production client.
 func NewClientWithHTTPClient(cfg config.AIAgentConfig, httpClient *http.Client) *Client {
 	return &Client{
-		matchmakingBaseURL:      cfg.MatchmakingServiceURL,
-		personalizeAgentBaseURL: cfg.PersonalizeAgentServiceURL,
-		pickedForYouBaseURL:     cfg.PickedForYouServiceURL,
-		chatBaseURL:             cfg.ChatServiceURL,
-		httpClient:              httpClient,
+		baseURL:    cfg.ServiceURL,
+		httpClient: httpClient,
 	}
 }
 
 // RetrieveMatches fetches recommended matches for the caller via
-// POST {matchmakingServiceURL}/networking/recommend, body {}.
+// POST {aiServiceURL}/networking/recommend, body {}.
 func (c *Client) RetrieveMatches(ctx context.Context, jwtAssertion string) ([]models.RecommendedUser, error) {
 	var out []models.RecommendedUser
-	if err := c.postJSON(ctx, c.matchmakingBaseURL, "networking/recommend", jwtAssertion, struct{}{}, &out); err != nil {
+	if err := c.postJSON(ctx, "networking/recommend", jwtAssertion, struct{}{}, &out); err != nil {
 		return nil, fmt.Errorf("aiagent: retrieving matches: %w", err)
 	}
 	return out, nil
 }
 
 // RetrieveO2BarRecommendations fetches O2Bar recommendations for the caller
-// via POST {matchmakingServiceURL}/o2bar/recommend. When question is nil, no
+// via POST {aiServiceURL}/o2bar/recommend. When question is nil, no
 // request body is sent at all -- not even "{}" -- matching the old
 // `question is string ? {question} : ()` exactly.
 func (c *Client) RetrieveO2BarRecommendations(ctx context.Context, jwtAssertion string, question *string) ([]models.O2BarRecommendationResponse, error) {
@@ -86,14 +82,14 @@ func (c *Client) RetrieveO2BarRecommendations(ctx context.Context, jwtAssertion 
 	}
 
 	var out []models.O2BarRecommendationResponse
-	if err := c.postJSONOrNoBody(ctx, c.matchmakingBaseURL, "o2bar/recommend", jwtAssertion, body, &out); err != nil {
+	if err := c.postJSONOrNoBody(ctx, "o2bar/recommend", jwtAssertion, body, &out); err != nil {
 		return nil, fmt.Errorf("aiagent: retrieving O2Bar recommendations: %w", err)
 	}
 	return out, nil
 }
 
-// SendProfileInfo forwards profile to the external personalize agent
-// service via POST {personalizeAgentServiceURL}/profile/create, body
+// SendProfileInfo forwards profile to the external AI agent service via
+// POST {aiServiceURL}/profile/create, body
 // {"override": true, "user": profile}. It returns the raw *http.Response
 // for the caller to copy through untouched (status, headers, body) --
 // matching the old raw-passthrough behavior exactly. The caller must close
@@ -105,7 +101,7 @@ func (c *Client) SendProfileInfo(ctx context.Context, jwtAssertion string, profi
 		return nil, fmt.Errorf("aiagent: encoding profile payload: %w", err)
 	}
 
-	req, err := c.newRequest(ctx, c.personalizeAgentBaseURL, "profile/create", jwtAssertion, bytes.NewReader(b))
+	req, err := c.newRequest(ctx, "profile/create", jwtAssertion, bytes.NewReader(b))
 	if err != nil {
 		return nil, err
 	}
@@ -118,22 +114,22 @@ func (c *Client) SendProfileInfo(ctx context.Context, jwtAssertion string, profi
 }
 
 // RetrieveAgendaRecommendations fetches personalized "Picked for You" agenda
-// recommendations via POST {pickedForYouServiceURL}/agenda/create, body {}.
+// recommendations via POST {aiServiceURL}/agenda/create, body {}.
 // The external service returns fully-formed session objects itself -- no DB
 // enrichment happens here.
 func (c *Client) RetrieveAgendaRecommendations(ctx context.Context, jwtAssertion string) ([]models.PickedForYouSession, error) {
 	var out []models.PickedForYouSession
-	if err := c.postJSON(ctx, c.pickedForYouBaseURL, "agenda/create", jwtAssertion, struct{}{}, &out); err != nil {
+	if err := c.postJSON(ctx, "agenda/create", jwtAssertion, struct{}{}, &out); err != nil {
 		return nil, fmt.Errorf("aiagent: retrieving agenda recommendations: %w", err)
 	}
 	return out, nil
 }
 
-// RetrieveChatResponse forwards req to the external chat service via
-// POST {chatServiceURL}/assistant/chat, body = the whole request.
+// RetrieveChatResponse forwards req to the external AI agent service via
+// POST {aiServiceURL}/assistant/chat, body = the whole request.
 func (c *Client) RetrieveChatResponse(ctx context.Context, jwtAssertion string, req models.ChatRequest) (*models.ChatResponse, error) {
 	var out models.ChatResponse
-	if err := c.postJSON(ctx, c.chatBaseURL, "assistant/chat", jwtAssertion, req, &out); err != nil {
+	if err := c.postJSON(ctx, "assistant/chat", jwtAssertion, req, &out); err != nil {
 		return nil, fmt.Errorf("aiagent: retrieving chat response: %w", err)
 	}
 	return &out, nil
@@ -141,25 +137,25 @@ func (c *Client) RetrieveChatResponse(ctx context.Context, jwtAssertion string, 
 
 // postJSON sends body (always JSON-encoded, even if empty) and decodes the
 // response into out.
-func (c *Client) postJSON(ctx context.Context, baseURL, path, jwtAssertion string, body, out any) error {
+func (c *Client) postJSON(ctx context.Context, path, jwtAssertion string, body, out any) error {
 	b, err := json.Marshal(body)
 	if err != nil {
 		return fmt.Errorf("encoding request body: %w", err)
 	}
-	return c.doJSON(ctx, baseURL, path, jwtAssertion, bytes.NewReader(b), out)
+	return c.doJSON(ctx, path, jwtAssertion, bytes.NewReader(b), out)
 }
 
 // postJSONOrNoBody sends body JSON-encoded, or no request body at all when
 // body is nil, and decodes the response into out.
-func (c *Client) postJSONOrNoBody(ctx context.Context, baseURL, path, jwtAssertion string, body, out any) error {
+func (c *Client) postJSONOrNoBody(ctx context.Context, path, jwtAssertion string, body, out any) error {
 	if body == nil {
-		return c.doJSON(ctx, baseURL, path, jwtAssertion, nil, out)
+		return c.doJSON(ctx, path, jwtAssertion, nil, out)
 	}
-	return c.postJSON(ctx, baseURL, path, jwtAssertion, body, out)
+	return c.postJSON(ctx, path, jwtAssertion, body, out)
 }
 
-func (c *Client) doJSON(ctx context.Context, baseURL, path, jwtAssertion string, bodyReader io.Reader, out any) error {
-	req, err := c.newRequest(ctx, baseURL, path, jwtAssertion, bodyReader)
+func (c *Client) doJSON(ctx context.Context, path, jwtAssertion string, bodyReader io.Reader, out any) error {
+	req, err := c.newRequest(ctx, path, jwtAssertion, bodyReader)
 	if err != nil {
 		return err
 	}
@@ -181,8 +177,8 @@ func (c *Client) doJSON(ctx context.Context, baseURL, path, jwtAssertion string,
 	return nil
 }
 
-func (c *Client) newRequest(ctx context.Context, baseURL, path, jwtAssertion string, bodyReader io.Reader) (*http.Request, error) {
-	reqURL, err := url.JoinPath(baseURL, path)
+func (c *Client) newRequest(ctx context.Context, path, jwtAssertion string, bodyReader io.Reader) (*http.Request, error) {
+	reqURL, err := url.JoinPath(c.baseURL, path)
 	if err != nil {
 		return nil, fmt.Errorf("building URL: %w", err)
 	}

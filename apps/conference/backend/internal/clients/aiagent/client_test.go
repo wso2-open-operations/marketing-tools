@@ -31,8 +31,8 @@ import (
 
 func TestNewClient_SetsTimeout(t *testing.T) {
 	c := NewClient(config.AIAgentConfig{
-		MatchmakingServiceURL: "https://matchmaking.example.com",
-		RequestTimeout:        45 * time.Second,
+		ServiceURL:     "https://ai.example.com",
+		RequestTimeout: 45 * time.Second,
 	})
 	if c.httpClient.Timeout != 45*time.Second {
 		t.Errorf("httpClient.Timeout = %v, want 45s", c.httpClient.Timeout)
@@ -62,7 +62,7 @@ func TestRetrieveMatches_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClientWithHTTPClient(config.AIAgentConfig{MatchmakingServiceURL: server.URL}, server.Client())
+	client := NewClientWithHTTPClient(config.AIAgentConfig{ServiceURL: server.URL}, server.Client())
 
 	got, err := client.RetrieveMatches(context.Background(), jwt)
 	if err != nil {
@@ -80,7 +80,7 @@ func TestRetrieveMatches_ServerError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClientWithHTTPClient(config.AIAgentConfig{MatchmakingServiceURL: server.URL}, server.Client())
+	client := NewClientWithHTTPClient(config.AIAgentConfig{ServiceURL: server.URL}, server.Client())
 
 	_, err := client.RetrieveMatches(context.Background(), "jwt")
 	if err == nil {
@@ -107,7 +107,7 @@ func TestRetrieveO2BarRecommendations_NilQuestionSendsNoBody(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClientWithHTTPClient(config.AIAgentConfig{MatchmakingServiceURL: server.URL}, server.Client())
+	client := NewClientWithHTTPClient(config.AIAgentConfig{ServiceURL: server.URL}, server.Client())
 
 	got, err := client.RetrieveO2BarRecommendations(context.Background(), "jwt", nil)
 	if err != nil {
@@ -133,7 +133,7 @@ func TestRetrieveO2BarRecommendations_WithQuestionSendsBody(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClientWithHTTPClient(config.AIAgentConfig{MatchmakingServiceURL: server.URL}, server.Client())
+	client := NewClientWithHTTPClient(config.AIAgentConfig{ServiceURL: server.URL}, server.Client())
 
 	if _, err := client.RetrieveO2BarRecommendations(context.Background(), "jwt", &question); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -167,7 +167,7 @@ func TestSendProfileInfo_ReturnsRawResponse(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClientWithHTTPClient(config.AIAgentConfig{PersonalizeAgentServiceURL: server.URL}, server.Client())
+	client := NewClientWithHTTPClient(config.AIAgentConfig{ServiceURL: server.URL}, server.Client())
 
 	resp, err := client.SendProfileInfo(context.Background(), jwt, profile)
 	if err != nil {
@@ -185,7 +185,7 @@ func TestSendProfileInfo_ReturnsRawResponse(t *testing.T) {
 }
 
 func TestSendProfileInfo_ClientCallFailureReturnsError(t *testing.T) {
-	client := NewClientWithHTTPClient(config.AIAgentConfig{PersonalizeAgentServiceURL: "http://127.0.0.1:1"}, &http.Client{Timeout: time.Second})
+	client := NewClientWithHTTPClient(config.AIAgentConfig{ServiceURL: "http://127.0.0.1:1"}, &http.Client{Timeout: time.Second})
 
 	_, err := client.SendProfileInfo(context.Background(), "jwt", models.PersonalizeAgentUserProfile{})
 	if err == nil {
@@ -209,7 +209,7 @@ func TestRetrieveAgendaRecommendations_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClientWithHTTPClient(config.AIAgentConfig{PickedForYouServiceURL: server.URL}, server.Client())
+	client := NewClientWithHTTPClient(config.AIAgentConfig{ServiceURL: server.URL}, server.Client())
 
 	got, err := client.RetrieveAgendaRecommendations(context.Background(), "jwt")
 	if err != nil {
@@ -243,7 +243,7 @@ func TestRetrieveChatResponse_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClientWithHTTPClient(config.AIAgentConfig{ChatServiceURL: server.URL}, server.Client())
+	client := NewClientWithHTTPClient(config.AIAgentConfig{ServiceURL: server.URL}, server.Client())
 
 	got, err := client.RetrieveChatResponse(context.Background(), "jwt", req)
 	if err != nil {
