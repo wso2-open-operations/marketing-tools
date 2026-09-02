@@ -35,7 +35,7 @@ func clearEnv(t *testing.T) {
 		"TRANSACTION_ENDPOINT", "TRANSACTION_TOKEN_URL", "TRANSACTION_CLIENT_ID", "TRANSACTION_CLIENT_SECRET",
 		"NOTIFICATION_ENDPOINT", "NOTIFICATION_TOKEN_URL", "NOTIFICATION_CLIENT_ID", "NOTIFICATION_CLIENT_SECRET", "NOTIFICATION_SCOPES",
 		"PII_ENCRYPTION_KEY",
-		"AI_MATCHMAKING_SERVICE_URL", "AI_PERSONALIZE_AGENT_SERVICE_URL", "AI_PICKED_FOR_YOU_SERVICE_URL", "AI_CHAT_SERVICE_URL",
+		"AI_SERVICE_URL",
 		"AI_REQUEST_TIMEOUT_SECONDS",
 		"AI_ENABLED_CHAT_ASSISTANT", "AI_ENABLED_PERSONALIZED_AGENDA", "AI_ENABLED_MATCH_MAKER", "AI_ENABLED_O2_BAR",
 		"VENUE_TIMEZONE",
@@ -196,9 +196,8 @@ func TestLoad_AIAgentDefaults(t *testing.T) {
 
 	cfg := Load()
 
-	if cfg.AIAgent.MatchmakingServiceURL != "" || cfg.AIAgent.PersonalizeAgentServiceURL != "" ||
-		cfg.AIAgent.PickedForYouServiceURL != "" || cfg.AIAgent.ChatServiceURL != "" {
-		t.Errorf("expected empty AIAgent service URLs by default, got %+v", cfg.AIAgent)
+	if cfg.AIAgent.ServiceURL != "" {
+		t.Errorf("expected empty AIAgent.ServiceURL by default, got %+v", cfg.AIAgent)
 	}
 	if cfg.AIAgent.RequestTimeout != 120*time.Second {
 		t.Errorf("expected default AIAgent.RequestTimeout 120s, got %v", cfg.AIAgent.RequestTimeout)
@@ -211,10 +210,7 @@ func TestLoad_AIAgentDefaults(t *testing.T) {
 
 func TestLoad_AIAgentConfigFromEnv(t *testing.T) {
 	clearEnv(t)
-	t.Setenv("AI_MATCHMAKING_SERVICE_URL", "https://matchmaking.example.com")
-	t.Setenv("AI_PERSONALIZE_AGENT_SERVICE_URL", "https://personalize.example.com")
-	t.Setenv("AI_PICKED_FOR_YOU_SERVICE_URL", "https://pickedforyou.example.com")
-	t.Setenv("AI_CHAT_SERVICE_URL", "https://chat.example.com")
+	t.Setenv("AI_SERVICE_URL", "https://ai.example.com")
 	t.Setenv("AI_REQUEST_TIMEOUT_SECONDS", "30")
 	t.Setenv("AI_ENABLED_CHAT_ASSISTANT", "true")
 	t.Setenv("AI_ENABLED_PERSONALIZED_AGENDA", "true")
@@ -223,17 +219,8 @@ func TestLoad_AIAgentConfigFromEnv(t *testing.T) {
 
 	cfg := Load()
 
-	if cfg.AIAgent.MatchmakingServiceURL != "https://matchmaking.example.com" {
-		t.Errorf("MatchmakingServiceURL = %q", cfg.AIAgent.MatchmakingServiceURL)
-	}
-	if cfg.AIAgent.PersonalizeAgentServiceURL != "https://personalize.example.com" {
-		t.Errorf("PersonalizeAgentServiceURL = %q", cfg.AIAgent.PersonalizeAgentServiceURL)
-	}
-	if cfg.AIAgent.PickedForYouServiceURL != "https://pickedforyou.example.com" {
-		t.Errorf("PickedForYouServiceURL = %q", cfg.AIAgent.PickedForYouServiceURL)
-	}
-	if cfg.AIAgent.ChatServiceURL != "https://chat.example.com" {
-		t.Errorf("ChatServiceURL = %q", cfg.AIAgent.ChatServiceURL)
+	if cfg.AIAgent.ServiceURL != "https://ai.example.com" {
+		t.Errorf("ServiceURL = %q", cfg.AIAgent.ServiceURL)
 	}
 	if cfg.AIAgent.RequestTimeout != 30*time.Second {
 		t.Errorf("RequestTimeout = %v, want 30s", cfg.AIAgent.RequestTimeout)

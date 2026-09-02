@@ -50,18 +50,17 @@ type EmailServiceConfig struct {
 	From     string
 }
 
-// AIAgentConfig holds the base URLs for the external AI agent services
-// (matchmaking, personalize, picked-for-you, chat) and the shared request
-// timeout applied to all of them. Deliberately no OAuth sub-struct: unlike
+// AIAgentConfig holds the base URL for the external AI agent service and the
+// request timeout applied to its calls. Matchmaking, personalize,
+// picked-for-you and chat are one consolidated service that answers every one
+// of those paths off a single root with no path prefix, so one URL configures
+// all of them. Deliberately no OAuth sub-struct: unlike
 // QRPortal/Wallet/Transaction, nothing in the AI agent integration uses
 // OAuth2 -- auth is pure pass-through of the caller's own JWT (see
 // .claude/PLAN.md).
 type AIAgentConfig struct {
-	MatchmakingServiceURL      string
-	PersonalizeAgentServiceURL string
-	PickedForYouServiceURL     string
-	ChatServiceURL             string
-	RequestTimeout             time.Duration
+	ServiceURL     string
+	RequestTimeout time.Duration
 }
 
 // AIFeatureStatus mirrors the old Ballerina AiFeatureStatus configurable --
@@ -307,11 +306,8 @@ func Load() Config {
 		ShopMasterWalletAddress: strings.TrimSpace(os.Getenv("SHOP_MASTER_WALLET_ADDRESS")),
 
 		AIAgent: AIAgentConfig{
-			MatchmakingServiceURL:      os.Getenv("AI_MATCHMAKING_SERVICE_URL"),
-			PersonalizeAgentServiceURL: os.Getenv("AI_PERSONALIZE_AGENT_SERVICE_URL"),
-			PickedForYouServiceURL:     os.Getenv("AI_PICKED_FOR_YOU_SERVICE_URL"),
-			ChatServiceURL:             os.Getenv("AI_CHAT_SERVICE_URL"),
-			RequestTimeout:             time.Duration(aiRequestTimeoutSeconds) * time.Second,
+			ServiceURL:     os.Getenv("AI_SERVICE_URL"),
+			RequestTimeout: time.Duration(aiRequestTimeoutSeconds) * time.Second,
 		},
 		AIFeatureStatus: AIFeatureStatus{
 			EnabledChatAssistant:      boolWithDefault("AI_ENABLED_CHAT_ASSISTANT", false),
