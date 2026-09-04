@@ -38,7 +38,7 @@ const defaultProfileImageURL = "https://wso2.cachefly.net/wso2/sites/all/2024/ws
 // GetByUUID is here for ConnectionHandler's sake (looking up the other
 // party in a connection), not used by AttendeeHandler itself.
 type AttendeeProfileReader interface {
-	Insert(ctx context.Context, payload models.AttendeeInsert, idpUUID string) error
+	Insert(ctx context.Context, payload models.AttendeeInsert, email, idpUUID string) error
 	GetByEmail(ctx context.Context, email string) (models.Attendee, error)
 	GetByUUID(ctx context.Context, idpUUID string) (models.Attendee, error)
 	PatchByEmail(ctx context.Context, email string, patch models.AttendeePatch, updatedBy string) error
@@ -55,13 +55,22 @@ func NewAttendeeHandler(repo AttendeeProfileReader) *AttendeeHandler {
 	return &AttendeeHandler{repo: repo}
 }
 
-// Create handles POST /attendees. idp_uuid always comes from the caller's
-// JWT sub, never from the request body -- unlike the old code, which
-// trusted payload.uuid outright (see .claude/PLAN.md).
+// Create handles POST /attendees. Both identity fields come from the
+// caller's JWT: idp_uuid from sub, email from the email claim. A body
+// `email` is ignored (audit A2), and firstName/lastName are required so an
+// empty POST can no longer wedge the caller's account with an email=” row
+// against their UNIQUE idp_uuid (audit A4).
+//
+// 409 when the email already belongs to a different idp_uuid: the upsert was
+// scoped to a no-op, so answering 201 would claim a write that did not happen.
 func (h *AttendeeHandler) Create(c *gin.Context) {
 	user := middleware.UserInfoFromContext(c.Request.Context())
 	if user == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"message": "missing authentication"})
+		return
+	}
+	if strings.TrimSpace(user.Email) == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"message": "authenticated user has no email claim"})
 		return
 	}
 
@@ -71,7 +80,11 @@ func (h *AttendeeHandler) Create(c *gin.Context) {
 		return
 	}
 
-	if err := h.repo.Insert(c.Request.Context(), payload, user.UserID); err != nil {
+	if err := h.repo.Insert(c.Request.Context(), payload, user.Email, user.UserID); err != nil {
+		if errors.Is(err, repository.ErrEmailOwnedByAnother) {
+			c.JSON(http.StatusConflict, gin.H{"message": "attendee already registered to another account"})
+			return
+		}
 		slog.ErrorContext(c.Request.Context(), "inserting attendee failed", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "internal error"})
 		return
@@ -79,20 +92,21 @@ func (h *AttendeeHandler) Create(c *gin.Context) {
 	c.Status(http.StatusCreated)
 }
 
-// Patch handles PATCH /attendees?email=. 404s if no attendee exists for
-// email, matching the old getAttendeeByEmail pre-check.
+// Patch handles PATCH /attendees, updating the caller's own row. 404s if no
+// attendee exists for the caller, matching the old getAttendeeByEmail
+// pre-check.
+//
+// There is no `email` parameter. It used to select both the row to patch and
+// the full decrypted row to return, with no comparison against the JWT, and
+// no admin caller exists for this route (audit A1). Any `?email=` a client
+// still sends is ignored.
 func (h *AttendeeHandler) Patch(c *gin.Context) {
 	user := middleware.UserInfoFromContext(c.Request.Context())
 	if user == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"message": "missing authentication"})
 		return
 	}
-
-	email := c.Query("email")
-	if email == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"message": "email is required"})
-		return
-	}
+	email := user.Email
 
 	var patch models.AttendeePatch
 	if err := c.ShouldBindJSON(&patch); err != nil {

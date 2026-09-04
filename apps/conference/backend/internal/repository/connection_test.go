@@ -31,11 +31,10 @@ func newConnectionAttendeeFixture(t *testing.T, ctx context.Context, firstName, 
 	repo := NewAttendeeProfileRepo(testDB, attendeeProfileTestKey)
 	idpUUID = newUUID()
 	err := repo.Insert(ctx, models.AttendeeInsert{
-		Email:     fmt.Sprintf("%s-%s@example.com", firstName, newUUID()),
 		FirstName: firstName,
 		LastName:  lastName,
 		MemberID:  "m-" + newUUID(),
-	}, idpUUID)
+	}, fmt.Sprintf("%s-%s@example.com", firstName, newUUID()), idpUUID)
 	if err != nil {
 		t.Fatalf("failed to insert test attendee: %v", err)
 	}

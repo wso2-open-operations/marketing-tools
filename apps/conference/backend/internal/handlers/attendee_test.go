@@ -31,8 +31,10 @@ import (
 
 type fakeAttendeeRepo struct {
 	insertErr    error
+	insertCalls  int
 	insertedWith struct {
 		payload models.AttendeeInsert
+		email   string
 		idpUUID string
 	}
 
@@ -50,8 +52,10 @@ type fakeAttendeeRepo struct {
 	searchErr    error
 }
 
-func (f *fakeAttendeeRepo) Insert(ctx context.Context, payload models.AttendeeInsert, idpUUID string) error {
+func (f *fakeAttendeeRepo) Insert(ctx context.Context, payload models.AttendeeInsert, email, idpUUID string) error {
+	f.insertCalls++
 	f.insertedWith.payload = payload
+	f.insertedWith.email = email
 	f.insertedWith.idpUUID = idpUUID
 	return f.insertErr
 }
@@ -106,13 +110,14 @@ func newAttendeeTestRouter(h *AttendeeHandler, user *middleware.UserInfo) *gin.E
 	return r
 }
 
-func TestAttendeeHandler_Create_UsesJWTSubNotBodyUUID(t *testing.T) {
+func TestAttendeeHandler_Create_UsesJWTSubAndEmailNotBody(t *testing.T) {
 	repo := &fakeAttendeeRepo{}
 	h := NewAttendeeHandler(repo)
 	r := newAttendeeTestRouter(h, testUser)
 
-	w := doRequest(r, http.MethodPost, "/attendees", models.AttendeeInsert{
-		Email: "ada@example.com", FirstName: "Ada",
+	// A body `email` is decoded into nothing and must not reach the repo.
+	w := doRequest(r, http.MethodPost, "/attendees", map[string]any{
+		"email": "victim@example.com", "firstName": "Ada", "lastName": "Lovelace",
 	})
 
 	if w.Code != http.StatusCreated {
@@ -121,13 +126,16 @@ func TestAttendeeHandler_Create_UsesJWTSubNotBodyUUID(t *testing.T) {
 	if repo.insertedWith.idpUUID != testUser.UserID {
 		t.Errorf("Insert called with idpUUID = %q, want %q (the JWT sub, not any body field)", repo.insertedWith.idpUUID, testUser.UserID)
 	}
+	if repo.insertedWith.email != testUser.Email {
+		t.Errorf("Insert called with email = %q, want %q (the JWT email, not any body field)", repo.insertedWith.email, testUser.Email)
+	}
 }
 
 func TestAttendeeHandler_Create_Unauthenticated(t *testing.T) {
 	h := NewAttendeeHandler(&fakeAttendeeRepo{})
 	r := newAttendeeTestRouter(h, nil)
 
-	w := doRequest(r, http.MethodPost, "/attendees", models.AttendeeInsert{Email: "ada@example.com"})
+	w := doRequest(r, http.MethodPost, "/attendees", models.AttendeeInsert{FirstName: "Ada", LastName: "Lovelace"})
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusUnauthorized)
 	}
@@ -138,47 +146,26 @@ func TestAttendeeHandler_Create_RepoErrorMapsTo500(t *testing.T) {
 	h := NewAttendeeHandler(repo)
 	r := newAttendeeTestRouter(h, testUser)
 
-	w := doRequest(r, http.MethodPost, "/attendees", models.AttendeeInsert{Email: "ada@example.com"})
+	w := doRequest(r, http.MethodPost, "/attendees", models.AttendeeInsert{FirstName: "Ada", LastName: "Lovelace"})
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusInternalServerError)
 	}
 }
 
-func TestAttendeeHandler_Patch_NotFoundWhenEmailUnknown(t *testing.T) {
-	repo := &fakeAttendeeRepo{byEmail: map[string]models.Attendee{}}
-	h := NewAttendeeHandler(repo)
-	r := newAttendeeTestRouter(h, testUser)
-
-	w := doRequest(r, http.MethodPatch, "/attendees?email=missing@example.com", models.AttendeePatch{})
-	if w.Code != http.StatusNotFound {
-		t.Fatalf("status = %d, want %d, body: %s", w.Code, http.StatusNotFound, w.Body.String())
-	}
-}
-
 func TestAttendeeHandler_Patch_UpdatesAndReturnsAttendee(t *testing.T) {
 	repo := &fakeAttendeeRepo{byEmail: map[string]models.Attendee{
-		"ada@example.com": {ID: "attendee-1", Email: "ada@example.com", Title: "Old Title"},
+		testUser.Email: {ID: "attendee-1", Email: testUser.Email, Title: "Old Title"},
 	}}
 	h := NewAttendeeHandler(repo)
 	r := newAttendeeTestRouter(h, testUser)
 
 	title := "New Title"
-	w := doRequest(r, http.MethodPatch, "/attendees?email=ada@example.com", models.AttendeePatch{Title: &title})
+	w := doRequest(r, http.MethodPatch, "/attendees", models.AttendeePatch{Title: &title})
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d, body: %s", w.Code, http.StatusOK, w.Body.String())
 	}
 	if repo.patchedWith.updatedBy != testUser.UserID {
 		t.Errorf("PatchByEmail called with updatedBy = %q, want %q (the JWT sub)", repo.patchedWith.updatedBy, testUser.UserID)
-	}
-}
-
-func TestAttendeeHandler_Patch_MissingEmailIsBadRequest(t *testing.T) {
-	h := NewAttendeeHandler(&fakeAttendeeRepo{})
-	r := newAttendeeTestRouter(h, testUser)
-
-	w := doRequest(r, http.MethodPatch, "/attendees", models.AttendeePatch{})
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
 	}
 }
 
@@ -312,5 +299,91 @@ func TestAttendeeHandler_Search_RepoErrorMapsTo500(t *testing.T) {
 	w := doRequest(r, http.MethodPost, "/attendees/search", map[string]any{})
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusInternalServerError)
+	}
+}
+
+// --- 2026-09-04 audit: A1 (PATCH /attendees?email= hijack), A4 (empty POST) ---
+
+func TestAttendeeHandler_Patch_IgnoresEmailQueryAndPatchesCaller(t *testing.T) {
+	// A1: `?email=` used to select the row to patch *and* to return, with no
+	// comparison against the JWT. The parameter is gone; the caller's own row
+	// is the only row this route can reach.
+	repo := &fakeAttendeeRepo{byEmail: map[string]models.Attendee{
+		testUser.Email:       {ID: "attendee-1", Email: testUser.Email},
+		"victim@example.com": {ID: "attendee-2", Email: "victim@example.com"},
+	}}
+	h := NewAttendeeHandler(repo)
+	r := newAttendeeTestRouter(h, testUser)
+
+	title := "New Title"
+	w := doRequest(r, http.MethodPatch, "/attendees?email=victim@example.com", models.AttendeePatch{Title: &title})
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+	if repo.patchedWith.email != testUser.Email {
+		t.Errorf("PatchByEmail called with email = %q, want %q (the JWT email, never the query string)", repo.patchedWith.email, testUser.Email)
+	}
+
+	var got models.Attendee
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if got.Email != testUser.Email {
+		t.Errorf("response Email = %q, want %q (never another attendee's decrypted row)", got.Email, testUser.Email)
+	}
+}
+
+func TestAttendeeHandler_Patch_NotFoundWhenCallerHasNoRow(t *testing.T) {
+	repo := &fakeAttendeeRepo{byEmail: map[string]models.Attendee{}}
+	h := NewAttendeeHandler(repo)
+	r := newAttendeeTestRouter(h, testUser)
+
+	w := doRequest(r, http.MethodPatch, "/attendees", models.AttendeePatch{})
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d, body: %s", w.Code, http.StatusNotFound, w.Body.String())
+	}
+}
+
+func TestAttendeeHandler_Create_EmptyBodyIsBadRequest(t *testing.T) {
+	// A4: `{}` used to 201 and write email='' against the caller's unique
+	// idp_uuid, permanently wedging that account.
+	repo := &fakeAttendeeRepo{}
+	h := NewAttendeeHandler(repo)
+	r := newAttendeeTestRouter(h, testUser)
+
+	w := doRequest(r, http.MethodPost, "/attendees", map[string]any{})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d, body: %s", w.Code, http.StatusBadRequest, w.Body.String())
+	}
+	if repo.insertCalls != 0 {
+		t.Errorf("Insert called %d times, want 0", repo.insertCalls)
+	}
+}
+
+func TestAttendeeHandler_Create_ConflictWhenEmailOwnedByAnother(t *testing.T) {
+	// The scoped upsert no-ops rather than hijacking; 201 would claim a write
+	// that never happened.
+	repo := &fakeAttendeeRepo{insertErr: repository.ErrEmailOwnedByAnother}
+	h := NewAttendeeHandler(repo)
+	r := newAttendeeTestRouter(h, testUser)
+
+	w := doRequest(r, http.MethodPost, "/attendees", models.AttendeeInsert{FirstName: "Ada", LastName: "Lovelace"})
+	if w.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want %d, body: %s", w.Code, http.StatusConflict, w.Body.String())
+	}
+}
+
+func TestAttendeeHandler_Create_EmptyCallerEmailIsRejected(t *testing.T) {
+	// email is the conflict key; a token with no email claim would write ''.
+	repo := &fakeAttendeeRepo{}
+	h := NewAttendeeHandler(repo)
+	r := newAttendeeTestRouter(h, &middleware.UserInfo{UserID: "user-1"})
+
+	w := doRequest(r, http.MethodPost, "/attendees", models.AttendeeInsert{FirstName: "Ada", LastName: "Lovelace"})
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d, body: %s", w.Code, http.StatusUnauthorized, w.Body.String())
+	}
+	if repo.insertCalls != 0 {
+		t.Errorf("Insert called %d times, want 0", repo.insertCalls)
 	}
 }

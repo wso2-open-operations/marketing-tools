@@ -20,6 +20,8 @@ import "time"
 
 // Attendee represents a conference attendee's profile, as returned by
 // GET /attendees/me, POST /attendees/search and PATCH /attendees.
+// MemberID/QRUri are only populated on the caller's own row: qrUri is the
+// check-in credential, so POST /attendees/search blanks both (audit P2).
 // Title/Company/Country/FirstName/LastName are encrypted at rest (see
 // internal/crypto); the repository layer decrypts them before this struct is
 // populated, same as Speaker.
@@ -42,16 +44,20 @@ type Attendee struct {
 	UpdatedAt  time.Time `json:"updatedOn"`
 }
 
-// AttendeeInsert is the payload for POST /attendees. IDPUUID is deliberately
-// not part of this payload: it's taken from the caller's authenticated JWT
-// sub, never trusted from the request body (see .claude/PLAN.md).
+// AttendeeInsert is the payload for POST /attendees. Neither IDPUUID nor
+// Email is part of this payload: both are identity, both come from the
+// caller's authenticated JWT (sub and email), never from the request body.
+// A body `email` is accepted by the decoder and ignored.
+//
+// FirstName/LastName are required: an empty POST used to create an
+// email=” row against the caller's UNIQUE idp_uuid, after which every
+// later POST 500'd and GET /attendees/me 404'd forever (audit A4).
 type AttendeeInsert struct {
-	Email      string `json:"email"`
 	Title      string `json:"title"`
 	Company    string `json:"company"`
 	Country    string `json:"country"`
-	FirstName  string `json:"firstName"`
-	LastName   string `json:"lastName"`
+	FirstName  string `json:"firstName" binding:"required"`
+	LastName   string `json:"lastName" binding:"required"`
 	MemberID   string `json:"memberId"`
 	IsPartner  bool   `json:"isPartner"`
 	ProfileURL string `json:"profileUrl,omitempty"`

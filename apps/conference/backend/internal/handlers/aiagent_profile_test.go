@@ -94,3 +94,27 @@ func TestAIAgentHandler_PersonalizedProfile_MalformedBody_Returns400(t *testing.
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
 	}
 }
+
+// --- 2026-09-04 audit: D2 (POST /users/profile took its target from the body) ---
+
+func TestAIAgentHandler_PersonalizedProfile_ForcesCallerEmail(t *testing.T) {
+	// D2: the body's `email` selected whose AI profile got overwritten, and
+	// con-ai no longer authenticates, so this handler is the only gate.
+	client := &fakeAIAgentClient{profileResp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"status":"accepted"}`)),
+	}}
+	h := NewAIAgentHandler(client, &fakeAttendeeRepo{}, config.AIFeatureStatus{}, nil)
+	r := newAIAgentTestRouter(h, testUser)
+
+	w := doRequest(r, http.MethodPost, "/users/profile", models.PersonalizeAgentUserProfile{
+		Email: "victim@example.com", Name: "Victim",
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+	if client.profileSeen.Email != testUser.Email {
+		t.Errorf("forwarded profile Email = %q, want %q (the JWT email, never the body's)", client.profileSeen.Email, testUser.Email)
+	}
+}
