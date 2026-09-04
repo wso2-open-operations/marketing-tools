@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -346,7 +347,8 @@ func TestShopHandler_Confirm_ErrorMapping(t *testing.T) {
 		{"already-settled order is 409", repository.ErrOrderNotPending, http.StatusConflict},
 		{"reused transaction hash is 400", repository.ErrTxHashAlreadyUsed, http.StatusBadRequest},
 		{"failed verification is 400", service.ErrPaymentVerificationFailed, http.StatusBadRequest},
-		{"unconfigured master wallet is 500", service.ErrMasterWalletNotConfigured, http.StatusInternalServerError},
+		// 503 not 500: the deployment is missing config, the request is fine.
+		{"unconfigured master wallet is 503", service.ErrMasterWalletNotConfigured, http.StatusServiceUnavailable},
 		{"unexpected error is 500", errors.New("boom"), http.StatusInternalServerError},
 	}
 
@@ -360,6 +362,26 @@ func TestShopHandler_Confirm_ErrorMapping(t *testing.T) {
 				t.Fatalf("got %d, want %d: %s", rec.Code, tc.wantCode, rec.Body.String())
 			}
 		})
+	}
+}
+
+// A missing SHOP_MASTER_WALLET_ADDRESS is a deployment fault, not the caller's,
+// and it is not transient-per-request: 503 tells the client to stop retrying the
+// same payment, and the message must not name the missing setting.
+func TestShopHandler_Confirm_UnconfiguredWalletIs503AndLeaksNothing(t *testing.T) {
+	svc := &fakeShopService{confirmErr: service.ErrMasterWalletNotConfigured}
+	rec := doRequest(newShopTestRouter(NewShopHandler(svc), testUser),
+		http.MethodPost, "/shops/checkout/confirm",
+		map[string]any{"orderId": "ORD-1", "transactionHash": "0xabc"})
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("got %d, want 503: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, leak := range []string{"wallet", "WALLET", "master", "config", "SHOP_"} {
+		if strings.Contains(body, leak) {
+			t.Errorf("response body leaks %q: %s", leak, body)
+		}
 	}
 }
 

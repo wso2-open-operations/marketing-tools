@@ -49,9 +49,19 @@ func NewSpeakerHandler(reader SpeakerReader) *SpeakerHandler {
 // List handles GET /speakers. Optional query params: eventId (restrict to
 // speakers in that conference) and q (case-insensitive name search). Both are
 // applied server-side so the client stops over-fetching and filtering itself.
+//
+// eventId is bound as a uuid in the summary query, so it gets the same guard
+// SpeakerHandler.Get applies to :id -- without it a non-UUID value reached the
+// database and came back as a cast error, i.e. a 500 for a malformed request.
 func (h *SpeakerHandler) List(c *gin.Context) {
+	eventID := c.Query("eventId")
+	if eventID != "" && !uuidPattern.MatchString(eventID) {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "eventId must be a valid UUID"})
+		return
+	}
+
 	filter := models.SpeakerFilter{
-		EventID: c.Query("eventId"),
+		EventID: eventID,
 		Query:   c.Query("q"),
 	}
 	summaries, err := h.reader.GetSpeakerSummary(c.Request.Context(), filter)

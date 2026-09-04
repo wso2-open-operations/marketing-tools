@@ -132,7 +132,16 @@ func (h *EventHandler) LegacyAgendas(c *gin.Context) {
 	h.respondAgendas(c, eventID)
 }
 
+// respondAgendas serves both agenda routes. eventID is either the literal
+// "current" or a conference_config id, which is a uuid column -- so anything
+// else is a malformed request, and gets the same guard the :id handlers apply
+// rather than a 500 from the cast.
 func (h *EventHandler) respondAgendas(c *gin.Context, eventID string) {
+	if eventID != "current" && !uuidPattern.MatchString(eventID) {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "eventId must be a valid UUID"})
+		return
+	}
+
 	agendas, err := h.reader.GetEventAgendas(c.Request.Context(), eventID)
 	if err != nil {
 		slog.ErrorContext(c.Request.Context(), "fetching event agendas failed", "error", err)

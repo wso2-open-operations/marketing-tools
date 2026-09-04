@@ -31,6 +31,10 @@ import (
 
 var errBoom = errors.New("boom")
 
+// testEventID is a well-formed eventId. conference_config.id is a uuid column,
+// so the handlers reject anything else before it reaches the query.
+const testEventID = "523757ce-3be9-4c6b-b95b-68c88f3fa5f9"
+
 type fakeSpeakerReader struct {
 	summary    []models.SpeakerSummary
 	summaryErr error
@@ -80,13 +84,13 @@ func TestSpeakerHandler_List_ReturnsSummaries(t *testing.T) {
 func TestSpeakerHandler_List_PassesEventIDAndQueryToReader(t *testing.T) {
 	reader := &fakeSpeakerReader{summary: []models.SpeakerSummary{}}
 	h := NewSpeakerHandler(reader)
-	rec := doRequest(newSpeakerTestRouter(h), http.MethodGet, "/speakers?eventId=evt-1&q=ada", nil)
+	rec := doRequest(newSpeakerTestRouter(h), http.MethodGet, "/speakers?eventId="+testEventID+"&q=ada", nil)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
-	if reader.lastFilter.EventID != "evt-1" {
-		t.Errorf("filter.EventID = %q, want %q", reader.lastFilter.EventID, "evt-1")
+	if reader.lastFilter.EventID != testEventID {
+		t.Errorf("filter.EventID = %q, want %q", reader.lastFilter.EventID, testEventID)
 	}
 	if reader.lastFilter.Query != "ada" {
 		t.Errorf("filter.Query = %q, want %q", reader.lastFilter.Query, "ada")
@@ -163,5 +167,21 @@ func TestSpeakerHandler_Get_NonUUIDReturns400(t *testing.T) {
 		if rec.Code != http.StatusBadRequest {
 			t.Errorf("GET /speakers/%q status = %d, want %d", id, rec.Code, http.StatusBadRequest)
 		}
+	}
+}
+
+// ?eventId= is bound as a uuid in the summary query, so a non-UUID value is a
+// malformed request -- the same guard GET /speakers/:id applies.
+func TestSpeakerHandler_List_NonUUIDEventIDReturns400(t *testing.T) {
+	reader := &fakeSpeakerReader{}
+	r := newSpeakerTestRouter(NewSpeakerHandler(reader))
+
+	w := doRequest(r, http.MethodGet, "/speakers?eventId=not-a-uuid", nil)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if reader.lastFilter.EventID != "" {
+		t.Errorf("repository should not have been called, got %+v", reader.lastFilter)
 	}
 }

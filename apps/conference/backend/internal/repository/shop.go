@@ -99,9 +99,18 @@ var (
 // CurrentShopEvent returns the current conference's id and whether its shop is
 // still open.
 //
-// "Current" is the conference_config with the latest start_date -- the same rule
-// GetEvents, GetCurrentEvent and GetEventAgendas already use. A NULL
+// "Current" is the conference_config with the latest start_date, breaking a tie
+// on id -- the same rule GetEvents, GetCurrentEvent, GetEventAgendas and the
+// config_id subqueries in session.go and activity.go already use. The tiebreak
+// is load-bearing: these are independent statements, and on a bare start_date
+// sort each picks its own winner among tied rows, so the shop could serve one
+// conference's catalog while GET /events/current names another. A NULL
 // shop_closing_time means the shop has no closing time and stays open.
+//
+// Deliberately no "has started" bound. No other current-event resolution has
+// one, and adding it only here would make the shop disagree with every other
+// route the moment a future conference row exists -- which is the same failure
+// in the other direction. shop_closing_time, not start_date, is the shop's gate.
 //
 // Returns ErrNotFound when no conference_config row exists.
 func (r *ShopRepo) CurrentShopEvent(ctx context.Context) (eventID string, isOpen bool, err error) {
@@ -109,7 +118,7 @@ func (r *ShopRepo) CurrentShopEvent(ctx context.Context) (eventID string, isOpen
 	queryErr := r.pool.QueryRow(ctx,
 		`SELECT id, shop_closing_time
 		 FROM conference_config
-		 ORDER BY start_date DESC
+		 ORDER BY start_date DESC, id DESC
 		 LIMIT 1`,
 	).Scan(&eventID, &closingTime)
 	if queryErr != nil {

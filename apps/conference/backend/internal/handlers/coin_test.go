@@ -104,11 +104,15 @@ func doRequest(r *gin.Engine, method, path string, body any) *httptest.ResponseR
 	return w
 }
 
+// testQrID is a well-formed qrId. coin_allocation.qr_id is a uuid column, so
+// the handler rejects anything else before it can reach a 22P02 cast error.
+const testQrID = "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+
 func TestScan_MissingUser_Returns401(t *testing.T) {
 	h := NewCoinHandler(&fakeScanner{}, &fakeReader{}, &fakeQrCatalog{}, &fakeEventReader{}, nil)
 	r := newTestRouter(h, nil)
 
-	w := doRequest(r, http.MethodPost, "/qr/scan", models.QrScanRequest{QrID: "qr-1"})
+	w := doRequest(r, http.MethodPost, "/qr/scan", models.QrScanRequest{QrID: testQrID})
 
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d: %s", w.Code, w.Body.String())
@@ -134,12 +138,12 @@ func TestScan_Success_Returns200(t *testing.T) {
 	h := NewCoinHandler(scanner, &fakeReader{}, &fakeQrCatalog{}, &fakeEventReader{}, nil)
 	r := newTestRouter(h, testUser)
 
-	w := doRequest(r, http.MethodPost, "/qr/scan", models.QrScanRequest{QrID: "qr-1"})
+	w := doRequest(r, http.MethodPost, "/qr/scan", models.QrScanRequest{QrID: testQrID})
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
-	if scanner.calledWith.userID != testUser.UserID || scanner.calledWith.email != testUser.Email || scanner.calledWith.qrID != "qr-1" {
+	if scanner.calledWith.userID != testUser.UserID || scanner.calledWith.email != testUser.Email || scanner.calledWith.qrID != testQrID {
 		t.Errorf("scanner called with unexpected args: %+v", scanner.calledWith)
 	}
 }
@@ -164,7 +168,7 @@ func TestScan_ErrorMapping(t *testing.T) {
 			h := NewCoinHandler(&fakeScanner{err: tt.err}, &fakeReader{}, &fakeQrCatalog{}, &fakeEventReader{}, nil)
 			r := newTestRouter(h, testUser)
 
-			w := doRequest(r, http.MethodPost, "/qr/scan", models.QrScanRequest{QrID: "qr-1"})
+			w := doRequest(r, http.MethodPost, "/qr/scan", models.QrScanRequest{QrID: testQrID})
 
 			if w.Code != tt.wantStatus {
 				t.Fatalf("expected %d, got %d: %s", tt.wantStatus, w.Code, w.Body.String())
@@ -277,5 +281,22 @@ func TestSummary_RepoError_Returns500(t *testing.T) {
 
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d", w.Code)
+	}
+}
+
+// A non-UUID qrId used to reach the query and come back as a 22P02 cast error,
+// i.e. a 500 for what is a malformed request.
+func TestScan_NonUUIDQrID_Returns400(t *testing.T) {
+	scanner := &fakeScanner{}
+	h := NewCoinHandler(scanner, &fakeReader{}, &fakeQrCatalog{}, &fakeEventReader{}, nil)
+	r := newTestRouter(h, testUser)
+
+	w := doRequest(r, http.MethodPost, "/qr/scan", models.QrScanRequest{QrID: "not-a-uuid"})
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if scanner.calledWith.qrID != "" {
+		t.Errorf("scanner should not have been called, got %+v", scanner.calledWith)
 	}
 }
