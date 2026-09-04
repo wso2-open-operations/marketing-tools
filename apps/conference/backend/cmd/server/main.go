@@ -44,6 +44,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// dbWarmupTimeout bounds the startup ping that opens the pool's first
+// connection. Generous on purpose: it delays the listener rather than a request,
+// and the whole point is to absorb a slow cross-region dial here instead of
+// inside a schema capability probe. On expiry the server comes up anyway.
+const dbWarmupTimeout = 15 * time.Second
+
 func main() {
 	_ = godotenv.Load(".env")
 	_ = godotenv.Overload(".env.local") // local overrides; ignored if absent
@@ -79,13 +85,48 @@ func main() {
 
 	slog.Info("logger initialised", "level", cfg.LogLevel, "env", cfg.AppEnv)
 
+	// Warnings, not startup failures. Both of these describe a deployment that
+	// is misconfigured but must still boot: the env vars are hand-set on Choreo
+	// and a crash-loop is worse than a degraded service. See
+	// config.InsecureAuthConfig / config.ShopPaymentsConfigured.
+	if cfg.InsecureAuthConfig() {
+		slog.Warn("SECURITY: TOKEN_VALIDATOR_ENABLED is false in a production environment; "+
+			"JWT signatures are NOT verified and forged or expired tokens will be accepted",
+			"appEnv", cfg.AppEnv)
+	}
+	if !cfg.ShopPaymentsConfigured() {
+		slog.Warn("SHOP_MASTER_WALLET_ADDRESS is not set; POST /shops/checkout/confirm will refuse every request with 503")
+	}
+
 	pool, err := db.Connect(context.Background(), cfg.DSN())
 	if err != nil {
 		slog.Error("db connect", "error", err)
 		os.Exit(1)
 	}
 
-	slog.Info("db connected")
+	// db.Connect only parses the DSN -- pgxpool dials lazily, so without this
+	// the first request to arrive pays the connect, and against the staging
+	// Azure instance that is ~2.6s of TLS and auth. That cost landing inside a
+	// request is not merely slow: it lands inside whichever schema capability
+	// probe runs first (see repository.probeContext), and a probe that runs out
+	// of time degrades. For GET /activities it degrades to an empty array,
+	// which the ETag middleware then stamps cacheable for a minute. Paying the
+	// dial here, before the listener is up, is what keeps the first request
+	// after a restart as truthful as the second.
+	//
+	// A failure is warned and not fatal, deliberately. Startup gating on the
+	// database is a different decision than warming the pool, and this is only
+	// the second one: an unreachable database at boot leaves the server up and
+	// every request erroring, exactly as it did before this call existed,
+	// rather than crash-looping the container. The pool re-dials per request,
+	// so a database that comes back needs no restart.
+	warmCtx, cancelWarm := context.WithTimeout(context.Background(), dbWarmupTimeout)
+	if err := pool.Ping(warmCtx); err != nil {
+		slog.Warn("db warm-up ping failed; first request will pay the connect", "error", err)
+	} else {
+		slog.Info("db connected")
+	}
+	cancelWarm()
 
 	attendeeRepo := repository.NewAttendeeRepo(pool, cfg.PIIEncryptionKey)
 	coinAllocationRepo := repository.NewCoinAllocationRepo(pool)
@@ -249,8 +290,11 @@ func main() {
 		Handler:           r,
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       15 * time.Second,
-		WriteTimeout:      15 * time.Second,
-		IdleTimeout:       60 * time.Second,
+		// Derived from the AI request budget, not fixed: a server-wide 15s
+		// deadline cut every AI response off mid-write. See
+		// config.HTTPWriteTimeout.
+		WriteTimeout: cfg.HTTPWriteTimeout(),
+		IdleTimeout:  60 * time.Second,
 	}
 
 	go func() {

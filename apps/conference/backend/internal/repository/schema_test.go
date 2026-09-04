@@ -26,6 +26,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -112,5 +113,55 @@ func TestSchemaCaps_ProbeIgnoresCallerCancellation(t *testing.T) {
 	defer caps.mu.Unlock()
 	if caps.resolved {
 		t.Error("a cancelled caller must not resolve the capability")
+	}
+}
+
+// Each probe gets a full budget, and gets it regardless of what the caller has
+// left. This is the shape of the bug that made GET /activities answer 200 with
+// an empty array after a restart: the two table probes shared one 3s deadline
+// which the pool's cold dial had already spent, so the second one timed out and
+// activityTables degraded to "absent" against a database that had the tables.
+//
+// Asserting on the deadline rather than on elapsed time keeps this off the
+// clock -- it is a statement about what probeContext hands the query, which is
+// the thing that regressed.
+func TestProbeContext_GivesEachProbeAFullBudgetDetachedFromTheCaller(t *testing.T) {
+	// A caller with nothing left: already past its deadline and cancelled.
+	parent, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
+	defer cancel()
+	<-parent.Done()
+
+	// Twice over, because two probes in sequence is exactly the case that
+	// broke; the second must not inherit what the first consumed.
+	for i := range 2 {
+		probeCtx, cancelProbe := probeContext(parent)
+
+		if err := probeCtx.Err(); err != nil {
+			t.Errorf("probe %d: Err() = %v, want nil -- a spent caller must not cancel the probe", i, err)
+		}
+
+		deadline, ok := probeCtx.Deadline()
+		if !ok {
+			t.Fatalf("probe %d: no deadline; an unbounded probe can hang a request", i)
+		}
+		// Lower bound only on the slack: the budget is allowed to have ticked
+		// down by the microseconds this loop costs, never by the caller's.
+		if remaining := time.Until(deadline); remaining <= schemaProbeTimeout-time.Second || remaining > schemaProbeTimeout {
+			t.Errorf("probe %d: remaining budget = %v, want ~%v", i, remaining, schemaProbeTimeout)
+		}
+
+		cancelProbe()
+	}
+}
+
+// The budget has to cover a cold pgxpool dial, not just the EXISTS query: the
+// first request after a restart opens the connection inside the first probe.
+// The staging dial measures ~2.6s, which is what ruled out the original 3s.
+func TestSchemaProbeTimeout_LeavesRoomForAColdDial(t *testing.T) {
+	const observedColdDial = 3 * time.Second
+
+	if schemaProbeTimeout < 2*observedColdDial {
+		t.Errorf("schemaProbeTimeout = %v, want at least %v -- twice the observed cold dial, so a slow one still leaves the query room",
+			schemaProbeTimeout, 2*observedColdDial)
 	}
 }

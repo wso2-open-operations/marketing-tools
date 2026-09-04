@@ -398,3 +398,47 @@ func (c Config) Validate() error {
 	}
 	return nil
 }
+
+// httpWriteTimeoutFloor is the lower bound on the server's write deadline.
+//
+// One server-wide WriteTimeout has to serve both a 200ms /events read and a
+// 120s AI chat turn, so it is set by the slowest route, not the typical one.
+const httpWriteTimeoutFloor = 130 * time.Second
+
+// HTTPWriteTimeout is the http.Server WriteTimeout, derived from the AI request
+// budget rather than configured separately -- there is no new env var here.
+//
+// The deadline covers the whole response write, so it must outlive the longest
+// upstream call the handler makes. It previously did not: a fixed 15s against
+// AI_REQUEST_TIMEOUT_SECONDS=120 closed the connection mid-write on every AI
+// response past 15s, and POST /users/profile (15-21s) failed client-side 100% of
+// the time while the write it was reporting on had already landed.
+//
+// AIAgent.RequestTimeout + 10s leaves the AI client's own timeout as the thing
+// that fires first, so a slow upstream still produces a real error response
+// instead of a truncated connection.
+func (c Config) HTTPWriteTimeout() time.Duration {
+	if t := c.AIAgent.RequestTimeout + 10*time.Second; t > httpWriteTimeoutFloor {
+		return t
+	}
+	return httpWriteTimeoutFloor
+}
+
+// InsecureAuthConfig reports a production deployment running with JWT signature
+// validation switched off, which accepts forged alg=none and expired tokens.
+//
+// TOKEN_VALIDATOR_ENABLED still defaults to false on purpose: flipping it would
+// break every Choreo deployment that omits the var. So this is a loud startup
+// warning, not a Validate() failure -- see main.go.
+func (c Config) InsecureAuthConfig() bool {
+	return c.AppEnv == "production" && !c.TokenValidatorEnabled
+}
+
+// ShopPaymentsConfigured reports whether a merchant wallet is set, i.e. whether
+// POST /shops/checkout/confirm can verify anything at all.
+//
+// Not a Validate() requirement: a deployment with no shop must still start. It
+// is warned at startup and answered per-request with a 503.
+func (c Config) ShopPaymentsConfigured() bool {
+	return c.ShopMasterWalletAddress != ""
+}
