@@ -26,12 +26,16 @@ import (
 
 	"wso2-coin-backend/internal/middleware"
 	"wso2-coin-backend/internal/models"
+	"wso2-coin-backend/internal/repository"
 )
 
 type fakeConnectionReader struct {
 	info         models.UserConnectionsInfo
 	getErr       error
 	upsertErr    error
+	existing     *models.Connection
+	findErr      error
+	upsertCalls  int
 	upsertedWith struct {
 		initiatorUUID, recipientUUID string
 		status                       models.ConnectionStatus
@@ -42,7 +46,18 @@ func (f *fakeConnectionReader) Get(ctx context.Context, userUUID string) (models
 	return f.info, f.getErr
 }
 
+func (f *fakeConnectionReader) Find(ctx context.Context, aUUID, bUUID string) (models.Connection, error) {
+	if f.findErr != nil {
+		return models.Connection{}, f.findErr
+	}
+	if f.existing == nil {
+		return models.Connection{}, repository.ErrNotFound
+	}
+	return *f.existing, nil
+}
+
 func (f *fakeConnectionReader) Upsert(ctx context.Context, initiatorUUID, recipientUUID string, status models.ConnectionStatus) error {
+	f.upsertCalls++
 	f.upsertedWith.initiatorUUID = initiatorUUID
 	f.upsertedWith.recipientUUID = recipientUUID
 	f.upsertedWith.status = status
@@ -160,18 +175,161 @@ func TestConnectionHandler_Create_NotFoundWhenTargetHasNoAttendeeRow(t *testing.
 	h := NewConnectionHandler(&fakeConnectionReader{}, &fakeAttendeeRepo{byUUID: map[string]models.Attendee{}})
 	r := newConnectionTestRouter(h, testUser)
 
-	w := doRequest(r, http.MethodPost, "/users/me/connections", models.UserConnectionRequest{UserID: "missing-user"})
+	w := doRequest(r, http.MethodPost, "/users/me/connections", models.UserConnectionRequest{UserID: "missing-user", Status: models.ConnectionPending})
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d, body: %s", w.Code, http.StatusNotFound, w.Body.String())
 	}
 }
 
 func TestConnectionHandler_Create_UpsertErrorMapsTo500(t *testing.T) {
-	h := NewConnectionHandler(&fakeConnectionReader{upsertErr: errBoom}, &fakeAttendeeRepo{})
+	attendees := &fakeAttendeeRepo{byUUID: map[string]models.Attendee{
+		"user-2": {ID: "attendee-2", Email: "bob@example.com", FirstName: "Bob"},
+	}}
+	h := NewConnectionHandler(&fakeConnectionReader{upsertErr: errBoom}, attendees)
 	r := newConnectionTestRouter(h, testUser)
 
-	w := doRequest(r, http.MethodPost, "/users/me/connections", models.UserConnectionRequest{UserID: "user-2"})
+	w := doRequest(r, http.MethodPost, "/users/me/connections", models.UserConnectionRequest{UserID: "user-2", Status: models.ConnectionPending})
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusInternalServerError)
+	}
+}
+
+// --- A3: authorization + ordering on POST /users/me/connections ---
+
+func TestConnectionHandler_Create_RejectsSelfConnection(t *testing.T) {
+	connReader := &fakeConnectionReader{}
+	attendees := &fakeAttendeeRepo{byUUID: map[string]models.Attendee{
+		testUser.UserID: {ID: "attendee-1", Email: "alice@example.com", FirstName: "Alice"},
+	}}
+	h := NewConnectionHandler(connReader, attendees)
+	r := newConnectionTestRouter(h, testUser)
+
+	w := doRequest(r, http.MethodPost, "/users/me/connections",
+		models.UserConnectionRequest{UserID: testUser.UserID, Status: models.ConnectionPending})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d, body: %s", w.Code, http.StatusBadRequest, w.Body.String())
+	}
+	if connReader.upsertCalls != 0 {
+		t.Errorf("Upsert called %d times, want 0 for a self-connection", connReader.upsertCalls)
+	}
+}
+
+func TestConnectionHandler_Create_RequesterCannotAcceptOwnRequest(t *testing.T) {
+	// The caller is the initiator of an existing pending request; accepting
+	// it themselves would put them in the target's connections[] with zero
+	// action by the target.
+	connReader := &fakeConnectionReader{existing: &models.Connection{
+		InitiatorID: testUser.UserID, RecipientID: "user-2", Status: models.ConnectionPending,
+	}}
+	attendees := &fakeAttendeeRepo{byUUID: map[string]models.Attendee{
+		"user-2": {ID: "attendee-2", Email: "bob@example.com", FirstName: "Bob", LastName: "Receiver"},
+	}}
+	h := NewConnectionHandler(connReader, attendees)
+	r := newConnectionTestRouter(h, testUser)
+
+	w := doRequest(r, http.MethodPost, "/users/me/connections",
+		models.UserConnectionRequest{UserID: "user-2", Status: models.ConnectionAccepted})
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d, body: %s", w.Code, http.StatusForbidden, w.Body.String())
+	}
+	if connReader.upsertCalls != 0 {
+		t.Errorf("Upsert called %d times, want 0 when the requester accepts their own request", connReader.upsertCalls)
+	}
+}
+
+func TestConnectionHandler_Create_TargetMayAcceptPendingRequest(t *testing.T) {
+	// Mirror image of the above: the caller is the recipient, so accepting is legal.
+	connReader := &fakeConnectionReader{existing: &models.Connection{
+		InitiatorID: "user-2", RecipientID: testUser.UserID, Status: models.ConnectionPending,
+	}}
+	attendees := &fakeAttendeeRepo{byUUID: map[string]models.Attendee{
+		"user-2": {ID: "attendee-2", Email: "bob@example.com", FirstName: "Bob", LastName: "Receiver"},
+	}}
+	h := NewConnectionHandler(connReader, attendees)
+	r := newConnectionTestRouter(h, testUser)
+
+	w := doRequest(r, http.MethodPost, "/users/me/connections",
+		models.UserConnectionRequest{UserID: "user-2", Status: models.ConnectionAccepted})
+	if w.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d, body: %s", w.Code, http.StatusCreated, w.Body.String())
+	}
+	if connReader.upsertCalls != 1 {
+		t.Errorf("Upsert called %d times, want 1", connReader.upsertCalls)
+	}
+}
+
+func TestConnectionHandler_Create_AcceptWithNoPendingRequestIsRejected(t *testing.T) {
+	connReader := &fakeConnectionReader{} // no existing row
+	attendees := &fakeAttendeeRepo{byUUID: map[string]models.Attendee{
+		"user-2": {ID: "attendee-2", Email: "bob@example.com", FirstName: "Bob"},
+	}}
+	h := NewConnectionHandler(connReader, attendees)
+	r := newConnectionTestRouter(h, testUser)
+
+	w := doRequest(r, http.MethodPost, "/users/me/connections",
+		models.UserConnectionRequest{UserID: "user-2", Status: models.ConnectionAccepted})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d, body: %s", w.Code, http.StatusBadRequest, w.Body.String())
+	}
+	if connReader.upsertCalls != 0 {
+		t.Errorf("Upsert called %d times, want 0", connReader.upsertCalls)
+	}
+}
+
+func TestConnectionHandler_Create_EitherPartyMayDecline(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		existing models.Connection
+	}{
+		{"recipient declines", models.Connection{InitiatorID: "user-2", RecipientID: testUser.UserID, Status: models.ConnectionPending}},
+		{"initiator withdraws", models.Connection{InitiatorID: testUser.UserID, RecipientID: "user-2", Status: models.ConnectionPending}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			existing := tc.existing
+			connReader := &fakeConnectionReader{existing: &existing}
+			attendees := &fakeAttendeeRepo{byUUID: map[string]models.Attendee{
+				"user-2": {ID: "attendee-2", Email: "bob@example.com", FirstName: "Bob"},
+			}}
+			h := NewConnectionHandler(connReader, attendees)
+			r := newConnectionTestRouter(h, testUser)
+
+			w := doRequest(r, http.MethodPost, "/users/me/connections",
+				models.UserConnectionRequest{UserID: "user-2", Status: models.ConnectionRejected})
+			if w.Code != http.StatusCreated {
+				t.Fatalf("status = %d, want %d, body: %s", w.Code, http.StatusCreated, w.Body.String())
+			}
+		})
+	}
+}
+
+func TestConnectionHandler_Create_MissingUserIDIsRejected(t *testing.T) {
+	connReader := &fakeConnectionReader{}
+	h := NewConnectionHandler(connReader, &fakeAttendeeRepo{})
+	r := newConnectionTestRouter(h, testUser)
+
+	w := doRequest(r, http.MethodPost, "/users/me/connections",
+		models.UserConnectionRequest{UserID: "", Status: models.ConnectionPending})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d, body: %s", w.Code, http.StatusBadRequest, w.Body.String())
+	}
+	if connReader.upsertCalls != 0 {
+		t.Errorf("Upsert called %d times, want 0", connReader.upsertCalls)
+	}
+}
+
+func TestConnectionHandler_Create_UnknownTargetWritesNothing(t *testing.T) {
+	// The orphan-row defect: the row used to be written before the target
+	// was validated, so a 404'd request left a phantom pending request.
+	connReader := &fakeConnectionReader{}
+	h := NewConnectionHandler(connReader, &fakeAttendeeRepo{byUUID: map[string]models.Attendee{}})
+	r := newConnectionTestRouter(h, testUser)
+
+	w := doRequest(r, http.MethodPost, "/users/me/connections",
+		models.UserConnectionRequest{UserID: "missing-user", Status: models.ConnectionPending})
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d, body: %s", w.Code, http.StatusNotFound, w.Body.String())
+	}
+	if connReader.upsertCalls != 0 {
+		t.Errorf("Upsert called %d times, want 0 -- a 404'd request must leave no row", connReader.upsertCalls)
 	}
 }

@@ -33,6 +33,7 @@ import (
 // ConnectionReader is satisfied by *repository.ConnectionRepo.
 type ConnectionReader interface {
 	Get(ctx context.Context, userUUID string) (models.UserConnectionsInfo, error)
+	Find(ctx context.Context, aUUID, bUUID string) (models.Connection, error)
 	Upsert(ctx context.Context, initiatorUUID, recipientUUID string, status models.ConnectionStatus) error
 }
 
@@ -67,11 +68,14 @@ func (h *ConnectionHandler) Get(c *gin.Context) {
 	c.JSON(http.StatusOK, info)
 }
 
-// Create handles POST /users/me/connections. After upserting, looks up the
-// target's attendee row to build the response; 404s if the target has no
-// attendee row, matching the old attendeesResponse.totalResults == 0 check.
-// The old code's best-effort push notification on request/accept is
-// dropped entirely -- no notification module exists to call (see
+// Create handles POST /users/me/connections. Order matters: the target is
+// resolved (404 if it has no attendee row, matching the old
+// attendeesResponse.totalResults == 0 check) and the caller is authorized to
+// make the requested transition *before* anything is written, so a rejected
+// request leaves no row behind. Self-connections are refused, and only a
+// request's recipient may accept it; either party may reject (decline or
+// withdraw). The old code's best-effort push notification on request/accept
+// is dropped entirely -- no notification module exists to call (see
 // .claude/PLAN.md).
 func (h *ConnectionHandler) Create(c *gin.Context) {
 	user := middleware.UserInfoFromContext(c.Request.Context())
@@ -91,12 +95,14 @@ func (h *ConnectionHandler) Create(c *gin.Context) {
 		return
 	}
 
-	if err := h.connections.Upsert(c.Request.Context(), user.UserID, req.UserID, req.Status); err != nil {
-		slog.ErrorContext(c.Request.Context(), "upserting connection failed", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"message": "internal error"})
+	if req.UserID == user.UserID {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "cannot connect to yourself"})
 		return
 	}
 
+	// Validate the target before writing anything. The write used to happen
+	// first, so a request against a nonexistent attendee 404'd but left an
+	// orphan row that later surfaced as a phantom request.
 	target, err := h.attendees.GetByUUID(c.Request.Context(), req.UserID)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
@@ -104,6 +110,36 @@ func (h *ConnectionHandler) Create(c *gin.Context) {
 			return
 		}
 		slog.ErrorContext(c.Request.Context(), "fetching target attendee failed", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "internal error"})
+		return
+	}
+
+	// Accepting is the recipient's privilege only. Without this the requester
+	// could write status 0 then status 1 and land in the target's
+	// connections[] with zero action by the target.
+	if req.Status == models.ConnectionAccepted {
+		existing, err := h.connections.Find(c.Request.Context(), user.UserID, req.UserID)
+		switch {
+		case errors.Is(err, repository.ErrNotFound):
+			c.JSON(http.StatusBadRequest, gin.H{"message": "no pending connection request to accept"})
+			return
+		case err != nil:
+			slog.ErrorContext(c.Request.Context(), "loading existing connection failed", "error", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"message": "internal error"})
+			return
+		}
+		if existing.Status != models.ConnectionPending {
+			c.JSON(http.StatusBadRequest, gin.H{"message": "no pending connection request to accept"})
+			return
+		}
+		if existing.RecipientID != user.UserID {
+			c.JSON(http.StatusForbidden, gin.H{"message": "only the recipient of a request may accept it"})
+			return
+		}
+	}
+
+	if err := h.connections.Upsert(c.Request.Context(), user.UserID, req.UserID, req.Status); err != nil {
+		slog.ErrorContext(c.Request.Context(), "upserting connection failed", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "internal error"})
 		return
 	}

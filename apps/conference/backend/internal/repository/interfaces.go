@@ -79,6 +79,7 @@ type AttendeeProfileReader interface {
 // ConnectionReader is satisfied by *ConnectionRepo.
 type ConnectionReader interface {
 	Get(ctx context.Context, userUUID string) (models.UserConnectionsInfo, error)
+	Find(ctx context.Context, aUUID, bUUID string) (models.Connection, error)
 	Upsert(ctx context.Context, initiatorUUID, recipientUUID string, status models.ConnectionStatus) error
 }
 
