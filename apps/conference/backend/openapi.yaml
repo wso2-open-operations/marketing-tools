@@ -9,8 +9,10 @@
 #   - Collections are always arrays (never null); optional scalars are omitted
 #     when empty (never "").
 #   - Timestamps are anchored to the event's `timezone` (also in the payload).
-#   - Three text fields carry sanitized rich-text HTML, not plain text:
-#     Session.title, Session.description and Activity.description. The event
+#   - Five text fields carry sanitized rich-text HTML, not plain text:
+#     Session.title, Session.description, Activity.description, and
+#     PickedForYouSession.title/description -- the last two because the
+#     recommender echoes this backend's own agenda text back verbatim. The event
 #     platform runs those through an allowlist on write (`internal/sanitize`.
 #     RichText: p, br, strong, em, u, s, ul, ol, li, blockquote, a[href], and
 #     span carrying a ql-* class or a font-weight style) and strips every other
@@ -21,21 +23,27 @@
 #     interpolates these into the DOM inherits the writer's allowlist as its
 #     own trust boundary.
 #
-# Scope: the conference-data, attendee-search, connection and recommendation
-# routes the series reshaped. The QR/coin, feedback, profile and AI-assistant
-# routes registered in cmd/server/main.go are real but not described here yet —
-# they were not part of the reshape, and documenting a response shape nobody
-# has pinned down would be worse than the gap. An endpoint absent from this
-# file is undocumented, not unimplemented.
+# Scope: the conference-data, attendee-profile, attendee-search, connection,
+# recommendation, shop, QR/coin, feedback and AI-assistant routes. Six routes
+# registered in cmd/server/main.go are still undocumented: GET /leaderboard,
+# GET and PUT /leaderboard/preferences, GET /qr-codes, the /users/me/favorites
+# trio, and the admin-gated POST /users/notifications. An endpoint absent from
+# this file is undocumented, not unimplemented.
+#
+# The AI routes proxy a separate service and are documented as this backend
+# emits them, not as that service does: the two disagree on purpose. Where a
+# field is this backend's own enrichment rather than a relay, its description
+# says so.
 openapi: 3.0.3
 info:
   title: WSO2Con Conference Backend
   version: "1.0.0"
   description: >
-    Conference data, attendee search, networking and recommendation endpoints.
+    Conference data, attendee search, networking, recommendation and
+    AI-assistant endpoints.
     All routes except /health require the `x-jwt-assertion` header.
-    Does not yet cover the QR/coin, feedback, profile and AI-assistant routes;
-    see the scope note at the top of this file.
+    Does not yet cover /users/me/favorites or POST /users/notifications; see
+    the scope note at the top of this file.
 servers:
   - url: /
 security:
@@ -47,7 +55,10 @@ tags:
   - name: attendees
   - name: connections
   - name: recommendations
+  - name: ai
   - name: shop
+  - name: coin
+  - name: feedback
 
 paths:
   /health:
@@ -136,7 +147,9 @@ paths:
         - name: eventId
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
+            pattern: '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|current)$'
           description: "A conference_config id, or the literal `current`."
       responses:
         "200":
@@ -147,6 +160,15 @@ paths:
                 type: array
                 items: { $ref: "#/components/schemas/EventAgenda" }
         "304": { description: "Not Modified" }
+        "400":
+          description: >-
+            eventId is neither a UUID nor the literal "current". conference_config.id
+            is a uuid column, so this used to reach the query and surface as a 500.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example:
+                message: eventId must be a valid UUID
 
   /event-agendas:
     get:
@@ -154,7 +176,12 @@ paths:
       description: "Query-param variant of the agenda resource."
       parameters:
         - { name: isCurrent, in: query, required: false, schema: { type: boolean } }
-        - { name: eventId, in: query, required: false, schema: { type: string } }
+        - name: eventId
+          in: query
+          required: false
+          schema:
+            type: string
+            pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
       responses:
         "200":
           description: "OK"
@@ -163,7 +190,15 @@ paths:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/EventAgenda" }
-        "400": { description: "Neither eventId nor isCurrent=true supplied" }
+        "400":
+          description: >-
+            Neither eventId nor isCurrent=true supplied, or the supplied eventId
+            is not a UUID (the latter was previously a 500).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example:
+                message: eventId must be a valid UUID
 
   /speakers:
     get:
@@ -172,13 +207,18 @@ paths:
         - name: eventId
           in: query
           required: false
-          schema: { type: string }
+          schema:
+            type: string
+            pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
           description: "Restrict to speakers with a session in this conference (and show only those sessions)."
         - name: q
           in: query
           required: false
           schema: { type: string }
-          description: "Case-insensitive substring match on speaker name (matched server-side after decryption)."
+          description: >-
+            Case-insensitive substring search over the speaker's name, title and
+            company (all matched server-side after decryption). Company is searched
+            but not returned by this endpoint.
       responses:
         "200":
           description: "OK, ordered by name"
@@ -188,6 +228,15 @@ paths:
                 type: array
                 items: { $ref: "#/components/schemas/SpeakerSummary" }
         "304": { description: "Not Modified" }
+        "400":
+          description: >-
+            eventId was supplied and is not a UUID. It is optional; the check fires
+            only when present.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example:
+                message: eventId must be a valid UUID
 
   /speakers/{id}:
     get:
@@ -200,7 +249,161 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Speaker" }
+        "400":
+          description: "id is not a UUID (previously a 500 from the cast)."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example:
+                message: id must be a valid UUID
         "404": { description: "No such visible speaker" }
+
+  /attendees:
+    post:
+      tags: [attendees]
+      summary: Create or replace the caller's own attendee profile
+      description: >
+        Both identity fields come from the caller's JWT -- idp_uuid from `sub`,
+        email from the `email` claim. A body `email` is accepted by the decoder
+        and ignored, so a caller cannot create or overwrite another attendee's
+        row. The write is an upsert scoped to the caller's email; when that email
+        already carries a row bound to a different idp_uuid the upsert is a no-op
+        and the route answers 409 rather than claiming a write that did not happen.
+        Returns no body.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AttendeeInsert" }
+      responses:
+        "201": { description: "Created or updated. No body." }
+        "400":
+          description: >-
+            Malformed JSON body, or a missing/empty firstName or lastName. An empty
+            POST used to create an email='' row against the caller's UNIQUE idp_uuid
+            and wedge the account permanently.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example:
+                message: invalid request body
+        "401":
+          description: >-
+            No authentication, or the token carries no `email` claim (email is the
+            key this row is written under).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example:
+                message: authenticated user has no email claim
+        "409":
+          description: >-
+            The caller's email already has an attendee row bound to a different
+            idp_uuid. Nothing was written.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example:
+                message: attendee already registered to another account
+        "500":
+          description: "Internal error"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    patch:
+      tags: [attendees]
+      summary: Update the authenticated attendee's own profile
+      description: >
+        There is no target parameter: the row is selected by the JWT `email`
+        claim. The route previously took a required `?email=` query parameter that
+        chose both the row to patch and the full decrypted row to return, with no
+        comparison against the token; any `?email=` a client still sends is now
+        ignored. Nil fields are left unchanged; the patched row is returned.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AttendeePatch" }
+      responses:
+        "200":
+          description: "The patched row, decrypted"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Attendee" }
+        "400":
+          description: "Malformed JSON body"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: "No authentication"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: >-
+            The caller has no attendee row. (Before the parameter was dropped this
+            meant "no row for the queried email".)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example:
+                message: attendee not found
+        "500":
+          description: "Internal error"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /attendees/me:
+    get:
+      tags: [attendees]
+      summary: The caller's own attendee row
+      description: >
+        Looked up by the JWT `email` claim. Unlike POST /attendees/search this
+        returns the caller's own `memberId` and `qrUri` -- qrUri is the check-in
+        credential and belongs only to its owner.
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Attendee" }
+        "401":
+          description: "No authentication"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: "The caller has no attendee row"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /user-profile:
+    get:
+      tags: [attendees]
+      summary: Display profile for the caller (name, avatar, QR)
+      description: >
+        A projection over the caller's attendee row plus JWT name claims. There is
+        no fallback to a JWT-only response: a caller with no attendee row gets 404.
+        `imageUrl` is a hardcoded default avatar, never derived from the token.
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Profile" }
+        "401":
+          description: "No authentication"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: "The caller has no attendee row"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
 
   /attendees/search:
     post:
@@ -222,7 +425,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AttendeeSearchResult" }
-        "400": { description: "Invalid cursor or negative limit" }
+        "400": { description: "Malformed JSON body, invalid cursor, or negative limit" }
 
   /users/me/connections:
     get:
@@ -235,21 +438,66 @@ paths:
               schema: { $ref: "#/components/schemas/UserConnectionsInfo" }
     post:
       tags: [connections]
+      summary: Send, accept, reject or withdraw a connection
+      description: >
+        The target is resolved and the caller authorized for the requested
+        transition *before* anything is written, so a refused request leaves no
+        row behind -- it used to write first, and a request against a nonexistent
+        attendee 404'd while leaving an orphan row that surfaced later as a
+        phantom request. Self-connections are refused, and only a pending
+        request's recipient may accept it; either party may reject (decline or
+        withdraw).
       requestBody:
+        required: true
         content:
           application/json:
-            schema:
-              type: object
-              required: [userId, status]
-              properties:
-                userId: { type: string }
-                status: { type: integer, enum: [-1, 0, 1], description: "-1 rejected, 0 pending, 1 accepted" }
+            schema: { $ref: "#/components/schemas/UserConnectionRequest" }
       responses:
-        "200":
-          description: "OK"
+        "201":
+          description: >-
+            The other party, enriched from their attendee profile -- the same
+            shape and the same fields GET returns for that connection.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ConnectionUserInfo" }
+        "400":
+          description: >-
+            Missing or empty `userId`; `userId` equals the caller
+            (self-connection); a `status` outside {-1, 0, 1}; or `status: 1`
+            with no pending request between the two users.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example:
+                message: cannot connect to yourself
+        "401":
+          description: "No authentication"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: >-
+            `status: 1` sent by the *initiator* of the pending request. Only the
+            recipient may accept.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example:
+                message: only the recipient of a request may accept it
+        "404":
+          description: >-
+            No attendee row for `userId`. Checked before any write, so a 404 no
+            longer leaves a pending connection behind.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example:
+                message: attendee not found
+        "500":
+          description: "Internal error"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
 
   /agenda/recommendations:
     get:
@@ -268,14 +516,17 @@ paths:
                 type: array
                 items: { $ref: "#/components/schemas/PickedForYouSession" }
 
-  /app-configs:
+  /users/me/matches:
     get:
-      tags: [events]
-      summary: Key/value app configuration
+      tags: [recommendations]
+      summary: Attendees the match-maker suggests the caller should meet
       description: >
-        Includes the single documented cache-invalidation signal `cacheVersion`
-        (see .claude/PLAN.md Phase G). No write route exists in this service;
-        values are seeded via SQL.
+        Proxies the external match-maker and swaps each item's `email` for this
+        backend's own attendee `uuid`, so a client never handles another
+        attendee's address. Someone the recommender named but this backend has
+        no attendee row for is still returned, with `uuid` as "" -- dropping the
+        row would silently shrink a list the recommender already reasoned about,
+        and the reason text is worth showing either way.
       responses:
         "200":
           description: "OK"
@@ -283,11 +534,212 @@ paths:
             application/json:
               schema:
                 type: array
-                items:
-                  type: object
-                  properties:
-                    key: { type: string }
-                    value: { type: string }
+                items: { $ref: "#/components/schemas/MatchedUser" }
+
+  /o2bar/recommendations:
+    get:
+      tags: [recommendations]
+      summary: O2Bar engineers to talk to, from the stored profile alone
+      description: >
+        The unprompted form: the recommender ranks engineers against the
+        profile POST /users/profile seeded, with no question to go on. Items
+        are enriched with the engineer's attendee `uuid` the same way
+        /users/me/matches is, but `email` is kept here -- booking a slot means
+        writing to the engineer directly.
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/O2BarRecommendation" }
+    post:
+      tags: [recommendations]
+      summary: O2Bar engineers to talk to, ranked against a typed question
+      description: >
+        Same response shape as the GET, ranked against `question` rather than
+        the stored profile alone. Answers 201, not 200 -- a legacy convention
+        this route keeps even though it creates nothing. The body is required
+        even when the attendee typed nothing: send `{}`, because an absent body
+        is a 400 rather than a fallback to the GET's behaviour.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/O2BarRecommendationInput" }
+      responses:
+        "201":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/O2BarRecommendation" }
+        "400": { description: "Absent or malformed JSON body" }
+
+  /qr/scan:
+    post:
+      tags: [coin]
+      summary: Redeem a QR code for O2C
+      description: >
+        Runs the coin-award workflow for the scanned code: the caller must be a
+        registered attendee, must not already have scanned this code, and (for a
+        session code) the session must have started and its scan window must still
+        be open. Returns no body on success -- the award is asynchronous and shows
+        up on GET /qr/summary.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/QrScanRequest" }
+      responses:
+        "200": { description: "Scan accepted. No body." }
+        "400":
+          description: >-
+            Malformed body; a `qrId` that is not a UUID (coin_allocation.qr_id is a
+            uuid column, so this used to reach the query and surface as a 22P02 cast
+            error, i.e. a 500 for bad input); an already-scanned code; no wallet for
+            the caller; or a session that has not started or whose scan window has
+            closed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example:
+                message: qrId must be a valid UUID
+        "401":
+          description: "No authentication"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: "The caller is not a registered attendee, or is a WSO2 employee and ineligible."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "500":
+          description: "Internal error"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /qr/history:
+    get:
+      tags: [coin]
+      summary: The caller's O2C allocation history
+      description: >
+        One entry per award, newest first. Covers every EventType -- GENERAL,
+        SESSION and O2BAR -- where it previously filtered to GENERAL only, so
+        session and O2 Bar awards were earned but never shown. `eventTypeName`
+        falls back to the event type itself ("SESSION", "O2BAR") for rows whose
+        stored event_data carries no label; it was previously always present
+        because only GENERAL rows were returned. Always an array, never null.
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/CoinAllocationHistory" }
+        "401":
+          description: "No authentication"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "500":
+          description: "Internal error"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /qr/summary:
+    get:
+      tags: [coin]
+      summary: The caller's pending and transferred O2C totals
+      description: >
+        Same widened scope as /qr/history: every EventType counts, not just
+        GENERAL. A balance that omitted SESSION and O2BAR awards disagreed with
+        the wallet.
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CoinAllocationSummary" }
+        "401":
+          description: "No authentication"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "500":
+          description: "Internal error"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /feedback:
+    post:
+      tags: [feedback]
+      summary: Submit session or event feedback
+      description: >
+        `feedbackType` selects which target is stored, and only one is ever
+        written: a SESSION submission stores the given `sessionId`, an EVENT
+        submission resolves the current conference server-side and stores its id,
+        ignoring any `sessionId` sent alongside. Returns no body.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FeedbackRequest" }
+      responses:
+        "201": { description: "Stored. No body." }
+        "400":
+          description: >-
+            Malformed body; a `feedbackType` outside {SESSION, EVENT}; a missing or
+            out-of-range `rating`; or a SESSION submission with no `sessionId` or a
+            `sessionId` that is not a UUID. A SESSION submission with no sessionId
+            used to be a 500.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example:
+                message: sessionId is required for session feedback
+        "401":
+          description: "No authentication"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "500":
+          description: >-
+            Internal error, including an EVENT submission made while no current
+            conference exists.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /app-configs:
+    get:
+      tags: [events]
+      summary: Key/value app configuration
+      description: >
+        Includes the cache-invalidation signal, whose key is the snake_case
+        literal `cache_version` (see .claude/PLAN.md Phase G) -- this file
+        previously called it `cacheVersion`, which no row has ever used; the
+        client maps it to a camelCase name of its own. Rows are returned verbatim
+        with their four audit columns, which the camelCase-JSON convention at the
+        top of this file does cover (`createdBy`/`createdOn`/`updatedBy`/
+        `updatedOn`) but the `key` values it does not: keys are opaque data, not
+        field names. No write route exists in this service; values are seeded via
+        SQL. Always an array, never null.
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AppConfig" }
 
   /activities:
     get:
@@ -455,6 +907,99 @@ paths:
         "400": { description: "Unknown order, reused transaction hash, or failed verification" }
         "403": { description: "The order belongs to another user" }
         "409": { description: "The order has already been processed" }
+        "503":
+          description: >-
+            Order confirmation is unavailable because the deployment has no
+            merchant wallet configured. The order is left PENDING and unchanged;
+            the same order can be confirmed once the deployment is fixed. This
+            was previously a 500. Clients must not retry the same payment on a
+            tight loop.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example:
+                message: >-
+                  Order confirmation is temporarily unavailable. Your order is
+                  unchanged; please try again later.
+        "500":
+          description: "Genuine fault while confirming"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /ai-maintenance-status:
+    get:
+      tags: [ai]
+      summary: Which AI features the client should offer
+      description: >
+        Advisory only, and the one route these flags describe. Nothing else on
+        the server is gated by them -- the six other AI routes serve normally
+        whichever way each flag is set, so a client that ignores this endpoint
+        gets working AI features rather than errors. It exists so a feature can
+        be pulled from the UI without a redeploy. Every flag defaults to false,
+        which means a backend deployed without the AI environment set reports
+        the features off rather than reporting them on and failing later.
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AIFeatureStatus" }
+
+  /users/profile:
+    post:
+      tags: [ai]
+      summary: Seed the caller's personalization profile
+      description: >
+        Writes the profile that the match-maker, the O2Bar recommender and
+        picked-for-you all read; none of them return anything useful until this
+        has run once. The AI service's response is relayed verbatim -- status,
+        content type and body -- so this is the one route whose failures reach
+        the client in that service's words rather than this backend's, and the
+        status below is the one it chose. This backend always sends the AI
+        service `override: true`, so re-posting an existing profile re-researches
+        it and replaces the stored row rather than reporting a conflict: the
+        response is another 201 with `created` true and a new `id`. The AI
+        service's already-exists reply is therefore unreachable through this
+        route, and a client may safely re-post on every launch.
+        The request body's `email` is ignored: it is overwritten with the
+        caller's JWT email before the relay (a mismatch is logged, not
+        rejected), and the AI service upserts on that key, so a caller cannot
+        target another attendee's profile.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PersonalizedProfileRequest" }
+      responses:
+        "201":
+          description: "Profile created, or already present"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PersonalizedProfileResponse" }
+        "400": { description: "Absent or malformed JSON body" }
+
+  /assistant/chat:
+    post:
+      tags: [ai]
+      summary: Ask the conference assistant a question
+      description: >
+        Stateless: the client owns the transcript and replays it in `history`
+        on every turn, so nothing is kept between calls and an omitted history
+        opens a fresh conversation. Answers 201, not 200 -- the same legacy
+        convention as the O2Bar POST.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChatRequest" }
+      responses:
+        "201":
+          description: "OK"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChatResponse" }
+        "400": { description: "Absent or malformed JSON body" }
 
 components:
   securitySchemes:
@@ -512,10 +1057,13 @@ components:
         speakers:
           type: array
           description: >-
-            Present only on the single-session reads (GET /sessions/{id},
-            GET /sessions/current). The agenda endpoints omit it: an agenda
-            card draws no speaker, so a client that wants them opens the
-            session.
+            Visible speakers on this session, resolved server-side. Present on
+            every route that serves a Session -- the single-session reads
+            (GET /sessions/{id}, GET /sessions/current) and both agenda routes
+            (GET /events/{eventId}/agendas, GET /event-agendas), which used to
+            omit it and force a per-session round trip to name a speaker. The
+            key is omitted entirely for a session with no visible speakers
+            (breaks, registration); it is never an empty array.
           items: { $ref: "#/components/schemas/SessionSpeaker" }
     SessionSpeaker:
       type: object
@@ -626,16 +1174,32 @@ components:
       properties:
         items:
           type: array
-          items: { $ref: "#/components/schemas/Attendee" }
+          description: "Always an array, never null. Excludes the caller's own row."
+          items: { $ref: "#/components/schemas/AttendeeSearchItem" }
         page:
           type: object
           properties:
             nextCursor: { type: string, description: "Empty when this is the last page." }
+      description: >-
+        No `total`: the text query filters over AES-GCM encrypted columns in Go,
+        so an exact filtered count would mean decrypting every attendee row.
     Attendee:
       type: object
+      description: >-
+        The caller's own row, as returned by GET /attendees/me and PATCH
+        /attendees. title/company/country/firstName/lastName are encrypted at
+        rest and decrypted server-side before this is built. POST
+        /attendees/search returns the narrower AttendeeSearchItem instead.
+      required: [id, email, isPartner, qrUri, createdOn, updatedOn]
       properties:
         id: { type: string, format: uuid }
         email: { type: string }
+        uuid: { type: string, description: "The attendee's idp_uuid. Omitted when unset." }
+        memberId:
+          type: string
+          description: >-
+            Salesforce member id. Own row only -- POST /attendees/search never
+            carries it. Omitted when unset.
         firstName: { type: string }
         lastName: { type: string }
         company: { type: string }
@@ -643,7 +1207,95 @@ components:
         country: { type: string }
         isPartner: { type: boolean }
         profileUrl: { type: string }
-        qrUri: { type: string }
+        qrUri:
+          type: string
+          description: >-
+            Check-in credential, derived from memberId. Own row only. Always
+            present as a key; empty when there is no memberId to derive it from.
+        createdBy: { type: string }
+        updatedBy: { type: string }
+        createdOn: { type: string, format: date-time }
+        updatedOn: { type: string, format: date-time }
+    AttendeeSearchItem:
+      type: object
+      description: >-
+        One POST /attendees/search hit: Attendee minus the check-in credential.
+        `memberId` is never included -- it is the credential served as qrUri, and
+        a directory search over every other attendee is the last place it belongs
+        (audit P2). `qrUri` is still emitted as a key but is always the empty
+        string here; only GET /attendees/me and GET /user-profile carry the real
+        one. `email` is returned and is load-bearing: the connections UI keys on it.
+      required: [id, email, isPartner, qrUri, createdOn, updatedOn]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string }
+        uuid: { type: string, description: "The attendee's idp_uuid, the key POST /users/me/connections takes." }
+        firstName: { type: string }
+        lastName: { type: string }
+        company: { type: string }
+        title: { type: string }
+        country: { type: string }
+        isPartner: { type: boolean }
+        profileUrl: { type: string }
+        qrUri: { type: string, description: "Always the empty string on search results." }
+        createdBy: { type: string }
+        updatedBy: { type: string }
+        createdOn: { type: string, format: date-time }
+        updatedOn: { type: string, format: date-time }
+    AttendeeInsert:
+      type: object
+      description: >-
+        POST /attendees body. Neither `uuid` nor `email` appears here: both are
+        identity and come from the caller's JWT (`sub` and `email`), never from
+        the body. A body `email` is accepted by the decoder and ignored, not
+        rejected -- sending one is not a 400.
+      required: [firstName, lastName]
+      properties:
+        firstName: { type: string, minLength: 1 }
+        lastName: { type: string, minLength: 1 }
+        title: { type: string }
+        company: { type: string }
+        country: { type: string }
+        memberId: { type: string }
+        isPartner: { type: boolean }
+        profileUrl: { type: string }
+    AttendeePatch:
+      type: object
+      description: "PATCH /attendees body. Every field is optional; omitted fields are left unchanged."
+      properties:
+        firstName: { type: string }
+        lastName: { type: string }
+        title: { type: string }
+        company: { type: string }
+        country: { type: string }
+        profileUrl: { type: string }
+    Profile:
+      type: object
+      description: "GET /user-profile response: the caller's attendee row projected for display."
+      required: [username, email, imageUrl, qrUri, isPartner]
+      properties:
+        username: { type: string, description: "The JWT given_name and family_name joined, trimmed." }
+        email: { type: string, description: "The JWT email claim." }
+        imageUrl: { type: string, description: "A hardcoded default avatar, identical for every user -- never derived from the token." }
+        qrUri: { type: string, description: "The caller's own check-in credential." }
+        isPartner: { type: boolean }
+    UserConnectionRequest:
+      type: object
+      required: [userId, status]
+      properties:
+        userId:
+          type: string
+          description: >-
+            idp_uuid of the other attendee. Required and non-empty -- an empty
+            target used to be written as a row against the empty string. Must not
+            be the caller's own id.
+        status:
+          type: integer
+          enum: [-1, 0, 1]
+          description: >-
+            -1 reject/withdraw, 0 send request, 1 accept. `1` is accepted only
+            from the recipient of an existing pending request; from the initiator
+            it is a 403, and with no pending request it is a 400.
     UserConnectionsInfo:
       type: object
       properties:
@@ -664,12 +1316,149 @@ components:
         country: { type: string }
     PickedForYouSession:
       type: object
-      description: "External recommendation, day-associated with `dayId` server-side."
+      description: >
+        External recommendation, day-associated with `dayId` server-side.
+        Deliberately the legacy session shape rather than the reshaped `Session`
+        one: the recommender owns these field names, which is also why the ids
+        are a mix of string and integer. `startTime`/`endTime` do carry a real
+        offset, but by inheritance rather than by this route's guarantee — the
+        recommender reads them from this backend's own agenda and echoes them
+        back. `title` and `description` come back the same way, which is why
+        they carry rich-text HTML that the reshaped `Session` fields also carry.
+      required: [id, title]
       properties:
         id: { type: string }
+        title: { type: string, description: "Sanitized rich-text HTML, echoed from the agenda -- render it, do not print it." }
+        description: { type: string, description: "Rich-text HTML on the same allowlist as `title`. Frequently empty." }
+        personalizedDescription: { type: string, description: "Why the recommender picked this session for this attendee. Plain text, unlike the two above." }
+        category: { type: string }
+        startTime: { type: string }
+        endTime: { type: string }
+        isFeedbackNotified: { type: boolean }
+        locationId: { type: string }
+        venueId: { type: string, description: "A string, while `venue.id` is an integer — the legacy shape, unaltered." }
+        agendaId: { type: integer }
+        dayId:
+          type: string
+          format: uuid
+          description: >
+            This backend's conference_days id, resolved from the
+            recommendation's `id` against marketingops.sessions. Its own
+            enrichment, not the recommender's. The key is absent when the id did
+            not resolve, and a failure of the lookup itself returns the
+            un-enriched array with a 200 rather than an error — a recommendation
+            without a day is still worth showing.
+        youtubeLink:
+          type: string
+          nullable: true
+          description: >
+            Always present, null when unset — the legacy contract, not this
+            file's omit-when-empty rule. The same holds for `slidesLink` and
+            `pdfLink`.
+        slidesLink: { type: string, nullable: true }
+        pdfLink: { type: string, nullable: true }
+        location: { $ref: "#/components/schemas/PickedForYouLocation" }
+        venue: { $ref: "#/components/schemas/PickedForYouVenue" }
+        agenda: { $ref: "#/components/schemas/PickedForYouAgenda" }
+        sessionSpeakers:
+          type: array
+          items: { $ref: "#/components/schemas/PickedForYouSessionSpeaker" }
+        sessionSponsors:
+          type: array
+          items: { type: object, additionalProperties: true }
+          description: "Free-form; this backend relays the elements without decoding them."
+    PickedForYouLocation:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        address: { type: string }
+        floorPlanUrl: { type: string }
+    PickedForYouVenue:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        geoCoordinates: { type: string }
+    PickedForYouAgenda:
+      type: object
+      properties:
+        id: { type: integer }
+        eventId: { type: integer }
+        name: { type: string }
+        date: { type: string }
+    PickedForYouSessionSpeaker:
+      type: object
+      properties:
+        id: { type: integer }
+        speakerId: { type: string }
+        sessionId: { type: integer }
+    MatchedUser:
+      type: object
+      description: >
+        A match-maker suggestion. Carries no email: the recommender's `email` is
+        consumed here to resolve `uuid` and is not passed on.
+      required: [uuid, name, company, title, reason, tags]
+      properties:
+        uuid:
+          type: string
+          description: >
+            The attendee's idp uuid, this backend's own enrichment. An empty
+            string when the recommender named someone with no attendee row here;
+            the row is kept rather than dropped, so a client should read "" as
+            "not addressable" rather than as a missing field.
+        name: { type: string }
+        company: { type: string }
         title: { type: string }
-        personalizedDescription: { type: string }
-        dayId: { type: string, format: uuid, description: "This backend's conference_days id; empty if the session id didn't resolve." }
+        reason: { type: string, description: "Why the recommender paired the two, in its own words." }
+        tags: { type: array, items: { type: string } }
+        profileUrl: { type: string, description: "The attendee's stored photo. Omitted when unset." }
+    O2BarRecommendation:
+      type: object
+      description: >
+        An O2Bar engineer suggestion. Unlike MatchedUser this keeps `email` —
+        the attendee reaches the engineer directly rather than through a
+        connection request.
+      required: [uuid, name, email, reason, recommendedQuestions, availableTimeSlots]
+      properties:
+        uuid: { type: string, description: "The engineer's attendee uuid; empty when unresolved, as in MatchedUser." }
+        name: { type: string }
+        email: { type: string }
+        reason: { type: string }
+        recommendedQuestions:
+          type: array
+          items: { type: string }
+          description: "Openers the recommender suggests, written against the caller's profile."
+        availableTimeSlots:
+          type: array
+          items: { $ref: "#/components/schemas/O2BarTimeSlot" }
+        profileUrl:
+          type: string
+          description: >
+            The recommender's own value when it supplied one, else the stored
+            attendee photo — the recommender's wins, being the fresher of the
+            two. Omitted when neither has one. Note this is the opposite of the
+            always-present-and-nullable link fields on PickedForYouSession.
+    O2BarTimeSlot:
+      type: object
+      description: >
+        ISO-8601 instants, relayed from the recommender verbatim. It builds them
+        with datetime.isoformat() over slots an admin entered as text, so unlike
+        the rest of this file's timestamps their offset is only as reliable as
+        that entry was — a slot stored without one is emitted without one.
+      required: [startTime, endTime]
+      properties:
+        startTime: { type: string }
+        endTime: { type: string }
+    O2BarRecommendationInput:
+      type: object
+      properties:
+        question:
+          type: string
+          description: >
+            What the attendee typed. Omit it to rank against the stored profile
+            alone, exactly as the GET does; the enclosing body is required
+            either way, so `{}` is how you send no question.
     Activity:
       type: object
       required: [id, name, startTime, endTime]
@@ -815,3 +1604,168 @@ components:
             How many the caller may still buy -- remaining stock, or remaining
             per-user allowance. Absent when the item is not purchasable at all, so
             the client does not mistake it for a sold-out line.
+    AIFeatureStatus:
+      type: object
+      description: >
+        Advisory flags for the client's own UI. Nothing on the server reads
+        them, so a false flag hides a feature rather than disabling it.
+      required: [enabledChatAssistant, enabledPersonalizedAgenda, enabledMatchMaker, enabledO2Bar]
+      properties:
+        enabledChatAssistant: { type: boolean, description: "Governs POST /assistant/chat." }
+        enabledPersonalizedAgenda: { type: boolean, description: "Governs GET /agenda/recommendations and POST /users/profile." }
+        enabledMatchMaker: { type: boolean, description: "Governs GET /users/me/matches." }
+        enabledO2Bar: { type: boolean, description: "Governs both /o2bar/recommendations verbs." }
+    PersonalizedProfileRequest:
+      type: object
+      description: >
+        Every other field is relayed as sent — this backend validates none of
+        them, and the AI service requires only a usable `email`, trimming the
+        rest rather than refusing it. `email` is the exception: it is replaced
+        with the caller's JWT email, so it need not be sent.
+      properties:
+        name: { type: string }
+        email:
+          type: string
+          description: >
+            Ignored. This backend overwrites it with the caller's JWT email
+            before relaying, so sending another attendee's address neither
+            targets nor rejects -- it is silently replaced (a mismatch is logged).
+            Kept in the schema because the relayed upstream payload requires the
+            key.
+        company: { type: string }
+        title: { type: string }
+        country: { type: string }
+        linkedInInfo:
+          type: string
+          description: >
+            Free text harvested from the attendee's LinkedIn, not a URL — it is
+            the bulk of what the recommenders reason over, so a profile seeded
+            without it produces thin matches. Note the casing: `linkedInInfo`,
+            capital I in "In".
+    PersonalizedProfileResponse:
+      type: object
+      description: >
+        The AI service's own response, relayed untouched. Documented here
+        because a client sees it, not because this backend builds it.
+      required: [email, created, message]
+      properties:
+        id:
+          type: string
+          description: >
+            The stored profile's id, and it changes on every re-post — the
+            override this backend sends is a delete-then-insert, so the id is
+            the new row's, not a stable handle on the attendee.
+        email: { type: string }
+        name: { type: string }
+        company: { type: string }
+        title: { type: string }
+        created: { type: boolean, description: "Always true through this route; see the override note on the operation." }
+        message: { type: string, description: "Human-readable, and the only field that says which path the AI service took." }
+    ChatRequest:
+      type: object
+      required: [question]
+      properties:
+        question:
+          type: string
+          description: >
+            This turn's question. Neither side rejects an empty one — the
+            assistant answers from `history` instead — and an over-long one is
+            truncated upstream rather than refused.
+        history:
+          type: array
+          items: { $ref: "#/components/schemas/ChatHistoryTurn" }
+          description: >
+            Every prior turn of this conversation, oldest first. The server
+            keeps nothing between calls, so omitting this starts a fresh
+            conversation rather than resuming the last one.
+    ChatHistoryTurn:
+      type: object
+      properties:
+        question: { type: string }
+        answer: { type: string }
+    ChatResponse:
+      type: object
+      required: [response, suggestions]
+      properties:
+        response: { type: string }
+        suggestions:
+          type: array
+          items: { type: string }
+          description: "Follow-up questions to offer as chips; empty when the assistant has none."
+    QrScanRequest:
+      type: object
+      required: [qrId]
+      properties:
+        qrId:
+          type: string
+          format: uuid
+          pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+          description: >-
+            The scanned code's id. Validated as a UUID before the query --
+            coin_allocation.qr_id is a uuid column, and a malformed value used to
+            surface as a 500.
+    CoinAllocationHistory:
+      type: object
+      required: [coinsAllocated, createdOn, transactionStatus, eventTypeName]
+      properties:
+        coinsAllocated: { type: number }
+        createdOn: { type: string, format: date-time }
+        transactionStatus:
+          type: string
+          enum: [PENDING, PROCESSING, TRANSFERRED, FAILED]
+        eventTypeName:
+          type: string
+          description: >-
+            The stored event_data label, falling back to the event type itself
+            ("SESSION", "O2BAR", "GENERAL") when the row carries none.
+    CoinAllocationSummary:
+      type: object
+      required: [totalPending, totalTransferred]
+      properties:
+        totalPending: { type: number }
+        totalTransferred: { type: number }
+    FeedbackRequest:
+      type: object
+      required: [feedbackType, rating]
+      properties:
+        feedbackType:
+          type: string
+          enum: [SESSION, EVENT]
+        sessionId:
+          type: string
+          format: uuid
+          pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+          description: >-
+            Required when feedbackType is SESSION (a 400 when absent, not a 500 as
+            before); ignored, never persisted, when feedbackType is EVENT -- an
+            EVENT row stores the current conference's id instead.
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          description: >-
+            Required, and there is no default: an omitted rating is a 400, not a
+            stored 0. Matches the client's 5-star widget. The feedback table has
+            no CHECK on this column, so the bound is enforced here.
+        comment: { type: string }
+    AppConfig:
+      type: object
+      description: >-
+        One app_config row, returned verbatim. `key` is opaque operational data,
+        not a field name, so it keeps its stored snake_case form (e.g.
+        `cache_version`) while the audit columns follow this file's camelCase
+        convention.
+      required: [key, value, createdBy, createdOn, updatedBy, updatedOn]
+      properties:
+        key: { type: string }
+        value: { type: string }
+        createdBy: { type: string }
+        createdOn: { type: string, format: date-time }
+        updatedBy: { type: string }
+        updatedOn: { type: string, format: date-time }
+    ErrorResponse:
+      type: object
+      description: "The error envelope every handler in this service emits."
+      required: [message]
+      properties:
+        message: { type: string }
