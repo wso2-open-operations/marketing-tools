@@ -52,7 +52,10 @@ func (f *eventFixture) insertDay(t *testing.T, ctx context.Context, dayIndex int
 	t.Helper()
 	var dayID string
 	err := testDB.QueryRow(ctx,
-		"INSERT INTO conference_days (config_id, day_index, date, label, start_minute) VALUES ($1, $2, $3, $4, $5) RETURNING id",
+		// end_minute is explicit: the live CHECK is start_minute < end_minute
+		// <= 1440 and the column DEFAULTs to 17, which fails for any real
+		// start_minute. 1020 = 17:00, an 08:00-17:00 conference day.
+		"INSERT INTO conference_days (config_id, day_index, date, label, start_minute, end_minute) VALUES ($1, $2, $3, $4, $5, 1020) RETURNING id",
 		f.configID, dayIndex, dateStr, label, startMinute,
 	).Scan(&dayID)
 	if err != nil {
@@ -83,7 +86,7 @@ func (f *eventFixture) insertSession(t *testing.T, ctx context.Context, dayID st
 
 func TestEventRepo_GetEvents_OrdersByStartDateDescendingWithLatestCurrent(t *testing.T) {
 	ctx := context.Background()
-	repo := NewEventRepo(testDB, 5, time.UTC, "UTC")
+	repo := NewEventRepo(testDB, 5, speakerTestKey, time.UTC, "UTC")
 
 	// Dates far outside any real or other-test data so ordering is
 	// deterministic regardless of what else exists in this shared dev DB.
@@ -119,7 +122,7 @@ func TestEventRepo_GetEvents_OrdersByStartDateDescendingWithLatestCurrent(t *tes
 
 func TestEventRepo_GetCurrentEvent_ReturnsLatestStartDate(t *testing.T) {
 	ctx := context.Background()
-	repo := NewEventRepo(testDB, 5, time.UTC, "UTC")
+	repo := NewEventRepo(testDB, 5, speakerTestKey, time.UTC, "UTC")
 
 	newEventFixture(t, ctx, "TDD Current Older", "2020-02-02")
 	latest := newEventFixture(t, ctx, "TDD Current Latest", "2099-02-02")
@@ -142,7 +145,7 @@ func TestEventRepo_GetCurrentEvent_ReturnsLatestStartDate(t *testing.T) {
 // the two agree rather than asserting either one in isolation.
 func TestEventRepo_GetCurrentEvent_AgreesWithGetEventsOnTiedStartDates(t *testing.T) {
 	ctx := context.Background()
-	repo := NewEventRepo(testDB, 5, time.UTC, "UTC")
+	repo := NewEventRepo(testDB, 5, speakerTestKey, time.UTC, "UTC")
 
 	const tiedDate = "2099-03-03"
 	first := newEventFixture(t, ctx, "TDD Tied A", tiedDate)
@@ -191,7 +194,7 @@ func TestEventRepo_GetCurrentEvent_AgreesWithGetEventsOnTiedStartDates(t *testin
 // content team actually entered.
 func TestEventRepo_GetEvents_DateBoundsSpanTheEnteredDays(t *testing.T) {
 	ctx := context.Background()
-	repo := NewEventRepo(testDB, 5, time.UTC, "UTC")
+	repo := NewEventRepo(testDB, 5, speakerTestKey, time.UTC, "UTC")
 
 	f := newEventFixture(t, ctx, "TDD Dated Conference", "2099-04-01")
 	// Inserted out of order on purpose: the end is the greatest date, not the
@@ -228,7 +231,7 @@ func TestEventRepo_GetEvents_DateBoundsSpanTheEnteredDays(t *testing.T) {
 // it is the reason the endDate key carries no omitempty.
 func TestEventRepo_GetEvents_EndDateFallsBackToStartDateWithoutDays(t *testing.T) {
 	ctx := context.Background()
-	repo := NewEventRepo(testDB, 5, time.UTC, "UTC")
+	repo := NewEventRepo(testDB, 5, speakerTestKey, time.UTC, "UTC")
 
 	f := newEventFixture(t, ctx, "TDD Dayless Conference", "2099-05-05")
 
@@ -254,7 +257,7 @@ func TestEventRepo_GetEvents_EndDateFallsBackToStartDateWithoutDays(t *testing.T
 // assuming the fixture won -- other rows in this shared dev DB may outrank it.
 func TestEventRepo_GetCurrentEvent_ReportsTheSameDateBoundsAsGetEvents(t *testing.T) {
 	ctx := context.Background()
-	repo := NewEventRepo(testDB, 5, time.UTC, "UTC")
+	repo := NewEventRepo(testDB, 5, speakerTestKey, time.UTC, "UTC")
 
 	f := newEventFixture(t, ctx, "TDD Current Dated", "2099-06-01")
 	f.insertDay(t, ctx, 0, "2099-06-01", "Day 1", 480)
@@ -287,7 +290,7 @@ func TestEventRepo_GetCurrentEvent_ReportsTheSameDateBoundsAsGetEvents(t *testin
 
 func TestEventRepo_GetEvents_ReadsTimezoneAndVenueColumns(t *testing.T) {
 	ctx := context.Background()
-	repo := NewEventRepo(testDB, 5, time.UTC, "UTC")
+	repo := NewEventRepo(testDB, 5, speakerTestKey, time.UTC, "UTC")
 
 	var configID string
 	if err := testDB.QueryRow(ctx,
@@ -328,7 +331,7 @@ func TestEventRepo_GetEvents_ReadsTimezoneAndVenueColumns(t *testing.T) {
 
 func TestEventRepo_GetEventAgendas_ResolvesCurrentToLatestStartDate(t *testing.T) {
 	ctx := context.Background()
-	repo := NewEventRepo(testDB, 5, time.UTC, "UTC")
+	repo := NewEventRepo(testDB, 5, speakerTestKey, time.UTC, "UTC")
 
 	older := newEventFixture(t, ctx, "TDD Older Conference", "2020-02-01")
 	older.insertDay(t, ctx, 0, "2020-02-01", "Day 1", 480)
@@ -358,7 +361,7 @@ func TestEventRepo_GetEventAgendas_ResolvesCurrentToLatestStartDate(t *testing.T
 
 func TestEventRepo_GetEventAgendas_ByExplicitEventID(t *testing.T) {
 	ctx := context.Background()
-	repo := NewEventRepo(testDB, 5, time.UTC, "UTC")
+	repo := NewEventRepo(testDB, 5, speakerTestKey, time.UTC, "UTC")
 
 	// Even though this config isn't the latest by start_date, requesting it
 	// by explicit id must still return its days.
@@ -389,7 +392,7 @@ func TestEventRepo_GetEventAgendas_ByExplicitEventID(t *testing.T) {
 
 func TestEventRepo_GetEventAgendas_UnknownEventIDReturnsEmptyNoError(t *testing.T) {
 	ctx := context.Background()
-	repo := NewEventRepo(testDB, 5, time.UTC, "UTC")
+	repo := NewEventRepo(testDB, 5, speakerTestKey, time.UTC, "UTC")
 
 	agendas, err := repo.GetEventAgendas(ctx, newUUID())
 	if err != nil {
@@ -402,7 +405,7 @@ func TestEventRepo_GetEventAgendas_UnknownEventIDReturnsEmptyNoError(t *testing.
 
 func TestEventRepo_GetEventAgendas_DayWithZeroSessionsHasEmptySessionsArray(t *testing.T) {
 	ctx := context.Background()
-	repo := NewEventRepo(testDB, 5, time.UTC, "UTC")
+	repo := NewEventRepo(testDB, 5, speakerTestKey, time.UTC, "UTC")
 
 	fixture := newEventFixture(t, ctx, "TDD Empty Day Conference", "2200-01-01")
 	dayID := fixture.insertDay(t, ctx, 0, "2200-01-01", "Day 1", 480)
@@ -424,7 +427,7 @@ func TestEventRepo_GetEventAgendas_DayWithZeroSessionsHasEmptySessionsArray(t *t
 
 func TestEventRepo_GetEventAgendas_NestedSessionTimeWindowMatchesGetSession(t *testing.T) {
 	ctx := context.Background()
-	eventRepo := NewEventRepo(testDB, 5, time.UTC, "UTC")
+	eventRepo := NewEventRepo(testDB, 5, speakerTestKey, time.UTC, "UTC")
 	sessionRepo := NewSessionRepo(testDB, 5, speakerTestKey, time.UTC)
 
 	fixture := newEventFixture(t, ctx, "TDD Window Match Conference", "2300-01-01")
@@ -460,7 +463,7 @@ func TestEventRepo_GetEventAgendas_NestedSessionTimeWindowMatchesGetSession(t *t
 func TestEventRepo_GetEventAgendas_TracklessSessionGetsRoomColorToken(t *testing.T) {
 	ctx := context.Background()
 	requireColorTokenColumns(t, ctx)
-	repo := NewEventRepo(testDB, 5, time.UTC, "UTC")
+	repo := NewEventRepo(testDB, 5, speakerTestKey, time.UTC, "UTC")
 
 	fixture := newEventFixture(t, ctx, "TDD Room Colour Conference", "2301-01-01")
 	dayID := fixture.insertDay(t, ctx, 0, "2301-01-01", "Day 1", 480)
@@ -474,12 +477,13 @@ func TestEventRepo_GetEventAgendas_TracklessSessionGetsRoomColorToken(t *testing
 	}
 	t.Cleanup(func() { _, _ = testDB.Exec(context.Background(), "DELETE FROM rooms WHERE id = $1", roomID) })
 	setColorToken(t, ctx, "rooms", roomID, "blue")
+	setKeynoteRoom(t, ctx, fixture.configID, roomID)
 
 	var sessionID string
 	if err := testDB.QueryRow(ctx,
-		`INSERT INTO sessions (config_id, kind, title, duration_slots, day_id, slot_index, room_id)
-		 VALUES ($1, 'keynote', 'TDD Trackless Keynote', 6, $2, 0, $3) RETURNING id`,
-		fixture.configID, dayID, roomID,
+		`INSERT INTO sessions (config_id, kind, title, duration_slots, day_id, slot_index)
+		 VALUES ($1, 'keynote', 'TDD Trackless Keynote', 6, $2, 0) RETURNING id`,
+		fixture.configID, dayID,
 	).Scan(&sessionID); err != nil {
 		t.Fatalf("failed to insert session: %v", err)
 	}
@@ -507,7 +511,7 @@ func TestEventRepo_GetEventAgendas_TracklessSessionGetsRoomColorToken(t *testing
 // color_token column to hold.
 func TestEventRepo_GetEventAgendas_UnroomedUntrackedSessionsGetTheDefaultToken(t *testing.T) {
 	ctx := context.Background()
-	repo := NewEventRepo(testDB, 5, time.UTC, "UTC")
+	repo := NewEventRepo(testDB, 5, speakerTestKey, time.UTC, "UTC")
 
 	fixture := newEventFixture(t, ctx, "TDD Kind Fallback Conference", "2303-01-01")
 	dayID := fixture.insertDay(t, ctx, 0, "2303-01-01", "Day 1", 480)
@@ -549,7 +553,7 @@ func TestEventRepo_GetEventAgendas_UnroomedUntrackedSessionsGetTheDefaultToken(t
 func TestEventRepo_GetEventAgendas_RoomColorTokenWinsOverTrack(t *testing.T) {
 	ctx := context.Background()
 	requireColorTokenColumns(t, ctx)
-	repo := NewEventRepo(testDB, 5, time.UTC, "UTC")
+	repo := NewEventRepo(testDB, 5, speakerTestKey, time.UTC, "UTC")
 
 	fixture := newEventFixture(t, ctx, "TDD Track Precedence Conference", "2304-01-01")
 	dayID := fixture.insertDay(t, ctx, 0, "2304-01-01", "Day 1", 480)
@@ -563,6 +567,7 @@ func TestEventRepo_GetEventAgendas_RoomColorTokenWinsOverTrack(t *testing.T) {
 	}
 	t.Cleanup(func() { _, _ = testDB.Exec(context.Background(), "DELETE FROM rooms WHERE id = $1", roomID) })
 	setColorToken(t, ctx, "rooms", roomID, "blue")
+	setKeynoteRoom(t, ctx, fixture.configID, roomID)
 
 	trackID := insertTrack(t, ctx, dayID, &roomID)
 	setColorToken(t, ctx, "tracks", trackID, "red")
@@ -570,9 +575,9 @@ func TestEventRepo_GetEventAgendas_RoomColorTokenWinsOverTrack(t *testing.T) {
 	// A keynote with a token on both sides: the room's must win.
 	var sessionID string
 	if err := testDB.QueryRow(ctx,
-		`INSERT INTO sessions (config_id, kind, title, duration_slots, day_id, slot_index, room_id, track_id)
-		 VALUES ($1, 'keynote', 'TDD Tracked Keynote', 6, $2, 0, $3, $4) RETURNING id`,
-		fixture.configID, dayID, roomID, trackID,
+		`INSERT INTO sessions (config_id, kind, title, duration_slots, day_id, slot_index, track_id)
+		 VALUES ($1, 'keynote', 'TDD Tracked Keynote', 6, $2, 0, $3) RETURNING id`,
+		fixture.configID, dayID, trackID,
 	).Scan(&sessionID); err != nil {
 		t.Fatalf("failed to insert session: %v", err)
 	}
@@ -595,7 +600,7 @@ func TestEventRepo_GetEventAgendas_RoomColorTokenWinsOverTrack(t *testing.T) {
 func TestEventRepo_GetEventAgendas_UntokenedRoomFallsThroughToTrack(t *testing.T) {
 	ctx := context.Background()
 	requireColorTokenColumns(t, ctx)
-	repo := NewEventRepo(testDB, 5, time.UTC, "UTC")
+	repo := NewEventRepo(testDB, 5, speakerTestKey, time.UTC, "UTC")
 
 	fixture := newEventFixture(t, ctx, "TDD Uncoloured Room Conference", "2302-01-01")
 	dayID := fixture.insertDay(t, ctx, 0, "2302-01-01", "Day 1", 480)
@@ -614,9 +619,9 @@ func TestEventRepo_GetEventAgendas_UntokenedRoomFallsThroughToTrack(t *testing.T
 
 	var sessionID string
 	if err := testDB.QueryRow(ctx,
-		`INSERT INTO sessions (config_id, kind, title, duration_slots, day_id, slot_index, room_id, track_id)
-		 VALUES ($1, 'break', 'TDD Uncoloured Break', 6, $2, 0, $3, $4) RETURNING id`,
-		fixture.configID, dayID, roomID, trackID,
+		`INSERT INTO sessions (config_id, kind, title, duration_slots, day_id, slot_index, track_id)
+		 VALUES ($1, 'session', 'TDD Uncoloured Talk', 6, $2, 0, $3) RETURNING id`,
+		fixture.configID, dayID, trackID,
 	).Scan(&sessionID); err != nil {
 		t.Fatalf("failed to insert session: %v", err)
 	}
@@ -639,7 +644,7 @@ func TestEventRepo_GetEventAgendas_UntokenedRoomFallsThroughToTrack(t *testing.T
 // since the join is on sessions.section_id and ignores the kind.
 func TestEventRepo_GetEventAgendas_ResolvesTrackGroupForBothSectionKinds(t *testing.T) {
 	ctx := context.Background()
-	repo := NewEventRepo(testDB, 5, time.UTC, "UTC")
+	repo := NewEventRepo(testDB, 5, speakerTestKey, time.UTC, "UTC")
 
 	fixture := newEventFixture(t, ctx, "TDD Track Group Conference", "2303-01-01")
 	dayID := fixture.insertDay(t, ctx, 0, "2303-01-01", "Day 1", 480)
@@ -673,20 +678,24 @@ func TestEventRepo_GetEventAgendas_ResolvesTrackGroupForBothSectionKinds(t *test
 	// The upstream sessions_validate_placement trigger pins each section kind to
 	// a session kind: a track section takes only 'session', a keynote section
 	// only 'keynote'.
+	// A track-kind section additionally requires the session to carry that
+	// section's own track_id -- sessions_validate_placement rejects the pair
+	// otherwise. A keynote-kind section is day-scoped and takes none.
 	for _, sec := range []struct {
 		sectionID   string
 		sessionKind string
 		slotIndex   int
 		title       string
+		trackID     *string
 	}{
-		{trackSectionID, "session", 0, "TDD Sectioned Session"},
-		{keynoteSectionID, "keynote", 6, "TDD Sectioned Keynote"},
+		{trackSectionID, "session", 0, "TDD Sectioned Session", &trackID},
+		{keynoteSectionID, "keynote", 6, "TDD Sectioned Keynote", nil},
 	} {
 		var sessionID string
 		if err := testDB.QueryRow(ctx,
-			`INSERT INTO sessions (config_id, kind, title, duration_slots, day_id, slot_index, section_id)
-			 VALUES ($1, $2, $3, 6, $4, $5, $6) RETURNING id`,
-			fixture.configID, sec.sessionKind, sec.title, dayID, sec.slotIndex, sec.sectionID,
+			`INSERT INTO sessions (config_id, kind, title, duration_slots, day_id, slot_index, section_id, track_id)
+			 VALUES ($1, $2, $3, 6, $4, $5, $6, $7) RETURNING id`,
+			fixture.configID, sec.sessionKind, sec.title, dayID, sec.slotIndex, sec.sectionID, sec.trackID,
 		).Scan(&sessionID); err != nil {
 			t.Fatalf("failed to insert session: %v", err)
 		}
@@ -712,7 +721,7 @@ func TestEventRepo_GetEventAgendas_ResolvesTrackGroupForBothSectionKinds(t *test
 
 func TestEventRepo_GetEventAgendas_SessionWithNoSectionHasNoTrackGroup(t *testing.T) {
 	ctx := context.Background()
-	repo := NewEventRepo(testDB, 5, time.UTC, "UTC")
+	repo := NewEventRepo(testDB, 5, speakerTestKey, time.UTC, "UTC")
 
 	fixture := newEventFixture(t, ctx, "TDD No Section Conference", "2304-01-01")
 	dayID := fixture.insertDay(t, ctx, 0, "2304-01-01", "Day 1", 480)

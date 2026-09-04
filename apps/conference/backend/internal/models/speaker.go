@@ -81,8 +81,9 @@ type SpeakerFilter struct {
 	// EventID restricts to speakers with at least one session in this
 	// conference_config id (and shows only those sessions).
 	EventID string
-	// Query is a case-insensitive substring match on the (decrypted) speaker
-	// name. Matched in Go, not SQL: name is encrypted at rest, so an SQL ILIKE
-	// over the ciphertext is meaningless.
+	// Query is a case-insensitive substring match over the (decrypted) speaker
+	// name, title and company -- a directory search for "wso2" has to find the
+	// people who work there. Matched in Go, not SQL: all three columns are
+	// encrypted at rest, so an SQL ILIKE over the ciphertext is meaningless.
 	Query string
 }

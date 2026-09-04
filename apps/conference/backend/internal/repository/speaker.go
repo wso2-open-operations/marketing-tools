@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 	"time"
@@ -174,13 +175,23 @@ func (r *SpeakerRepo) fetchSpeakerSessions(ctx context.Context, speakerID string
 // resolves them there (see fetchSpeakerSessions).
 //
 // filter.EventID restricts to speakers with at least one session in that
-// conference_config. filter.Query is a case-insensitive substring match on the
-// decrypted name. Both name ordering and the name search run in Go because
-// name is encrypted at rest -- an SQL ORDER BY / ILIKE over the ciphertext
-// would be meaningless.
+// conference_config. filter.Query is a case-insensitive substring match over
+// the decrypted name, title and company, so "wso2" finds the people whose
+// company says WSO2 rather than nothing. Company is not part of the returned
+// row; it is read only to be searched. Both the ordering and the search run in
+// Go because those columns are encrypted at rest -- an SQL ORDER BY / ILIKE
+// over the ciphertext would be meaningless, so there is no index to push this
+// into (see
+// migrations/008_attendee_search_index.sql, which hit the same wall). The cost
+// is one extra decrypt per row per searchable field; the directory is a few
+// hundred rows and already decrypts every one of them.
+//
+// A row this key cannot decrypt is skipped, not fatal: the serving key is not
+// necessarily the key every historical row was written with, and returning the
+// other 262 speakers beats 500ing the whole directory over one of them.
 func (r *SpeakerRepo) GetSpeakerSummary(ctx context.Context, filter models.SpeakerFilter) ([]models.SpeakerSummary, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT sp.id, sp.name, sp.title, sp.bio, sp.photo_url
+		`SELECT sp.id, sp.name, sp.title, sp.bio, sp.company, sp.photo_url
 		 FROM speakers sp
 		 WHERE sp.visible
 		   AND ($1 = '' OR EXISTS (
@@ -199,26 +210,40 @@ func (r *SpeakerRepo) GetSpeakerSummary(ctx context.Context, filter models.Speak
 
 	for rows.Next() {
 		var id, name, title, bio string
-		var photoURL *string
+		var company, photoURL *string
 
-		if err := rows.Scan(&id, &name, &title, &bio, &photoURL); err != nil {
+		if err := rows.Scan(&id, &name, &title, &bio, &company, &photoURL); err != nil {
 			return nil, err
 		}
 
+		// The id is the whole log line on purpose: the field that failed to
+		// decrypt is PII, and so is the ciphertext.
 		decryptedName, err := r.decrypt(name)
 		if err != nil {
-			return nil, fmt.Errorf("decrypting name: %w", err)
-		}
-		if q != "" && !strings.Contains(strings.ToLower(decryptedName), q) {
+			slog.WarnContext(ctx, "skipping speaker with undecryptable field", "speakerId", id, "field", "name")
 			continue
 		}
 		decryptedTitle, err := r.decrypt(title)
 		if err != nil {
-			return nil, fmt.Errorf("decrypting title: %w", err)
+			slog.WarnContext(ctx, "skipping speaker with undecryptable field", "speakerId", id, "field", "title")
+			continue
+		}
+		// company is nullable, and is read only to be searched -- it is not
+		// part of the directory row.
+		decryptedCompany := ""
+		if company != nil {
+			if decryptedCompany, err = r.decrypt(*company); err != nil {
+				slog.WarnContext(ctx, "skipping speaker with undecryptable field", "speakerId", id, "field", "company")
+				continue
+			}
+		}
+		if q != "" && !matchesAny(q, decryptedName, decryptedTitle, decryptedCompany) {
+			continue
 		}
 		decryptedBio, err := r.decrypt(bio)
 		if err != nil {
-			return nil, fmt.Errorf("decrypting bio: %w", err)
+			slog.WarnContext(ctx, "skipping speaker with undecryptable field", "speakerId", id, "field", "bio")
+			continue
 		}
 
 		summary := models.SpeakerSummary{
@@ -240,6 +265,17 @@ func (r *SpeakerRepo) GetSpeakerSummary(ctx context.Context, filter models.Speak
 		return strings.ToLower(summaries[i].Name) < strings.ToLower(summaries[j].Name)
 	})
 	return summaries, nil
+}
+
+// matchesAny reports whether q (already lowercased and trimmed) is a substring
+// of any of the given fields, case-insensitively.
+func matchesAny(q string, fields ...string) bool {
+	for _, f := range fields {
+		if strings.Contains(strings.ToLower(f), q) {
+			return true
+		}
+	}
+	return false
 }
 
 // sessionStartsBefore orders SpeakerSessions by start time, with unscheduled

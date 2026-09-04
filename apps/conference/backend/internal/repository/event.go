@@ -33,6 +33,7 @@ import (
 type EventRepo struct {
 	pool        *pgxpool.Pool
 	slotMinutes int
+	piiKey      []byte
 	loc         *time.Location
 	venueTZ     string
 	caps        schemaCaps
@@ -44,16 +45,17 @@ type EventRepo struct {
 // venueTZ is its IANA name, surfaced in the payload as Timezone so the client
 // stops hardcoding its own. A nil loc defaults to UTC.
 //
-// No PII key is needed: the agenda embeds no speakers, so nothing in this
-// repo's output is encrypted at rest.
-func NewEventRepo(pool *pgxpool.Pool, slotMinutes int, loc *time.Location, venueTZ string) *EventRepo {
+// piiKey decrypts the speaker columns embedded on each agenda session
+// (speakers.name/title/company are encrypted at rest -- see internal/crypto).
+// It is the same key SessionRepo takes, for the same join.
+func NewEventRepo(pool *pgxpool.Pool, slotMinutes int, piiKey []byte, loc *time.Location, venueTZ string) *EventRepo {
 	if loc == nil {
 		loc = time.UTC
 	}
 	if venueTZ == "" {
 		venueTZ = loc.String()
 	}
-	return &EventRepo{pool: pool, slotMinutes: slotMinutes, loc: loc, venueTZ: venueTZ}
+	return &EventRepo{pool: pool, slotMinutes: slotMinutes, piiKey: piiKey, loc: loc, venueTZ: venueTZ}
 }
 
 // eventDateCols selects the two date bounds every Event carries. start_date is
@@ -192,10 +194,13 @@ func (r *EventRepo) GetCurrentEvent(ctx context.Context) (models.Event, error) {
 // returns an empty slice, not an error -- matches the old Ballerina
 // per-day-loop behavior, where no rows was never an error case.
 //
-// The nested sessions carry no speakers. This is the agenda grid: it renders
-// times, titles, rooms and tracks, and a client that opens one session reads
-// GET /sessions/:id for the rest. Embedding a speaker array per session here
-// cost every day's payload a join the list never drew.
+// The nested sessions carry their speakers, the same shape GET /sessions/:id
+// and GET /sessions/current embed (fetchSessionSpeakers, one extra query for
+// the whole agenda -- not one per session). They used to be omitted to keep
+// the day payload small, but the AI picked-for-you service reads its
+// sessionSpeakers off this response and got nothing, and a client that has to
+// re-fetch each session to name its speakers is the client-side join this API
+// exists to remove.
 //
 // eventID may be the literal string "current", which resolves to the
 // conference_config with the latest start_date (same rule as GetEvents).
@@ -230,7 +235,7 @@ func (r *EventRepo) GetEventAgendas(ctx context.Context, eventID string) ([]mode
 			 LEFT JOIN track_sections sec ON sec.id = s.section_id
 			 %s
 			 WHERE d.config_id = $1
-			 ORDER BY d.day_index, s.slot_index`,
+			 ORDER BY d.day_index, s.slot_index NULLS LAST, s.id`,
 			topicExpr, r.caps.colorTokenSQL(ctx, r.pool), topicJoin,
 		),
 		configID,
@@ -354,9 +359,27 @@ func (r *EventRepo) GetEventAgendas(ctx context.Context, eventID string) ([]mode
 		return nil, err
 	}
 
+	sessionIDs := make([]string, 0)
+	for _, id := range order {
+		for _, s := range byDay[id].Sessions {
+			sessionIDs = append(sessionIDs, s.ID)
+		}
+	}
+	speakers, err := fetchSessionSpeakers(ctx, r.pool, r.piiKey, sessionIDs)
+	if err != nil {
+		return nil, err
+	}
+
 	result := make([]models.EventAgenda, 0, len(order))
 	for _, id := range order {
-		result = append(result, *byDay[id])
+		agenda := byDay[id]
+		for i := range agenda.Sessions {
+			// Left nil, not an empty slice, when a session has no speakers:
+			// omitempty then drops the key rather than shipping "speakers": []
+			// on every break and registration row.
+			agenda.Sessions[i].Speakers = speakers[agenda.Sessions[i].ID]
+		}
+		result = append(result, *agenda)
 	}
 	return result, nil
 }

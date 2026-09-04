@@ -55,7 +55,10 @@ func newSessionFixture(t *testing.T, ctx context.Context, dateStr string, startM
 
 	var dayID string
 	err = testDB.QueryRow(ctx,
-		"INSERT INTO conference_days (config_id, day_index, date, start_minute) VALUES ($1, 0, $2, $3) RETURNING id",
+		// end_minute is explicit: the live CHECK is start_minute < end_minute
+		// <= 1440 and the column DEFAULTs to 17, which fails for any real
+		// start_minute. 1020 = 17:00, an 08:00-17:00 conference day.
+		"INSERT INTO conference_days (config_id, day_index, date, start_minute, end_minute) VALUES ($1, 0, $2, $3, 1020) RETURNING id",
 		configID, dateStr, startMinute,
 	).Scan(&dayID)
 	if err != nil {
@@ -122,7 +125,7 @@ func newConfiguredSessionFixture(t *testing.T, ctx context.Context, startDate, d
 
 	var dayID string
 	err = testDB.QueryRow(ctx,
-		"INSERT INTO conference_days (config_id, day_index, date, start_minute) VALUES ($1, 0, $2, 480) RETURNING id",
+		"INSERT INTO conference_days (config_id, day_index, date, start_minute, end_minute) VALUES ($1, 0, $2, 480, 1020) RETURNING id",
 		configID, dateStr,
 	).Scan(&dayID)
 	if err != nil {
@@ -474,6 +477,23 @@ func requireColorTokenColumns(t *testing.T, ctx context.Context) {
 	}
 }
 
+// setKeynoteRoom points a conference's keynote room at one room.
+//
+// sessions.room_id is derived, not stored: the upstream
+// sessions_apply_room_mapping trigger overwrites whatever an INSERT supplies
+// with resolve_session_room(kind, config_id, track_id, section_id), unless
+// room_is_manual is set. For kind = 'keynote' that resolves to
+// conference_config.keynote_room_id, so a keynote is roomed by pointing the
+// config at the room -- which is also how the content team does it upstream.
+func setKeynoteRoom(t *testing.T, ctx context.Context, configID, roomID string) {
+	t.Helper()
+	if _, err := testDB.Exec(ctx,
+		"UPDATE conference_config SET keynote_room_id = $1 WHERE id = $2", roomID, configID,
+	); err != nil {
+		t.Fatalf("failed to set keynote_room_id: %v", err)
+	}
+}
+
 // setColorToken puts a token on one rooms/tracks row. The column is nullable
 // upstream, so nothing needs undoing beyond the row's own cleanup.
 func setColorToken(t *testing.T, ctx context.Context, table, id, token string) {
@@ -652,7 +672,7 @@ func insertSessionInConfigTZ(t *testing.T, ctx context.Context, tz, dateStr stri
 
 	var dayID string
 	if err := testDB.QueryRow(ctx,
-		"INSERT INTO conference_days (config_id, day_index, date, start_minute) VALUES ($1, 0, $2, 480) RETURNING id",
+		"INSERT INTO conference_days (config_id, day_index, date, start_minute, end_minute) VALUES ($1, 0, $2, 480, 1020) RETURNING id",
 		configID, dateStr,
 	).Scan(&dayID); err != nil {
 		t.Fatalf("failed to insert day: %v", err)

@@ -47,8 +47,9 @@ func NewSpeakerHandler(reader SpeakerReader) *SpeakerHandler {
 }
 
 // List handles GET /speakers. Optional query params: eventId (restrict to
-// speakers in that conference) and q (case-insensitive name search). Both are
-// applied server-side so the client stops over-fetching and filtering itself.
+// speakers in that conference) and q (case-insensitive search over name, title
+// and company). Both are applied server-side so the client stops over-fetching
+// and filtering itself.
 //
 // eventId is bound as a uuid in the summary query, so it gets the same guard
 // SpeakerHandler.Get applies to :id -- without it a non-UUID value reached the
