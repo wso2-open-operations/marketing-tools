@@ -14,6 +14,19 @@
 -- specific language governing permissions and limitations
 -- under the License.
 
+-- SUPERSEDED -- DO NOT APPLY.
+--
+-- This migration was never applied to any deployed database, and must not be.
+-- It creates an event-level registration marker that nothing writes to, so
+-- applying it would leave IsRegistered() answering false for everybody and coin
+-- earning silently dead rather than loudly broken.
+--
+-- The live registration list is marketingops.attendee_registration, owned and
+-- written by the agenda-organizer app: one row per (attendee, session), with
+-- attendee_id holding the attendee's email encrypted with PII_ENCRYPTION_KEY.
+-- internal/repository/attendee.go reads that table instead. Kept here only so
+-- the migration numbering stays contiguous.
+
 CREATE TABLE agenda_attendee (
   attendee_id  TEXT PRIMARY KEY,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()

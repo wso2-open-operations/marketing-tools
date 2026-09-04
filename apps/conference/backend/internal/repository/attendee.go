@@ -18,48 +18,73 @@ package repository
 
 import (
 	"context"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"wso2-coin-backend/internal/crypto"
 )
 
-// AttendeeRepo provides read access to the attendee_registration table
-// (renamed from agenda_attendee, now owned by apps/registrant/backend),
-// the registration list synced from the agenda-organizer app.
+// AttendeeRepo answers "is this person a registered attendee?" from
+// attendee_registration, the registration list the agenda-organizer app writes
+// (one row per attendee x session, FK'd to sessions) and apps/registrant/backend
+// owns.
+//
+// attendee_registration.attendee_id holds the attendee's email *encrypted* with
+// the shared PII key (same versioned AES-256-GCM format as speakers.name etc.),
+// verified against staging. AES-GCM uses a random nonce, so the same address
+// encrypts to a different string every time and no equality predicate can be
+// pushed into SQL -- the candidate ids have to be decrypted here and compared.
 type AttendeeRepo struct {
 	pool   *pgxpool.Pool
 	piiKey []byte
 }
 
 // NewAttendeeRepo constructs an AttendeeRepo backed by the given pool,
-// decrypting attendee_id with piiKey (see config.Config.PIIEncryptionKey).
+// decrypting attendee ids with piiKey (see config.Config.PIIEncryptionKey).
 func NewAttendeeRepo(pool *pgxpool.Pool, piiKey []byte) *AttendeeRepo {
 	return &AttendeeRepo{pool: pool, piiKey: piiKey}
 }
 
-// IsRegistered reports whether the given email/attendee id has at least one
-// registration row. attendee_id is encrypted at rest with a random nonce
-// per row, so identical plaintext never produces identical ciphertext -- a
-// SQL WHERE can't filter by it, so this decrypts rows until it finds a
-// match instead.
+// IsRegistered reports whether the given email belongs to a registered
+// attendee. Registration for any single session counts as registration for the
+// event: attendee_registration has no event-level grain, and the old
+// event-level table it replaced was never populated.
+//
+// DISTINCT keeps the scan to one row per attendee rather than one per
+// attendee x session, and it is served by the (attendee_id, session_id) primary
+// key as an index-only scan. A row that will not decrypt is skipped, not
+// fatal -- one bad registration must not stop everyone else earning coins.
+//
+// A missing row is not an error; it simply reports false.
 func (r *AttendeeRepo) IsRegistered(ctx context.Context, email string) (bool, error) {
-	rows, err := r.pool.Query(ctx, "SELECT attendee_id FROM attendee_registration")
+	needle := strings.TrimSpace(email)
+	if needle == "" {
+		return false, nil
+	}
+
+	rows, err := r.pool.Query(ctx, "SELECT DISTINCT attendee_id FROM attendee_registration")
 	if err != nil {
 		return false, err
 	}
 	defer rows.Close()
 
 	for rows.Next() {
-		var encrypted string
-		if err := rows.Scan(&encrypted); err != nil {
+		var stored string
+		if err := rows.Scan(&stored); err != nil {
 			return false, err
 		}
-		decrypted, err := crypto.DecryptPII(encrypted, r.piiKey)
-		if err != nil {
-			return false, err
+		// Tolerate a plaintext id as well as an encrypted one: nothing in the
+		// schema enforces the encryption, and a plaintext writer must not
+		// silently stop matching.
+		if strings.EqualFold(strings.TrimSpace(stored), needle) {
+			return true, nil
 		}
-		if decrypted == email {
+		plain, decErr := crypto.DecryptPII(stored, r.piiKey)
+		if decErr != nil {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(plain), needle) {
 			return true, nil
 		}
 	}
