@@ -73,10 +73,10 @@ func (h *ConnectionHandler) Get(c *gin.Context) {
 // attendeesResponse.totalResults == 0 check) and the caller is authorized to
 // make the requested transition *before* anything is written, so a rejected
 // request leaves no row behind. Self-connections are refused, and only a
-// request's recipient may accept it; either party may reject (decline or
-// withdraw). The old code's best-effort push notification on request/accept
-// is dropped entirely -- no notification module exists to call (see
-// .claude/PLAN.md).
+// request's recipient may accept it, only its original sender may re-send it,
+// and either party may reject (decline or withdraw). The old code's
+// best-effort push notification on request/accept is dropped entirely -- no
+// notification module exists to call (see .claude/PLAN.md).
 func (h *ConnectionHandler) Create(c *gin.Context) {
 	user := middleware.UserInfoFromContext(c.Request.Context())
 	if user == nil {
@@ -112,6 +112,27 @@ func (h *ConnectionHandler) Create(c *gin.Context) {
 		slog.ErrorContext(c.Request.Context(), "fetching target attendee failed", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "internal error"})
 		return
+	}
+
+	// Re-sending is the original sender's privilege only. Upsert reuses the
+	// stored direction, so without this the stored recipient could re-open a
+	// withdrawn or declined request as if the other party had sent it, then
+	// accept it themselves -- a connection with zero action by the sender.
+	if req.Status == models.ConnectionPending {
+		existing, err := h.connections.Find(c.Request.Context(), user.UserID, req.UserID)
+		switch {
+		case errors.Is(err, repository.ErrNotFound):
+			// No stored row: a first request, in the caller's own direction.
+		case err != nil:
+			slog.ErrorContext(c.Request.Context(), "loading existing connection failed", "error", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"message": "internal error"})
+			return
+		default:
+			if existing.InitiatorID != user.UserID {
+				c.JSON(http.StatusForbidden, gin.H{"message": "only the sender of a request may re-send it"})
+				return
+			}
+		}
 	}
 
 	// Accepting is the recipient's privilege only. Without this the requester

@@ -276,6 +276,62 @@ func TestConnectionHandler_Create_AcceptWithNoPendingRequestIsRejected(t *testin
 	}
 }
 
+func TestConnectionHandler_Create_RecipientCannotReopenRequestAsSender(t *testing.T) {
+	// The consent bypass: Upsert reuses the stored direction, so a pending
+	// write by the stored recipient rewrites the row as if the initiator had
+	// sent it again -- which the recipient could then legally accept, landing
+	// a connection the initiator had explicitly withdrawn or never re-sent.
+	for _, tc := range []struct {
+		name   string
+		status models.ConnectionStatus
+	}{
+		{"withdrawn request", models.ConnectionRejected},
+		{"already accepted", models.ConnectionAccepted},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			connReader := &fakeConnectionReader{existing: &models.Connection{
+				InitiatorID: "user-2", RecipientID: testUser.UserID, Status: tc.status,
+			}}
+			attendees := &fakeAttendeeRepo{byUUID: map[string]models.Attendee{
+				"user-2": {ID: "attendee-2", Email: "bob@example.com", FirstName: "Bob"},
+			}}
+			h := NewConnectionHandler(connReader, attendees)
+			r := newConnectionTestRouter(h, testUser)
+
+			w := doRequest(r, http.MethodPost, "/users/me/connections",
+				models.UserConnectionRequest{UserID: "user-2", Status: models.ConnectionPending})
+			if w.Code != http.StatusForbidden {
+				t.Fatalf("status = %d, want %d, body: %s", w.Code, http.StatusForbidden, w.Body.String())
+			}
+			if connReader.upsertCalls != 0 {
+				t.Errorf("Upsert called %d times, want 0 when the recipient re-opens a request", connReader.upsertCalls)
+			}
+		})
+	}
+}
+
+func TestConnectionHandler_Create_SenderMayResendOwnRequest(t *testing.T) {
+	// Mirror image: the caller is the stored initiator, so re-sending a
+	// request they withdrew themselves stays legal.
+	connReader := &fakeConnectionReader{existing: &models.Connection{
+		InitiatorID: testUser.UserID, RecipientID: "user-2", Status: models.ConnectionRejected,
+	}}
+	attendees := &fakeAttendeeRepo{byUUID: map[string]models.Attendee{
+		"user-2": {ID: "attendee-2", Email: "bob@example.com", FirstName: "Bob"},
+	}}
+	h := NewConnectionHandler(connReader, attendees)
+	r := newConnectionTestRouter(h, testUser)
+
+	w := doRequest(r, http.MethodPost, "/users/me/connections",
+		models.UserConnectionRequest{UserID: "user-2", Status: models.ConnectionPending})
+	if w.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d, body: %s", w.Code, http.StatusCreated, w.Body.String())
+	}
+	if connReader.upsertCalls != 1 {
+		t.Errorf("Upsert called %d times, want 1", connReader.upsertCalls)
+	}
+}
+
 func TestConnectionHandler_Create_EitherPartyMayDecline(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
