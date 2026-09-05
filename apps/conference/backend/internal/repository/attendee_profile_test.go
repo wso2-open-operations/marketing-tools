@@ -698,8 +698,12 @@ func TestAttendeeProfileRepo_Search_OmitsMemberIDAndQRUri(t *testing.T) {
 	if got.QRUri != "" {
 		t.Errorf("QRUri = %q, want empty in search results (it is a check-in credential)", got.QRUri)
 	}
-	if got.Email != targetEmail {
-		t.Errorf("Email = %q, want %q (email stays: connections key off it)", got.Email, targetEmail)
+	// The email used to be here on the grounds that connections key off it.
+	// They key off idp_uuid; the address was simply being handed to every
+	// authenticated caller. See
+	// TestAttendeeProfileRepo_Search_WithholdsEmailWhileOwnRecordKeepsIt.
+	if got.Email != "" {
+		t.Errorf("Email = %q, want empty in search results", got.Email)
 	}
 
 	// The caller's own row still carries both.
@@ -709,6 +713,63 @@ func TestAttendeeProfileRepo_Search_OmitsMemberIDAndQRUri(t *testing.T) {
 	}
 	if self.QRUri == "" {
 		t.Errorf("GetByEmail QRUri = empty, want the attendee's own QR credential")
+	}
+}
+
+func TestAttendeeProfileRepo_Search_WithholdsEmailWhileOwnRecordKeepsIt(t *testing.T) {
+	// A directory lookup returned every attendee's address to anyone
+	// authenticated, which left no connection state able to gate it. Search
+	// stopped selecting the column entirely -- but the caller's own record
+	// still has to carry it (GET /attendees/me, POST /attendees), so this test
+	// also pins the half that must keep working. Blanking the column, or
+	// dropping email from the get projection too, fails here.
+	ctx := context.Background()
+	repo := NewAttendeeProfileRepo(testDB, attendeeProfileTestKey)
+
+	selfUUID := newUUID()
+	targetUUID := newUUID()
+	newAttendeeFixture(t, ctx, fmt.Sprintf("self-%s@example.com", newUUID()), models.AttendeeInsert{
+		FirstName: "Self", LastName: "Caller",
+	}, selfUUID)
+	targetEmail := fmt.Sprintf("target-%s@example.com", newUUID())
+	newAttendeeFixture(t, ctx, targetEmail, models.AttendeeInsert{
+		FirstName: "Target", LastName: "Row", Company: "WSO2", Title: "Engineer",
+	}, targetUUID)
+
+	// The row definitely has an address to leak.
+	var stored string
+	if err := testDB.QueryRow(ctx, "SELECT email FROM attendees WHERE idp_uuid = $1", targetUUID).Scan(&stored); err != nil {
+		t.Fatalf("reading the stored email failed: %v", err)
+	}
+	if stored != targetEmail {
+		t.Fatalf("stored email = %q, want %q", stored, targetEmail)
+	}
+
+	result, err := repo.Search(ctx, models.AttendeeSearchFilter{UUID: targetUUID, Limit: 10}, selfUUID)
+	if err != nil {
+		t.Fatalf("Search returned error: %v", err)
+	}
+	// Finding the row is what makes the empty-email assertion mean something:
+	// an empty page would satisfy it for the wrong reason.
+	if len(result.Items) != 1 || result.Items[0].IDPUUID != targetUUID {
+		t.Fatalf("Items = %+v, want exactly the target attendee", result.Items)
+	}
+	got := result.Items[0]
+	if got.Email != "" {
+		t.Errorf("Search Email = %q, want empty -- the address is not part of a directory lookup", got.Email)
+	}
+	// Everything a "who is here, do I want to connect" answer needs is still
+	// there, so this is a withheld field rather than a gutted result.
+	if got.FirstName != "Target" || got.Company != "WSO2" || got.Title != "Engineer" {
+		t.Errorf("Search item = %+v, want the name/company/title still enriched", got)
+	}
+
+	own, err := repo.GetByUUID(ctx, targetUUID)
+	if err != nil {
+		t.Fatalf("GetByUUID returned error: %v", err)
+	}
+	if own.Email != targetEmail {
+		t.Errorf("GetByUUID Email = %q, want %q -- the caller's own record keeps its address", own.Email, targetEmail)
 	}
 }
 

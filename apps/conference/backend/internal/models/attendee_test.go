@@ -83,6 +83,35 @@ func TestAttendee_OptionalFieldsOmittedWhenEmpty(t *testing.T) {
 	}
 }
 
+func TestAttendee_EmailOmittedWhenWithheld(t *testing.T) {
+	// A withheld address must be an absent key, not "". POST /attendees/search
+	// no longer reads the email column at all -- it handed every attendee's
+	// address to any authenticated caller -- so search items marshal with Email
+	// zero, while GET /attendees/me still carries the caller's own.
+	withheld, err := json.Marshal(Attendee{ID: "attendee-1", FirstName: "Ada", LastName: "Lovelace"})
+	if err != nil {
+		t.Fatalf("Marshal returned error: %v", err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(withheld, &got); err != nil {
+		t.Fatalf("Unmarshal returned error: %v", err)
+	}
+	if v, ok := got["email"]; ok {
+		t.Errorf("email = %#v, want the key to be absent entirely, not empty", v)
+	}
+
+	own, err := json.Marshal(Attendee{ID: "attendee-1", Email: "ada@example.com"})
+	if err != nil {
+		t.Fatalf("Marshal returned error: %v", err)
+	}
+	if err := json.Unmarshal(own, &got); err != nil {
+		t.Fatalf("Unmarshal returned error: %v", err)
+	}
+	if got["email"] != "ada@example.com" {
+		t.Errorf("email = %v, want %q on the caller's own record", got["email"], "ada@example.com")
+	}
+}
+
 func TestAttendeeSearchResult_JSONShape(t *testing.T) {
 	r := AttendeeSearchResult{
 		Items: []Attendee{{ID: "attendee-1", Email: "ada@example.com"}},

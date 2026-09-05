@@ -26,8 +26,13 @@ import "time"
 // internal/crypto); the repository layer decrypts them before this struct is
 // populated, same as Speaker.
 type Attendee struct {
-	ID         string    `json:"id"`
-	Email      string    `json:"email"`
+	ID string `json:"id"`
+	// Email is omitted rather than empty when withheld. It is present on the
+	// caller's own record (GET /attendees/me, POST /attendees) and absent from
+	// attendee search results, which no longer read the column at all: a
+	// directory lookup handed out every attendee's address to anyone
+	// authenticated, so no connection state could gate it.
+	Email      string    `json:"email,omitempty"`
 	IDPUUID    string    `json:"uuid,omitempty"`
 	MemberID   string    `json:"memberId,omitempty"`
 	Title      string    `json:"title,omitempty"`
