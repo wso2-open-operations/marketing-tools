@@ -34,6 +34,7 @@ import (
 	"wso2-coin-backend/internal/clients/wallet"
 	"wso2-coin-backend/internal/config"
 	"wso2-coin-backend/internal/db"
+	"wso2-coin-backend/internal/features"
 	"wso2-coin-backend/internal/handlers"
 	"wso2-coin-backend/internal/middleware"
 	"wso2-coin-backend/internal/repository"
@@ -151,6 +152,12 @@ func main() {
 	shopRepo := repository.NewShopRepo(pool)
 	leaderboardRepo := repository.NewLeaderboardRepo(pool, cfg.PIIEncryptionKey)
 
+	// Feature flags live in app_config, so the resolver reads through the same
+	// repo the /app-configs route serves from -- no second query, no second
+	// source of truth. It caches for features.DefaultTTL, which is the lag
+	// between flipping a row and the API acting on it.
+	featureResolver := features.NewResolver(appConfigRepo)
+
 	qrPortalClient := qrportal.NewClient(cfg.QRPortal)
 	walletClient := wallet.NewClient(cfg.Wallet)
 	transactionClient := transaction.NewClient(cfg.Transaction)
@@ -230,6 +237,12 @@ func main() {
 		ClockSkew:             5 * time.Minute,
 		TokenValidatorEnabled: cfg.TokenValidatorEnabled,
 	}))
+	// Applied to the whole group rather than per route: which routes belong to
+	// which feature is a row in app_config (features.GateMapKey), so gating a
+	// new route is an UPDATE, not a release. A route absent from that mapping
+	// passes straight through. Ordered after Auth so an unauthenticated caller
+	// cannot probe which features exist.
+	api.Use(middleware.FeatureGate(featureResolver))
 	{
 		// Conference data is read-only and changes rarely, so these GETs carry
 		// ETag + Cache-Control validators.
