@@ -79,6 +79,12 @@ var ErrEmailOwnedByAnother = errors.New("email already registered to another acc
 // rebound a victim's row to the caller's idp_uuid and overwrote every PII
 // column including member_id -- the value served as qrUri, the check-in
 // credential (audit A2).
+//
+// member_id is COALESCEd rather than assigned on conflict: payload.MemberID is
+// optional (models.AttendeeInsert has no binding:"required" on it), so a
+// re-registration or a first-login "claim my imported row" POST that omits
+// memberId would otherwise NULL the stored value and leave the attendee with an
+// empty qrUri and no way to check in. An omitted member id means "unchanged".
 func (r *AttendeeProfileRepo) Insert(ctx context.Context, payload models.AttendeeInsert, email, idpUUID string) error {
 	title, err := r.encrypt(payload.Title)
 	if err != nil {
@@ -108,7 +114,8 @@ func (r *AttendeeProfileRepo) Insert(ctx context.Context, payload models.Attende
 			created_by, updated_by
 		) VALUES ($1, $2, NULLIF($3, ''), $4, $5, $6, $7, $8, $9, $10, $11, $11)
 		ON CONFLICT (email) DO UPDATE SET
-			idp_uuid = $2, member_id = NULLIF($3, ''), title = $4, company = $5, country = $6,
+			idp_uuid = $2, member_id = COALESCE(NULLIF($3, ''), attendees.member_id),
+			title = $4, company = $5, country = $6,
 			first_name = $7, last_name = $8, is_partner = $9, profile_url = $10,
 			updated_by = $11, updated_at = NOW()
 		WHERE attendees.idp_uuid IS NULL OR attendees.idp_uuid = $2`,

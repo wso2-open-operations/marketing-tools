@@ -236,12 +236,19 @@ func TestAttendeeProfileRepo_Insert_ClaimsRowImportedWithNoIDPUUID(t *testing.T)
 	// migration 003 leaves idp_uuid NULL for rows imported from registration;
 	// the attendee's first login binds it. The scoped upsert must still allow
 	// that, or every pre-imported attendee is locked out of their own row.
+	//
+	// The imported row already carries the member_id the registration import
+	// assigned, and payload.MemberID is optional, so the claiming POST need not
+	// repeat it. member_id backs qrUri, the check-in credential, so an omitted
+	// memberId must leave the stored one alone rather than NULL it.
 	ctx := context.Background()
 	repo := NewAttendeeProfileRepo(testDB, attendeeProfileTestKey)
 	email := fmt.Sprintf("imported-%s@example.com", newUUID())
+	importedMemberID := "00vVM00000" + newUUID()[:8]
 
 	if _, err := testDB.Exec(ctx,
-		"INSERT INTO attendees (email, idp_uuid) VALUES ($1, NULL)", email); err != nil {
+		"INSERT INTO attendees (email, idp_uuid, member_id) VALUES ($1, NULL, $2)",
+		email, importedMemberID); err != nil {
 		t.Fatalf("seeding imported row failed: %v", err)
 	}
 	t.Cleanup(func() {
@@ -261,6 +268,12 @@ func TestAttendeeProfileRepo_Insert_ClaimsRowImportedWithNoIDPUUID(t *testing.T)
 	}
 	if got.IDPUUID != idpUUID {
 		t.Errorf("IDPUUID = %q, want %q (first login binds the imported row)", got.IDPUUID, idpUUID)
+	}
+	if got.MemberID != importedMemberID {
+		t.Errorf("MemberID = %q, want %q (an omitted memberId must not clear the stored one)", got.MemberID, importedMemberID)
+	}
+	if wantQR := attendeeQRFromMemberID(importedMemberID); got.QRUri != wantQR {
+		t.Errorf("QRUri = %q, want %q (the check-in credential must survive the claim)", got.QRUri, wantQR)
 	}
 }
 
