@@ -202,7 +202,8 @@ func TestCoinAllocationRepo_HistoryAndSummary(t *testing.T) {
 	insertHistoryRow(t, ctx, repo, eventID, qr4, userUUID, models.EventTypeGeneral, models.TransactionStatusPending, 2, "Raffle")
 	time.Sleep(10 * time.Millisecond)
 
-	// Row 5: O2BAR, TRANSFERRED - must NOT appear in History or Summary (not GENERAL).
+	// Row 5: O2BAR, TRANSFERRED - appears like any other coin. History and
+	// Summary used to filter to GENERAL, which hid it.
 	qr5 := newUUID()
 	insertHistoryRow(t, ctx, repo, eventID, qr5, userUUID, models.EventTypeO2Bar, models.TransactionStatusTransferred, 100, "Drink")
 
@@ -210,16 +211,17 @@ func TestCoinAllocationRepo_HistoryAndSummary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("History returned error: %v", err)
 	}
-	if len(history) != 4 {
-		t.Fatalf("History returned %d rows, want 4: %+v", len(history), history)
+	if len(history) != 5 {
+		t.Fatalf("History returned %d rows, want 5: %+v", len(history), history)
 	}
 
-	// Ordered by created_at descending: row4, row3, row2, row1.
+	// Ordered by created_at descending: row5, row4, row3, row2, row1.
 	wantOrder := []struct {
 		coins  float64
 		status models.TransactionStatus
 		name   string
 	}{
+		{100, models.TransactionStatusTransferred, "Drink"},
 		{2, models.TransactionStatusPending, "Raffle"},
 		{3, models.TransactionStatusPending, "Survey"},
 		{5, models.TransactionStatusPending, "Booth Visit"},
@@ -246,9 +248,9 @@ func TestCoinAllocationRepo_HistoryAndSummary(t *testing.T) {
 	if summary.TotalPending != 10 {
 		t.Errorf("TotalPending = %v, want 10", summary.TotalPending)
 	}
-	// Transferred pool: 10 (O2BAR row excluded).
-	if summary.TotalTransferred != 10 {
-		t.Errorf("TotalTransferred = %v, want 10", summary.TotalTransferred)
+	// Transferred pool: GENERAL(10) + O2BAR(100) = 110.
+	if summary.TotalTransferred != 110 {
+		t.Errorf("TotalTransferred = %v, want 110", summary.TotalTransferred)
 	}
 }
 
@@ -267,5 +269,67 @@ func insertHistoryRow(t *testing.T, ctx context.Context, repo *CoinAllocationRep
 	}
 	if _, err := repo.Insert(ctx, alloc); err != nil {
 		t.Fatalf("Insert fixture row returned error: %v", err)
+	}
+}
+
+// History and Summary used to filter to event_type = 'GENERAL', which hid the
+// SESSION and O2BAR coins -- the other two members of models.EventType -- from
+// the user's own wallet.
+func TestCoinAllocationRepo_HistoryAndSummary_IncludeEveryEventType(t *testing.T) {
+	ctx := context.Background()
+	repo := NewCoinAllocationRepo(testDB)
+
+	userUUID := newTestUserUUID(t)
+	cleanupCoinAllocations(t, userUUID)
+
+	// One event for every fixture row, so the scoping is held constant and the
+	// only thing under test is the event_type filter having gone.
+	eventID := newUUID()
+
+	inserts := []struct {
+		eventType models.EventType
+		eventData string
+		coins     float64
+	}{
+		{models.EventTypeGeneral, `{"eventTypeName":"Welcome Bonus"}`, 1},
+		{models.EventTypeSession, `{"sessionId":"` + newUUID() + `"}`, 2},
+		{models.EventTypeO2Bar, `{"o2BarEmail":"attendee@example.com"}`, 4},
+	}
+	for _, in := range inserts {
+		if _, err := repo.Insert(ctx, models.CoinAllocation{
+			QrID:              newUUID(),
+			EventID:           eventID,
+			EventType:         in.eventType,
+			UserUUID:          userUUID,
+			WalletAddress:     "0xabc123",
+			CoinsAllocated:    in.coins,
+			TransactionStatus: models.TransactionStatusTransferred,
+			EventData:         json.RawMessage(in.eventData),
+		}); err != nil {
+			t.Fatalf("Insert(%s) returned error: %v", in.eventType, err)
+		}
+	}
+
+	history, err := repo.History(ctx, userUUID, eventID)
+	if err != nil {
+		t.Fatalf("History returned error: %v", err)
+	}
+	if len(history) != len(inserts) {
+		t.Fatalf("len(history) = %d, want %d (one per event type)", len(history), len(inserts))
+	}
+	// Every row carries a label: GENERAL from event_data, the others from the
+	// event type itself.
+	for _, h := range history {
+		if h.EventTypeName == "" {
+			t.Errorf("history row %+v has an empty eventTypeName", h)
+		}
+	}
+
+	summary, err := repo.Summary(ctx, userUUID, eventID)
+	if err != nil {
+		t.Fatalf("Summary returned error: %v", err)
+	}
+	if summary.TotalTransferred != 7 {
+		t.Errorf("totalTransferred = %v, want 7 (1 GENERAL + 2 SESSION + 4 O2BAR)", summary.TotalTransferred)
 	}
 }

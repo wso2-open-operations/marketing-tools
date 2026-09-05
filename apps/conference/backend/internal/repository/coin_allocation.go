@@ -90,16 +90,24 @@ func (r *CoinAllocationRepo) UpdateStatus(ctx context.Context, qrID, userUUID st
 	return err
 }
 
-// History returns GENERAL-event-type rows for this user, folding
-// FAILED/PROCESSING into PENDING for display, ordered by created_at
+// History returns every coin this user earned, whatever the event type,
+// folding FAILED/PROCESSING into PENDING for display, ordered by created_at
 // descending.
+//
+// Scoped to one event, but with no event_type filter on purpose. It used to
+// restrict to GENERAL, which silently hid the two other members of the enum
+// (SESSION and O2BAR -- models.EventType) from the user's own wallet history:
+// coins they earned and could spend, that this screen said they never earned.
+// Only GENERAL rows carry an eventTypeName in event_data (see
+// service.buildEventData), so the label falls back to the event type itself
+// rather than coming back empty.
 func (r *CoinAllocationRepo) History(ctx context.Context, userUUID, eventID string) ([]models.CoinAllocationHistory, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT coins_allocated, created_at,
 		        CASE WHEN transaction_status IN ('FAILED','PROCESSING') THEN 'PENDING' ELSE transaction_status END AS status,
-		        event_data->>'eventTypeName' AS event_type_name
+		        COALESCE(event_data->>'eventTypeName', event_type) AS event_type_name
 		 FROM coin_allocation
-		 WHERE user_uuid = $1 AND event_id = $2 AND event_type = 'GENERAL'
+		 WHERE user_uuid = $1 AND event_id = $2
 		 ORDER BY created_at DESC`,
 		userUUID,
 		eventID,
@@ -129,9 +137,11 @@ func (r *CoinAllocationRepo) History(ctx context.Context, userUUID, eventID stri
 	return history, nil
 }
 
-// Summary sums coins for GENERAL-event-type rows: totalPending = sum where
-// status in (PENDING,PROCESSING,FAILED), totalTransferred = sum where
-// status = TRANSFERRED.
+// Summary sums every coin this user earned at this event, whatever the event
+// type: totalPending = sum where status in (PENDING,PROCESSING,FAILED),
+// totalTransferred = sum where status = TRANSFERRED. Same reason as History for
+// not filtering on event_type -- a balance that omits SESSION and O2BAR coins
+// is not the user's balance.
 func (r *CoinAllocationRepo) Summary(ctx context.Context, userUUID, eventID string) (models.CoinAllocationSummary, error) {
 	var summary models.CoinAllocationSummary
 	err := r.pool.QueryRow(ctx,
@@ -139,7 +149,7 @@ func (r *CoinAllocationRepo) Summary(ctx context.Context, userUUID, eventID stri
 		    COALESCE(SUM(coins_allocated) FILTER (WHERE transaction_status IN ('PENDING','PROCESSING','FAILED')), 0) AS total_pending,
 		    COALESCE(SUM(coins_allocated) FILTER (WHERE transaction_status = 'TRANSFERRED'), 0) AS total_transferred
 		 FROM coin_allocation
-		 WHERE user_uuid = $1 AND event_id = $2 AND event_type = 'GENERAL'`,
+		 WHERE user_uuid = $1 AND event_id = $2`,
 		userUUID,
 		eventID,
 	).Scan(&summary.TotalPending, &summary.TotalTransferred)
