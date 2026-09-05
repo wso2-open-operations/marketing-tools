@@ -1429,10 +1429,15 @@ components:
         /attendees. title/company/country/firstName/lastName are encrypted at
         rest and decrypted server-side before this is built. POST
         /attendees/search returns the narrower AttendeeSearchItem instead.
-      required: [id, email, isPartner, qrUri, createdOn, updatedOn]
+      required: [id, isPartner, qrUri, createdOn, updatedOn]
       properties:
         id: { type: string, format: uuid }
-        email: { type: string }
+        email:
+          type: string
+          description: >-
+            Present on the caller's own record, which is the only thing this
+            schema describes. Omitted rather than empty wherever an address is
+            withheld -- see AttendeeSearchItem and ConnectionUserInfo.
         uuid: { type: string, description: "The attendee's idp_uuid. Omitted when unset." }
         memberId:
           type: string
@@ -1458,17 +1463,30 @@ components:
     AttendeeSearchItem:
       type: object
       description: >-
-        One POST /attendees/search hit: Attendee minus the check-in credential.
+        One POST /attendees/search hit: Attendee minus the check-in credential
+        and minus the email address.
+
+
         `memberId` is never included -- it is the credential served as qrUri, and
         a directory search over every other attendee is the last place it belongs
         (audit P2). `qrUri` is still emitted as a key but is always the empty
         string here; only GET /attendees/me and GET /user-profile carry the real
-        one. `email` is returned and is load-bearing: the connections UI keys on it.
-      required: [id, email, isPartner, qrUri, createdOn, updatedOn]
+        one.
+
+
+        **`email` is no longer returned.** Search used to hand every attendee's
+        address to any authenticated caller, which left nothing for the
+        connection state to gate: you could read the contact details of people
+        who had never accepted you, or whom you had never contacted at all. The
+        column is not even selected now. A client that was joining search hits
+        to connections on `email` must join on `uuid` instead -- it is the
+        stable identity, it is what POST /users/me/connections takes, and it was
+        always the correct key. An accepted connection still carries the address,
+        in ConnectionUserInfo.
+      required: [id, isPartner, qrUri, createdOn, updatedOn]
       properties:
         id: { type: string, format: uuid }
-        email: { type: string }
-        uuid: { type: string, description: "The attendee's idp_uuid, the key POST /users/me/connections takes." }
+        uuid: { type: string, description: "The attendee's idp_uuid, the key POST /users/me/connections takes, and the key to join a search hit to a connection." }
         firstName: { type: string }
         lastName: { type: string }
         company: { type: string }

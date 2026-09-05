@@ -321,7 +321,16 @@ func (r *AttendeeProfileRepo) Search(ctx context.Context, filter models.Attendee
 
 	q := strings.ToLower(strings.TrimSpace(filter.Query))
 
-	query := `SELECT id, email, idp_uuid, member_id, title, company, country,
+	// email is deliberately absent from this projection. A directory search
+	// used to return every attendee's address to any authenticated caller,
+	// which made the connection state meaningless as a gate: you could read
+	// the contact details of people who had never accepted you, or whom you
+	// had never contacted at all. Search answers "who is here and do I want to
+	// connect with them", which name, title, company and country cover; the
+	// address is what accepting a connection actually exchanges. Not selecting
+	// it, rather than blanking it afterwards, is the same
+	// cannot-leak-what-you-never-read reasoning as member_id below.
+	query := `SELECT id, idp_uuid, member_id, title, company, country,
 	        first_name, last_name, is_partner, profile_url,
 	        created_by, updated_by, created_at, updated_at
 	 FROM attendees WHERE ` + where + `
@@ -352,7 +361,7 @@ func (r *AttendeeProfileRepo) Search(ctx context.Context, filter models.Attendee
 		var idpUUID, memberID, title, company, country, firstName, lastName, profileURL, createdBy, updatedBy *string
 
 		if err := rows.Scan(
-			&a.ID, &a.Email, &idpUUID, &memberID, &title, &company, &country,
+			&a.ID, &idpUUID, &memberID, &title, &company, &country,
 			&firstName, &lastName, &a.IsPartner, &profileURL,
 			&createdBy, &updatedBy, &a.CreatedAt, &a.UpdatedAt,
 		); err != nil {
