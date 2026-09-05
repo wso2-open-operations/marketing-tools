@@ -38,10 +38,18 @@ type shopFixture struct {
 func newShopFixture(t *testing.T, ctx context.Context, closingTime *time.Time) *shopFixture {
 	t.Helper()
 
+	// start_date is one day past whatever is currently latest (floored well into
+	// the future) rather than a fixed literal, so this fixture is unambiguously
+	// "the current conference". A fixed date tied with any leftover or
+	// concurrently-created fixture, and CurrentShopEvent's id tiebreak then
+	// resolved the tie to a stranger's row.
 	var eventID string
 	err := testDB.QueryRow(ctx,
 		`INSERT INTO conference_config (name, start_date, timezone, shop_closing_time)
-		 VALUES ($1, '2099-06-01', 'UTC', $2) RETURNING id`,
+		 SELECT $1, GREATEST(COALESCE(MAX(start_date), DATE '2099-06-01'), DATE '2099-06-01') + 1,
+		        'UTC', $2
+		 FROM conference_config
+		 RETURNING id`,
 		"TDD Shop Conference", closingTime,
 	).Scan(&eventID)
 	if err != nil {
@@ -141,6 +149,66 @@ func TestShopRepo_CurrentShopEvent_ClosedAfterClosingTime(t *testing.T) {
 	}
 	if isOpen {
 		t.Error("isOpen = true after the closing time passed")
+	}
+}
+
+// The shop must resolve the same "current conference" as every other route.
+// Without the id tiebreak two conferences sharing a start_date leave the planner
+// to pick, so GET /shops/items could serve one conference's catalog while
+// GET /events/current names another -- and the catalog then reads as empty.
+//
+// The expectation is computed with an independent formulation rather than from
+// this test's own two fixtures: these are shared staging tables and another
+// suite may hold a conference row of its own at the same start_date.
+func TestShopRepo_CurrentShopEvent_BreaksStartDateTiesOnID(t *testing.T) {
+	ctx := context.Background()
+
+	// Two conferences deliberately sharing one start_date, both at the latest.
+	var tieDate time.Time
+	if err := testDB.QueryRow(ctx,
+		`SELECT GREATEST(COALESCE(MAX(start_date), DATE '2099-06-01'), DATE '2099-06-01') + 1
+		 FROM conference_config`,
+	).Scan(&tieDate); err != nil {
+		t.Fatalf("failed to compute a tie date: %v", err)
+	}
+	for i := 0; i < 2; i++ {
+		var id string
+		if err := testDB.QueryRow(ctx,
+			`INSERT INTO conference_config (name, start_date, timezone)
+			 VALUES ('TDD Shop Tie', $1, 'UTC') RETURNING id`, tieDate,
+		).Scan(&id); err != nil {
+			t.Fatalf("failed to insert tied conference_config: %v", err)
+		}
+		t.Cleanup(func() {
+			_, _ = testDB.Exec(context.Background(), "DELETE FROM conference_config WHERE id = $1", id)
+		})
+	}
+
+	// Computed with an independent formulation, not from this test's own rows:
+	// these are shared staging tables.
+	var want string
+	if err := testDB.QueryRow(ctx,
+		`SELECT MAX(id::text) FROM conference_config
+		 WHERE start_date = (SELECT MAX(start_date) FROM conference_config)`,
+	).Scan(&want); err != nil {
+		t.Fatalf("failed to compute the expected current conference: %v", err)
+	}
+
+	eventID, _, err := NewShopRepo(testDB).CurrentShopEvent(ctx)
+	if err != nil {
+		t.Fatalf("CurrentShopEvent returned error: %v", err)
+	}
+	if eventID != want {
+		t.Errorf("eventID = %q, want the highest id at the latest start_date %q", eventID, want)
+	}
+
+	// The real invariant: it must agree with GET /events/current.
+	current, err := NewEventRepo(testDB, 5, time.UTC, "UTC").GetCurrentEvent(ctx)
+	if err != nil {
+		t.Fatalf("GetCurrentEvent returned error: %v", err)
+	}
+	if eventID != current.ID {
+		t.Errorf("CurrentShopEvent = %q but GetCurrentEvent = %q; the two must never disagree", eventID, current.ID)
 	}
 }
 

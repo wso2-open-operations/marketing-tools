@@ -206,3 +206,56 @@ func TestFeedbackHandler_Create_NoCurrentEventMapsTo500(t *testing.T) {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusInternalServerError)
 	}
 }
+
+// --- P2: rating must be 1..5 (the FE renders exactly 5 stars and blocks 0) ---
+
+func TestFeedbackHandler_Create_RatingBounds(t *testing.T) {
+	sessionID := "11111111-1111-1111-1111-111111111111"
+	tests := []struct {
+		name   string
+		rating int
+		want   int
+	}{
+		{"below range", -5, http.StatusBadRequest},
+		{"zero is the omitted value", 0, http.StatusBadRequest},
+		{"lower bound", 1, http.StatusCreated},
+		{"upper bound", 5, http.StatusCreated},
+		{"above range", 6, http.StatusBadRequest},
+		{"far above range", 999, http.StatusBadRequest},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			feedback := &fakeFeedbackReader{}
+			h := NewFeedbackHandler(feedback, &fakeEventReader{})
+			r := newFeedbackTestRouter(h, testUser)
+
+			w := doRequest(r, http.MethodPost, "/feedback", models.FeedbackRequest{
+				SessionID: &sessionID, Rating: tt.rating, FeedbackType: models.FeedbackSession,
+			})
+			if w.Code != tt.want {
+				t.Fatalf("rating %d: status = %d, want %d, body: %s", tt.rating, w.Code, tt.want, w.Body.String())
+			}
+		})
+	}
+}
+
+func TestFeedbackHandler_Create_OmittedRatingIsRejected(t *testing.T) {
+	// No default: an absent rating is a 400, not a silent 0 row.
+	feedback := &fakeFeedbackReader{}
+	h := NewFeedbackHandler(feedback, &fakeEventReader{})
+	r := newFeedbackTestRouter(h, testUser)
+
+	body := `{"feedbackType":"SESSION","sessionId":"11111111-1111-1111-1111-111111111111","comment":"nice"}`
+	req := httptest.NewRequest(http.MethodPost, "/feedback", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d, body: %s", w.Code, http.StatusBadRequest, w.Body.String())
+	}
+	if feedback.inserted.UserUUID != "" {
+		t.Errorf("insert happened for an omitted rating: %+v", feedback.inserted)
+	}
+}

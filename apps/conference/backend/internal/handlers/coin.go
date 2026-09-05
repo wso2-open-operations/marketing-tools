@@ -75,6 +75,13 @@ func (h *CoinHandler) Scan(c *gin.Context) {
 		return
 	}
 
+	// coin_allocation.qr_id is a uuid column: a non-UUID qrId used to reach the
+	// query and surface as a 22P02 cast error, i.e. a 500 for bad input.
+	if !uuidPattern.MatchString(req.QrID) {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "qrId must be a valid UUID"})
+		return
+	}
+
 	err := h.scanner.ScanQR(c.Request.Context(), user.UserID, user.Email, req.QrID, user.RawToken)
 	switch {
 	case err == nil:

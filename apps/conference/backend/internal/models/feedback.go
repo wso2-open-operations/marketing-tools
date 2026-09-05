@@ -34,10 +34,20 @@ func (t FeedbackType) IsValid() bool {
 	}
 }
 
-// FeedbackRequest is the payload for POST /feedback.
+// FeedbackRating bounds. The client renders a 5-star widget and refuses to
+// submit 0, and the DB has no CHECK on feedback.rating, so the range is
+// enforced here.
+const (
+	FeedbackRatingMin = 1
+	FeedbackRatingMax = 5
+)
+
+// FeedbackRequest is the payload for POST /feedback. rating is required and
+// bounded: there is no default, so an omitted rating (JSON zero value) is a
+// 400 rather than a silent 0 row.
 type FeedbackRequest struct {
 	SessionID    *string      `json:"sessionId,omitempty"`
-	Rating       int          `json:"rating"`
+	Rating       int          `json:"rating" binding:"required,min=1,max=5"`
 	Comment      *string      `json:"comment,omitempty"`
 	FeedbackType FeedbackType `json:"feedbackType"`
 }

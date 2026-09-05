@@ -158,13 +158,13 @@ func TestEventHandler_List_RepositoryErrorReturns500(t *testing.T) {
 func TestEventHandler_Agendas_PassesEventIDThrough(t *testing.T) {
 	reader := &fakeEventReader{agendas: []models.EventAgenda{{ID: "day-1", EventID: "event-1", Date: "2026-05-20", Sessions: []models.Session{}}}}
 	h := NewEventHandler(reader)
-	rec := doRequest(newEventTestRouter(h), http.MethodGet, "/events/event-1/agendas", nil)
+	rec := doRequest(newEventTestRouter(h), http.MethodGet, "/events/"+testEventID+"/agendas", nil)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
-	if reader.lastEventID != "event-1" {
-		t.Errorf("lastEventID = %q, want %q", reader.lastEventID, "event-1")
+	if reader.lastEventID != testEventID {
+		t.Errorf("lastEventID = %q, want %q", reader.lastEventID, testEventID)
 	}
 }
 
@@ -183,7 +183,7 @@ func TestEventHandler_Agendas_PassesLiteralCurrentThrough(t *testing.T) {
 
 func TestEventHandler_Agendas_RepositoryErrorReturns500(t *testing.T) {
 	h := NewEventHandler(&fakeEventReader{agendasErr: errBoom})
-	rec := doRequest(newEventTestRouter(h), http.MethodGet, "/events/event-1/agendas", nil)
+	rec := doRequest(newEventTestRouter(h), http.MethodGet, "/events/"+testEventID+"/agendas", nil)
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
@@ -206,39 +206,39 @@ func TestEventHandler_LegacyAgendas_IsCurrentTrueWithNoEventIDResolvesToCurrent(
 func TestEventHandler_LegacyAgendas_ExplicitEventIDUsedAsGiven(t *testing.T) {
 	reader := &fakeEventReader{agendas: []models.EventAgenda{}}
 	h := NewEventHandler(reader)
-	rec := doRequest(newEventTestRouter(h), http.MethodGet, "/event-agendas?eventId=event-1", nil)
+	rec := doRequest(newEventTestRouter(h), http.MethodGet, "/event-agendas?eventId="+testEventID, nil)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
-	if reader.lastEventID != "event-1" {
-		t.Errorf("lastEventID = %q, want %q", reader.lastEventID, "event-1")
+	if reader.lastEventID != testEventID {
+		t.Errorf("lastEventID = %q, want %q", reader.lastEventID, testEventID)
 	}
 }
 
 func TestEventHandler_LegacyAgendas_ExplicitEventIDTakesPrecedenceOverIsCurrentFalse(t *testing.T) {
 	reader := &fakeEventReader{agendas: []models.EventAgenda{}}
 	h := NewEventHandler(reader)
-	rec := doRequest(newEventTestRouter(h), http.MethodGet, "/event-agendas?eventId=event-1&isCurrent=false", nil)
+	rec := doRequest(newEventTestRouter(h), http.MethodGet, "/event-agendas?eventId="+testEventID+"&isCurrent=false", nil)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
-	if reader.lastEventID != "event-1" {
-		t.Errorf("lastEventID = %q, want %q", reader.lastEventID, "event-1")
+	if reader.lastEventID != testEventID {
+		t.Errorf("lastEventID = %q, want %q", reader.lastEventID, testEventID)
 	}
 }
 
 func TestEventHandler_LegacyAgendas_ExplicitEventIDTakesPrecedenceOverIsCurrentTrue(t *testing.T) {
 	reader := &fakeEventReader{agendas: []models.EventAgenda{}}
 	h := NewEventHandler(reader)
-	rec := doRequest(newEventTestRouter(h), http.MethodGet, "/event-agendas?eventId=event-1&isCurrent=true", nil)
+	rec := doRequest(newEventTestRouter(h), http.MethodGet, "/event-agendas?eventId="+testEventID+"&isCurrent=true", nil)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
-	if reader.lastEventID != "event-1" {
-		t.Errorf("lastEventID = %q, want %q", reader.lastEventID, "event-1")
+	if reader.lastEventID != testEventID {
+		t.Errorf("lastEventID = %q, want %q", reader.lastEventID, testEventID)
 	}
 }
 
@@ -253,7 +253,7 @@ func TestEventHandler_LegacyAgendas_NeitherSuppliedReturns400(t *testing.T) {
 
 func TestEventHandler_LegacyAgendas_RepositoryErrorReturns500(t *testing.T) {
 	h := NewEventHandler(&fakeEventReader{agendasErr: errBoom})
-	rec := doRequest(newEventTestRouter(h), http.MethodGet, "/event-agendas?eventId=event-1", nil)
+	rec := doRequest(newEventTestRouter(h), http.MethodGet, "/event-agendas?eventId="+testEventID, nil)
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
@@ -322,10 +322,41 @@ func TestEventHandler_Current_DoesNotCollideWithEventIDWildcard(t *testing.T) {
 	}
 
 	// The wildcard route still works, and still receives the literal id.
-	if rec := doRequest(r, http.MethodGet, "/events/abc-123/agendas", nil); rec.Code != http.StatusOK {
+	if rec := doRequest(r, http.MethodGet, "/events/"+testEventID+"/agendas", nil); rec.Code != http.StatusOK {
 		t.Fatalf("/events/abc-123/agendas returned %d", rec.Code)
 	}
-	if reader.lastEventID != "abc-123" {
-		t.Errorf("agendas got eventId %q, want abc-123", reader.lastEventID)
+	if reader.lastEventID != testEventID {
+		t.Errorf("agendas got eventId %q, want %q", reader.lastEventID, testEventID)
+	}
+}
+
+// conference_config.id is a uuid column, so a non-UUID eventId is a malformed
+// request, not a server fault. Both agenda routes skipped the guard the :id
+// handlers already apply and 500'd on the cast error instead.
+func TestEventHandler_Agendas_NonUUIDEventIDReturns400(t *testing.T) {
+	reader := &fakeEventReader{}
+	r := newEventTestRouter(NewEventHandler(reader))
+
+	w := doRequest(r, http.MethodGet, "/events/not-a-uuid/agendas", nil)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if reader.lastEventID != "" {
+		t.Errorf("repository should not have been called, got eventID %q", reader.lastEventID)
+	}
+}
+
+func TestEventHandler_LegacyAgendas_NonUUIDEventIDReturns400(t *testing.T) {
+	reader := &fakeEventReader{}
+	r := newEventTestRouter(NewEventHandler(reader))
+
+	w := doRequest(r, http.MethodGet, "/event-agendas?eventId=not-a-uuid", nil)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if reader.lastEventID != "" {
+		t.Errorf("repository should not have been called, got eventID %q", reader.lastEventID)
 	}
 }

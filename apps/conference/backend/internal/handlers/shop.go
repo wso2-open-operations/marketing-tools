@@ -156,6 +156,10 @@ func (h *ShopHandler) Checkout(c *gin.Context) {
 // 200 rather than 201 -- unlike checkout this creates nothing, it settles an
 // order that already exists. The client drives off the body's orderId either
 // way.
+//
+// 503 when the deployment has no merchant wallet configured: the order is left
+// PENDING and untouched, so a client that retries after the deployment is fixed
+// settles the same order.
 func (h *ShopHandler) ConfirmCheckout(c *gin.Context) {
 	user := middleware.UserInfoFromContext(c.Request.Context())
 	if user == nil {
@@ -197,8 +201,16 @@ func (h *ShopHandler) ConfirmCheckout(c *gin.Context) {
 				"error", err, "orderId", req.OrderID)
 			c.JSON(http.StatusBadRequest, gin.H{"message": "Transaction verification failed."})
 		case errors.Is(err, service.ErrMasterWalletNotConfigured):
+			// 503, not 500: nothing about the request is wrong and nothing on
+			// this path will start working on a retry -- the deployment has no
+			// merchant wallet, so no payment can be verified against anything.
+			// The message names no setting: which knob is unset is not the
+			// caller's business, and confirming an unpaid order would be worse
+			// than refusing.
 			slog.ErrorContext(c.Request.Context(), "shop confirm attempted with no master wallet configured", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"message": "Checkout is not available"})
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"message": "Order confirmation is temporarily unavailable. Your order is unchanged; please try again later.",
+			})
 		default:
 			slog.ErrorContext(c.Request.Context(), "shop checkout confirm failed", "error", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"message": "Could not confirm your payment"})

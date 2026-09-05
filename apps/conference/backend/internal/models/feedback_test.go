@@ -18,6 +18,8 @@ package models
 
 import (
 	"encoding/json"
+	"fmt"
+	"reflect"
 	"testing"
 )
 
@@ -93,5 +95,20 @@ func TestFeedbackRequest_OptionalFieldsOmittedWhenNil(t *testing.T) {
 		if _, ok := got[key]; ok {
 			t.Errorf("expected %q to be omitted when nil, got %v", key, got)
 		}
+	}
+}
+
+func TestFeedbackRequest_RatingBindingTag(t *testing.T) {
+	// The 1..5 range is enforced by the binding tag, so the tag itself is the
+	// contract worth pinning: gin's `required` is what turns an omitted
+	// rating (JSON zero) into a 400 instead of a stored 0.
+	f, ok := reflect.TypeOf(FeedbackRequest{}).FieldByName("Rating")
+	if !ok {
+		t.Fatal("FeedbackRequest has no Rating field")
+	}
+	got := f.Tag.Get("binding")
+	want := fmt.Sprintf("required,min=%d,max=%d", FeedbackRatingMin, FeedbackRatingMax)
+	if got != want {
+		t.Errorf("Rating binding tag = %q, want %q", got, want)
 	}
 }
