@@ -6,6 +6,17 @@
 # +required Schema version
 schemaVersion: 1.2
 
+# Required production configuration/environment variables (set in the Choreo
+# console, not in this file). As of the fail-closed auth change, the backend
+# REFUSES TO BOOT in production (APP_ENV=production, the default) unless JWT
+# signature validation is configured, or it exit(1)s and crash-loops:
+#   TOKEN_VALIDATOR_ENABLED=true   turns on JWT signature + expiry verification
+#   JWKS_ENDPOINT                  JWKS URL to fetch signing keys from
+#   JWT_ISSUER                     expected `iss` claim
+#   JWT_AUDIENCE                   expected `aud` claim
+# Confirm the exact JWKS/issuer/audience with the platform team (they depend on
+# whether the gateway forwards the IdP token or substitutes its own assertion).
+
 endpoints:
   # +required Unique name for the endpoint (lowercase alphanumeric + dashes).
   - name: conference-backend-v2

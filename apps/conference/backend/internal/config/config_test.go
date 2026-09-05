@@ -414,6 +414,8 @@ func TestInsecureAuthConfig(t *testing.T) {
 		{"production", "false", true},
 		{"production", "true", false},
 		{"development", "false", false},
+		{"development", "true", false},
+		{"development", "", false},
 	}
 
 	for _, tc := range cases {
@@ -437,8 +439,13 @@ func TestInsecureAuthConfig(t *testing.T) {
 	}
 }
 
-// The locked decision is that this stays a warning, never a startup failure:
-// omitting the var on Choreo must not crash-loop the container.
+// Validate() itself never fails on an insecure auth config -- it has no view of
+// "is this prod" beyond AppEnv, and the fail-closed decision lives in main.go,
+// which exits non-zero on InsecureAuthConfig() before serving traffic. This test
+// pins that separation: Validate() returns nil while the predicate reports the
+// insecure state that main.go acts on. (When the validator IS enabled in prod,
+// Validate() then requires JWKS/issuer/audience -- see
+// TestValidate_TokenValidatorRequiresJWKSAndIssuer.)
 func TestValidate_InsecureAuthConfigIsNotFatal(t *testing.T) {
 	clearEnv(t)
 	t.Setenv("DB_HOST", "localhost")

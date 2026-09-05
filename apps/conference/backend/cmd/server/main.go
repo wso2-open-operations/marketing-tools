@@ -85,15 +85,24 @@ func main() {
 
 	slog.Info("logger initialised", "level", cfg.LogLevel, "env", cfg.AppEnv)
 
-	// Warnings, not startup failures. Both of these describe a deployment that
-	// is misconfigured but must still boot: the env vars are hand-set on Choreo
-	// and a crash-loop is worse than a degraded service. See
-	// config.InsecureAuthConfig / config.ShopPaymentsConfigured.
+	// Fail closed: a production deployment with JWT signature validation off
+	// accepts forged and expired tokens (ParseUnverified decodes claims without
+	// verifying signature or expiry), letting any gateway-accepted Bearer forge
+	// the x-jwt-assertion header to impersonate any user or add admin groups. A
+	// crash-loop is strictly better than silently authenticating forged
+	// identities, so this is now a hard startup failure, not a warning. Prod MUST
+	// set TOKEN_VALIDATOR_ENABLED=true (plus JWKS/issuer/audience, which
+	// cfg.Validate then requires). See config.InsecureAuthConfig.
 	if cfg.InsecureAuthConfig() {
-		slog.Warn("SECURITY: TOKEN_VALIDATOR_ENABLED is false in a production environment; "+
-			"JWT signatures are NOT verified and forged or expired tokens will be accepted",
+		slog.Error("SECURITY: refusing to boot -- TOKEN_VALIDATOR_ENABLED is false in a production "+
+			"environment; JWT signatures would NOT be verified and forged or expired tokens would be "+
+			"accepted. Set TOKEN_VALIDATOR_ENABLED=true and JWKS_ENDPOINT/JWT_ISSUER/JWT_AUDIENCE.",
 			"appEnv", cfg.AppEnv)
+		os.Exit(1)
 	}
+	// A warning, not a startup failure: a deployment with no shop is misconfigured
+	// for checkout but must still boot and serve every other route, answering
+	// /shops/checkout/confirm per-request with a 503. See config.ShopPaymentsConfigured.
 	if !cfg.ShopPaymentsConfigured() {
 		slog.Warn("SHOP_MASTER_WALLET_ADDRESS is not set; POST /shops/checkout/confirm will refuse every request with 503")
 	}
