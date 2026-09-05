@@ -26,11 +26,10 @@
 #     own trust boundary.
 #
 # Scope: the conference-data, attendee-profile, attendee-search, connection,
-# recommendation, shop, QR/coin, feedback and AI-assistant routes. Six routes
-# registered in cmd/server/main.go are still undocumented: GET /leaderboard,
-# GET and PUT /leaderboard/preferences, GET /qr-codes, the /users/me/favorites
-# trio, and the admin-gated POST /users/notifications. An endpoint absent from
-# this file is undocumented, not unimplemented.
+# recommendation, shop, QR/coin, feedback, favorites, leaderboard, notification
+# and AI-assistant routes -- every route registered in cmd/server/main.go is now
+# documented here. An endpoint absent from this file is undocumented, not
+# unimplemented.
 #
 # The AI routes proxy a separate service and are documented as this backend
 # emits them, not as that service does: the two disagree on purpose. Where a
@@ -44,8 +43,6 @@ info:
     Conference data, attendee search, networking, recommendation and
     AI-assistant endpoints.
     All routes except /health require the `x-jwt-assertion` header.
-    Does not yet cover /users/me/favorites or POST /users/notifications; see
-    the scope note at the top of this file.
 servers:
   - url: /
 security:
@@ -61,6 +58,9 @@ tags:
   - name: shop
   - name: coin
   - name: feedback
+  - name: favorites
+  - name: leaderboard
+  - name: notifications
 
 paths:
   /health:
@@ -1240,6 +1240,272 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
 
+  /users/me/favorites:
+    get:
+      tags: [favorites]
+      summary: The caller's favorited sessions, as references
+      description: >
+        Returns the caller's favorites as references -- a session id and when it
+        was added -- never a stored snapshot of session fields, so the client
+        resolves each against live session data and a session edit shows through
+        automatically. Always an array, never null.
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FavoritesList" }
+        "401":
+          description: "No authentication"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "500":
+          description: "Internal error"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /users/me/favorites/{sessionId}:
+    put:
+      tags: [favorites]
+      summary: Favorite a session
+      description: >
+        Idempotent: favoriting a session already favorited succeeds with 204
+        rather than erroring (the write is an INSERT ... ON CONFLICT DO NOTHING).
+        Returns no body.
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+          description: "The session to favorite. Validated as a UUID before the query."
+      responses:
+        "204": { description: "Favorited (or already was). No body." }
+        "400":
+          description: >-
+            `sessionId` is not a UUID. It is validated before the query, so a
+            malformed value is a 400, not a Postgres 500.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example:
+                message: sessionId must be a valid UUID
+        "401":
+          description: "No authentication"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "500":
+          description: "Internal error"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    delete:
+      tags: [favorites]
+      summary: Remove a session from favorites
+      description: >
+        Idempotent: removing a session that is not favorited succeeds with 204
+        (the DELETE affects zero rows). Returns no body.
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+          description: "The session to unfavorite. Validated as a UUID before the query."
+      responses:
+        "204": { description: "Removed (or was not favorited). No body." }
+        "400":
+          description: "`sessionId` is not a UUID."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example:
+                message: sessionId must be a valid UUID
+        "401":
+          description: "No authentication"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "500":
+          description: "Internal error"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /leaderboard:
+    get:
+      tags: [leaderboard]
+      summary: Top attendees by O2C earned, for the current conference
+      description: >
+        Ordered highest-first, scoped to the current conference (resolved
+        server-side). Every entry but the caller's own has its `userId` replaced
+        with a 16-hex-character hash, so the board is not a directory of idp
+        uuids; the caller's own row keeps its real `userId` so a client can find
+        it. Names are masked to a first initial plus "***" for any attendee whose
+        preference is not "show full name" (see GET /leaderboard/preferences),
+        so the caller sees each other attendee exactly as that attendee chose to
+        appear.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, default: 10, minimum: 1 }
+          description: >-
+            How many rows to return; defaults to 10. Must be a positive integer
+            -- a non-numeric or non-positive value is refused with a 400, not
+            clamped.
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/LeaderboardEntry" }
+        "400":
+          description: "`limit` is present but not a positive integer."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example:
+                message: invalid limit parameter
+        "500":
+          description: "Internal error"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /leaderboard/preferences:
+    get:
+      tags: [leaderboard]
+      summary: Whether the caller's full name is shown on the leaderboard
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LeaderboardPreferences" }
+        "401":
+          description: "No authentication"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "500":
+          description: "Internal error"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    put:
+      tags: [leaderboard]
+      summary: Set whether the caller's full name is shown on the leaderboard
+      description: >
+        `showFullName` is required and must be a boolean -- an omitted or
+        non-boolean value is a 400. The stored preference is echoed back
+        unchanged.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LeaderboardPreferences" }
+      responses:
+        "200":
+          description: "The stored preference, echoed back."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LeaderboardPreferences" }
+        "400":
+          description: "Missing or non-boolean `showFullName`, or a malformed body."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example:
+                message: invalid request payload
+        "401":
+          description: "No authentication"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "500":
+          description: "Internal error"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /users/notifications:
+    post:
+      tags: [notifications]
+      summary: Broadcast a push notification to every attendee (admin only)
+      description: >
+        Restricted to callers in one of the configured admin groups
+        (RBAC_ADMIN_ROLES); the frontend hides its trigger UI behind the same
+        check, but this group check is the real gate. Delivery is delegated
+        wholesale to the external notification service, so there is no
+        per-recipient status and the response carries no body -- treat any 2xx as
+        sent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UserNotificationRequest" }
+      responses:
+        "200": { description: "Accepted for delivery. No body." }
+        "400":
+          description: >-
+            Malformed body, a missing or whitespace-only `title`, or a `title` or
+            `description` past its length bound. Lengths count runes, not bytes.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example:
+                message: title is required
+        "401":
+          description: "No authentication"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: "The caller is not in any configured admin group."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+              example:
+                message: forbidden
+        "500":
+          description: >-
+            Internal error, including a failure of the external notification
+            service.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /qr-codes:
+    get:
+      tags: [coin]
+      summary: Generated QR codes from the external QR portal
+      description: >
+        The full catalog for a caller in a configured admin group; for every
+        other caller the list is filtered to the codes whose `info.domain`
+        matches the caller's own email domain, with `totalCount` recomputed to
+        match. A caller whose email has no single `@`-delimited domain gets an
+        empty list rather than an error.
+      responses:
+        "200":
+          description: "OK"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConferenceQrCodesResponse" }
+        "401":
+          description: "No authentication"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "500":
+          description: "The QR portal could not be reached, or failed."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
 components:
   securitySchemes:
     jwtAssertion:
@@ -2083,3 +2349,96 @@ components:
       properties:
         message: { type: string, description: "Handler errors, including the handler-emitted 401s." }
         error: { type: string, description: "Middleware 401s only: a missing or invalid authorization token." }
+    Favorite:
+      type: object
+      description: >-
+        A reference to a favorited session -- its id and when it was added, never
+        a snapshot of session fields. The client resolves it against live session
+        data, so a session edit shows through without re-favoriting.
+      required: [sessionId, createdAt]
+      properties:
+        sessionId: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+    FavoritesList:
+      type: object
+      description: "GET /users/me/favorites response. `items` is always an array, never null."
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Favorite" }
+    LeaderboardEntry:
+      type: object
+      description: >-
+        One leaderboard row. `userId` is the caller's real idp uuid on the
+        caller's own row and a 16-hex-character hash on every other row, so the
+        board cannot be read as a uuid directory. `firstName`/`lastName` are
+        masked to a first initial plus "***" for any attendee not opting into a
+        full name.
+      required: [userId, firstName, lastName, totalCoins]
+      properties:
+        userId: { type: string, description: "The attendee's idp uuid on the caller's own row; a 16-character hex hash on every other." }
+        firstName: { type: string, description: "Masked to a first initial plus \"***\" unless the attendee opted into a full name." }
+        lastName: { type: string, description: "Masked the same way as firstName." }
+        totalCoins: { type: number }
+    LeaderboardPreferences:
+      type: object
+      description: >-
+        The caller's leaderboard name-visibility preference. Used as both the GET
+        /leaderboard/preferences response and the PUT body and response.
+      required: [showFullName]
+      properties:
+        showFullName:
+          type: boolean
+          description: >-
+            When false, this attendee appears to others with a masked name (a
+            first initial plus "***"). Required and must be a boolean on PUT.
+    UserNotificationRequest:
+      type: object
+      description: >-
+        POST /users/notifications body. `title` is required and trimmed
+        server-side; a whitespace-only title counts as missing. Lengths are
+        measured in runes, not bytes, so a non-ASCII title is not rejected early.
+      required: [title]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 200, description: "Trimmed server-side; at most 200 runes." }
+        description: { type: string, maxLength: 1024, description: "Optional body; at most 1024 runes." }
+    ConferenceQrCodesResponse:
+      type: object
+      description: >-
+        GET /qr-codes response, relayed from the external QR portal (and filtered
+        by email domain for non-admin callers). `totalCount` matches the length
+        of the returned `qrs`.
+      required: [qrs, totalCount]
+      properties:
+        qrs:
+          type: array
+          items: { $ref: "#/components/schemas/ConferenceQrCode" }
+        totalCount: { type: integer }
+    ConferenceQrCode:
+      type: object
+      required: [qrId, info, coins, createdBy, createdOn]
+      properties:
+        qrId: { type: string }
+        info: { $ref: "#/components/schemas/QrCodeInfo" }
+        description: { type: string, description: "Omitted when empty." }
+        coins: { type: number }
+        createdBy: { type: string }
+        createdOn:
+          type: string
+          description: >-
+            Relayed from the portal as a string, not normalised to this file's
+            date-time convention.
+    QrCodeInfo:
+      type: object
+      description: >-
+        Portal-supplied metadata about a QR code. Every field but `eventType` is
+        omitted when empty.
+      required: [eventType]
+      properties:
+        eventType: { type: string, enum: [SESSION, O2BAR, GENERAL, PARTNER] }
+        sessionId: { type: string }
+        email: { type: string }
+        fullName: { type: string }
+        eventTypeName: { type: string }
+        domain: { type: string }
