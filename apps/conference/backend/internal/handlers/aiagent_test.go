@@ -41,6 +41,7 @@ type fakeAIAgentClient struct {
 
 	profileResp *http.Response
 	profileErr  error
+	profileSeen models.PersonalizeAgentUserProfile
 
 	agenda    []models.PickedForYouSession
 	agendaErr error
@@ -65,6 +66,7 @@ func (f *fakeAIAgentClient) RetrieveO2BarRecommendations(ctx context.Context, jw
 
 func (f *fakeAIAgentClient) SendProfileInfo(ctx context.Context, jwtAssertion string, profile models.PersonalizeAgentUserProfile) (*http.Response, error) {
 	f.jwtSeen = jwtAssertion
+	f.profileSeen = profile
 	return f.profileResp, f.profileErr
 }
 

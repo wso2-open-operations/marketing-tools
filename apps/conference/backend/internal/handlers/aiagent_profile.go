@@ -20,6 +20,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -34,6 +35,13 @@ import (
 // call itself fails (the external service is unreachable); any actual
 // response from it, even a 4xx/5xx one, passes through as-is (see
 // .claude/PLAN.md).
+//
+// The profile's `email` is the key the AI service upserts on, so it is
+// overwritten with the caller's JWT email. A body value is ignored, not
+// rejected: con-ai dropped its own auth, this handler is the only gate, and a
+// stale client sending its own email must keep working rather than start
+// 403ing (audit D2). Everything else in the payload, `override` included, is
+// unchanged.
 func (h *AIAgentHandler) PersonalizedProfile(c *gin.Context) {
 	user := middleware.UserInfoFromContext(c.Request.Context())
 	if user == nil {
@@ -46,6 +54,11 @@ func (h *AIAgentHandler) PersonalizedProfile(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid request body"})
 		return
 	}
+	if profile.Email != "" && !strings.EqualFold(profile.Email, user.Email) {
+		slog.WarnContext(c.Request.Context(), "ignoring profile email from request body",
+			"bodyEmail", profile.Email)
+	}
+	profile.Email = user.Email
 
 	resp, err := h.client.SendProfileInfo(c.Request.Context(), user.RawToken, profile)
 	if err != nil {

@@ -69,7 +69,7 @@ type EventReader interface {
 // attendees profile table -- kept separate from AttendeeRepository above,
 // which owns the unrelated attendee_registration registration list).
 type AttendeeProfileReader interface {
-	Insert(ctx context.Context, payload models.AttendeeInsert, idpUUID string) error
+	Insert(ctx context.Context, payload models.AttendeeInsert, email, idpUUID string) error
 	GetByEmail(ctx context.Context, email string) (models.Attendee, error)
 	GetByUUID(ctx context.Context, idpUUID string) (models.Attendee, error)
 	PatchByEmail(ctx context.Context, email string, patch models.AttendeePatch, updatedBy string) error

@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"wso2-coin-backend/internal/crypto"
@@ -39,8 +40,8 @@ const memberIDQRPrefix = "00vVM00000"
 
 // AttendeeProfileRepo provides read/write access to the attendees table
 // (the new profile table -- see .claude/PLAN.md). Kept separate from
-// AttendeeRepo in attendee.go, which owns the unrelated agenda_attendee
-// registration-marker table. title/company/country/first_name/last_name are
+// AttendeeRepo in attendee.go, which owns the unrelated attendee_registration
+// list. title/company/country/first_name/last_name are
 // encrypted at rest; piiKey encrypts/decrypts them.
 type AttendeeProfileRepo struct {
 	pool   *pgxpool.Pool
@@ -54,13 +55,37 @@ func NewAttendeeProfileRepo(pool *pgxpool.Pool, piiKey []byte) *AttendeeProfileR
 	return &AttendeeProfileRepo{pool: pool, piiKey: piiKey}
 }
 
+// ErrEmailOwnedByAnother is returned by Insert when the email already has a
+// row bound to a different idp_uuid, so the upsert was a no-op. Handlers map
+// it to 409, never to a silent 201: the caller's data was not written.
+//
+// Declared here rather than in errors.go to keep the attendee identity fix
+// self-contained.
+var ErrEmailOwnedByAnother = errors.New("email already registered to another account")
+
 // Insert upserts an attendee row keyed on email, mirroring the old
 // insertAttendeeQuery's ON DUPLICATE KEY UPDATE semantics (see
 // .claude/PLAN.md), re-keyed on email instead of the old member_id PK.
-// idpUUID is the caller's authenticated JWT sub, never taken from payload,
-// and is used for created_by/updated_by too (self-registration: the creator
-// is the attendee).
-func (r *AttendeeProfileRepo) Insert(ctx context.Context, payload models.AttendeeInsert, idpUUID string) error {
+//
+// email and idpUUID are both identity and both come from the caller's
+// authenticated JWT (email claim and sub), never from payload -- payload
+// carries no identity field at all. idpUUID is used for created_by/updated_by
+// too (self-registration: the creator is the attendee).
+//
+// The conflict update is scoped to rows the caller may claim: their own row,
+// or a row imported from registration that has never been bound to an IdP
+// identity (idp_uuid IS NULL, migration 003). Anything else is a no-op
+// reported as ErrEmailOwnedByAnother. Before that scope, a body-supplied email
+// rebound a victim's row to the caller's idp_uuid and overwrote every PII
+// column including member_id -- the value served as qrUri, the check-in
+// credential (audit A2).
+//
+// member_id is COALESCEd rather than assigned on conflict: payload.MemberID is
+// optional (models.AttendeeInsert has no binding:"required" on it), so a
+// re-registration or a first-login "claim my imported row" POST that omits
+// memberId would otherwise NULL the stored value and leave the attendee with an
+// empty qrUri and no way to check in. An omitted member id means "unchanged".
+func (r *AttendeeProfileRepo) Insert(ctx context.Context, payload models.AttendeeInsert, email, idpUUID string) error {
 	title, err := r.encrypt(payload.Title)
 	if err != nil {
 		return fmt.Errorf("encrypting title: %w", err)
@@ -82,20 +107,35 @@ func (r *AttendeeProfileRepo) Insert(ctx context.Context, payload models.Attende
 		return fmt.Errorf("encrypting last name: %w", err)
 	}
 
-	_, err = r.pool.Exec(ctx,
+	tag, err := r.pool.Exec(ctx,
 		`INSERT INTO attendees (
 			email, idp_uuid, member_id, title, company, country,
 			first_name, last_name, is_partner, profile_url,
 			created_by, updated_by
 		) VALUES ($1, $2, NULLIF($3, ''), $4, $5, $6, $7, $8, $9, $10, $11, $11)
 		ON CONFLICT (email) DO UPDATE SET
-			idp_uuid = $2, member_id = NULLIF($3, ''), title = $4, company = $5, country = $6,
+			idp_uuid = $2, member_id = COALESCE(NULLIF($3, ''), attendees.member_id),
+			title = $4, company = $5, country = $6,
 			first_name = $7, last_name = $8, is_partner = $9, profile_url = $10,
-			updated_by = $11, updated_at = NOW()`,
-		payload.Email, idpUUID, payload.MemberID, title, company, country,
+			updated_by = $11, updated_at = NOW()
+		WHERE attendees.idp_uuid IS NULL OR attendees.idp_uuid = $2`,
+		email, idpUUID, payload.MemberID, title, company, country,
 		firstName, lastName, payload.IsPartner, payload.ProfileURL, idpUUID,
 	)
-	return err
+	if err != nil {
+		// idp_uuid and member_id are UNIQUE too: a second registration under a
+		// changed email claim, or a member_id already spoken for, lands here.
+		// Neither is an internal fault, so neither should be a 500.
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation {
+			return ErrEmailOwnedByAnother
+		}
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrEmailOwnedByAnother
+	}
+	return nil
 }
 
 // GetByEmail returns a single attendee by email. Returns ErrNotFound if no
@@ -324,10 +364,12 @@ func (r *AttendeeProfileRepo) Search(ctx context.Context, filter models.Attendee
 		if idpUUID != nil {
 			a.IDPUUID = *idpUUID
 		}
-		if memberID != nil {
-			a.MemberID = *memberID
-			a.QRUri = attendeeQRFromMemberID(*memberID)
-		}
+		// member_id is deliberately not copied onto the result: it is the
+		// check-in credential (served as qrUri), it is in no openapi Attendee
+		// schema, and a directory search of every other attendee is the last
+		// place it belongs. GET /attendees/me still returns the caller's own
+		// (audit P2).
+		_ = memberID
 		if profileURL != nil {
 			a.ProfileURL = *profileURL
 		}

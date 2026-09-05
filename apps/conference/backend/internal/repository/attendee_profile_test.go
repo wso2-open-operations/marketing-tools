@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"wso2-coin-backend/internal/models"
 )
@@ -31,14 +32,43 @@ import (
 // this test file; it has no relationship to any real PII_ENCRYPTION_KEY.
 var attendeeProfileTestKey = mustDecodeTestKey("AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=")
 
-func newAttendeeFixture(t *testing.T, ctx context.Context, insert models.AttendeeInsert, idpUUID string) {
+// zeroUUID is the lowest possible attendees.id, so a cursor carrying it is
+// ordered purely by its timestamp.
+const zeroUUID = "00000000-0000-0000-0000-000000000000"
+
+// searchStartCursor returns a keyset cursor pinned to the database's clock at
+// the moment it is called, so any Search passed it can only ever reach rows
+// this test creates afterwards.
+//
+// Search's ordering is (created_at, id) and its text match runs in Go *after*
+// decryption, so an unbounded or text-filtered Search walks the whole shared
+// staging table and decrypts every real attendee with this file's throwaway
+// key -- the GCM tag fails and the error takes down the whole page. That is
+// audit S3 one table over: a harness fault, not a product one. Speakers scope
+// the same problem away with a fixture-created eventId (speaker_test.go);
+// attendees have no such column, so the keyset position is the scope.
+//
+// The instant comes from NOW() on the server rather than time.Now() here:
+// created_at defaults to the DB clock, and any skew against the test
+// machine's would either strand the fixtures outside the range or let real
+// rows back into it.
+func searchStartCursor(t *testing.T, ctx context.Context) string {
+	t.Helper()
+	var now time.Time
+	if err := testDB.QueryRow(ctx, "SELECT NOW()").Scan(&now); err != nil {
+		t.Fatalf("reading the database clock failed: %v", err)
+	}
+	return encodeAttendeeCursor(now, zeroUUID)
+}
+
+func newAttendeeFixture(t *testing.T, ctx context.Context, email string, insert models.AttendeeInsert, idpUUID string) {
 	t.Helper()
 	repo := NewAttendeeProfileRepo(testDB, attendeeProfileTestKey)
-	if err := repo.Insert(ctx, insert, idpUUID); err != nil {
+	if err := repo.Insert(ctx, insert, email, idpUUID); err != nil {
 		t.Fatalf("failed to insert test attendee: %v", err)
 	}
 	t.Cleanup(func() {
-		_, _ = testDB.Exec(context.Background(), "DELETE FROM attendees WHERE email = $1", insert.Email)
+		_, _ = testDB.Exec(context.Background(), "DELETE FROM attendees WHERE email = $1", email)
 	})
 }
 
@@ -49,7 +79,6 @@ func TestAttendeeProfileRepo_InsertAndGetByEmail_RoundTripsPlaintext(t *testing.
 	idpUUID := newUUID()
 
 	insert := models.AttendeeInsert{
-		Email:      email,
 		Title:      "Principal Engineer",
 		Company:    "WSO2",
 		Country:    "Sri Lanka",
@@ -59,7 +88,7 @@ func TestAttendeeProfileRepo_InsertAndGetByEmail_RoundTripsPlaintext(t *testing.
 		IsPartner:  true,
 		ProfileURL: "https://example.com/ada.webp",
 	}
-	newAttendeeFixture(t, ctx, insert, idpUUID)
+	newAttendeeFixture(t, ctx, email, insert, idpUUID)
 
 	got, err := repo.GetByEmail(ctx, email)
 	if err != nil {
@@ -99,8 +128,7 @@ func TestAttendeeProfileRepo_Insert_EncryptsPIIAtRest(t *testing.T) {
 	repo := NewAttendeeProfileRepo(testDB, attendeeProfileTestKey)
 	email := fmt.Sprintf("attendee-%s@example.com", newUUID())
 
-	newAttendeeFixture(t, ctx, models.AttendeeInsert{
-		Email:     email,
+	newAttendeeFixture(t, ctx, email, models.AttendeeInsert{
 		Title:     "Secret Title",
 		FirstName: "PlainFirst",
 		LastName:  "PlainLast",
@@ -130,23 +158,22 @@ func TestAttendeeProfileRepo_Insert_EncryptsPIIAtRest(t *testing.T) {
 	}
 }
 
-func TestAttendeeProfileRepo_Insert_UpsertsOnConflictingEmail(t *testing.T) {
-	// Ports the old insertAttendeeQuery's ON DUPLICATE KEY UPDATE semantics
-	// (an upsert), re-keyed on email instead of the old member_id PK.
+func TestAttendeeProfileRepo_Insert_SelfReRegistrationIsIdempotent(t *testing.T) {
+	// The upsert exists so an attendee can re-register (refresh their own
+	// profile) without a conflict. Same email, same idp_uuid -> update.
 	ctx := context.Background()
 	repo := NewAttendeeProfileRepo(testDB, attendeeProfileTestKey)
 	email := fmt.Sprintf("attendee-%s@example.com", newUUID())
-	firstUUID := newUUID()
+	idpUUID := newUUID()
 
-	newAttendeeFixture(t, ctx, models.AttendeeInsert{
-		Email: email, Title: "First Title", FirstName: "First", MemberID: "m-first",
-	}, firstUUID)
+	newAttendeeFixture(t, ctx, email, models.AttendeeInsert{
+		Title: "First Title", FirstName: "First", LastName: "Last", MemberID: "m-" + newUUID(),
+	}, idpUUID)
 
-	secondUUID := newUUID()
 	if err := repo.Insert(ctx, models.AttendeeInsert{
-		Email: email, Title: "Second Title", FirstName: "Second", MemberID: "m-second",
-	}, secondUUID); err != nil {
-		t.Fatalf("second Insert (upsert) returned error: %v", err)
+		Title: "Second Title", FirstName: "Second", LastName: "Last", MemberID: "m2-" + newUUID(),
+	}, email, idpUUID); err != nil {
+		t.Fatalf("re-registration Insert returned error: %v", err)
 	}
 
 	got, err := repo.GetByEmail(ctx, email)
@@ -156,14 +183,97 @@ func TestAttendeeProfileRepo_Insert_UpsertsOnConflictingEmail(t *testing.T) {
 	if got.Title != "Second Title" {
 		t.Errorf("Title = %q, want %q (upserted)", got.Title, "Second Title")
 	}
-	if got.IDPUUID != secondUUID {
-		t.Errorf("IDPUUID = %q, want %q (upserted)", got.IDPUUID, secondUUID)
+	if got.IDPUUID != idpUUID {
+		t.Errorf("IDPUUID = %q, want %q (unchanged)", got.IDPUUID, idpUUID)
 	}
-	if got.CreatedBy != firstUUID {
-		t.Errorf("CreatedBy = %q, want %q (unchanged by the conflict update)", got.CreatedBy, firstUUID)
+	if got.CreatedBy != idpUUID {
+		t.Errorf("CreatedBy = %q, want %q (unchanged by the conflict update)", got.CreatedBy, idpUUID)
 	}
-	if got.UpdatedBy != secondUUID {
-		t.Errorf("UpdatedBy = %q, want %q (set by the conflict update)", got.UpdatedBy, secondUUID)
+	if got.UpdatedBy != idpUUID {
+		t.Errorf("UpdatedBy = %q, want %q (set by the conflict update)", got.UpdatedBy, idpUUID)
+	}
+}
+
+func TestAttendeeProfileRepo_Insert_HijackAttemptIsNoOp(t *testing.T) {
+	// Audit A2. Before the scoped upsert, a second caller's Insert on an
+	// existing email rebound that row's idp_uuid to the attacker and
+	// overwrote every PII column, member_id (served as qrUri, the check-in
+	// credential) included.
+	ctx := context.Background()
+	repo := NewAttendeeProfileRepo(testDB, attendeeProfileTestKey)
+	email := fmt.Sprintf("victim-%s@example.com", newUUID())
+	victimUUID := newUUID()
+	victimMemberID := "00vVM00000" + newUUID()[:8]
+
+	newAttendeeFixture(t, ctx, email, models.AttendeeInsert{
+		Title: "Victim Title", FirstName: "Victim", LastName: "Row", MemberID: victimMemberID,
+	}, victimUUID)
+
+	attackerUUID := newUUID()
+	err := repo.Insert(ctx, models.AttendeeInsert{
+		Title: "Attacker Title", FirstName: "Attacker", LastName: "Row", MemberID: "attacker-" + newUUID(),
+	}, email, attackerUUID)
+	if !errors.Is(err, ErrEmailOwnedByAnother) {
+		t.Fatalf("Insert error = %v, want ErrEmailOwnedByAnother", err)
+	}
+
+	got, err := repo.GetByEmail(ctx, email)
+	if err != nil {
+		t.Fatalf("GetByEmail returned error: %v", err)
+	}
+	if got.IDPUUID != victimUUID {
+		t.Errorf("IDPUUID = %q, want %q (the victim's row must not be rebound)", got.IDPUUID, victimUUID)
+	}
+	if got.Title != "Victim Title" || got.FirstName != "Victim" {
+		t.Errorf("PII = %q/%q, want %q/%q (unchanged)", got.Title, got.FirstName, "Victim Title", "Victim")
+	}
+	if got.MemberID != victimMemberID {
+		t.Errorf("MemberID = %q, want %q (the check-in credential must not be overwritten)", got.MemberID, victimMemberID)
+	}
+}
+
+func TestAttendeeProfileRepo_Insert_ClaimsRowImportedWithNoIDPUUID(t *testing.T) {
+	// migration 003 leaves idp_uuid NULL for rows imported from registration;
+	// the attendee's first login binds it. The scoped upsert must still allow
+	// that, or every pre-imported attendee is locked out of their own row.
+	//
+	// The imported row already carries the member_id the registration import
+	// assigned, and payload.MemberID is optional, so the claiming POST need not
+	// repeat it. member_id backs qrUri, the check-in credential, so an omitted
+	// memberId must leave the stored one alone rather than NULL it.
+	ctx := context.Background()
+	repo := NewAttendeeProfileRepo(testDB, attendeeProfileTestKey)
+	email := fmt.Sprintf("imported-%s@example.com", newUUID())
+	importedMemberID := "00vVM00000" + newUUID()[:8]
+
+	if _, err := testDB.Exec(ctx,
+		"INSERT INTO attendees (email, idp_uuid, member_id) VALUES ($1, NULL, $2)",
+		email, importedMemberID); err != nil {
+		t.Fatalf("seeding imported row failed: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = testDB.Exec(context.Background(), "DELETE FROM attendees WHERE email = $1", email)
+	})
+
+	idpUUID := newUUID()
+	if err := repo.Insert(ctx, models.AttendeeInsert{
+		FirstName: "Claimed", LastName: "Row",
+	}, email, idpUUID); err != nil {
+		t.Fatalf("claiming Insert returned error: %v", err)
+	}
+
+	got, err := repo.GetByEmail(ctx, email)
+	if err != nil {
+		t.Fatalf("GetByEmail returned error: %v", err)
+	}
+	if got.IDPUUID != idpUUID {
+		t.Errorf("IDPUUID = %q, want %q (first login binds the imported row)", got.IDPUUID, idpUUID)
+	}
+	if got.MemberID != importedMemberID {
+		t.Errorf("MemberID = %q, want %q (an omitted memberId must not clear the stored one)", got.MemberID, importedMemberID)
+	}
+	if wantQR := attendeeQRFromMemberID(importedMemberID); got.QRUri != wantQR {
+		t.Errorf("QRUri = %q, want %q (the check-in credential must survive the claim)", got.QRUri, wantQR)
 	}
 }
 
@@ -183,8 +293,7 @@ func TestAttendeeProfileRepo_GetByUUID_RoundTrips(t *testing.T) {
 	email := fmt.Sprintf("attendee-%s@example.com", newUUID())
 	idpUUID := newUUID()
 
-	newAttendeeFixture(t, ctx, models.AttendeeInsert{
-		Email:     email,
+	newAttendeeFixture(t, ctx, email, models.AttendeeInsert{
 		FirstName: "Alan",
 		LastName:  "Turing",
 		MemberID:  "m-2",
@@ -217,8 +326,7 @@ func TestAttendeeProfileRepo_PatchByEmail_UpdatesOnlyProvidedFields(t *testing.T
 	repo := NewAttendeeProfileRepo(testDB, attendeeProfileTestKey)
 	email := fmt.Sprintf("attendee-%s@example.com", newUUID())
 
-	newAttendeeFixture(t, ctx, models.AttendeeInsert{
-		Email:     email,
+	newAttendeeFixture(t, ctx, email, models.AttendeeInsert{
 		Title:     "Old Title",
 		Company:   "Old Company",
 		FirstName: "OldFirst",
@@ -266,13 +374,14 @@ func TestAttendeeProfileRepo_Search_ExcludesSelfAndFiltersByUUID(t *testing.T) {
 	ctx := context.Background()
 	repo := NewAttendeeProfileRepo(testDB, attendeeProfileTestKey)
 
+	startCursor := searchStartCursor(t, ctx)
 	selfUUID := newUUID()
 	targetUUID := newUUID()
-	newAttendeeFixture(t, ctx, models.AttendeeInsert{
-		Email: fmt.Sprintf("self-%s@example.com", newUUID()), FirstName: "Self",
+	newAttendeeFixture(t, ctx, fmt.Sprintf("self-%s@example.com", newUUID()), models.AttendeeInsert{
+		FirstName: "Self",
 	}, selfUUID)
-	newAttendeeFixture(t, ctx, models.AttendeeInsert{
-		Email: fmt.Sprintf("target-%s@example.com", newUUID()), FirstName: "Target",
+	newAttendeeFixture(t, ctx, fmt.Sprintf("target-%s@example.com", newUUID()), models.AttendeeInsert{
+		FirstName: "Target",
 	}, targetUUID)
 
 	result, err := repo.Search(ctx, models.AttendeeSearchFilter{UUID: targetUUID, Limit: 10}, selfUUID)
@@ -286,15 +395,25 @@ func TestAttendeeProfileRepo_Search_ExcludesSelfAndFiltersByUUID(t *testing.T) {
 		t.Errorf("NextCursor = %q, want empty (single result fits one page)", result.Page.NextCursor)
 	}
 
-	// Searching for self must never return self, even with no uuid filter.
-	self, err := repo.Search(ctx, models.AttendeeSearchFilter{Limit: 100}, selfUUID)
+	// Searching for self must never return self, even with no uuid filter. The
+	// start cursor bounds this unfiltered listing to the two rows above.
+	self, err := repo.Search(ctx, models.AttendeeSearchFilter{Limit: 100, Cursor: startCursor}, selfUUID)
 	if err != nil {
 		t.Fatalf("Search returned error: %v", err)
 	}
+	// The target proves the range isn't trivially empty, which would make the
+	// self-exclusion assertion below pass for the wrong reason.
+	sawTarget := false
 	for _, a := range self.Items {
 		if a.IDPUUID == selfUUID {
 			t.Errorf("Search results include the excluded self uuid %q", selfUUID)
 		}
+		if a.IDPUUID == targetUUID {
+			sawTarget = true
+		}
+	}
+	if !sawTarget {
+		t.Errorf("unfiltered search over this test's own rows missed the target %q", targetUUID)
 	}
 }
 
@@ -302,24 +421,25 @@ func TestAttendeeProfileRepo_Search_FiltersByQueryOverEncryptedFields(t *testing
 	ctx := context.Background()
 	repo := NewAttendeeProfileRepo(testDB, attendeeProfileTestKey)
 
+	startCursor := searchStartCursor(t, ctx)
 	selfUUID := newUUID()
-	newAttendeeFixture(t, ctx, models.AttendeeInsert{
-		Email: fmt.Sprintf("self-%s@example.com", newUUID()), FirstName: "Self",
+	newAttendeeFixture(t, ctx, fmt.Sprintf("self-%s@example.com", newUUID()), models.AttendeeInsert{
+		FirstName: "Self",
 	}, selfUUID)
 
 	// Three attendees that each match a query on a different encrypted column:
 	// name, company, title. All decrypt-then-match in Go.
 	byName := newUUID()
-	newAttendeeFixture(t, ctx, models.AttendeeInsert{
-		Email: fmt.Sprintf("a-%s@example.com", newUUID()), FirstName: "Grace", LastName: "TddHopperUnique",
+	newAttendeeFixture(t, ctx, fmt.Sprintf("a-%s@example.com", newUUID()), models.AttendeeInsert{
+		FirstName: "Grace", LastName: "TddHopperUnique",
 	}, byName)
 	byCompany := newUUID()
-	newAttendeeFixture(t, ctx, models.AttendeeInsert{
-		Email: fmt.Sprintf("b-%s@example.com", newUUID()), FirstName: "Bob", Company: "TddAcmeUniqueCorp",
+	newAttendeeFixture(t, ctx, fmt.Sprintf("b-%s@example.com", newUUID()), models.AttendeeInsert{
+		FirstName: "Bob", Company: "TddAcmeUniqueCorp",
 	}, byCompany)
 	byTitle := newUUID()
-	newAttendeeFixture(t, ctx, models.AttendeeInsert{
-		Email: fmt.Sprintf("c-%s@example.com", newUUID()), FirstName: "Carol", Title: "TddPrincipalUnique",
+	newAttendeeFixture(t, ctx, fmt.Sprintf("c-%s@example.com", newUUID()), models.AttendeeInsert{
+		FirstName: "Carol", Title: "TddPrincipalUnique",
 	}, byTitle)
 
 	cases := []struct {
@@ -331,7 +451,7 @@ func TestAttendeeProfileRepo_Search_FiltersByQueryOverEncryptedFields(t *testing
 		{"tddprincipalunique", byTitle}, // matches title
 	}
 	for _, tc := range cases {
-		result, err := repo.Search(ctx, models.AttendeeSearchFilter{Query: tc.query, Limit: 50}, selfUUID)
+		result, err := repo.Search(ctx, models.AttendeeSearchFilter{Query: tc.query, Limit: 50, Cursor: startCursor}, selfUUID)
 		if err != nil {
 			t.Fatalf("Search(%q) returned error: %v", tc.query, err)
 		}
@@ -341,7 +461,7 @@ func TestAttendeeProfileRepo_Search_FiltersByQueryOverEncryptedFields(t *testing
 	}
 
 	// A query matching none of the fixtures returns an empty (non-nil) slice.
-	none, err := repo.Search(ctx, models.AttendeeSearchFilter{Query: "no-such-attendee-zzz", Limit: 50}, selfUUID)
+	none, err := repo.Search(ctx, models.AttendeeSearchFilter{Query: "no-such-attendee-zzz", Limit: 50, Cursor: startCursor}, selfUUID)
 	if err != nil {
 		t.Fatalf("Search returned error: %v", err)
 	}
@@ -354,9 +474,10 @@ func TestAttendeeProfileRepo_Search_CursorPaginationIsStableAndComplete(t *testi
 	ctx := context.Background()
 	repo := NewAttendeeProfileRepo(testDB, attendeeProfileTestKey)
 
+	startCursor := searchStartCursor(t, ctx)
 	selfUUID := newUUID()
-	newAttendeeFixture(t, ctx, models.AttendeeInsert{
-		Email: fmt.Sprintf("self-%s@example.com", newUUID()), FirstName: "Self",
+	newAttendeeFixture(t, ctx, fmt.Sprintf("self-%s@example.com", newUUID()), models.AttendeeInsert{
+		FirstName: "Self",
 	}, selfUUID)
 
 	// Five attendees sharing a unique company token so the search is isolated
@@ -366,14 +487,16 @@ func TestAttendeeProfileRepo_Search_CursorPaginationIsStableAndComplete(t *testi
 	for i := 0; i < 5; i++ {
 		u := newUUID()
 		want[u] = true
-		newAttendeeFixture(t, ctx, models.AttendeeInsert{
-			Email:   fmt.Sprintf("page-%s@example.com", newUUID()),
+		newAttendeeFixture(t, ctx, fmt.Sprintf("page-%s@example.com", newUUID()), models.AttendeeInsert{
 			Company: companyToken,
 		}, u)
 	}
 
 	seen := make(map[string]bool)
-	cursor := ""
+	// Paging starts at the test's own start position, not at the head of the
+	// table: the walk that a text query forces would otherwise decrypt every
+	// real staging attendee on the way to the fixtures.
+	cursor := startCursor
 	pages := 0
 	for {
 		pages++
@@ -415,22 +538,26 @@ func TestAttendeeProfileRepo_Search_UnfilteredPageIsBoundedAndReportsMore(t *tes
 	ctx := context.Background()
 	repo := NewAttendeeProfileRepo(testDB, attendeeProfileTestKey)
 
+	startCursor := searchStartCursor(t, ctx)
 	selfUUID := newUUID()
-	newAttendeeFixture(t, ctx, models.AttendeeInsert{
-		Email: fmt.Sprintf("self-%s@example.com", newUUID()), FirstName: "Self",
+	newAttendeeFixture(t, ctx, fmt.Sprintf("self-%s@example.com", newUUID()), models.AttendeeInsert{
+		FirstName: "Self",
 	}, selfUUID)
 	for i := 0; i < 3; i++ {
-		newAttendeeFixture(t, ctx, models.AttendeeInsert{
-			Email: fmt.Sprintf("bounded-%s@example.com", newUUID()),
-		}, newUUID())
+		newAttendeeFixture(t, ctx, fmt.Sprintf("bounded-%s@example.com", newUUID()), models.AttendeeInsert{}, newUUID())
 	}
 
 	// The no-query path bounds the read with a SQL LIMIT of limit+1. The +1 is
 	// what tells us another page exists, so it has to survive: a LIMIT of exactly
 	// `limit` would silently strand the remaining rows with an empty NextCursor.
-	// Not asserting total coverage here, since without a query the search spans
-	// every attendee in the shared database.
-	first, err := repo.Search(ctx, models.AttendeeSearchFilter{Limit: 2}, selfUUID)
+	//
+	// This is the one test that is *about* the unfiltered whole-table path, so
+	// it cannot be scoped by a filter. The start cursor keeps the semantics
+	// intact -- it is still the no-query branch, still bounded by SQL LIMIT --
+	// while making the three fixtures above the only rows in range, which is
+	// also what turns "another page exists" into a deterministic assertion
+	// instead of one riding on the shared table being non-empty.
+	first, err := repo.Search(ctx, models.AttendeeSearchFilter{Limit: 2, Cursor: startCursor}, selfUUID)
 	if err != nil {
 		t.Fatalf("Search returned error: %v", err)
 	}
@@ -438,12 +565,18 @@ func TestAttendeeProfileRepo_Search_UnfilteredPageIsBoundedAndReportsMore(t *tes
 		t.Fatalf("Items = %d, want exactly the limit of 2", len(first.Items))
 	}
 	if first.Page.NextCursor == "" {
-		t.Fatal("NextCursor is empty, want a cursor since more attendees exist")
+		t.Fatal("NextCursor is empty, want a cursor since a third attendee is in range")
 	}
 
 	second, err := repo.Search(ctx, models.AttendeeSearchFilter{Limit: 2, Cursor: first.Page.NextCursor}, selfUUID)
 	if err != nil {
 		t.Fatalf("Search returned error: %v", err)
+	}
+	if len(second.Items) != 1 {
+		t.Errorf("second page = %d items, want the 1 remaining fixture", len(second.Items))
+	}
+	if second.Page.NextCursor != "" {
+		t.Errorf("NextCursor = %q, want empty on the last page", second.Page.NextCursor)
 	}
 	seen := make(map[string]bool, len(first.Items))
 	for _, a := range first.Items {
@@ -470,10 +603,16 @@ func TestAttendeeProfileRepo_Search_ExcludesAttendeesWithNoIDPUUID(t *testing.T)
 	ctx := context.Background()
 	repo := NewAttendeeProfileRepo(testDB, attendeeProfileTestKey)
 
+	startCursor := searchStartCursor(t, ctx)
 	selfUUID := newUUID()
-	newAttendeeFixture(t, ctx, models.AttendeeInsert{
-		Email: fmt.Sprintf("self-%s@example.com", newUUID()), FirstName: "Self",
+	newAttendeeFixture(t, ctx, fmt.Sprintf("self-%s@example.com", newUUID()), models.AttendeeInsert{
+		FirstName: "Self",
 	}, selfUUID)
+
+	// A control row that shares the orphan's company token and *does* have an
+	// idp_uuid. Without it both assertions below would pass on an empty result
+	// set, proving nothing about the IS NOT NULL filter.
+	controlUUID := newUUID()
 
 	// The repo's Insert always writes the caller's JWT sub, so it can't produce a
 	// NULL idp_uuid; a registration import can, so write the row directly. company
@@ -481,6 +620,10 @@ func TestAttendeeProfileRepo_Search_ExcludesAttendeesWithNoIDPUUID(t *testing.T)
 	// go in encrypted for the search to have any chance of matching this row --
 	// otherwise the test would pass whether or not the row was correctly excluded.
 	const companyToken = "TddNoUuidUniqueCo"
+	newAttendeeFixture(t, ctx, fmt.Sprintf("control-%s@example.com", newUUID()), models.AttendeeInsert{
+		FirstName: "Control", Company: companyToken,
+	}, controlUUID)
+
 	encryptedCompany, err := repo.encrypt(companyToken)
 	if err != nil {
 		t.Fatalf("encrypt returned error: %v", err)
@@ -498,22 +641,74 @@ func TestAttendeeProfileRepo_Search_ExcludesAttendeesWithNoIDPUUID(t *testing.T)
 
 	// A row with no idp_uuid has no uuid to connect to, so it must not surface --
 	// not via a text query, and not via an unfiltered listing either.
-	result, err := repo.Search(ctx, models.AttendeeSearchFilter{Query: companyToken, Limit: 50}, selfUUID)
+	result, err := repo.Search(ctx, models.AttendeeSearchFilter{Query: companyToken, Limit: 50, Cursor: startCursor}, selfUUID)
 	if err != nil {
 		t.Fatalf("Search returned error: %v", err)
 	}
-	if len(result.Items) != 0 {
-		t.Errorf("Search(%q) = %+v, want no results (attendee has no idp_uuid)", companyToken, result.Items)
+	if len(result.Items) != 1 || result.Items[0].IDPUUID != controlUUID {
+		t.Errorf("Search(%q) = %+v, want only the control row (the orphan has no idp_uuid)", companyToken, result.Items)
 	}
 
-	all, err := repo.Search(ctx, models.AttendeeSearchFilter{Limit: 100}, selfUUID)
+	all, err := repo.Search(ctx, models.AttendeeSearchFilter{Limit: 100, Cursor: startCursor}, selfUUID)
 	if err != nil {
 		t.Fatalf("Search returned error: %v", err)
 	}
+	sawControl := false
 	for _, a := range all.Items {
 		if a.Email == orphanEmail {
 			t.Errorf("unfiltered search returned attendee %q, which has no idp_uuid", orphanEmail)
 		}
+		if a.IDPUUID == controlUUID {
+			sawControl = true
+		}
+	}
+	if !sawControl {
+		t.Errorf("unfiltered search over this test's own rows missed the control %q", controlUUID)
+	}
+}
+
+func TestAttendeeProfileRepo_Search_OmitsMemberIDAndQRUri(t *testing.T) {
+	// Audit P2. qrUri is the check-in credential and neither field is in the
+	// openapi Attendee schema; the directory search of every other attendee is
+	// the last place they belong. GET /attendees/me still carries the caller's.
+	ctx := context.Background()
+	repo := NewAttendeeProfileRepo(testDB, attendeeProfileTestKey)
+
+	selfUUID := newUUID()
+	targetUUID := newUUID()
+	newAttendeeFixture(t, ctx, fmt.Sprintf("self-%s@example.com", newUUID()), models.AttendeeInsert{
+		FirstName: "Self", LastName: "Caller",
+	}, selfUUID)
+	targetEmail := fmt.Sprintf("target-%s@example.com", newUUID())
+	newAttendeeFixture(t, ctx, targetEmail, models.AttendeeInsert{
+		FirstName: "Target", LastName: "Row", MemberID: "00vVM00000" + newUUID()[:8],
+	}, targetUUID)
+
+	result, err := repo.Search(ctx, models.AttendeeSearchFilter{UUID: targetUUID, Limit: 10}, selfUUID)
+	if err != nil {
+		t.Fatalf("Search returned error: %v", err)
+	}
+	if len(result.Items) != 1 {
+		t.Fatalf("Items = %+v, want exactly the target attendee", result.Items)
+	}
+	got := result.Items[0]
+	if got.MemberID != "" {
+		t.Errorf("MemberID = %q, want empty in search results", got.MemberID)
+	}
+	if got.QRUri != "" {
+		t.Errorf("QRUri = %q, want empty in search results (it is a check-in credential)", got.QRUri)
+	}
+	if got.Email != targetEmail {
+		t.Errorf("Email = %q, want %q (email stays: connections key off it)", got.Email, targetEmail)
+	}
+
+	// The caller's own row still carries both.
+	self, err := repo.GetByEmail(ctx, targetEmail)
+	if err != nil {
+		t.Fatalf("GetByEmail returned error: %v", err)
+	}
+	if self.QRUri == "" {
+		t.Errorf("GetByEmail QRUri = empty, want the attendee's own QR credential")
 	}
 }
 
