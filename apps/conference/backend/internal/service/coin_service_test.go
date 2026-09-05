@@ -71,12 +71,29 @@ func (f *fakeAllocationRepo) UpdateStatus(ctx context.Context, qrID, userUUID st
 	return f.updateStatusErr
 }
 
-func (f *fakeAllocationRepo) History(ctx context.Context, userUUID string) ([]models.CoinAllocationHistory, error) {
+func (f *fakeAllocationRepo) History(ctx context.Context, userUUID, eventID string) ([]models.CoinAllocationHistory, error) {
 	return nil, nil
 }
 
-func (f *fakeAllocationRepo) Summary(ctx context.Context, userUUID string) (models.CoinAllocationSummary, error) {
+func (f *fakeAllocationRepo) Summary(ctx context.Context, userUUID, eventID string) (models.CoinAllocationSummary, error) {
 	return models.CoinAllocationSummary{}, nil
+}
+
+type fakeEventRepo struct {
+	current models.Event
+	err     error
+}
+
+func (f *fakeEventRepo) GetEvents(ctx context.Context) ([]models.Event, error) {
+	return []models.Event{f.current}, f.err
+}
+
+func (f *fakeEventRepo) GetEventAgendas(ctx context.Context, eventID string) ([]models.EventAgenda, error) {
+	return nil, f.err
+}
+
+func (f *fakeEventRepo) GetCurrentEvent(ctx context.Context) (models.Event, error) {
+	return f.current, f.err
 }
 
 type fakeSessionRepo struct {
@@ -112,6 +129,7 @@ type harness struct {
 	attendees   *fakeAttendeeRepo
 	allocations *fakeAllocationRepo
 	sessions    *fakeSessionRepo
+	events      *fakeEventRepo
 	qrPortal    *fakeQRPortalClient
 	wallets     *fakeWalletClient
 	svc         *CoinService
@@ -122,6 +140,7 @@ func newHarness(cfg ScanConfig, now time.Time) *harness {
 		attendees:   &fakeAttendeeRepo{isRegistered: true},
 		allocations: &fakeAllocationRepo{},
 		sessions:    &fakeSessionRepo{},
+		events:      &fakeEventRepo{current: models.Event{ID: testEventID}},
 		qrPortal: &fakeQRPortalClient{
 			qrCode: &models.ConferenceQrCode{
 				QrID:  "qr-1",
@@ -131,13 +150,15 @@ func newHarness(cfg ScanConfig, now time.Time) *harness {
 		},
 		wallets: &fakeWalletClient{wallet: &models.Wallet{WalletAddress: "0xabc"}},
 	}
-	h.svc = NewCoinService(h.attendees, h.allocations, h.sessions, h.qrPortal, h.wallets, cfg)
+	h.svc = NewCoinService(h.attendees, h.allocations, h.sessions, h.events, h.qrPortal, h.wallets, cfg)
 	h.svc.Now = func() time.Time { return now }
 	return h
 }
 
 const testUserID = "user-uuid-1"
 const testEmail = "attendee@example.com"
+const testEventID = "event-uuid-1"
+const testAssertion = "test-jwt-assertion"
 
 func defaultConfig() ScanConfig {
 	return ScanConfig{
@@ -151,7 +172,7 @@ func TestScanQR_NotRegisteredAttendee(t *testing.T) {
 	h := newHarness(defaultConfig(), time.Now())
 	h.attendees.isRegistered = false
 
-	err := h.svc.ScanQR(context.Background(), testUserID, testEmail, "qr-1")
+	err := h.svc.ScanQR(context.Background(), testUserID, testEmail, "qr-1", testAssertion)
 
 	if !errors.Is(err, ErrNotRegisteredAttendee) {
 		t.Fatalf("expected ErrNotRegisteredAttendee, got %v", err)
@@ -163,7 +184,7 @@ func TestScanQR_AttendeeRepoError_PropagatesGenericError(t *testing.T) {
 	wantErr := errors.New("db down")
 	h.attendees.err = wantErr
 
-	err := h.svc.ScanQR(context.Background(), testUserID, testEmail, "qr-1")
+	err := h.svc.ScanQR(context.Background(), testUserID, testEmail, "qr-1", testAssertion)
 
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("expected wrapped db error, got %v", err)
@@ -176,7 +197,7 @@ func TestScanQR_AttendeeRepoError_PropagatesGenericError(t *testing.T) {
 func TestScanQR_WSO2EmployeeExcluded(t *testing.T) {
 	h := newHarness(defaultConfig(), time.Now())
 
-	err := h.svc.ScanQR(context.Background(), testUserID, "someone@wso2.com", "qr-1")
+	err := h.svc.ScanQR(context.Background(), testUserID, "someone@wso2.com", "qr-1", testAssertion)
 
 	if !errors.Is(err, ErrWSO2EmployeeNotEligible) {
 		t.Fatalf("expected ErrWSO2EmployeeNotEligible, got %v", err)
@@ -186,7 +207,7 @@ func TestScanQR_WSO2EmployeeExcluded(t *testing.T) {
 func TestScanQR_WSO2EmployeeExclusionCaseInsensitive(t *testing.T) {
 	h := newHarness(defaultConfig(), time.Now())
 
-	err := h.svc.ScanQR(context.Background(), testUserID, "someone@WSO2.COM", "qr-1")
+	err := h.svc.ScanQR(context.Background(), testUserID, "someone@WSO2.COM", "qr-1", testAssertion)
 
 	if !errors.Is(err, ErrWSO2EmployeeNotEligible) {
 		t.Fatalf("expected ErrWSO2EmployeeNotEligible for mixed-case domain, got %v", err)
@@ -198,7 +219,7 @@ func TestScanQR_WSO2EmployeeAllowedWhenFlagDisabled(t *testing.T) {
 	cfg.ExcludeEmployeeCoinAllocation = false
 	h := newHarness(cfg, time.Now())
 
-	err := h.svc.ScanQR(context.Background(), testUserID, "someone@wso2.com", "qr-1")
+	err := h.svc.ScanQR(context.Background(), testUserID, "someone@wso2.com", "qr-1", testAssertion)
 
 	if err != nil {
 		t.Fatalf("expected success with exclusion disabled, got %v", err)
@@ -209,7 +230,7 @@ func TestScanQR_AlreadyScanned(t *testing.T) {
 	h := newHarness(defaultConfig(), time.Now())
 	h.allocations.existsResult = true
 
-	err := h.svc.ScanQR(context.Background(), testUserID, testEmail, "qr-1")
+	err := h.svc.ScanQR(context.Background(), testUserID, testEmail, "qr-1", testAssertion)
 
 	if !errors.Is(err, ErrQRAlreadyScanned) {
 		t.Fatalf("expected ErrQRAlreadyScanned, got %v", err)
@@ -222,7 +243,7 @@ func TestScanQR_QRPortalError(t *testing.T) {
 	h.qrPortal.err = wantErr
 	h.qrPortal.qrCode = nil
 
-	err := h.svc.ScanQR(context.Background(), testUserID, testEmail, "qr-1")
+	err := h.svc.ScanQR(context.Background(), testUserID, testEmail, "qr-1", testAssertion)
 
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("expected wrapped qr portal error, got %v", err)
@@ -233,7 +254,7 @@ func TestScanQR_WalletNotFound(t *testing.T) {
 	h := newHarness(defaultConfig(), time.Now())
 	h.wallets.wallet = nil
 
-	err := h.svc.ScanQR(context.Background(), testUserID, testEmail, "qr-1")
+	err := h.svc.ScanQR(context.Background(), testUserID, testEmail, "qr-1", testAssertion)
 
 	if !errors.Is(err, ErrWalletNotFound) {
 		t.Fatalf("expected ErrWalletNotFound, got %v", err)
@@ -245,7 +266,7 @@ func TestScanQR_WalletLookupError(t *testing.T) {
 	wantErr := errors.New("wallet service down")
 	h.wallets.err = wantErr
 
-	err := h.svc.ScanQR(context.Background(), testUserID, testEmail, "qr-1")
+	err := h.svc.ScanQR(context.Background(), testUserID, testEmail, "qr-1", testAssertion)
 
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("expected wrapped wallet error, got %v", err)
@@ -267,7 +288,7 @@ func TestScanQR_SessionNotStarted(t *testing.T) {
 	h.sessions.start = time.Date(2026, 5, 21, 9, 0, 0, 0, time.UTC)
 	h.sessions.end = time.Date(2026, 5, 21, 9, 30, 0, 0, time.UTC)
 
-	err := h.svc.ScanQR(context.Background(), testUserID, testEmail, "qr-session")
+	err := h.svc.ScanQR(context.Background(), testUserID, testEmail, "qr-session", testAssertion)
 
 	if !errors.Is(err, ErrSessionNotStarted) {
 		t.Fatalf("expected ErrSessionNotStarted, got %v", err)
@@ -284,7 +305,7 @@ func TestScanQR_QRScanWindowExpired(t *testing.T) {
 	h.sessions.start = time.Date(2026, 5, 21, 9, 0, 0, 0, time.UTC)
 	h.sessions.end = time.Date(2026, 5, 21, 9, 30, 0, 0, time.UTC)
 
-	err := h.svc.ScanQR(context.Background(), testUserID, testEmail, "qr-session")
+	err := h.svc.ScanQR(context.Background(), testUserID, testEmail, "qr-session", testAssertion)
 
 	if !errors.Is(err, ErrQRScanWindowExpired) {
 		t.Fatalf("expected ErrQRScanWindowExpired, got %v", err)
@@ -299,7 +320,7 @@ func TestScanQR_WithinSessionWindow_Succeeds(t *testing.T) {
 	h.sessions.start = time.Date(2026, 5, 21, 9, 0, 0, 0, time.UTC)
 	h.sessions.end = time.Date(2026, 5, 21, 9, 30, 0, 0, time.UTC)
 
-	err := h.svc.ScanQR(context.Background(), testUserID, testEmail, "qr-session")
+	err := h.svc.ScanQR(context.Background(), testUserID, testEmail, "qr-session", testAssertion)
 
 	if err != nil {
 		t.Fatalf("expected success within session window, got %v", err)
@@ -314,7 +335,7 @@ func TestScanQR_WithinGracePeriodAfterSessionEnd_Succeeds(t *testing.T) {
 	h.sessions.start = time.Date(2026, 5, 21, 9, 0, 0, 0, time.UTC)
 	h.sessions.end = time.Date(2026, 5, 21, 9, 30, 0, 0, time.UTC)
 
-	err := h.svc.ScanQR(context.Background(), testUserID, testEmail, "qr-session")
+	err := h.svc.ScanQR(context.Background(), testUserID, testEmail, "qr-session", testAssertion)
 
 	if err != nil {
 		t.Fatalf("expected success within grace period, got %v", err)
@@ -329,7 +350,7 @@ func TestScanQR_SessionValidationSkippedWhenFlagDisabled(t *testing.T) {
 	h.qrPortal.qrCode = sessionQR()
 	h.sessions.err = errors.New("should never be called")
 
-	err := h.svc.ScanQR(context.Background(), testUserID, testEmail, "qr-session")
+	err := h.svc.ScanQR(context.Background(), testUserID, testEmail, "qr-session", testAssertion)
 
 	if err != nil {
 		t.Fatalf("expected success with validations disabled, got %v", err)
@@ -345,7 +366,7 @@ func TestScanQR_O2BarQR_NoSessionValidation(t *testing.T) {
 	}
 	h.sessions.err = errors.New("should never be called for O2BAR")
 
-	err := h.svc.ScanQR(context.Background(), testUserID, testEmail, "qr-o2bar")
+	err := h.svc.ScanQR(context.Background(), testUserID, testEmail, "qr-o2bar", testAssertion)
 
 	if err != nil {
 		t.Fatalf("expected success, O2BAR should skip session validation, got %v", err)
@@ -357,7 +378,7 @@ func TestScanQR_SessionLookupError_Propagates(t *testing.T) {
 	h.qrPortal.qrCode = sessionQR()
 	h.sessions.err = repository.ErrNotFound
 
-	err := h.svc.ScanQR(context.Background(), testUserID, testEmail, "qr-session")
+	err := h.svc.ScanQR(context.Background(), testUserID, testEmail, "qr-session", testAssertion)
 
 	if !errors.Is(err, repository.ErrNotFound) {
 		t.Fatalf("expected wrapped repository.ErrNotFound, got %v", err)
@@ -367,7 +388,7 @@ func TestScanQR_SessionLookupError_Propagates(t *testing.T) {
 func TestScanQR_Success_InsertsPendingThenForcesFailed(t *testing.T) {
 	h := newHarness(defaultConfig(), time.Now())
 
-	err := h.svc.ScanQR(context.Background(), testUserID, testEmail, "qr-1")
+	err := h.svc.ScanQR(context.Background(), testUserID, testEmail, "qr-1", testAssertion)
 	if err != nil {
 		t.Fatalf("expected success, got %v", err)
 	}
@@ -428,7 +449,7 @@ func TestScanQR_Success_EventDataShapePerEventType(t *testing.T) {
 			h := newHarness(cfg, time.Now())
 			h.qrPortal.qrCode = tt.qrCode
 
-			if err := h.svc.ScanQR(context.Background(), testUserID, testEmail, tt.qrCode.QrID); err != nil {
+			if err := h.svc.ScanQR(context.Background(), testUserID, testEmail, tt.qrCode.QrID, testAssertion); err != nil {
 				t.Fatalf("expected success, got %v", err)
 			}
 
@@ -453,7 +474,7 @@ func TestScanQR_InsertDuplicate_MapsToErrQRAlreadyScanned(t *testing.T) {
 	h := newHarness(defaultConfig(), time.Now())
 	h.allocations.insertErr = repository.ErrDuplicateAllocation
 
-	err := h.svc.ScanQR(context.Background(), testUserID, testEmail, "qr-1")
+	err := h.svc.ScanQR(context.Background(), testUserID, testEmail, "qr-1", testAssertion)
 
 	if !errors.Is(err, ErrQRAlreadyScanned) {
 		t.Fatalf("expected ErrQRAlreadyScanned, got %v", err)
@@ -465,7 +486,7 @@ func TestScanQR_InsertError_Propagates(t *testing.T) {
 	wantErr := errors.New("insert failed")
 	h.allocations.insertErr = wantErr
 
-	err := h.svc.ScanQR(context.Background(), testUserID, testEmail, "qr-1")
+	err := h.svc.ScanQR(context.Background(), testUserID, testEmail, "qr-1", testAssertion)
 
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("expected wrapped insert error, got %v", err)
@@ -478,7 +499,7 @@ func TestScanQR_UpdateStatusError_DoesNotFailTheOverallScan(t *testing.T) {
 	h := newHarness(defaultConfig(), time.Now())
 	h.allocations.updateStatusErr = errors.New("update failed")
 
-	err := h.svc.ScanQR(context.Background(), testUserID, testEmail, "qr-1")
+	err := h.svc.ScanQR(context.Background(), testUserID, testEmail, "qr-1", testAssertion)
 
 	if err != nil {
 		t.Fatalf("expected success even though UpdateStatus failed internally, got %v", err)

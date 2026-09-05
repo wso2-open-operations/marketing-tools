@@ -46,7 +46,7 @@ func TestAppConfigHandler_List_Success(t *testing.T) {
 	reader := &fakeAppConfigReader{configs: []models.AppConfig{
 		{Key: "ATTENDEES_SYNC", Value: "COMPLETED", CreatedBy: "SYSTEM", UpdatedBy: "SYSTEM"},
 	}}
-	h := NewAppConfigHandler(reader)
+	h := NewAppConfigHandler(reader, "")
 	r := newAppConfigTestRouter(h)
 
 	w := doRequest(r, http.MethodGet, "/app-configs", nil)
@@ -64,7 +64,7 @@ func TestAppConfigHandler_List_Success(t *testing.T) {
 }
 
 func TestAppConfigHandler_List_EmptyReturnsEmptyArrayNotNull(t *testing.T) {
-	h := NewAppConfigHandler(&fakeAppConfigReader{configs: nil})
+	h := NewAppConfigHandler(&fakeAppConfigReader{configs: nil}, "")
 	r := newAppConfigTestRouter(h)
 
 	w := doRequest(r, http.MethodGet, "/app-configs", nil)
@@ -78,7 +78,7 @@ func TestAppConfigHandler_List_EmptyReturnsEmptyArrayNotNull(t *testing.T) {
 }
 
 func TestAppConfigHandler_List_RepoErrorMapsTo500(t *testing.T) {
-	h := NewAppConfigHandler(&fakeAppConfigReader{err: errBoom})
+	h := NewAppConfigHandler(&fakeAppConfigReader{err: errBoom}, "")
 	r := newAppConfigTestRouter(h)
 
 	w := doRequest(r, http.MethodGet, "/app-configs", nil)
