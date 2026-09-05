@@ -47,10 +47,18 @@ func (h *AIAgentHandler) AgendaRecommendations(c *gin.Context) {
 		return
 	}
 
+	// Personalized "Picked for You" is gated on the personalized-agenda flag
+	// (shared with POST /users/profile). Disabled -> clean 503 rather than a raw
+	// 500 from an unreachable backend (defense-in-depth alongside
+	// AI_ENABLED_PERSONALIZED_AGENDA).
+	if !h.featureStatus.EnabledPersonalizedAgenda {
+		respondFeatureDisabled(c, "Personalized agenda")
+		return
+	}
+
 	sessions, err := h.client.RetrieveAgendaRecommendations(c.Request.Context(), user.RawToken)
 	if err != nil {
-		slog.ErrorContext(c.Request.Context(), "retrieving agenda recommendations failed", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"message": "internal error"})
+		respondAIUpstreamError(c, "retrieving agenda recommendations failed", err)
 		return
 	}
 	if sessions == nil {

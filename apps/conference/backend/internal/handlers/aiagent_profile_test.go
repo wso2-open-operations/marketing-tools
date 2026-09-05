@@ -28,7 +28,7 @@ import (
 )
 
 func TestAIAgentHandler_PersonalizedProfile_Unauthenticated(t *testing.T) {
-	h := NewAIAgentHandler(&fakeAIAgentClient{}, &fakeAttendeeRepo{}, config.AIFeatureStatus{}, nil)
+	h := NewAIAgentHandler(&fakeAIAgentClient{}, &fakeAttendeeRepo{}, allAIFeaturesOn, nil)
 	r := newAIAgentTestRouter(h, nil)
 
 	w := doRequest(r, http.MethodPost, "/users/profile", models.PersonalizeAgentUserProfile{})
@@ -55,7 +55,7 @@ func TestAIAgentHandler_PersonalizedProfile_PassesThroughRawResponse(t *testing.
 				Header:     http.Header{"Content-Type": []string{"application/json"}},
 				Body:       io.NopCloser(strings.NewReader(tt.body)),
 			}}
-			h := NewAIAgentHandler(client, &fakeAttendeeRepo{}, config.AIFeatureStatus{}, nil)
+			h := NewAIAgentHandler(client, &fakeAttendeeRepo{}, allAIFeaturesOn, nil)
 			r := newAIAgentTestRouter(h, testUser)
 
 			w := doRequest(r, http.MethodPost, "/users/profile", models.PersonalizeAgentUserProfile{Email: "a@wso2.com"})
@@ -73,7 +73,7 @@ func TestAIAgentHandler_PersonalizedProfile_PassesThroughRawResponse(t *testing.
 }
 
 func TestAIAgentHandler_PersonalizedProfile_ClientCallFailure_Returns500(t *testing.T) {
-	h := NewAIAgentHandler(&fakeAIAgentClient{profileErr: errBoom}, &fakeAttendeeRepo{}, config.AIFeatureStatus{}, nil)
+	h := NewAIAgentHandler(&fakeAIAgentClient{profileErr: errBoom}, &fakeAttendeeRepo{}, allAIFeaturesOn, nil)
 	r := newAIAgentTestRouter(h, testUser)
 
 	w := doRequest(r, http.MethodPost, "/users/profile", models.PersonalizeAgentUserProfile{})
@@ -83,7 +83,7 @@ func TestAIAgentHandler_PersonalizedProfile_ClientCallFailure_Returns500(t *test
 }
 
 func TestAIAgentHandler_PersonalizedProfile_MalformedBody_Returns400(t *testing.T) {
-	h := NewAIAgentHandler(&fakeAIAgentClient{}, &fakeAttendeeRepo{}, config.AIFeatureStatus{}, nil)
+	h := NewAIAgentHandler(&fakeAIAgentClient{}, &fakeAttendeeRepo{}, allAIFeaturesOn, nil)
 	r := newAIAgentTestRouter(h, testUser)
 
 	req := httptest.NewRequest(http.MethodPost, "/users/profile", strings.NewReader("{not json"))
@@ -105,7 +105,7 @@ func TestAIAgentHandler_PersonalizedProfile_ForcesCallerEmail(t *testing.T) {
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
 		Body:       io.NopCloser(strings.NewReader(`{"status":"accepted"}`)),
 	}}
-	h := NewAIAgentHandler(client, &fakeAttendeeRepo{}, config.AIFeatureStatus{}, nil)
+	h := NewAIAgentHandler(client, &fakeAttendeeRepo{}, allAIFeaturesOn, nil)
 	r := newAIAgentTestRouter(h, testUser)
 
 	w := doRequest(r, http.MethodPost, "/users/profile", models.PersonalizeAgentUserProfile{
@@ -116,5 +116,20 @@ func TestAIAgentHandler_PersonalizedProfile_ForcesCallerEmail(t *testing.T) {
 	}
 	if client.profileSeen.Email != testUser.Email {
 		t.Errorf("forwarded profile Email = %q, want %q (the JWT email, never the body's)", client.profileSeen.Email, testUser.Email)
+	}
+}
+
+func TestAIAgentHandler_PersonalizedProfile_FeatureDisabled_Returns503(t *testing.T) {
+	// Shares EnabledPersonalizedAgenda with GET /agenda/recommendations.
+	client := &fakeAIAgentClient{profileErr: errBoom}
+	h := NewAIAgentHandler(client, &fakeAttendeeRepo{}, config.AIFeatureStatus{EnabledPersonalizedAgenda: false}, nil)
+	r := newAIAgentTestRouter(h, testUser)
+
+	w := doRequest(r, http.MethodPost, "/users/profile", models.PersonalizeAgentUserProfile{Name: "X"})
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d, body: %s", w.Code, http.StatusServiceUnavailable, w.Body.String())
+	}
+	if client.jwtSeen != "" {
+		t.Errorf("external client was called while feature disabled (jwtSeen=%q)", client.jwtSeen)
 	}
 }

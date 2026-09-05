@@ -54,6 +54,16 @@ func (h *AIAgentHandler) PersonalizedProfile(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid request body"})
 		return
 	}
+
+	// Personalized profile creation is gated on the personalized-agenda flag
+	// (shared with GET /agenda/recommendations). Disabled -> clean 503 rather
+	// than a raw 500 from an unreachable backend (defense-in-depth alongside
+	// AI_ENABLED_PERSONALIZED_AGENDA).
+	if !h.featureStatus.EnabledPersonalizedAgenda {
+		respondFeatureDisabled(c, "Personalized agenda")
+		return
+	}
+
 	if profile.Email != "" && !strings.EqualFold(profile.Email, user.Email) {
 		slog.WarnContext(c.Request.Context(), "ignoring profile email from request body",
 			"bodyEmail", profile.Email)
@@ -62,8 +72,7 @@ func (h *AIAgentHandler) PersonalizedProfile(c *gin.Context) {
 
 	resp, err := h.client.SendProfileInfo(c.Request.Context(), user.RawToken, profile)
 	if err != nil {
-		slog.ErrorContext(c.Request.Context(), "sending profile info failed", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"message": "internal error"})
+		respondAIUpstreamError(c, "sending profile info failed", err)
 		return
 	}
 	defer resp.Body.Close()
