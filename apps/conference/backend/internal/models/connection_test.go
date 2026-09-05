@@ -71,23 +71,36 @@ func TestConnectionUserInfo_OptionalFieldsOmittedWhenEmpty(t *testing.T) {
 	}
 }
 
-func TestConnectionStatus_String(t *testing.T) {
-	cases := map[ConnectionStatus]string{
-		ConnectionRejected:   "rejected",
-		ConnectionPending:    "pending",
-		ConnectionAccepted:   "accepted",
-		ConnectionStatus(99): "unknown",
+func TestConnectionState_String(t *testing.T) {
+	cases := map[ConnectionState]string{
+		ConnectionPending:      "pending",
+		ConnectionAccepted:     "accepted",
+		ConnectionState("rot"): "unknown",
+		ConnectionState(""):    "unknown",
 	}
-	for status, want := range cases {
-		if got := status.String(); got != want {
-			t.Errorf("ConnectionStatus(%d).String() = %q, want %q", status, got, want)
+	for state, want := range cases {
+		if got := state.String(); got != want {
+			t.Errorf("ConnectionState(%q).String() = %q, want %q", string(state), got, want)
 		}
 	}
 }
 
-func TestConnectionUserInfo_StatusAlwaysPresent(t *testing.T) {
-	// status carries the state explicitly, so it must serialize even when empty
-	// (no omitempty) -- the whole point of adding the field.
+func TestConnectionState_DeclinedIsNotAState(t *testing.T) {
+	// Declining deletes the row. A stored "declined" would be invisible to
+	// every response yet would block the pair from ever reconnecting, so it
+	// must not validate -- see migrations/014.
+	if ConnectionState("declined").IsValid() {
+		t.Error(`ConnectionState("declined").IsValid() = true, want false`)
+	}
+	if ConnectionState("rejected").IsValid() {
+		t.Error(`ConnectionState("rejected").IsValid() = true, want false`)
+	}
+}
+
+func TestConnectionUserInfo_StatusAndConnectionIDAlwaysPresent(t *testing.T) {
+	// Both carry state the client cannot reconstruct: status names the state
+	// explicitly, connectionId is the only handle on the accept/delete routes.
+	// Neither may be omitempty.
 	b, err := json.Marshal(ConnectionUserInfo{UserID: "u1", Name: "Alice", Email: "a@example.com"})
 	if err != nil {
 		t.Fatalf("Marshal returned error: %v", err)
@@ -96,32 +109,55 @@ func TestConnectionUserInfo_StatusAlwaysPresent(t *testing.T) {
 	if err := json.Unmarshal(b, &got); err != nil {
 		t.Fatalf("Unmarshal returned error: %v", err)
 	}
-	if _, ok := got["status"]; !ok {
-		t.Errorf("expected status key to always be present, got %v", got)
+	for _, key := range []string{"status", "connectionId"} {
+		if _, ok := got[key]; !ok {
+			t.Errorf("expected %q to always be present, got %v", key, got)
+		}
 	}
 }
 
-func TestUserConnectionRequest_UnmarshalDefaultsToPending(t *testing.T) {
-	var req UserConnectionRequest
-	if err := json.Unmarshal([]byte(`{"userId":"u1"}`), &req); err != nil {
-		t.Fatalf("Unmarshal returned error: %v", err)
-	}
-	if req.Status != ConnectionPending {
-		t.Errorf("Status = %v, want ConnectionPending (0) when omitted from payload", req.Status)
-	}
-}
+func TestConnectionRequest_TargetIDIsRequiredAndIsTheOnlyField(t *testing.T) {
+	rt := reflect.TypeOf(ConnectionRequest{})
 
-func TestUserConnectionRequest_UserIDIsRequired(t *testing.T) {
-	f, ok := reflect.TypeOf(UserConnectionRequest{}).FieldByName("UserID")
+	f, ok := rt.FieldByName("TargetID")
 	if !ok {
-		t.Fatal("UserConnectionRequest has no UserID field")
+		t.Fatal("ConnectionRequest has no TargetID field")
 	}
 	if got := f.Tag.Get("binding"); got != "required" {
-		t.Errorf("UserID binding tag = %q, want %q", got, "required")
+		t.Errorf("TargetID binding tag = %q, want %q", got, "required")
 	}
-	// Status must NOT be `required`: 0 is ConnectionPending, a legal value.
-	sf, _ := reflect.TypeOf(UserConnectionRequest{}).FieldByName("Status")
-	if got := sf.Tag.Get("binding"); got != "" {
-		t.Errorf("Status binding tag = %q, want empty (0 == pending is legal)", got)
+	if got := f.Tag.Get("json"); got != "targetId" {
+		t.Errorf("TargetID json tag = %q, want %q", got, "targetId")
+	}
+
+	// The redesign's core claim is that no caller-settable field decides the
+	// transition. A second field on the request body would reintroduce one.
+	if rt.NumField() != 1 {
+		var names []string
+		for i := range rt.NumField() {
+			names = append(names, rt.Field(i).Name)
+		}
+		t.Errorf("ConnectionRequest fields = %v, want only TargetID", names)
+	}
+}
+
+func TestConnection_Other(t *testing.T) {
+	conn := Connection{ID: "c1", RequesterID: "alice", AddresseeID: "bob", State: ConnectionPending}
+
+	cases := []struct {
+		caller    string
+		wantOther string
+		wantOK    bool
+	}{
+		{"alice", "bob", true},
+		{"bob", "alice", true},
+		{"mallory", "", false},
+		{"", "", false},
+	}
+	for _, tc := range cases {
+		other, ok := conn.Other(tc.caller)
+		if other != tc.wantOther || ok != tc.wantOK {
+			t.Errorf("Other(%q) = (%q, %v), want (%q, %v)", tc.caller, other, ok, tc.wantOther, tc.wantOK)
+		}
 	}
 }

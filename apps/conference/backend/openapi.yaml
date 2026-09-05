@@ -459,6 +459,11 @@ paths:
   /users/me/connections:
     get:
       tags: [connections]
+      summary: The caller's connections and pending requests
+      description: >
+        Unchanged in shape, but every entry now carries `connectionId`. That id
+        is the only handle on the accept and delete routes, so a client that
+        drops it cannot act on anything it just listed.
       responses:
         "200":
           description: "OK"
@@ -477,33 +482,43 @@ paths:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
     post:
       tags: [connections]
-      summary: Send, accept, reject or withdraw a connection
+      summary: Send a connection request
       description: >
-        The target is resolved and the caller authorized for the requested
-        transition *before* anything is written, so a refused request leaves no
-        row behind -- it used to write first, and a request against a nonexistent
-        attendee 404'd while leaving an orphan row that surfaced later as a
-        phantom request. Self-connections are refused, and only a pending
-        request's recipient may accept it; either party may reject (decline or
-        withdraw).
+        **Breaking change.** This route used to take `{ userId, status }` and do
+        request, accept and reject depending on the `status` int in the body.
+        That shape is gone: a caller could name the transition they wanted, so
+        a requester could send `status: 0` then `status: 1` and land in the
+        target's connections with no action by the target. Each transition now
+        has its own route, and the only id ever read from a body is `targetId`
+        -- the requester is always the JWT `sub`.
+
+
+        Creates a `pending` connection. Idempotent: re-sending for a pair that
+        already has a connection returns the existing one unchanged rather than
+        creating a second row, so a retry or a double-tap cannot produce the
+        mirrored `A->B` / `B->A` pair the old directional key allowed. The
+        target's attendee row is resolved and the row written in one
+        transaction, so a 404 leaves nothing behind.
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/UserConnectionRequest" }
+            schema: { $ref: "#/components/schemas/ConnectionRequest" }
       responses:
         "201":
           description: >-
             The other party, enriched from their attendee profile -- the same
-            shape and the same fields GET returns for that connection.
+            shape and the same fields GET returns for that connection. `status`
+            is the connection's real state, which for an existing accepted pair
+            is `accepted`, not `pending`.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ConnectionUserInfo" }
         "400":
           description: >-
-            Missing or empty `userId`; `userId` equals the caller
-            (self-connection); a `status` outside {-1, 0, 1}; or `status: 1`
-            with no pending request between the two users.
+            Missing or empty `targetId`, malformed body, or `targetId` equal to
+            the caller. A self-connection is refused by the handler and by a
+            CHECK constraint on the table, so it cannot be written by any path.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -514,19 +529,10 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
-        "403":
-          description: >-
-            `status: 1` sent by the *initiator* of the pending request. Only the
-            recipient may accept.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ErrorResponse" }
-              example:
-                message: only the recipient of a request may accept it
         "404":
           description: >-
-            No attendee row for `userId`. Checked before any write, so a 404 no
-            longer leaves a pending connection behind.
+            No attendee row for `targetId`. Resolved inside the same transaction
+            as the write, so a 404 never leaves an orphan row.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -537,7 +543,115 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /users/me/connections/{connectionId}/accept:
+    post:
+      tags: [connections]
+      summary: Accept a pending connection request
+      description: >
+        Moves `pending` to `accepted`. **Only the addressee may call this** --
+        the person who received the request, never the one who sent it. Because
+        the route names the transition, that is one authorization check on one
+        endpoint rather than a branch inside a generic writer.
 
+
+        There is no route back: nothing moves an accepted connection to pending.
+        The old endpoint allowed it, so either party could silently downgrade an
+        established connection.
+      parameters:
+        - name: connectionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+          description: "`connectionId` from GET /users/me/connections."
+      responses:
+        "200":
+          description: "The other party -- the requester -- with `status: accepted`."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConnectionUserInfo" }
+        "400":
+          description: "`connectionId` is not a UUID."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: "No authentication"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: >-
+            The caller is the *requester* of this connection. Only the addressee
+            may accept.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: >-
+            No such connection, or the caller is not a party to it. The two are
+            deliberately indistinguishable: answering 403 to a stranger would
+            confirm that the id exists.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: >-
+            The connection is already accepted. The caller is its addressee and
+            the request was legitimate; it was replayed or lost a race.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "500":
+          description: "Internal error"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /users/me/connections/{connectionId}:
+    delete:
+      tags: [connections]
+      summary: Decline, withdraw, or remove a connection
+      description: >
+        One route for all three, callable by **either party** at either state:
+        the addressee declining a request, the requester withdrawing one, and
+        either side removing an established connection are the same operation.
+
+
+        The row is deleted, not marked declined. The pair therefore returns to
+        having no relationship and can connect again later -- a stored
+        `declined` state would never appear in any response yet would silently
+        no-op every future request between those two people, because the
+        re-request conflicts on the pair's unique index.
+      parameters:
+        - name: connectionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+          description: "`connectionId` from GET /users/me/connections."
+      responses:
+        "204":
+          description: "Deleted. No body."
+        "400":
+          description: "`connectionId` is not a UUID."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "401":
+          description: "No authentication"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: >-
+            No such connection, or the caller is not a party to it -- including
+            a repeated delete of one already removed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "500":
+          description: "Internal error"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
   /agenda/recommendations:
     get:
       tags: [recommendations]
@@ -1404,26 +1518,21 @@ components:
         imageUrl: { type: string, description: "A hardcoded default avatar, identical for every user -- never derived from the token." }
         qrUri: { type: string, description: "The caller's own check-in credential." }
         isPartner: { type: boolean }
-    UserConnectionRequest:
+    ConnectionRequest:
       type: object
-      required: [userId]
+      description: >-
+        POST /users/me/connections body. `targetId` is the only id this API ever
+        takes from a payload; the requester is always the JWT `sub`. There is
+        deliberately no `status`/`state` field -- a caller-settable transition is
+        what made accept-your-own-request possible. Unknown fields are ignored,
+        so a stale client still sending `status` sends a request, nothing more.
+      required: [targetId]
       properties:
-        userId:
+        targetId:
           type: string
           description: >-
-            idp_uuid of the other attendee. Required and non-empty -- an empty
-            target used to be written as a row against the empty string. Must not
+            idp_uuid of the other attendee. Required and non-empty, and must not
             be the caller's own id.
-        status:
-          type: integer
-          enum: [-1, 0, 1]
-          description: >-
-            -1 reject/withdraw, 0 send request, 1 accept. `1` is accepted only
-            from the recipient of an existing pending request; from the initiator
-            it is a 403, and with no pending request it is a 400. Not required,
-            and there is no rejection of an omitted one: it decodes to the zero
-            value, which is 0, so a body carrying only `userId` SENDS a connection
-            request. Send the status you mean explicitly.
     UserConnectionsInfo:
       type: object
       properties:
@@ -1432,12 +1541,29 @@ components:
         requestsReceived: { type: array, items: { $ref: "#/components/schemas/ConnectionUserInfo" } }
     ConnectionUserInfo:
       type: object
-      required: [userId, name, email, status]
+      description: >-
+        The *other* party in one connection, enriched from their attendee
+        profile. Returned both inside UserConnectionsInfo and as the body of a
+        successful request/accept.
+      required: [connectionId, userId, name, email, status]
       properties:
+        connectionId:
+          type: string
+          format: uuid
+          description: >-
+            The connection row's own id, and the handle the accept and delete
+            routes address. Stable for the life of the relationship; a pair that
+            is deleted and later re-requested gets a new one.
         userId: { type: string }
         name: { type: string }
         email: { type: string }
-        status: { type: string, enum: [pending, accepted, rejected] }
+        status:
+          type: string
+          enum: [pending, accepted]
+          description: >-
+            The connection's state, stated explicitly so a client never has to
+            infer it from which array the entry sits in. `rejected` is gone --
+            declining deletes the row.
         profileUrl: { type: string }
         title: { type: string }
         company: { type: string }
