@@ -52,6 +52,15 @@ func (s ConnectionStatus) String() string {
 	}
 }
 
+// Connection is one stored user_connection row. The direction matters: only
+// RecipientID may accept a pending request, so callers need the stored
+// direction, not just the pair.
+type Connection struct {
+	InitiatorID string
+	RecipientID string
+	Status      ConnectionStatus
+}
+
 // ConnectionUserInfo describes the other party in a connection, enriched
 // from that user's attendee profile. Status is the explicit connection state
 // ("pending"/"accepted"), always present so the client reads it directly
@@ -75,7 +84,9 @@ type UserConnectionsInfo struct {
 }
 
 // UserConnectionRequest is the payload for POST /users/me/connections.
+// userId is required: an empty target used to be written as a row against
+// the empty string.
 type UserConnectionRequest struct {
-	UserID string           `json:"userId"`
+	UserID string           `json:"userId" binding:"required"`
 	Status ConnectionStatus `json:"status"`
 }

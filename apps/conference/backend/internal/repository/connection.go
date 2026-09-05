@@ -137,6 +137,28 @@ func (r *ConnectionRepo) Get(ctx context.Context, userUUID string) (models.UserC
 	return info, nil
 }
 
+// Find returns the stored connection between the two users in whichever
+// direction it was recorded, or ErrNotFound. The handler needs the stored
+// direction to decide who is allowed to accept.
+func (r *ConnectionRepo) Find(ctx context.Context, aUUID, bUUID string) (models.Connection, error) {
+	var conn models.Connection
+	var status int
+	err := r.pool.QueryRow(ctx,
+		`SELECT initiator_id, recipient_id, status FROM user_connection
+		 WHERE (initiator_id = $1 AND recipient_id = $2) OR (initiator_id = $2 AND recipient_id = $1)
+		 LIMIT 1`,
+		aUUID, bUUID,
+	).Scan(&conn.InitiatorID, &conn.RecipientID, &status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return models.Connection{}, ErrNotFound
+	}
+	if err != nil {
+		return models.Connection{}, err
+	}
+	conn.Status = models.ConnectionStatus(status)
+	return conn, nil
+}
+
 // Upsert creates or updates a connection between initiatorUUID and
 // recipientUUID. If a connection already exists between the two in either
 // direction, its stored direction is reused rather than always writing

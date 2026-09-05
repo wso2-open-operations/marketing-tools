@@ -18,6 +18,7 @@ package models
 
 import (
 	"encoding/json"
+	"reflect"
 	"testing"
 )
 
@@ -107,5 +108,20 @@ func TestUserConnectionRequest_UnmarshalDefaultsToPending(t *testing.T) {
 	}
 	if req.Status != ConnectionPending {
 		t.Errorf("Status = %v, want ConnectionPending (0) when omitted from payload", req.Status)
+	}
+}
+
+func TestUserConnectionRequest_UserIDIsRequired(t *testing.T) {
+	f, ok := reflect.TypeOf(UserConnectionRequest{}).FieldByName("UserID")
+	if !ok {
+		t.Fatal("UserConnectionRequest has no UserID field")
+	}
+	if got := f.Tag.Get("binding"); got != "required" {
+		t.Errorf("UserID binding tag = %q, want %q", got, "required")
+	}
+	// Status must NOT be `required`: 0 is ConnectionPending, a legal value.
+	sf, _ := reflect.TypeOf(UserConnectionRequest{}).FieldByName("Status")
+	if got := sf.Tag.Get("binding"); got != "" {
+		t.Errorf("Status binding tag = %q, want empty (0 == pending is legal)", got)
 	}
 }

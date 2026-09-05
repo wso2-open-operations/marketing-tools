@@ -20,6 +20,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -177,5 +178,46 @@ func TestConnectionRepo_Get_NoConnectionsReturnsEmptyNotNil(t *testing.T) {
 	}
 	if view.RequestsSent == nil || view.RequestsReceived == nil || view.Connections == nil {
 		t.Errorf("expected empty (non-nil) slices, got %+v", view)
+	}
+}
+
+func TestConnectionRepo_Find_ReturnsStoredDirection(t *testing.T) {
+	ctx := context.Background()
+	repo := newConnectionRepo()
+
+	alice := newConnectionAttendeeFixture(t, ctx, "Alice4", "X")
+	bob := newConnectionAttendeeFixture(t, ctx, "Bob4", "Y")
+	cleanupConnection(t, alice, bob)
+
+	if err := repo.Upsert(ctx, alice, bob, models.ConnectionPending); err != nil {
+		t.Fatalf("Upsert returned error: %v", err)
+	}
+
+	// Looked up from either side, the stored direction must be reported
+	// unchanged -- the handler uses it to decide who may accept.
+	for _, args := range [][2]string{{alice, bob}, {bob, alice}} {
+		conn, err := repo.Find(ctx, args[0], args[1])
+		if err != nil {
+			t.Fatalf("Find(%q, %q) returned error: %v", args[0], args[1], err)
+		}
+		if conn.InitiatorID != alice || conn.RecipientID != bob {
+			t.Errorf("Find(%q, %q) = (%q -> %q), want (%q -> %q)",
+				args[0], args[1], conn.InitiatorID, conn.RecipientID, alice, bob)
+		}
+		if conn.Status != models.ConnectionPending {
+			t.Errorf("Find status = %v, want %v", conn.Status, models.ConnectionPending)
+		}
+	}
+}
+
+func TestConnectionRepo_Find_NoRowReturnsErrNotFound(t *testing.T) {
+	ctx := context.Background()
+	repo := newConnectionRepo()
+
+	alice := newConnectionAttendeeFixture(t, ctx, "Alice5", "X")
+	bob := newConnectionAttendeeFixture(t, ctx, "Bob5", "Y")
+
+	if _, err := repo.Find(ctx, alice, bob); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Find returned %v, want ErrNotFound", err)
 	}
 }
