@@ -85,7 +85,12 @@ type jwtClaims struct {
 // Auth returns a Gin middleware that validates the x-jwt-assertion header on
 // every request and stores the resulting UserInfo in the request context.
 // When AuthConfig.TokenValidatorEnabled is false the token is only decoded
-// without signature verification — safe for local development only.
+// without signature verification (see extractUserInfo's ParseUnverified path):
+// forged and expired tokens are accepted, so this is for local development
+// ONLY. Production can never reach this branch -- main.go fails closed at
+// startup when TOKEN_VALIDATOR_ENABLED is false in a production environment
+// (see config.InsecureAuthConfig), so a prod container never boots with the
+// validator off.
 func Auth(cfg AuthConfig) gin.HandlerFunc {
 	var keyFunc jwt.Keyfunc
 	if cfg.TokenValidatorEnabled {

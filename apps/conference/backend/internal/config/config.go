@@ -385,6 +385,13 @@ func (c Config) Validate() error {
 	if c.venueTZLoadErr != nil {
 		return fmt.Errorf("VENUE_TIMEZONE %q is not a loadable IANA timezone: %w", c.VenueTimezone, c.venueTZLoadErr)
 	}
+	// When the token validator is on, JWKS/issuer/audience are all required --
+	// signature verification and iss/aud checks cannot run without them. In
+	// production this chain is not optional: main.go fails closed on
+	// InsecureAuthConfig(), so a production deployment is forced to set
+	// TOKEN_VALIDATOR_ENABLED=true to boot, and reaching that state forces these
+	// three to be set here as well. Dev/test keep the validator off by default
+	// and skip this block.
 	if c.TokenValidatorEnabled {
 		if c.JWKSEndpoint == "" {
 			return errors.New("JWKS_ENDPOINT is required when TOKEN_VALIDATOR_ENABLED=true")
@@ -427,9 +434,14 @@ func (c Config) HTTPWriteTimeout() time.Duration {
 // InsecureAuthConfig reports a production deployment running with JWT signature
 // validation switched off, which accepts forged alg=none and expired tokens.
 //
-// TOKEN_VALIDATOR_ENABLED still defaults to false on purpose: flipping it would
-// break every Choreo deployment that omits the var. So this is a loud startup
-// warning, not a Validate() failure -- see main.go.
+// TOKEN_VALIDATOR_ENABLED still defaults to false on purpose: flipping the
+// global default would break dev/test, which rely on it being off. Instead the
+// AppEnv=="production" gate here is what enforces prod: main.go now FAILS CLOSED
+// on this predicate, logging an error and exiting non-zero so a production
+// container refuses to boot with signature validation off, rather than only
+// warning and serving forged identities. It is deliberately not a Validate()
+// failure -- Validate() has no view of "is this prod" beyond AppEnv, and keeping
+// the refusal in main.go keeps the fail-closed decision in one place.
 func (c Config) InsecureAuthConfig() bool {
 	return c.AppEnv == "production" && !c.TokenValidatorEnabled
 }
