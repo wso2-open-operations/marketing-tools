@@ -277,11 +277,14 @@ func TestConnectionHandler_Create_ReturnsEnrichedTargetInfo(t *testing.T) {
 	}
 	// connectionId is what the accept and delete routes address; without it
 	// the client has no way to name the row it just created.
+	//
+	// Email is expected empty even though bobProfile() supplies one: the
+	// connection this route creates is pending, and the address is what
+	// accepting exchanges. See TestConnectionHandler_Create_PendingBodyHasNoEmailKey.
 	want := models.ConnectionUserInfo{
 		ConnectionID: testConnID,
 		UserID:       "user-2",
 		Name:         "Bob Receiver",
-		Email:        "bob@example.com",
 		Status:       "pending",
 		ProfileURL:   "https://example.com/bob",
 		Title:        "Engineer",
@@ -290,6 +293,71 @@ func TestConnectionHandler_Create_ReturnsEnrichedTargetInfo(t *testing.T) {
 	}
 	if got != want {
 		t.Errorf("body = %+v, want %+v", got, want)
+	}
+}
+
+func TestConnectionHandler_Create_PendingBodyHasNoEmailKey(t *testing.T) {
+	// The 201 body used to carry the target's address, so sending a request to
+	// anyone disclosed their email with no action on their part. The assertion
+	// is on the decoded map rather than on ConnectionUserInfo, because
+	// unmarshalling into the struct turns an absent key and an empty string
+	// into the same zero value -- and "" is what a regression that blanks the
+	// field instead of omitting it would produce.
+	reader := &fakeConnectionReader{requestConn: models.Connection{
+		ID: testConnID, RequesterID: testUser.UserID, AddresseeID: "user-2", State: models.ConnectionPending,
+	}}
+	h := NewConnectionHandler(reader, bobProfile())
+	r := newConnectionTestRouter(h, testUser)
+
+	w := doRequest(r, http.MethodPost, "/users/me/connections", models.ConnectionRequest{TargetID: "user-2"})
+	if w.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d, body: %s", w.Code, http.StatusCreated, w.Body.String())
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if got["status"] != "pending" {
+		t.Fatalf("status = %v, want %q -- the rest of this test only means something on a pending row", got["status"], "pending")
+	}
+	if v, ok := got["email"]; ok {
+		t.Errorf("body carries email = %#v on a pending connection, want the key absent; body: %s", v, w.Body.String())
+	}
+	// The profile is still enriched -- this withholds the address specifically,
+	// it does not degrade the response to bare ids.
+	if got["name"] != "Bob Receiver" {
+		t.Errorf("name = %v, want %q", got["name"], "Bob Receiver")
+	}
+	if got["company"] != "Acme" {
+		t.Errorf("company = %v, want %q", got["company"], "Acme")
+	}
+}
+
+func TestConnectionHandler_Accept_AcceptedBodyCarriesEmail(t *testing.T) {
+	// Accepting is precisely the act that exchanges contact details, so the
+	// 200 body must carry the other party's address. Asserted on the decoded
+	// map for the same absent-vs-empty reason as the Create case above.
+	reader := &fakeConnectionReader{acceptConn: models.Connection{
+		ID: testConnID, RequesterID: "user-2", AddresseeID: testUser.UserID, State: models.ConnectionAccepted,
+	}}
+	h := NewConnectionHandler(reader, bobProfile())
+	r := newConnectionTestRouter(h, testUser)
+
+	w := doRequest(r, http.MethodPost, "/users/me/connections/"+testConnID+"/accept", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if got["status"] != "accepted" {
+		t.Fatalf("status = %v, want %q", got["status"], "accepted")
+	}
+	if got["email"] != "bob@example.com" {
+		t.Errorf("email = %v, want %q on an accepted connection; body: %s", got["email"], "bob@example.com", w.Body.String())
 	}
 }
 

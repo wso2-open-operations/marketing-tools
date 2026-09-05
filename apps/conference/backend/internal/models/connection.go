@@ -94,12 +94,18 @@ type ConnectionUserInfo struct {
 	ConnectionID string `json:"connectionId"`
 	UserID       string `json:"userId"`
 	Name         string `json:"name"`
-	Email        string `json:"email"`
-	Status       string `json:"status"`
-	ProfileURL   string `json:"profileUrl,omitempty"`
-	Title        string `json:"title,omitempty"`
-	Company      string `json:"company,omitempty"`
-	Country      string `json:"country,omitempty"`
+	// Email is present only on an accepted connection, and omitted entirely
+	// while a request is still pending. Exchanging contact details is what
+	// accepting *is*, so handing the address over at request time gave it away
+	// before the other person had agreed to anything -- and it did so in both
+	// directions, since a pending row appears in the sender's requestsSent as
+	// well as the recipient's requestsReceived.
+	Email      string `json:"email,omitempty"`
+	Status     string `json:"status"`
+	ProfileURL string `json:"profileUrl,omitempty"`
+	Title      string `json:"title,omitempty"`
+	Company    string `json:"company,omitempty"`
+	Country    string `json:"country,omitempty"`
 }
 
 // UserConnectionsInfo is the response shape for GET /users/me/connections.
