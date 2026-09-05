@@ -7,7 +7,9 @@
 #   - camelCase JSON, string ids everywhere, ISO-8601 instants WITH a real
 #     offset (never a naive/Z string).
 #   - Collections are always arrays (never null); optional scalars are omitted
-#     when empty (never "").
+#     when empty (never ""). The exception is the AI-relayed collections
+#     explicitly marked `nullable` below, which this backend passes through
+#     without normalising a missing array to an empty one.
 #   - Timestamps are anchored to the event's `timezone` (also in the payload).
 #   - Five text fields carry sanitized rich-text HTML, not plain text:
 #     Session.title, Session.description, Activity.description, and
@@ -185,11 +187,15 @@ paths:
       responses:
         "200":
           description: "OK"
+          headers:
+            ETag: { schema: { type: string } }
+            Cache-Control: { schema: { type: string } }
           content:
             application/json:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/EventAgenda" }
+        "304": { description: "Not Modified" }
         "400":
           description: >-
             Neither eventId nor isCurrent=true supplied, or the supplied eventId
@@ -246,9 +252,13 @@ paths:
       responses:
         "200":
           description: "OK"
+          headers:
+            ETag: { schema: { type: string } }
+            Cache-Control: { schema: { type: string } }
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Speaker" }
+        "304": { description: "Not Modified" }
         "400":
           description: "id is not a UUID (previously a 500 from the cast)."
           content:
@@ -410,6 +420,7 @@ paths:
       tags: [attendees]
       summary: Cursor-paginated attendee search (server-side filtering)
       requestBody:
+        required: true
         content:
           application/json:
             schema:
@@ -418,14 +429,32 @@ paths:
                 uuid: { type: string, description: "Optional single-attendee lookup by idp uuid." }
                 query: { type: string, description: "Case-insensitive substring over name/company/title (decrypted server-side)." }
                 cursor: { type: string, description: "Opaque nextCursor from a prior page." }
-                limit: { type: integer, default: 20, maximum: 100 }
+                limit:
+                  type: integer
+                  default: 20
+                  maximum: 100
+                  description: >-
+                    The maximum is clamped, not rejected: the repository caps a
+                    larger value at 100 and serves the request, and 0 (or an
+                    omitted limit) falls through to the default. Only a negative
+                    limit is refused, with a 400.
       responses:
         "200":
           description: "OK"
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AttendeeSearchResult" }
-        "400": { description: "Malformed JSON body, invalid cursor, or negative limit" }
+        "400": { description: "Absent or malformed JSON body, invalid cursor, or negative limit" }
+        "401":
+          description: "No authentication"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "500":
+          description: "Internal error"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
 
   /users/me/connections:
     get:
@@ -436,6 +465,16 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/UserConnectionsInfo" }
+        "401":
+          description: "No authentication"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "500":
+          description: "Internal error"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
     post:
       tags: [connections]
       summary: Send, accept, reject or withdraw a connection
@@ -515,6 +554,19 @@ paths:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/PickedForYouSession" }
+        "401":
+          description: "No authentication"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "500":
+          description: >-
+            The picked-for-you service could not be reached, or failed. The
+            day-association step is best-effort and never causes this -- a failed
+            lookup returns the un-enriched array with a 200.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
 
   /users/me/matches:
     get:
@@ -535,6 +587,19 @@ paths:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/MatchedUser" }
+        "401":
+          description: "No authentication"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "500":
+          description: >-
+            The match-maker could not be reached, or an attendee lookup failed
+            for a reason other than not-found. Partial results are discarded
+            rather than returned.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
 
   /o2bar/recommendations:
     get:
@@ -554,6 +619,18 @@ paths:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/O2BarRecommendation" }
+        "401":
+          description: "No authentication"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "500":
+          description: >-
+            The recommender could not be reached, or an attendee lookup failed
+            for a reason other than not-found.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
     post:
       tags: [recommendations]
       summary: O2Bar engineers to talk to, ranked against a typed question
@@ -577,6 +654,18 @@ paths:
                 type: array
                 items: { $ref: "#/components/schemas/O2BarRecommendation" }
         "400": { description: "Absent or malformed JSON body" }
+        "401":
+          description: "No authentication"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "500":
+          description: >-
+            The recommender could not be reached, or an attendee lookup failed
+            for a reason other than not-found.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
 
   /qr/scan:
     post:
@@ -732,6 +821,13 @@ paths:
         `updatedOn`) but the `key` values it does not: keys are opaque data, not
         field names. No write route exists in this service; values are seeded via
         SQL. Always an array, never null.
+        One entry is synthetic rather than an app_config row: when
+        SHOP_MASTER_WALLET_ADDRESS is set the handler appends a
+        `merchantWalletAddress` entry to the end of the list. Its key is
+        camelCase where every stored key is snake_case, and it carries the
+        zero values of the audit columns -- `createdBy`/`updatedBy` as "" and
+        `createdOn`/`updatedOn` as "0001-01-01T00:00:00Z" -- because the model
+        omits none of them. Read the audit columns as absent on that entry.
       responses:
         "200":
           description: "OK"
@@ -978,6 +1074,25 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/PersonalizedProfileResponse" }
         "400": { description: "Absent or malformed JSON body" }
+        "401":
+          description: "No authentication"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "500":
+          description: >-
+            The personalize agent service could not be reached. Only a failure of
+            the call itself is reported this way; a 5xx the service itself
+            returned is relayed under `default` below.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        default:
+          description: >-
+            The AI service's own response, relayed verbatim -- its status code,
+            its Content-Type and its body, undecoded. Any status it chooses can
+            therefore appear here, including 4xx and 5xx ones, and the body is
+            that service's shape rather than this file's `ErrorResponse`.
 
   /assistant/chat:
     post:
@@ -1000,6 +1115,16 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ChatResponse" }
         "400": { description: "Absent or malformed JSON body" }
+        "401":
+          description: "No authentication"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "500":
+          description: "The chat service could not be reached, or failed."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
 
 components:
   securitySchemes:
@@ -1281,7 +1406,7 @@ components:
         isPartner: { type: boolean }
     UserConnectionRequest:
       type: object
-      required: [userId, status]
+      required: [userId]
       properties:
         userId:
           type: string
@@ -1295,7 +1420,10 @@ components:
           description: >-
             -1 reject/withdraw, 0 send request, 1 accept. `1` is accepted only
             from the recipient of an existing pending request; from the initiator
-            it is a 403, and with no pending request it is a 400.
+            it is a 403, and with no pending request it is a 400. Not required,
+            and there is no rejection of an omitted one: it decodes to the zero
+            value, which is 0, so a body carrying only `userId` SENDS a connection
+            request. Send the status you mean explicitly.
     UserConnectionsInfo:
       type: object
       properties:
@@ -1325,7 +1453,11 @@ components:
         recommender reads them from this backend's own agenda and echoes them
         back. `title` and `description` come back the same way, which is why
         they carry rich-text HTML that the reshaped `Session` fields also carry.
-      required: [id, title]
+      required:
+        [id, title, description, personalizedDescription, category, startTime,
+         endTime, isFeedbackNotified, locationId, venueId, agendaId, youtubeLink,
+         slidesLink, pdfLink, location, venue, agenda, sessionSpeakers,
+         sessionSponsors]
       properties:
         id: { type: string }
         title: { type: string, description: "Sanitized rich-text HTML, echoed from the agenda -- render it, do not print it." }
@@ -1362,11 +1494,18 @@ components:
         agenda: { $ref: "#/components/schemas/PickedForYouAgenda" }
         sessionSpeakers:
           type: array
+          nullable: true
           items: { $ref: "#/components/schemas/PickedForYouSessionSpeaker" }
+          description: >-
+            Relayed from the recommender untouched, so null rather than [] when
+            it sends none; the key itself is always present.
         sessionSponsors:
           type: array
+          nullable: true
           items: { type: object, additionalProperties: true }
-          description: "Free-form; this backend relays the elements without decoding them."
+          description: >-
+            Free-form; this backend relays the elements without decoding them,
+            and null rather than [] when the recommender sends none.
     PickedForYouLocation:
       type: object
       properties:
@@ -1411,7 +1550,14 @@ components:
         company: { type: string }
         title: { type: string }
         reason: { type: string, description: "Why the recommender paired the two, in its own words." }
-        tags: { type: array, items: { type: string } }
+        tags:
+          type: array
+          nullable: true
+          items: { type: string }
+          description: >-
+            Relayed from the recommender untouched, so unlike the rest of this
+            file's collections it is null rather than [] when the recommender
+            sends none.
         profileUrl: { type: string, description: "The attendee's stored photo. Omitted when unset." }
     O2BarRecommendation:
       type: object
@@ -1427,10 +1573,15 @@ components:
         reason: { type: string }
         recommendedQuestions:
           type: array
+          nullable: true
           items: { type: string }
-          description: "Openers the recommender suggests, written against the caller's profile."
+          description: >-
+            Openers the recommender suggests, written against the caller's
+            profile. Relayed untouched, so null rather than [] when it sends
+            none -- the same exception `availableTimeSlots` carries.
         availableTimeSlots:
           type: array
+          nullable: true
           items: { $ref: "#/components/schemas/O2BarTimeSlot" }
         profileUrl:
           type: string
@@ -1754,8 +1905,10 @@ components:
         One app_config row, returned verbatim. `key` is opaque operational data,
         not a field name, so it keeps its stored snake_case form (e.g.
         `cache_version`) while the audit columns follow this file's camelCase
-        convention.
-      required: [key, value, createdBy, createdOn, updatedBy, updatedOn]
+        convention. Only `key` and `value` are required: the synthetic
+        `merchantWalletAddress` entry GET /app-configs appends is not a row and
+        carries nothing but zero values in the four audit columns.
+      required: [key, value]
       properties:
         key: { type: string }
         value: { type: string }
@@ -1765,7 +1918,15 @@ components:
         updatedOn: { type: string, format: date-time }
     ErrorResponse:
       type: object
-      description: "The error envelope every handler in this service emits."
-      required: [message]
+      description: >-
+        The error envelope, which carries one of two keys depending on where the
+        response was produced. Handlers emit `message`. The auth middleware, which
+        guards every route in this file, aborts with `error` instead -- a missing
+        or unverifiable `x-jwt-assertion` never reaches a handler. Neither key is
+        therefore required: a given response has exactly one of them, and a client
+        must read both. `message` is not dead on the guarded routes -- a token that
+        verifies but carries no `email` claim still 401s from the handler, with
+        `message`.
       properties:
-        message: { type: string }
+        message: { type: string, description: "Handler errors, including the handler-emitted 401s." }
+        error: { type: string, description: "Middleware 401s only: a missing or invalid authorization token." }
