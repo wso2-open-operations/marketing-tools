@@ -111,6 +111,17 @@ func (f *speakerFixture) setCompany(t *testing.T, ctx context.Context, company s
 	}
 }
 
+// setRawCompany stores this fixture's company verbatim -- no encryption -- so
+// a test can plant a company this repo's key cannot decrypt.
+func (f *speakerFixture) setRawCompany(t *testing.T, ctx context.Context, company string) {
+	t.Helper()
+	if _, err := testDB.Exec(ctx,
+		"UPDATE speakers SET company = $1 WHERE id = $2", company, f.speakerID,
+	); err != nil {
+		t.Fatalf("failed to set raw fixture company: %v", err)
+	}
+}
+
 // Room name and colour token the fixture session is placed in, asserted by
 // TestSpeakerRepo_GetSpeakerSummary_ScopedByEventEmbedsResolvedSessions. The
 // room and its track carry different tokens so the assertion also pins the
@@ -518,6 +529,46 @@ func TestSpeakerRepo_GetSpeakerSummary_SkipsUndecryptableRow(t *testing.T) {
 	}
 	if ids[bad.speakerID] {
 		t.Errorf("undecryptable speaker %s should have been skipped", bad.speakerID)
+	}
+}
+
+// company is searched but never serialized, so a company this key cannot read
+// must cost the search term and not the speaker: the directory has to keep
+// rendering someone whose only unreadable column is one it does not return.
+func TestSpeakerRepo_GetSpeakerSummary_KeepsRowWithUndecryptableCompany(t *testing.T) {
+	ctx := context.Background()
+	repo := NewSpeakerRepo(testDB, speakerTestKey, 5, time.UTC)
+
+	fixture := newSpeakerFixture(t, ctx, "Barbara Liskov", "Institute Professor", "", "", true)
+	fixture.setRawCompany(t, ctx, "not-base64-ciphertext!!")
+	_, configID := fixture.attachToSession(t, ctx)
+
+	// Unfiltered: the speaker is still in the directory.
+	summaries, err := repo.GetSpeakerSummary(ctx, models.SpeakerFilter{EventID: configID})
+	if err != nil {
+		t.Fatalf("GetSpeakerSummary returned error: %v", err)
+	}
+	found := false
+	for _, s := range summaries {
+		if s.ID == fixture.speakerID {
+			found = true
+			if s.Name != "Barbara Liskov" {
+				t.Errorf("speaker name = %q, want %q", s.Name, "Barbara Liskov")
+			}
+		}
+	}
+	if !found {
+		t.Errorf("speaker %s dropped from the unfiltered directory over an unreadable company", fixture.speakerID)
+	}
+
+	// Searching a readable field still finds it; only the company search term
+	// is lost.
+	got, err := repo.GetSpeakerSummary(ctx, models.SpeakerFilter{EventID: configID, Query: "liskov"})
+	if err != nil {
+		t.Fatalf("GetSpeakerSummary returned error: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != fixture.speakerID {
+		t.Errorf("query 'liskov' returned %+v, want the one matching speaker", got)
 	}
 }
 

@@ -186,9 +186,11 @@ func (r *SpeakerRepo) fetchSpeakerSessions(ctx context.Context, speakerID string
 // is one extra decrypt per row per searchable field; the directory is a few
 // hundred rows and already decrypts every one of them.
 //
-// A row this key cannot decrypt is skipped, not fatal: the serving key is not
-// necessarily the key every historical row was written with, and returning the
-// other 262 speakers beats 500ing the whole directory over one of them.
+// A row whose returned fields this key cannot decrypt is skipped, not fatal:
+// the serving key is not necessarily the key every historical row was written
+// with, and returning the other 262 speakers beats 500ing the whole directory
+// over one of them. An undecryptable company is not one of those: it is never
+// serialized, so it only drops out of the search terms.
 func (r *SpeakerRepo) GetSpeakerSummary(ctx context.Context, filter models.SpeakerFilter) ([]models.SpeakerSummary, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT sp.id, sp.name, sp.title, sp.bio, sp.company, sp.photo_url
@@ -229,16 +231,20 @@ func (r *SpeakerRepo) GetSpeakerSummary(ctx context.Context, filter models.Speak
 			continue
 		}
 		// company is nullable, and is read only to be searched -- it is not
-		// part of the directory row.
-		decryptedCompany := ""
-		if company != nil {
-			if decryptedCompany, err = r.decrypt(*company); err != nil {
-				slog.WarnContext(ctx, "skipping speaker with undecryptable field", "speakerId", id, "field", "company")
+		// part of the directory row, so a company this key cannot read costs
+		// the search term, not the speaker. Decrypting it only when there is a
+		// query also spares the unfiltered listing one decrypt per row.
+		if q != "" {
+			decryptedCompany := ""
+			if company != nil {
+				if decryptedCompany, err = r.decrypt(*company); err != nil {
+					slog.WarnContext(ctx, "speaker company not decryptable; excluded from search", "speakerId", id, "field", "company")
+					decryptedCompany = ""
+				}
+			}
+			if !matchesAny(q, decryptedName, decryptedTitle, decryptedCompany) {
 				continue
 			}
-		}
-		if q != "" && !matchesAny(q, decryptedName, decryptedTitle, decryptedCompany) {
-			continue
 		}
 		decryptedBio, err := r.decrypt(bio)
 		if err != nil {
