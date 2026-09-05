@@ -52,7 +52,11 @@ func TestUserConnectionsInfo_JSONShape(t *testing.T) {
 }
 
 func TestConnectionUserInfo_OptionalFieldsOmittedWhenEmpty(t *testing.T) {
-	u := ConnectionUserInfo{UserID: "u1", Name: "Alice", Email: "alice@example.com"}
+	// email joined this set when the address became accepted-only: a pending
+	// item leaves Email zero, and the field has to be *absent* rather than
+	// "", so a client cannot tell a withheld address from a blank one and no
+	// future reader mistakes "" for a value it may render.
+	u := ConnectionUserInfo{UserID: "u1", Name: "Alice"}
 
 	b, err := json.Marshal(u)
 	if err != nil {
@@ -64,10 +68,27 @@ func TestConnectionUserInfo_OptionalFieldsOmittedWhenEmpty(t *testing.T) {
 		t.Fatalf("Unmarshal returned error: %v", err)
 	}
 
-	for _, key := range []string{"profileUrl", "title", "company", "country"} {
+	for _, key := range []string{"email", "profileUrl", "title", "company", "country"} {
 		if _, ok := got[key]; ok {
 			t.Errorf("expected %q to be omitted when empty, got %v", key, got)
 		}
+	}
+}
+
+func TestConnectionUserInfo_EmailPresentWhenSet(t *testing.T) {
+	// The other half of the omitempty contract: omitting the key when empty is
+	// only correct if an accepted connection still carries the address.
+	b, err := json.Marshal(ConnectionUserInfo{UserID: "u1", Name: "Alice", Email: "alice@example.com", Status: "accepted"})
+	if err != nil {
+		t.Fatalf("Marshal returned error: %v", err)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatalf("Unmarshal returned error: %v", err)
+	}
+	if got["email"] != "alice@example.com" {
+		t.Errorf("email = %v, want %q", got["email"], "alice@example.com")
 	}
 }
 
@@ -100,8 +121,11 @@ func TestConnectionState_DeclinedIsNotAState(t *testing.T) {
 func TestConnectionUserInfo_StatusAndConnectionIDAlwaysPresent(t *testing.T) {
 	// Both carry state the client cannot reconstruct: status names the state
 	// explicitly, connectionId is the only handle on the accept/delete routes.
-	// Neither may be omitempty.
-	b, err := json.Marshal(ConnectionUserInfo{UserID: "u1", Name: "Alice", Email: "a@example.com"})
+	// Neither may be omitempty. email is deliberately not in this set and the
+	// fixture leaves it unset -- it is conditional on the connection being
+	// accepted, so a test that demanded it always be present would be
+	// asserting the leak.
+	b, err := json.Marshal(ConnectionUserInfo{UserID: "u1", Name: "Alice"})
 	if err != nil {
 		t.Fatalf("Marshal returned error: %v", err)
 	}

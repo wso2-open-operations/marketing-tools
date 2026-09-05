@@ -1545,7 +1545,7 @@ components:
         The *other* party in one connection, enriched from their attendee
         profile. Returned both inside UserConnectionsInfo and as the body of a
         successful request/accept.
-      required: [connectionId, userId, name, email, status]
+      required: [connectionId, userId, name, status]
       properties:
         connectionId:
           type: string
@@ -1556,7 +1556,16 @@ components:
             is deleted and later re-requested gets a new one.
         userId: { type: string }
         name: { type: string }
-        email: { type: string }
+        email:
+          type: string
+          description: >-
+            **Present only when `status` is `accepted`; omitted while pending.**
+            Exchanging contact details is what accepting a connection *is*, so
+            releasing the address at request time gave it away before the other
+            person had agreed to anything -- and in both directions, since a
+            pending row appears in the sender's `requestsSent` as well as the
+            recipient's `requestsReceived`. The 201 body of a freshly created
+            request therefore never carries one.
         status:
           type: string
           enum: [pending, accepted]

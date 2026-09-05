@@ -90,6 +90,117 @@ func connectionStateByID(t *testing.T, ctx context.Context, id string) string {
 	return state
 }
 
+// connectionAttendeeEmail reads back the address newConnectionAttendeeFixture
+// generated. The helper returns only the uuid, and every other test in this
+// file is happy with that, so the email is fetched here rather than widening a
+// signature eleven callers depend on.
+func connectionAttendeeEmail(t *testing.T, ctx context.Context, idpUUID string) string {
+	t.Helper()
+	var email string
+	if err := testDB.QueryRow(ctx, "SELECT email FROM attendees WHERE idp_uuid = $1", idpUUID).Scan(&email); err != nil {
+		t.Fatalf("failed to read the email of attendee %s: %v", idpUUID, err)
+	}
+	if email == "" {
+		t.Fatalf("attendee %s has no email, so this test could not tell a leak from an empty column", idpUUID)
+	}
+	return email
+}
+
+func TestConnectionRepo_Get_PendingWithholdsEmailFromBothParties(t *testing.T) {
+	// The disclosure this test exists for: a pending row is joined into *both*
+	// parties' responses, so populating the address unconditionally handed the
+	// recipient's email to whoever sent the request, before the recipient had
+	// done anything at all -- and handed the sender's back the same way.
+	ctx := context.Background()
+	repo := newConnectionRepo()
+
+	alice := newConnectionAttendeeFixture(t, ctx, "Alice16", "Sender")
+	bob := newConnectionAttendeeFixture(t, ctx, "Bob16", "Receiver")
+	cleanupConnection(t, alice, bob)
+
+	if _, err := repo.Request(ctx, alice, bob); err != nil {
+		t.Fatalf("Request returned error: %v", err)
+	}
+	// Read the addresses back so the assertions below cannot pass merely
+	// because the fixtures had no email to leak.
+	aliceEmail := connectionAttendeeEmail(t, ctx, alice)
+	bobEmail := connectionAttendeeEmail(t, ctx, bob)
+
+	aliceView, err := repo.Get(ctx, alice)
+	if err != nil {
+		t.Fatalf("Get(alice) returned error: %v", err)
+	}
+	if len(aliceView.RequestsSent) != 1 {
+		t.Fatalf("alice.RequestsSent = %+v, want exactly one pending request", aliceView.RequestsSent)
+	}
+	sent := aliceView.RequestsSent[0]
+	if sent.Email != "" {
+		t.Errorf("alice.RequestsSent[0].Email = %q, want empty -- bob has not accepted (his address is %q)", sent.Email, bobEmail)
+	}
+	// The rest of the enrichment must survive: this withholds the address
+	// specifically, not the whole profile, or the requests list would be
+	// unusable.
+	if sent.Name != "Bob16 Receiver" {
+		t.Errorf("alice.RequestsSent[0].Name = %q, want %q -- only the email is withheld", sent.Name, "Bob16 Receiver")
+	}
+	if sent.UserID != bob || sent.Status != "pending" {
+		t.Errorf("alice.RequestsSent[0] = %+v, want bob's uuid and a pending status", sent)
+	}
+
+	bobView, err := repo.Get(ctx, bob)
+	if err != nil {
+		t.Fatalf("Get(bob) returned error: %v", err)
+	}
+	if len(bobView.RequestsReceived) != 1 {
+		t.Fatalf("bob.RequestsReceived = %+v, want exactly one pending request", bobView.RequestsReceived)
+	}
+	received := bobView.RequestsReceived[0]
+	if received.Email != "" {
+		t.Errorf("bob.RequestsReceived[0].Email = %q, want empty -- he has not accepted yet (alice's address is %q)", received.Email, aliceEmail)
+	}
+	if received.Name != "Alice16 Sender" {
+		t.Errorf("bob.RequestsReceived[0].Name = %q, want %q -- only the email is withheld", received.Name, "Alice16 Sender")
+	}
+}
+
+func TestConnectionRepo_Get_AcceptedReleasesEmailToBothParties(t *testing.T) {
+	// The other side of the gate. Exchanging contact details is what accepting
+	// *is*, so a fix that simply stopped returning the column would break the
+	// feature rather than secure it.
+	ctx := context.Background()
+	repo := newConnectionRepo()
+
+	alice := newConnectionAttendeeFixture(t, ctx, "Alice17", "Sender")
+	bob := newConnectionAttendeeFixture(t, ctx, "Bob17", "Receiver")
+	cleanupConnection(t, alice, bob)
+
+	pending, err := repo.Request(ctx, alice, bob)
+	if err != nil {
+		t.Fatalf("Request returned error: %v", err)
+	}
+	if _, err := repo.Accept(ctx, pending.ID, bob); err != nil {
+		t.Fatalf("Accept returned error: %v", err)
+	}
+
+	for _, party := range []struct {
+		name, self, wantEmail string
+	}{
+		{"alice", alice, connectionAttendeeEmail(t, ctx, bob)},
+		{"bob", bob, connectionAttendeeEmail(t, ctx, alice)},
+	} {
+		view, err := repo.Get(ctx, party.self)
+		if err != nil {
+			t.Fatalf("Get(%s) returned error: %v", party.name, err)
+		}
+		if len(view.Connections) != 1 {
+			t.Fatalf("%s.Connections = %+v, want exactly one accepted connection", party.name, view.Connections)
+		}
+		if got := view.Connections[0].Email; got != party.wantEmail {
+			t.Errorf("%s.Connections[0].Email = %q, want the other party's address %q", party.name, got, party.wantEmail)
+		}
+	}
+}
+
 func TestConnectionRepo_Request_CreatesPendingVisibleToBothParties(t *testing.T) {
 	ctx := context.Background()
 	repo := newConnectionRepo()

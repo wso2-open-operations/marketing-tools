@@ -225,7 +225,14 @@ func (h *ConnectionHandler) describeOtherParty(ctx context.Context, conn models.
 	}
 
 	info.Name = strings.TrimSpace(attendee.FirstName + " " + attendee.LastName)
-	info.Email = attendee.Email
+	// Same gate the GET buckets apply: the address is released only once the
+	// pair is connected. Create returns a pending connection, so it must not
+	// hand back the target's email -- that would give away on the request what
+	// accepting is supposed to exchange, and would do it without the target
+	// having done anything.
+	if conn.State == models.ConnectionAccepted {
+		info.Email = attendee.Email
+	}
 	info.ProfileURL = attendee.ProfileURL
 	info.Title = attendee.Title
 	info.Company = attendee.Company

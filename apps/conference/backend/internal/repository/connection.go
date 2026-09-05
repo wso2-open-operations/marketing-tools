@@ -131,7 +131,11 @@ func (r *ConnectionRepo) Get(ctx context.Context, userUUID string) (models.UserC
 		if idpUUID != nil {
 			user.UserID = *idpUUID
 		}
-		if email != nil {
+		// The address is released only once the pair is actually connected.
+		// A pending row shows up in both parties' responses, so populating it
+		// unconditionally handed the recipient's email to whoever sent the
+		// request, with no action by the recipient at all.
+		if email != nil && models.ConnectionState(state) == models.ConnectionAccepted {
 			user.Email = *email
 		}
 		if profileURL != nil {
