@@ -178,31 +178,35 @@ func TestCoinAllocationRepo_HistoryAndSummary(t *testing.T) {
 	userUUID := newTestUserUUID(t)
 	cleanupCoinAllocations(t, userUUID)
 
+	// Every fixture row below belongs to this one event; History and Summary
+	// are scoped to it.
+	eventID := newUUID()
+
 	// Row 1: GENERAL, TRANSFERRED, 10 coins.
 	qr1 := newUUID()
-	insertHistoryRow(t, ctx, repo, qr1, userUUID, models.EventTypeGeneral, models.TransactionStatusTransferred, 10, "Welcome Bonus")
+	insertHistoryRow(t, ctx, repo, eventID, qr1, userUUID, models.EventTypeGeneral, models.TransactionStatusTransferred, 10, "Welcome Bonus")
 	time.Sleep(10 * time.Millisecond)
 
 	// Row 2: GENERAL, FAILED (folds to PENDING), 5 coins.
 	qr2 := newUUID()
-	insertHistoryRow(t, ctx, repo, qr2, userUUID, models.EventTypeGeneral, models.TransactionStatusFailed, 5, "Booth Visit")
+	insertHistoryRow(t, ctx, repo, eventID, qr2, userUUID, models.EventTypeGeneral, models.TransactionStatusFailed, 5, "Booth Visit")
 	time.Sleep(10 * time.Millisecond)
 
 	// Row 3: GENERAL, PROCESSING (folds to PENDING), 3 coins.
 	qr3 := newUUID()
-	insertHistoryRow(t, ctx, repo, qr3, userUUID, models.EventTypeGeneral, models.TransactionStatusProcessing, 3, "Survey")
+	insertHistoryRow(t, ctx, repo, eventID, qr3, userUUID, models.EventTypeGeneral, models.TransactionStatusProcessing, 3, "Survey")
 	time.Sleep(10 * time.Millisecond)
 
 	// Row 4: GENERAL, PENDING, 2 coins.
 	qr4 := newUUID()
-	insertHistoryRow(t, ctx, repo, qr4, userUUID, models.EventTypeGeneral, models.TransactionStatusPending, 2, "Raffle")
+	insertHistoryRow(t, ctx, repo, eventID, qr4, userUUID, models.EventTypeGeneral, models.TransactionStatusPending, 2, "Raffle")
 	time.Sleep(10 * time.Millisecond)
 
 	// Row 5: O2BAR, TRANSFERRED - must NOT appear in History or Summary (not GENERAL).
 	qr5 := newUUID()
-	insertHistoryRow(t, ctx, repo, qr5, userUUID, models.EventTypeO2Bar, models.TransactionStatusTransferred, 100, "Drink")
+	insertHistoryRow(t, ctx, repo, eventID, qr5, userUUID, models.EventTypeO2Bar, models.TransactionStatusTransferred, 100, "Drink")
 
-	history, err := repo.History(ctx, userUUID)
+	history, err := repo.History(ctx, userUUID, eventID)
 	if err != nil {
 		t.Fatalf("History returned error: %v", err)
 	}
@@ -234,7 +238,7 @@ func TestCoinAllocationRepo_HistoryAndSummary(t *testing.T) {
 		}
 	}
 
-	summary, err := repo.Summary(ctx, userUUID)
+	summary, err := repo.Summary(ctx, userUUID, eventID)
 	if err != nil {
 		t.Fatalf("Summary returned error: %v", err)
 	}
@@ -248,11 +252,12 @@ func TestCoinAllocationRepo_HistoryAndSummary(t *testing.T) {
 	}
 }
 
-func insertHistoryRow(t *testing.T, ctx context.Context, repo *CoinAllocationRepo, qrID, userUUID string, eventType models.EventType, status models.TransactionStatus, coins float64, eventTypeName string) {
+func insertHistoryRow(t *testing.T, ctx context.Context, repo *CoinAllocationRepo, eventID, qrID, userUUID string, eventType models.EventType, status models.TransactionStatus, coins float64, eventTypeName string) {
 	t.Helper()
 	eventData := json.RawMessage(fmt.Sprintf(`{"eventTypeName":%q}`, eventTypeName))
 	alloc := models.CoinAllocation{
 		QrID:              qrID,
+		EventID:           eventID,
 		EventType:         eventType,
 		UserUUID:          userUUID,
 		WalletAddress:     "0xabc123",

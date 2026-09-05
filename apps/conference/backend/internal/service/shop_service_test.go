@@ -61,7 +61,7 @@ func (f *fakeShopRepo) ListItems(ctx context.Context, eventID string) ([]models.
 	return f.items, f.itemsErr
 }
 
-func (f *fakeShopRepo) OrderHistory(ctx context.Context, userUUID string) ([]models.ShopOrder, error) {
+func (f *fakeShopRepo) OrderHistory(ctx context.Context, userUUID, eventID string) ([]models.ShopOrder, error) {
 	return f.orders, f.ordersErr
 }
 
@@ -83,6 +83,10 @@ func (f *fakeShopRepo) ConfirmOrder(
 	return f.verifyErr
 }
 
+func (f *fakeShopRepo) MarkStaleOrders(ctx context.Context, timeoutMinutes int) (int, error) {
+	return 0, nil
+}
+
 type fakeTxClient struct {
 	details transaction.TransactionDetails
 	err     error
@@ -94,8 +98,16 @@ func (f *fakeTxClient) GetTransactionDetails(ctx context.Context, txHash string)
 	return f.details, f.err
 }
 
+type fakeEmailClient struct {
+	err error
+}
+
+func (f *fakeEmailClient) SendEmail(ctx context.Context, to []string, subject, template string) error {
+	return f.err
+}
+
 func newTestShopService(repo *fakeShopRepo, tx *fakeTxClient) *ShopService {
-	s := NewShopService(repo, tx, ShopConfig{MasterWalletAddress: testMasterWallet})
+	s := NewShopService(repo, tx, &fakeEmailClient{}, ShopConfig{MasterWalletAddress: testMasterWallet})
 	s.NewOrderID = func() string { return "ORD-fixed" }
 	return s
 }
@@ -271,7 +283,7 @@ func TestShopService_Checkout_ReturnsNullTransactionHash(t *testing.T) {
 // recipient check -- otherwise it hands out merchandise for free.
 func TestShopService_Confirm_RefusesWithoutMasterWallet(t *testing.T) {
 	repo := &fakeShopRepo{storedTotal: 100}
-	svc := NewShopService(repo, &fakeTxClient{details: validDetails()}, ShopConfig{MasterWalletAddress: "  "})
+	svc := NewShopService(repo, &fakeTxClient{details: validDetails()}, &fakeEmailClient{}, ShopConfig{MasterWalletAddress: "  "})
 
 	_, err := svc.ConfirmCheckout(context.Background(), "user-1", "u@example.com", models.CheckoutConfirmRequest{
 		OrderID: "ORD-1", TransactionHash: "0xabc",

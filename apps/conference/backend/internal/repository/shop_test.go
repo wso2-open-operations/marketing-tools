@@ -465,7 +465,7 @@ func TestShopRepo_OrderHistory_ReturnsFrozenPriceAndShipping(t *testing.T) {
 		t.Fatalf("failed to change price: %v", err)
 	}
 
-	orders, err := repo.OrderHistory(ctx, fixture.userID)
+	orders, err := repo.OrderHistory(ctx, fixture.userID, fixture.eventID)
 	if err != nil {
 		t.Fatalf("OrderHistory returned error: %v", err)
 	}
@@ -520,7 +520,7 @@ func TestShopRepo_OrderHistory_KeepsLineWhenItemSoftDeleted(t *testing.T) {
 		t.Fatalf("failed to soft-delete item: %v", err)
 	}
 
-	orders, err := repo.OrderHistory(ctx, fixture.userID)
+	orders, err := repo.OrderHistory(ctx, fixture.userID, fixture.eventID)
 	if err != nil {
 		t.Fatalf("OrderHistory returned error: %v", err)
 	}
@@ -544,7 +544,7 @@ func TestShopRepo_OrderHistory_ScopesToTheUser(t *testing.T) {
 		t.Fatalf("Checkout returned error: %v", err)
 	}
 
-	orders, err := repo.OrderHistory(ctx, newUUID())
+	orders, err := repo.OrderHistory(ctx, newUUID(), fixture.eventID)
 	if err != nil {
 		t.Fatalf("OrderHistory returned error: %v", err)
 	}

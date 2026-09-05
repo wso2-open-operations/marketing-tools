@@ -41,7 +41,7 @@ type fakeScanner struct {
 	calledWith struct{ userID, email, qrID string }
 }
 
-func (f *fakeScanner) ScanQR(ctx context.Context, userID, email, qrID string) error {
+func (f *fakeScanner) ScanQR(ctx context.Context, userID, email, qrID string, jwtAssertion string) error {
 	f.calledWith.userID = userID
 	f.calledWith.email = email
 	f.calledWith.qrID = qrID
@@ -55,12 +55,21 @@ type fakeReader struct {
 	summaryErr error
 }
 
-func (f *fakeReader) History(ctx context.Context, userUUID string) ([]models.CoinAllocationHistory, error) {
+func (f *fakeReader) History(ctx context.Context, userUUID, eventID string) ([]models.CoinAllocationHistory, error) {
 	return f.history, f.historyErr
 }
 
-func (f *fakeReader) Summary(ctx context.Context, userUUID string) (models.CoinAllocationSummary, error) {
+func (f *fakeReader) Summary(ctx context.Context, userUUID, eventID string) (models.CoinAllocationSummary, error) {
 	return f.summary, f.summaryErr
+}
+
+type fakeQrCatalog struct {
+	codes *models.ConferenceQrCodesResponse
+	err   error
+}
+
+func (f *fakeQrCatalog) GetQRCodes(ctx context.Context) (*models.ConferenceQrCodesResponse, error) {
+	return f.codes, f.err
 }
 
 func newTestRouter(h *CoinHandler, user *middleware.UserInfo) *gin.Engine {
@@ -96,7 +105,7 @@ func doRequest(r *gin.Engine, method, path string, body any) *httptest.ResponseR
 }
 
 func TestScan_MissingUser_Returns401(t *testing.T) {
-	h := NewCoinHandler(&fakeScanner{}, &fakeReader{})
+	h := NewCoinHandler(&fakeScanner{}, &fakeReader{}, &fakeQrCatalog{}, &fakeEventReader{}, nil)
 	r := newTestRouter(h, nil)
 
 	w := doRequest(r, http.MethodPost, "/qr/scan", models.QrScanRequest{QrID: "qr-1"})
@@ -107,7 +116,7 @@ func TestScan_MissingUser_Returns401(t *testing.T) {
 }
 
 func TestScan_InvalidBody_Returns400(t *testing.T) {
-	h := NewCoinHandler(&fakeScanner{}, &fakeReader{})
+	h := NewCoinHandler(&fakeScanner{}, &fakeReader{}, &fakeQrCatalog{}, &fakeEventReader{}, nil)
 	r := newTestRouter(h, testUser)
 
 	req := httptest.NewRequest(http.MethodPost, "/qr/scan", bytes.NewBufferString(`{"qrId": 123}`))
@@ -122,7 +131,7 @@ func TestScan_InvalidBody_Returns400(t *testing.T) {
 
 func TestScan_Success_Returns200(t *testing.T) {
 	scanner := &fakeScanner{}
-	h := NewCoinHandler(scanner, &fakeReader{})
+	h := NewCoinHandler(scanner, &fakeReader{}, &fakeQrCatalog{}, &fakeEventReader{}, nil)
 	r := newTestRouter(h, testUser)
 
 	w := doRequest(r, http.MethodPost, "/qr/scan", models.QrScanRequest{QrID: "qr-1"})
@@ -152,7 +161,7 @@ func TestScan_ErrorMapping(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h := NewCoinHandler(&fakeScanner{err: tt.err}, &fakeReader{})
+			h := NewCoinHandler(&fakeScanner{err: tt.err}, &fakeReader{}, &fakeQrCatalog{}, &fakeEventReader{}, nil)
 			r := newTestRouter(h, testUser)
 
 			w := doRequest(r, http.MethodPost, "/qr/scan", models.QrScanRequest{QrID: "qr-1"})
@@ -174,7 +183,7 @@ func TestScan_ErrorMapping(t *testing.T) {
 }
 
 func TestHistory_MissingUser_Returns401(t *testing.T) {
-	h := NewCoinHandler(&fakeScanner{}, &fakeReader{})
+	h := NewCoinHandler(&fakeScanner{}, &fakeReader{}, &fakeQrCatalog{}, &fakeEventReader{}, nil)
 	r := newTestRouter(h, nil)
 
 	w := doRequest(r, http.MethodGet, "/qr/history", nil)
@@ -188,7 +197,7 @@ func TestHistory_Success(t *testing.T) {
 	reader := &fakeReader{history: []models.CoinAllocationHistory{
 		{CoinsAllocated: 5, TransactionStatus: models.TransactionStatusPending, EventTypeName: "Raffle"},
 	}}
-	h := NewCoinHandler(&fakeScanner{}, reader)
+	h := NewCoinHandler(&fakeScanner{}, reader, &fakeQrCatalog{}, &fakeEventReader{}, nil)
 	r := newTestRouter(h, testUser)
 
 	w := doRequest(r, http.MethodGet, "/qr/history", nil)
@@ -206,7 +215,7 @@ func TestHistory_Success(t *testing.T) {
 }
 
 func TestHistory_EmptyReturnsEmptyArrayNotNull(t *testing.T) {
-	h := NewCoinHandler(&fakeScanner{}, &fakeReader{history: nil})
+	h := NewCoinHandler(&fakeScanner{}, &fakeReader{history: nil}, &fakeQrCatalog{}, &fakeEventReader{}, nil)
 	r := newTestRouter(h, testUser)
 
 	w := doRequest(r, http.MethodGet, "/qr/history", nil)
@@ -220,7 +229,7 @@ func TestHistory_EmptyReturnsEmptyArrayNotNull(t *testing.T) {
 }
 
 func TestHistory_RepoError_Returns500(t *testing.T) {
-	h := NewCoinHandler(&fakeScanner{}, &fakeReader{historyErr: errors.New("db down")})
+	h := NewCoinHandler(&fakeScanner{}, &fakeReader{historyErr: errors.New("db down")}, &fakeQrCatalog{}, &fakeEventReader{}, nil)
 	r := newTestRouter(h, testUser)
 
 	w := doRequest(r, http.MethodGet, "/qr/history", nil)
@@ -232,7 +241,7 @@ func TestHistory_RepoError_Returns500(t *testing.T) {
 
 func TestSummary_Success(t *testing.T) {
 	reader := &fakeReader{summary: models.CoinAllocationSummary{TotalPending: 5, TotalTransferred: 10}}
-	h := NewCoinHandler(&fakeScanner{}, reader)
+	h := NewCoinHandler(&fakeScanner{}, reader, &fakeQrCatalog{}, &fakeEventReader{}, nil)
 	r := newTestRouter(h, testUser)
 
 	w := doRequest(r, http.MethodGet, "/qr/summary", nil)
@@ -250,7 +259,7 @@ func TestSummary_Success(t *testing.T) {
 }
 
 func TestSummary_MissingUser_Returns401(t *testing.T) {
-	h := NewCoinHandler(&fakeScanner{}, &fakeReader{})
+	h := NewCoinHandler(&fakeScanner{}, &fakeReader{}, &fakeQrCatalog{}, &fakeEventReader{}, nil)
 	r := newTestRouter(h, nil)
 
 	w := doRequest(r, http.MethodGet, "/qr/summary", nil)
@@ -261,7 +270,7 @@ func TestSummary_MissingUser_Returns401(t *testing.T) {
 }
 
 func TestSummary_RepoError_Returns500(t *testing.T) {
-	h := NewCoinHandler(&fakeScanner{}, &fakeReader{summaryErr: errors.New("db down")})
+	h := NewCoinHandler(&fakeScanner{}, &fakeReader{summaryErr: errors.New("db down")}, &fakeQrCatalog{}, &fakeEventReader{}, nil)
 	r := newTestRouter(h, testUser)
 
 	w := doRequest(r, http.MethodGet, "/qr/summary", nil)
