@@ -17,7 +17,6 @@
 package handlers
 
 import (
-	"log/slog"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -43,10 +42,17 @@ func (h *AIAgentHandler) Chat(c *gin.Context) {
 		return
 	}
 
+	// Gate on the chat flag before calling the external service, so a disabled
+	// assistant degrades to a clean 503 rather than a raw 500 from an
+	// unreachable backend (defense-in-depth alongside AI_ENABLED_CHAT_ASSISTANT).
+	if !h.featureStatus.EnabledChatAssistant {
+		respondFeatureDisabled(c, "Chat assistant")
+		return
+	}
+
 	resp, err := h.client.RetrieveChatResponse(c.Request.Context(), user.RawToken, req)
 	if err != nil {
-		slog.ErrorContext(c.Request.Context(), "retrieving chat response failed", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"message": "internal error"})
+		respondAIUpstreamError(c, "retrieving chat response failed", err)
 		return
 	}
 	c.JSON(http.StatusCreated, resp)

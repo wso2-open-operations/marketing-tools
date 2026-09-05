@@ -18,7 +18,10 @@ package handlers
 
 import (
 	"context"
+	"errors"
+	"log/slog"
 	"net/http"
+	"net/url"
 
 	"github.com/gin-gonic/gin"
 
@@ -61,6 +64,45 @@ type AIAgentHandler struct {
 // disable that enrichment (e.g. in tests that don't exercise it).
 func NewAIAgentHandler(client AIAgentClient, attendees AttendeeProfileReader, featureStatus config.AIFeatureStatus, sessionDays SessionDayReader) *AIAgentHandler {
 	return &AIAgentHandler{client: client, attendees: attendees, featureStatus: featureStatus, sessionDays: sessionDays}
+}
+
+// respondFeatureDisabled writes the standard response for an AI feature whose
+// config flag is switched off. It answers 503 Service Unavailable (not 404 or
+// 500) so the frontend treats the feature as temporarily off and retriable --
+// not a client bug and not a server crash. This is the code-level companion to
+// MaintenanceStatus: even when the status echo says a feature is enabled, each
+// endpoint still refuses to call the external AI service unless its own flag is
+// actually on, so a stale/mismatched status can never surface a raw 500 from an
+// endpoint whose feature is meant to be off.
+func respondFeatureDisabled(c *gin.Context, name string) {
+	c.JSON(http.StatusServiceUnavailable, gin.H{"message": name + " is under maintenance"})
+}
+
+// aiServiceUnreachable reports whether err is a transport-level failure to
+// reach the external AI service (connection refused, DNS failure, TLS error,
+// request timeout) rather than an error *response* from a service that was
+// reached. The aiagent client builds its request- and status-level errors with
+// plain fmt.Errorf, but a failed http.Client.Do surfaces as a *url.Error, so a
+// *url.Error anywhere in the chain means "couldn't reach it". Handlers map that
+// to a retriable 503; every other failure (a reachable service returning a bad
+// status, a decode error, an internal bug) stays a 500.
+func aiServiceUnreachable(err error) bool {
+	var urlErr *url.Error
+	return errors.As(err, &urlErr)
+}
+
+// respondAIUpstreamError logs err and writes the client-facing response for a
+// failed call to the external AI service: a transport failure (service
+// unreachable / timed out) degrades to a retriable 503, while any other error
+// stays a 500. Used by every AI endpoint so an enabled-but-not-yet-plugged-in
+// backend reports "temporarily unavailable" instead of "server bug".
+func respondAIUpstreamError(c *gin.Context, logMsg string, err error) {
+	slog.ErrorContext(c.Request.Context(), logMsg, "error", err)
+	if aiServiceUnreachable(err) {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"message": "AI service is temporarily unavailable"})
+		return
+	}
+	c.JSON(http.StatusInternalServerError, gin.H{"message": "internal error"})
 }
 
 // MaintenanceStatus handles GET /ai-maintenance-status. Unlike every other

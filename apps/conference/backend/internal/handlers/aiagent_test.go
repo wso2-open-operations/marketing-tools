@@ -30,6 +30,17 @@ import (
 	"wso2-coin-backend/internal/models"
 )
 
+// allAIFeaturesOn enables every AI feature flag. Handler tests that exercise a
+// route's client/enrichment path (not its feature-gate) use it so the gate --
+// which now short-circuits a disabled feature to 503 before any client call --
+// lets them through. The disabled->503 behavior has its own dedicated tests.
+var allAIFeaturesOn = config.AIFeatureStatus{
+	EnabledChatAssistant:      true,
+	EnabledPersonalizedAgenda: true,
+	EnabledMatchMaker:         true,
+	EnabledO2Bar:              true,
+}
+
 // fakeAIAgentClient is shared across every AIAgentHandler test file in this
 // package (Goals 2-7 of .claude/PLAN.md).
 type fakeAIAgentClient struct {

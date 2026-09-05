@@ -40,10 +40,17 @@ func (h *AIAgentHandler) Matches(c *gin.Context) {
 		return
 	}
 
+	// Gate on the feature's own flag before touching the external service, so a
+	// disabled MatchMaker degrades to a clean 503 instead of a raw 500 from an
+	// unreachable backend (defense-in-depth alongside AI_ENABLED_MATCH_MAKER).
+	if !h.featureStatus.EnabledMatchMaker {
+		respondFeatureDisabled(c, "Matchmaking")
+		return
+	}
+
 	recommended, err := h.client.RetrieveMatches(c.Request.Context(), user.RawToken)
 	if err != nil {
-		slog.ErrorContext(c.Request.Context(), "retrieving matches failed", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"message": "internal error"})
+		respondAIUpstreamError(c, "retrieving matches failed", err)
 		return
 	}
 

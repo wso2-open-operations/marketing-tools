@@ -27,7 +27,7 @@ import (
 )
 
 func TestAIAgentHandler_Matches_Unauthenticated(t *testing.T) {
-	h := NewAIAgentHandler(&fakeAIAgentClient{}, &fakeAttendeeRepo{}, config.AIFeatureStatus{}, nil)
+	h := NewAIAgentHandler(&fakeAIAgentClient{}, &fakeAttendeeRepo{}, allAIFeaturesOn, nil)
 	r := newAIAgentTestRouter(h, nil)
 
 	w := doRequest(r, http.MethodGet, "/users/me/matches", nil)
@@ -37,7 +37,7 @@ func TestAIAgentHandler_Matches_Unauthenticated(t *testing.T) {
 }
 
 func TestAIAgentHandler_Matches_ClientError_Returns500(t *testing.T) {
-	h := NewAIAgentHandler(&fakeAIAgentClient{matchesErr: errBoom}, &fakeAttendeeRepo{}, config.AIFeatureStatus{}, nil)
+	h := NewAIAgentHandler(&fakeAIAgentClient{matchesErr: errBoom}, &fakeAttendeeRepo{}, allAIFeaturesOn, nil)
 	r := newAIAgentTestRouter(h, testUser)
 
 	w := doRequest(r, http.MethodGet, "/users/me/matches", nil)
@@ -55,7 +55,7 @@ func TestAIAgentHandler_Matches_HappyPath_OneEnrichedOneNotFound(t *testing.T) {
 		"known@wso2.com": {IDPUUID: "uuid-known", ProfileURL: "https://example.com/known.png"},
 	}}
 	user := &middleware.UserInfo{Email: testUser.Email, UserID: testUser.UserID, RawToken: "raw-jwt-value"}
-	h := NewAIAgentHandler(client, attendees, config.AIFeatureStatus{}, nil)
+	h := NewAIAgentHandler(client, attendees, allAIFeaturesOn, nil)
 	r := newAIAgentTestRouter(h, user)
 
 	w := doRequest(r, http.MethodGet, "/users/me/matches", nil)
@@ -87,11 +87,27 @@ func TestAIAgentHandler_Matches_RealDBErrorAbortsWholeRequest(t *testing.T) {
 		{Email: "b@wso2.com", Name: "B"},
 	}}
 	attendees := &fakeAttendeeRepo{getErr: errBoom}
-	h := NewAIAgentHandler(client, attendees, config.AIFeatureStatus{}, nil)
+	h := NewAIAgentHandler(client, attendees, allAIFeaturesOn, nil)
 	r := newAIAgentTestRouter(h, testUser)
 
 	w := doRequest(r, http.MethodGet, "/users/me/matches", nil)
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want %d, body: %s", w.Code, http.StatusInternalServerError, w.Body.String())
+	}
+}
+
+func TestAIAgentHandler_Matches_FeatureDisabled_Returns503(t *testing.T) {
+	// MatchMaker off: the handler must not call the external client at all and
+	// must degrade to a retriable 503, even for an authenticated user.
+	client := &fakeAIAgentClient{matchesErr: errBoom}
+	h := NewAIAgentHandler(client, &fakeAttendeeRepo{}, config.AIFeatureStatus{EnabledMatchMaker: false}, nil)
+	r := newAIAgentTestRouter(h, testUser)
+
+	w := doRequest(r, http.MethodGet, "/users/me/matches", nil)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d, body: %s", w.Code, http.StatusServiceUnavailable, w.Body.String())
+	}
+	if client.jwtSeen != "" {
+		t.Errorf("external client was called while feature disabled (jwtSeen=%q)", client.jwtSeen)
 	}
 }

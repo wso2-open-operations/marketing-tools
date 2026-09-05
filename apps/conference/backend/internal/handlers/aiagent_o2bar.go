@@ -60,10 +60,17 @@ func (h *AIAgentHandler) o2barRecommendations(c *gin.Context, question *string, 
 		return
 	}
 
+	// One gate in the shared body covers both the GET and POST O2Bar routes: a
+	// disabled O2Bar degrades to a clean 503 rather than a raw 500 from an
+	// unreachable backend (defense-in-depth alongside AI_ENABLED_O2_BAR).
+	if !h.featureStatus.EnabledO2Bar {
+		respondFeatureDisabled(c, "O2Bar")
+		return
+	}
+
 	raw, err := h.client.RetrieveO2BarRecommendations(c.Request.Context(), user.RawToken, question)
 	if err != nil {
-		slog.ErrorContext(c.Request.Context(), "retrieving O2Bar recommendations failed", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"message": "internal error"})
+		respondAIUpstreamError(c, "retrieving O2Bar recommendations failed", err)
 		return
 	}
 

@@ -28,7 +28,7 @@ import (
 )
 
 func TestAIAgentHandler_O2BarRecommendationsGet_Unauthenticated(t *testing.T) {
-	h := NewAIAgentHandler(&fakeAIAgentClient{}, &fakeAttendeeRepo{}, config.AIFeatureStatus{}, nil)
+	h := NewAIAgentHandler(&fakeAIAgentClient{}, &fakeAttendeeRepo{}, allAIFeaturesOn, nil)
 	r := newAIAgentTestRouter(h, nil)
 
 	w := doRequest(r, http.MethodGet, "/o2bar/recommendations", nil)
@@ -38,7 +38,7 @@ func TestAIAgentHandler_O2BarRecommendationsGet_Unauthenticated(t *testing.T) {
 }
 
 func TestAIAgentHandler_O2BarRecommendationsGet_ClientError_Returns500(t *testing.T) {
-	h := NewAIAgentHandler(&fakeAIAgentClient{o2barErr: errBoom}, &fakeAttendeeRepo{}, config.AIFeatureStatus{}, nil)
+	h := NewAIAgentHandler(&fakeAIAgentClient{o2barErr: errBoom}, &fakeAttendeeRepo{}, allAIFeaturesOn, nil)
 	r := newAIAgentTestRouter(h, testUser)
 
 	w := doRequest(r, http.MethodGet, "/o2bar/recommendations", nil)
@@ -49,7 +49,7 @@ func TestAIAgentHandler_O2BarRecommendationsGet_ClientError_Returns500(t *testin
 
 func TestAIAgentHandler_O2BarRecommendationsGet_NoQuestionSent(t *testing.T) {
 	client := &fakeAIAgentClient{o2bar: []models.O2BarRecommendationResponse{}}
-	h := NewAIAgentHandler(client, &fakeAttendeeRepo{}, config.AIFeatureStatus{}, nil)
+	h := NewAIAgentHandler(client, &fakeAttendeeRepo{}, allAIFeaturesOn, nil)
 	r := newAIAgentTestRouter(h, testUser)
 
 	w := doRequest(r, http.MethodGet, "/o2bar/recommendations", nil)
@@ -82,7 +82,7 @@ func TestAIAgentHandler_O2BarRecommendationsGet_ProfileURLPrefersAIResponse(t *t
 		"known@wso2.com":    {IDPUUID: "uuid-known", ProfileURL: "https://db.example.com/known.png"},
 		"fallback@wso2.com": {IDPUUID: "uuid-fallback", ProfileURL: "https://db.example.com/fallback.png"},
 	}}
-	h := NewAIAgentHandler(client, attendees, config.AIFeatureStatus{}, nil)
+	h := NewAIAgentHandler(client, attendees, allAIFeaturesOn, nil)
 	r := newAIAgentTestRouter(h, testUser)
 
 	w := doRequest(r, http.MethodGet, "/o2bar/recommendations", nil)
@@ -114,7 +114,7 @@ func TestAIAgentHandler_O2BarRecommendationsGet_ProfileURLPrefersAIResponse(t *t
 func TestAIAgentHandler_O2BarRecommendationsGet_RealDBErrorAbortsWholeRequest(t *testing.T) {
 	client := &fakeAIAgentClient{o2bar: []models.O2BarRecommendationResponse{{Email: "a@wso2.com"}}}
 	attendees := &fakeAttendeeRepo{getErr: errBoom}
-	h := NewAIAgentHandler(client, attendees, config.AIFeatureStatus{}, nil)
+	h := NewAIAgentHandler(client, attendees, allAIFeaturesOn, nil)
 	r := newAIAgentTestRouter(h, testUser)
 
 	w := doRequest(r, http.MethodGet, "/o2bar/recommendations", nil)
@@ -124,7 +124,7 @@ func TestAIAgentHandler_O2BarRecommendationsGet_RealDBErrorAbortsWholeRequest(t 
 }
 
 func TestAIAgentHandler_O2BarRecommendationsPost_Unauthenticated(t *testing.T) {
-	h := NewAIAgentHandler(&fakeAIAgentClient{}, &fakeAttendeeRepo{}, config.AIFeatureStatus{}, nil)
+	h := NewAIAgentHandler(&fakeAIAgentClient{}, &fakeAttendeeRepo{}, allAIFeaturesOn, nil)
 	r := newAIAgentTestRouter(h, nil)
 
 	w := doRequest(r, http.MethodPost, "/o2bar/recommendations", models.O2BarRecommendationInput{})
@@ -135,7 +135,7 @@ func TestAIAgentHandler_O2BarRecommendationsPost_Unauthenticated(t *testing.T) {
 
 func TestAIAgentHandler_O2BarRecommendationsPost_ForwardsQuestionAndReturns201(t *testing.T) {
 	client := &fakeAIAgentClient{o2bar: []models.O2BarRecommendationResponse{}}
-	h := NewAIAgentHandler(client, &fakeAttendeeRepo{}, config.AIFeatureStatus{}, nil)
+	h := NewAIAgentHandler(client, &fakeAttendeeRepo{}, allAIFeaturesOn, nil)
 	r := newAIAgentTestRouter(h, testUser)
 
 	question := "when is the next slot?"
@@ -149,7 +149,7 @@ func TestAIAgentHandler_O2BarRecommendationsPost_ForwardsQuestionAndReturns201(t
 }
 
 func TestAIAgentHandler_O2BarRecommendationsPost_MalformedBody_Returns400(t *testing.T) {
-	h := NewAIAgentHandler(&fakeAIAgentClient{}, &fakeAttendeeRepo{}, config.AIFeatureStatus{}, nil)
+	h := NewAIAgentHandler(&fakeAIAgentClient{}, &fakeAttendeeRepo{}, allAIFeaturesOn, nil)
 	r := newAIAgentTestRouter(h, testUser)
 
 	req := httptest.NewRequest(http.MethodPost, "/o2bar/recommendations", bytes.NewBufferString("{not json"))
@@ -162,3 +162,35 @@ func TestAIAgentHandler_O2BarRecommendationsPost_MalformedBody_Returns400(t *tes
 }
 
 func strPtr(s string) *string { return &s }
+
+func TestAIAgentHandler_O2BarRecommendationsGet_FeatureDisabled_Returns503(t *testing.T) {
+	client := &fakeAIAgentClient{o2barErr: errBoom}
+	h := NewAIAgentHandler(client, &fakeAttendeeRepo{}, config.AIFeatureStatus{EnabledO2Bar: false}, nil)
+	r := newAIAgentTestRouter(h, testUser)
+
+	w := doRequest(r, http.MethodGet, "/o2bar/recommendations", nil)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d, body: %s", w.Code, http.StatusServiceUnavailable, w.Body.String())
+	}
+	if client.jwtSeen != "" {
+		t.Errorf("external client was called while feature disabled (jwtSeen=%q)", client.jwtSeen)
+	}
+}
+
+func TestAIAgentHandler_O2BarRecommendationsPost_FeatureDisabled_Returns503(t *testing.T) {
+	// A valid body must still 503 when the feature is off (the gate lives in the
+	// shared body, after bind, so a malformed body still 400s -- see the
+	// dedicated malformed-body test).
+	client := &fakeAIAgentClient{o2bar: []models.O2BarRecommendationResponse{}}
+	h := NewAIAgentHandler(client, &fakeAttendeeRepo{}, config.AIFeatureStatus{EnabledO2Bar: false}, nil)
+	r := newAIAgentTestRouter(h, testUser)
+
+	question := "anything?"
+	w := doRequest(r, http.MethodPost, "/o2bar/recommendations", models.O2BarRecommendationInput{Question: &question})
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d, body: %s", w.Code, http.StatusServiceUnavailable, w.Body.String())
+	}
+	if client.jwtSeen != "" {
+		t.Errorf("external client was called while feature disabled (jwtSeen=%q)", client.jwtSeen)
+	}
+}
