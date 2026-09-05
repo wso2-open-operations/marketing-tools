@@ -34,7 +34,7 @@ func clearEnv(t *testing.T) {
 		"WALLET_ENDPOINT", "WALLET_TOKEN_URL", "WALLET_CLIENT_ID", "WALLET_CLIENT_SECRET",
 		"TRANSACTION_ENDPOINT", "TRANSACTION_TOKEN_URL", "TRANSACTION_CLIENT_ID", "TRANSACTION_CLIENT_SECRET",
 		"NOTIFICATION_ENDPOINT", "NOTIFICATION_TOKEN_URL", "NOTIFICATION_CLIENT_ID", "NOTIFICATION_CLIENT_SECRET", "NOTIFICATION_SCOPES",
-		"PII_ENCRYPTION_KEY",
+		"PII_ENCRYPTION_KEY", "SHOP_MASTER_WALLET_ADDRESS",
 		"AI_SERVICE_URL",
 		"AI_REQUEST_TIMEOUT_SECONDS",
 		"AI_ENABLED_CHAT_ASSISTANT", "AI_ENABLED_PERSONALIZED_AGENDA", "AI_ENABLED_MATCH_MAKER", "AI_ENABLED_O2_BAR",
@@ -360,5 +360,130 @@ func TestDSN_WithAndWithoutPassword(t *testing.T) {
 	dsn = cfg.DSN()
 	if dsn != "host=localhost port=5432 user=administrator password=secret dbname=agenda_organizer sslmode=disable options=--search_path=marketingops" {
 		t.Errorf("unexpected DSN with password: %q", dsn)
+	}
+}
+
+// --- D1: the HTTP write deadline must outlive the AI request budget ---
+
+func TestHTTPWriteTimeout_ExceedsAIRequestTimeout(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("DB_HOST", "localhost")
+	t.Setenv("DB_USER", "administrator")
+	t.Setenv("DB_NAME", "agenda_organizer")
+	t.Setenv("DB_SCHEMA", "marketingops")
+	t.Setenv("APP_ENV", "development")
+
+	cases := []struct {
+		name    string
+		seconds string
+		want    time.Duration
+	}{
+		{"default 120s budget", "", 130 * time.Second},
+		{"short budget still floors at 130s", "5", 130 * time.Second},
+		{"long budget wins over the floor", "300", 310 * time.Second},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.seconds == "" {
+				os.Unsetenv("AI_REQUEST_TIMEOUT_SECONDS")
+			} else {
+				t.Setenv("AI_REQUEST_TIMEOUT_SECONDS", tc.seconds)
+			}
+			cfg := Load()
+			got := cfg.HTTPWriteTimeout()
+			if got != tc.want {
+				t.Errorf("HTTPWriteTimeout() = %v, want %v", got, tc.want)
+			}
+			if got <= cfg.AIAgent.RequestTimeout {
+				t.Errorf("HTTPWriteTimeout() = %v, must exceed AI budget %v", got, cfg.AIAgent.RequestTimeout)
+			}
+		})
+	}
+}
+
+// --- D3: production with token validation off is detectable ---
+
+func TestInsecureAuthConfig(t *testing.T) {
+	cases := []struct {
+		appEnv    string
+		validator string
+		want      bool
+	}{
+		{"production", "", true},
+		{"production", "false", true},
+		{"production", "true", false},
+		{"development", "false", false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.appEnv+"/"+tc.validator, func(t *testing.T) {
+			clearEnv(t)
+			t.Setenv("DB_HOST", "localhost")
+			t.Setenv("DB_USER", "administrator")
+			t.Setenv("DB_NAME", "agenda_organizer")
+			t.Setenv("DB_SCHEMA", "marketingops")
+			t.Setenv("DB_PASSWORD", "pw")
+			t.Setenv("APP_ENV", tc.appEnv)
+			if tc.validator != "" {
+				t.Setenv("TOKEN_VALIDATOR_ENABLED", tc.validator)
+			}
+
+			cfg := Load()
+			if got := cfg.InsecureAuthConfig(); got != tc.want {
+				t.Errorf("InsecureAuthConfig() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// The locked decision is that this stays a warning, never a startup failure:
+// omitting the var on Choreo must not crash-loop the container.
+func TestValidate_InsecureAuthConfigIsNotFatal(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("DB_HOST", "localhost")
+	t.Setenv("DB_USER", "administrator")
+	t.Setenv("DB_NAME", "agenda_organizer")
+	t.Setenv("DB_SCHEMA", "marketingops")
+	t.Setenv("DB_PASSWORD", "pw")
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("PII_ENCRYPTION_KEY", "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=")
+
+	cfg := Load()
+	if !cfg.InsecureAuthConfig() {
+		t.Fatal("expected InsecureAuthConfig() = true for this fixture")
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() = %v, want nil (the insecure auth config must warn, not fail)", err)
+	}
+}
+
+// --- C2: a missing merchant wallet is detectable but not fatal ---
+
+func TestShopPaymentsConfigured(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("DB_HOST", "localhost")
+	t.Setenv("DB_USER", "administrator")
+	t.Setenv("DB_NAME", "agenda_organizer")
+	t.Setenv("DB_SCHEMA", "marketingops")
+	t.Setenv("DB_PASSWORD", "pw")
+	t.Setenv("PII_ENCRYPTION_KEY", "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=")
+
+	cfg := Load()
+	if cfg.ShopPaymentsConfigured() {
+		t.Error("ShopPaymentsConfigured() = true with SHOP_MASTER_WALLET_ADDRESS unset, want false")
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() = %v, want nil (a deployment with no shop must still start)", err)
+	}
+
+	t.Setenv("SHOP_MASTER_WALLET_ADDRESS", "   ")
+	if Load().ShopPaymentsConfigured() {
+		t.Error("ShopPaymentsConfigured() = true for a whitespace-only address, want false")
+	}
+
+	t.Setenv("SHOP_MASTER_WALLET_ADDRESS", "0xabc")
+	if !Load().ShopPaymentsConfigured() {
+		t.Error("ShopPaymentsConfigured() = false with an address set, want true")
 	}
 }

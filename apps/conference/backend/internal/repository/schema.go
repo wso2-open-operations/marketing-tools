@@ -108,10 +108,62 @@ type schemaCaps struct {
 	hasActivityTables      bool
 }
 
-// schemaProbeTimeout bounds a single capability probe. It is deliberately short:
-// the probe is an EXISTS against information_schema, and a caller waiting on it
-// is a request that could instead be served in the degraded shape.
-const schemaProbeTimeout = 3 * time.Second
+// schemaProbeTimeout bounds a single capability probe -- one EXISTS against
+// information_schema, and one only. Two probes under one budget is the bug this
+// constant used to have; see probeContext.
+//
+// It has to cover a *cold pool connect*, which is what makes 3s -- the value it
+// carried while the budget was shared -- too small rather than merely tight.
+// pgxpool.New does not dial; the first request after a restart opens the
+// connection, and it opens it inside whatever probe runs first. Against the
+// staging Azure instance that dial measures ~2.6s (TLS plus auth, cross-region),
+// leaving a shared 3s budget ~200ms for two round-trips: measured over five cold
+// starts, activityTables blew the deadline on one of them and GET /activities
+// answered 200 with an empty array. The warm cost being ~250ms is not the case
+// to size for, because the cold one is the only case that ever runs -- a
+// capability resolves once per process.
+//
+// Ten seconds is therefore about a cold dial with room for a slow one, not about
+// the query. A request does wait that long in the worst case, but at most one
+// request per capability per process does, and for the table capability the
+// alternative is not a slower answer -- it is a wrong one. An unanswered probe
+// there degrades to an *empty endpoint* rather than a missing field (see
+// activityTables), and the ETag middleware stamps that empty array
+// `private, max-age=60`, so one lost race becomes a minute of a client showing
+// no amenities at all.
+const schemaProbeTimeout = 10 * time.Second
+
+// probeContext returns the context for exactly one probe query.
+//
+// One per query, never one per capability. The venue, colour and activity
+// capabilities each run two probes in sequence, and sharing a single deadline
+// across both means the second one inherits whatever the first left -- which,
+// when the first also paid the pool's cold dial, is nothing. Each probe getting
+// its own budget is what makes schemaProbeTimeout mean what it says.
+//
+// The detachment lives here too, in one place, because it is the same reason at
+// every call site: a request-scoped context is the wrong lifetime for a
+// process-wide fact. Without it the first request to arrive decides the
+// capability for every later one, and a client that disconnects mid-probe
+// cancels it -- indistinguishable, at this layer, from the column or table
+// genuinely being absent.
+func probeContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), schemaProbeTimeout)
+}
+
+// probeColumn answers columnExists for one column under its own deadline.
+func probeColumn(ctx context.Context, pool *pgxpool.Pool, table, column string) (bool, error) {
+	probeCtx, cancel := probeContext(ctx)
+	defer cancel()
+	return columnExists(probeCtx, pool, table, column)
+}
+
+// probeTable answers tableExists for one table under its own deadline.
+func probeTable(ctx context.Context, pool *pgxpool.Pool, table string) (bool, error) {
+	probeCtx, cancel := probeContext(ctx)
+	defer cancel()
+	return tableExists(probeCtx, pool, table)
+}
 
 // columnExists reports whether table.column exists in the connection's current
 // schema (set from DB_SCHEMA via the DSN's search_path). A probe that could not
@@ -181,11 +233,8 @@ func (c *schemaCaps) topicSQL(ctx context.Context, pool *pgxpool.Pool) (selectEx
 // hasTopicID reports whether sessions.topic_id exists, probing at most once
 // successfully and retrying on every request until it gets an answer.
 //
-// The probe runs detached from the caller's context. A request-scoped context is
-// the wrong lifetime for a process-wide fact: the first request to arrive would
-// otherwise get to decide the capability for every later one, and a client that
-// disconnects mid-probe would cancel it -- indistinguishable, at this layer,
-// from the column genuinely being absent.
+// The probe runs detached from the caller's context and under its own deadline;
+// probeContext owns both decisions and the reasons for them.
 //
 // The lock is not held across the query. Concurrent callers on a cold cache may
 // each probe, which costs a duplicate EXISTS against information_schema and
@@ -199,10 +248,7 @@ func (c *schemaCaps) hasTopicID(ctx context.Context, pool *pgxpool.Pool) bool {
 	}
 	c.mu.Unlock()
 
-	probeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), schemaProbeTimeout)
-	defer cancel()
-
-	exists, err := columnExists(probeCtx, pool, "sessions", "topic_id")
+	exists, err := probeColumn(ctx, pool, "sessions", "topic_id")
 	if err != nil {
 		// Serve this request in the degraded shape but leave the capability
 		// unresolved, so a transient failure costs one request's category
@@ -276,12 +322,9 @@ func (c *schemaCaps) colorTokenColumns(ctx context.Context, pool *pgxpool.Pool) 
 	}
 	c.mu.Unlock()
 
-	probeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), schemaProbeTimeout)
-	defer cancel()
-
-	room, err := columnExists(probeCtx, pool, "rooms", "color_token")
+	room, err := probeColumn(ctx, pool, "rooms", "color_token")
 	if err == nil {
-		track, err = columnExists(probeCtx, pool, "tracks", "color_token")
+		track, err = probeColumn(ctx, pool, "tracks", "color_token")
 	}
 	if err != nil {
 		// Serve this request with the default token and leave the capability
@@ -352,12 +395,9 @@ func (c *schemaCaps) venueColumns(ctx context.Context, pool *pgxpool.Pool) (name
 	}
 	c.mu.Unlock()
 
-	probeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), schemaProbeTimeout)
-	defer cancel()
-
-	name, err := columnExists(probeCtx, pool, "conference_config", "venue_name")
+	name, err := probeColumn(ctx, pool, "conference_config", "venue_name")
 	if err == nil {
-		address, err = columnExists(probeCtx, pool, "conference_config", "venue_address")
+		address, err = probeColumn(ctx, pool, "conference_config", "venue_address")
 	}
 	if err != nil {
 		// Serve this request without a location and leave the capability
@@ -408,12 +448,9 @@ func (c *schemaCaps) activityTables(ctx context.Context, pool *pgxpool.Pool) boo
 	}
 	c.mu.Unlock()
 
-	probeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), schemaProbeTimeout)
-	defer cancel()
-
-	exists, err := tableExists(probeCtx, pool, "con_activities")
+	exists, err := probeTable(ctx, pool, "con_activities")
 	if err == nil && exists {
-		exists, err = tableExists(probeCtx, pool, "con_activity_hours")
+		exists, err = probeTable(ctx, pool, "con_activity_hours")
 	}
 	if err != nil {
 		// Serve this request with no activities and leave the capability
