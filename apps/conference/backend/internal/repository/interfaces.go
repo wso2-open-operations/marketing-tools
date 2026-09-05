@@ -76,11 +76,16 @@ type AttendeeProfileReader interface {
 	Search(ctx context.Context, filter models.AttendeeSearchFilter, excludedUUID string) (models.AttendeeSearchResult, error)
 }
 
-// ConnectionReader is satisfied by *ConnectionRepo.
+// ConnectionReader is satisfied by *ConnectionRepo. One method per
+// transition, deliberately: the old single Upsert took the target state as an
+// argument, which is what let a requester accept their own request. Here the
+// caller cannot name a state at all -- Accept is the only way to reach
+// 'accepted', and it refuses anyone but the addressee.
 type ConnectionReader interface {
 	Get(ctx context.Context, userUUID string) (models.UserConnectionsInfo, error)
-	Find(ctx context.Context, aUUID, bUUID string) (models.Connection, error)
-	Upsert(ctx context.Context, initiatorUUID, recipientUUID string, status models.ConnectionStatus) error
+	Request(ctx context.Context, requesterUUID, addresseeUUID string) (models.Connection, error)
+	Accept(ctx context.Context, connectionID, callerUUID string) (models.Connection, error)
+	Delete(ctx context.Context, connectionID, callerUUID string) error
 }
 
 // FeedbackReader is satisfied by *FeedbackRepo.

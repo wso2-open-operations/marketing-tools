@@ -49,15 +49,48 @@ func newConnectionRepo() *ConnectionRepo {
 	return NewConnectionRepo(testDB, NewAttendeeProfileRepo(testDB, attendeeProfileTestKey))
 }
 
+// cleanupConnection drops whatever row the pair ends up with, in either
+// direction. It is registered before the row exists because several tests
+// delete and re-request the same pair, so the id is not stable enough to
+// clean up by.
 func cleanupConnection(t *testing.T, a, b string) {
+	t.Helper()
 	t.Cleanup(func() {
 		_, _ = testDB.Exec(context.Background(),
-			"DELETE FROM user_connection WHERE (initiator_id = $1 AND recipient_id = $2) OR (initiator_id = $2 AND recipient_id = $1)",
+			`DELETE FROM user_connection
+			 WHERE (requester_id = $1 AND addressee_id = $2) OR (requester_id = $2 AND addressee_id = $1)`,
 			a, b)
 	})
 }
 
-func TestConnectionRepo_Upsert_PendingRequestAppearsAsSentAndReceived(t *testing.T) {
+// countConnectionRows counts the stored rows for a pair. Several tests assert
+// on it rather than on the API surface, because the bugs the redesign closes
+// (mirror rows, orphan rows) are invisible from Get -- an orphan row has no
+// attendee to join against, so it silently drops out of the response.
+func countConnectionRows(t *testing.T, ctx context.Context, a, b string) int {
+	t.Helper()
+	var count int
+	err := testDB.QueryRow(ctx,
+		`SELECT COUNT(*) FROM user_connection
+		 WHERE (requester_id = $1 AND addressee_id = $2) OR (requester_id = $2 AND addressee_id = $1)`,
+		a, b,
+	).Scan(&count)
+	if err != nil {
+		t.Fatalf("failed to count user_connection rows: %v", err)
+	}
+	return count
+}
+
+func connectionStateByID(t *testing.T, ctx context.Context, id string) string {
+	t.Helper()
+	var state string
+	if err := testDB.QueryRow(ctx, "SELECT state FROM user_connection WHERE id = $1", id).Scan(&state); err != nil {
+		t.Fatalf("failed to read state of connection %s: %v", id, err)
+	}
+	return state
+}
+
+func TestConnectionRepo_Request_CreatesPendingVisibleToBothParties(t *testing.T) {
 	ctx := context.Background()
 	repo := newConnectionRepo()
 
@@ -65,8 +98,15 @@ func TestConnectionRepo_Upsert_PendingRequestAppearsAsSentAndReceived(t *testing
 	bob := newConnectionAttendeeFixture(t, ctx, "Bob", "Receiver")
 	cleanupConnection(t, alice, bob)
 
-	if err := repo.Upsert(ctx, alice, bob, models.ConnectionPending); err != nil {
-		t.Fatalf("Upsert returned error: %v", err)
+	conn, err := repo.Request(ctx, alice, bob)
+	if err != nil {
+		t.Fatalf("Request returned error: %v", err)
+	}
+	if conn.State != models.ConnectionPending {
+		t.Errorf("Request state = %q, want %q", conn.State, models.ConnectionPending)
+	}
+	if conn.RequesterID != alice || conn.AddresseeID != bob {
+		t.Errorf("Request parties = (%q -> %q), want (%q -> %q)", conn.RequesterID, conn.AddresseeID, alice, bob)
 	}
 
 	aliceView, err := repo.Get(ctx, alice)
@@ -74,16 +114,21 @@ func TestConnectionRepo_Upsert_PendingRequestAppearsAsSentAndReceived(t *testing
 		t.Fatalf("Get(alice) returned error: %v", err)
 	}
 	if len(aliceView.RequestsSent) != 1 || aliceView.RequestsSent[0].UserID != bob {
-		t.Errorf("alice.RequestsSent = %+v, want exactly bob", aliceView.RequestsSent)
+		t.Fatalf("alice.RequestsSent = %+v, want exactly bob", aliceView.RequestsSent)
 	}
-	if len(aliceView.RequestsReceived) != 0 {
-		t.Errorf("alice.RequestsReceived = %+v, want empty", aliceView.RequestsReceived)
+	if len(aliceView.RequestsReceived) != 0 || len(aliceView.Connections) != 0 {
+		t.Errorf("alice's other buckets = %+v / %+v, want both empty", aliceView.RequestsReceived, aliceView.Connections)
 	}
-	if aliceView.RequestsSent[0].Name != "Bob Receiver" {
-		t.Errorf("alice.RequestsSent[0].Name = %q, want %q", aliceView.RequestsSent[0].Name, "Bob Receiver")
+	sent := aliceView.RequestsSent[0]
+	if sent.Name != "Bob Receiver" {
+		t.Errorf("alice.RequestsSent[0].Name = %q, want %q", sent.Name, "Bob Receiver")
 	}
-	if aliceView.RequestsSent[0].Status != "pending" {
-		t.Errorf("alice.RequestsSent[0].Status = %q, want %q", aliceView.RequestsSent[0].Status, "pending")
+	if sent.Status != "pending" {
+		t.Errorf("alice.RequestsSent[0].Status = %q, want %q", sent.Status, "pending")
+	}
+	// Without ConnectionID the client has no handle for accept/delete.
+	if sent.ConnectionID != conn.ID {
+		t.Errorf("alice.RequestsSent[0].ConnectionID = %q, want %q", sent.ConnectionID, conn.ID)
 	}
 
 	bobView, err := repo.Get(ctx, bob)
@@ -91,14 +136,21 @@ func TestConnectionRepo_Upsert_PendingRequestAppearsAsSentAndReceived(t *testing
 		t.Fatalf("Get(bob) returned error: %v", err)
 	}
 	if len(bobView.RequestsReceived) != 1 || bobView.RequestsReceived[0].UserID != alice {
-		t.Errorf("bob.RequestsReceived = %+v, want exactly alice", bobView.RequestsReceived)
+		t.Fatalf("bob.RequestsReceived = %+v, want exactly alice", bobView.RequestsReceived)
 	}
-	if len(bobView.RequestsSent) != 0 {
-		t.Errorf("bob.RequestsSent = %+v, want empty", bobView.RequestsSent)
+	received := bobView.RequestsReceived[0]
+	if received.Name != "Alice Sender" {
+		t.Errorf("bob.RequestsReceived[0].Name = %q, want %q", received.Name, "Alice Sender")
+	}
+	if received.ConnectionID != conn.ID {
+		t.Errorf("bob.RequestsReceived[0].ConnectionID = %q, want %q", received.ConnectionID, conn.ID)
+	}
+	if len(bobView.RequestsSent) != 0 || len(bobView.Connections) != 0 {
+		t.Errorf("bob's other buckets = %+v / %+v, want both empty", bobView.RequestsSent, bobView.Connections)
 	}
 }
 
-func TestConnectionRepo_Upsert_AcceptedAppearsAsConnectionForBoth(t *testing.T) {
+func TestConnectionRepo_Request_RepeatedRequestIsIdempotent(t *testing.T) {
 	ctx := context.Background()
 	repo := newConnectionRepo()
 
@@ -106,37 +158,26 @@ func TestConnectionRepo_Upsert_AcceptedAppearsAsConnectionForBoth(t *testing.T) 
 	bob := newConnectionAttendeeFixture(t, ctx, "Bob2", "Y")
 	cleanupConnection(t, alice, bob)
 
-	if err := repo.Upsert(ctx, alice, bob, models.ConnectionPending); err != nil {
-		t.Fatalf("Upsert(pending) returned error: %v", err)
-	}
-	if err := repo.Upsert(ctx, bob, alice, models.ConnectionAccepted); err != nil {
-		t.Fatalf("Upsert(accepted) returned error: %v", err)
-	}
-
-	aliceView, err := repo.Get(ctx, alice)
+	first, err := repo.Request(ctx, alice, bob)
 	if err != nil {
-		t.Fatalf("Get(alice) returned error: %v", err)
+		t.Fatalf("first Request returned error: %v", err)
 	}
-	if len(aliceView.Connections) != 1 || aliceView.Connections[0].UserID != bob {
-		t.Errorf("alice.Connections = %+v, want exactly bob", aliceView.Connections)
-	}
-	if aliceView.Connections[0].Status != "accepted" {
-		t.Errorf("alice.Connections[0].Status = %q, want %q", aliceView.Connections[0].Status, "accepted")
-	}
-	if len(aliceView.RequestsSent) != 0 {
-		t.Errorf("alice.RequestsSent = %+v, want empty once accepted", aliceView.RequestsSent)
-	}
-
-	bobView, err := repo.Get(ctx, bob)
+	// A retried request (double tap, client retry) must not be an error and
+	// must not produce a second row -- ON CONFLICT DO NOTHING plus the
+	// read-back fallback.
+	second, err := repo.Request(ctx, alice, bob)
 	if err != nil {
-		t.Fatalf("Get(bob) returned error: %v", err)
+		t.Fatalf("second Request returned error: %v", err)
 	}
-	if len(bobView.Connections) != 1 || bobView.Connections[0].UserID != alice {
-		t.Errorf("bob.Connections = %+v, want exactly alice", bobView.Connections)
+	if second.ID != first.ID {
+		t.Errorf("second Request id = %q, want the first id %q", second.ID, first.ID)
+	}
+	if n := countConnectionRows(t, ctx, alice, bob); n != 1 {
+		t.Errorf("row count = %d, want exactly 1", n)
 	}
 }
 
-func TestConnectionRepo_Upsert_ReverseDirectionUpdatesSameRowNotADuplicate(t *testing.T) {
+func TestConnectionRepo_Request_ReverseDirectionReturnsExistingRow(t *testing.T) {
 	ctx := context.Background()
 	repo := newConnectionRepo()
 
@@ -144,25 +185,298 @@ func TestConnectionRepo_Upsert_ReverseDirectionUpdatesSameRowNotADuplicate(t *te
 	bob := newConnectionAttendeeFixture(t, ctx, "Bob3", "Y")
 	cleanupConnection(t, alice, bob)
 
-	if err := repo.Upsert(ctx, alice, bob, models.ConnectionPending); err != nil {
-		t.Fatalf("Upsert(alice->bob pending) returned error: %v", err)
+	first, err := repo.Request(ctx, alice, bob)
+	if err != nil {
+		t.Fatalf("Request(alice -> bob) returned error: %v", err)
 	}
-	// Upsert from the reverse direction (bob, alice) must update the same
-	// row, not insert a second (bob, alice) row alongside (alice, bob).
-	if err := repo.Upsert(ctx, bob, alice, models.ConnectionAccepted); err != nil {
-		t.Fatalf("Upsert(bob->alice accepted) returned error: %v", err)
+	// The mirror-row bug: under the old directional key this wrote a second
+	// (bob, alice) row for the same relationship. The pair unique constraint
+	// now collapses it onto the existing row, requester unchanged -- if bob
+	// became the requester he could then "accept" alice's request himself.
+	mirror, err := repo.Request(ctx, bob, alice)
+	if err != nil {
+		t.Fatalf("Request(bob -> alice) returned error: %v", err)
+	}
+	if mirror.ID != first.ID {
+		t.Errorf("reverse Request id = %q, want the existing id %q", mirror.ID, first.ID)
+	}
+	if mirror.RequesterID != alice || mirror.AddresseeID != bob {
+		t.Errorf("reverse Request parties = (%q -> %q), want the original (%q -> %q)",
+			mirror.RequesterID, mirror.AddresseeID, alice, bob)
+	}
+	if n := countConnectionRows(t, ctx, alice, bob); n != 1 {
+		t.Errorf("row count = %d, want exactly 1 (no mirror row)", n)
+	}
+}
+
+func TestConnectionRepo_Request_UnknownAddresseeWritesNothing(t *testing.T) {
+	ctx := context.Background()
+	repo := newConnectionRepo()
+
+	alice := newConnectionAttendeeFixture(t, ctx, "Alice4", "X")
+	ghost := newUUID()
+	cleanupConnection(t, alice, ghost)
+
+	if _, err := repo.Request(ctx, alice, ghost); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Request returned %v, want ErrNotFound", err)
+	}
+	// The orphan-row regression: the old code inserted first and validated
+	// afterwards, so a 404 still left a row behind that no Get could ever
+	// surface (there is no attendee row to join against).
+	if n := countConnectionRows(t, ctx, alice, ghost); n != 0 {
+		t.Errorf("row count = %d, want 0 -- a 404 must write nothing", n)
+	}
+}
+
+func TestConnectionRepo_Request_SelfReturnsErrSelfConnection(t *testing.T) {
+	ctx := context.Background()
+	repo := newConnectionRepo()
+
+	alice := newConnectionAttendeeFixture(t, ctx, "Alice5", "X")
+	cleanupConnection(t, alice, alice)
+
+	if _, err := repo.Request(ctx, alice, alice); !errors.Is(err, ErrSelfConnection) {
+		t.Fatalf("Request returned %v, want ErrSelfConnection", err)
+	}
+	if n := countConnectionRows(t, ctx, alice, alice); n != 0 {
+		t.Errorf("row count = %d, want 0", n)
+	}
+}
+
+func TestConnectionRepo_Accept_ByAddresseeConnectsBothParties(t *testing.T) {
+	ctx := context.Background()
+	repo := newConnectionRepo()
+
+	alice := newConnectionAttendeeFixture(t, ctx, "Alice6", "X")
+	bob := newConnectionAttendeeFixture(t, ctx, "Bob6", "Y")
+	cleanupConnection(t, alice, bob)
+
+	pending, err := repo.Request(ctx, alice, bob)
+	if err != nil {
+		t.Fatalf("Request returned error: %v", err)
+	}
+	accepted, err := repo.Accept(ctx, pending.ID, bob)
+	if err != nil {
+		t.Fatalf("Accept returned error: %v", err)
+	}
+	if accepted.State != models.ConnectionAccepted {
+		t.Errorf("Accept state = %q, want %q", accepted.State, models.ConnectionAccepted)
 	}
 
-	var count int
-	err := testDB.QueryRow(ctx,
-		"SELECT COUNT(*) FROM user_connection WHERE (initiator_id = $1 AND recipient_id = $2) OR (initiator_id = $2 AND recipient_id = $1)",
-		alice, bob,
-	).Scan(&count)
-	if err != nil {
-		t.Fatalf("failed to count rows: %v", err)
+	for _, party := range []struct {
+		name, self, other string
+	}{{"alice", alice, bob}, {"bob", bob, alice}} {
+		view, err := repo.Get(ctx, party.self)
+		if err != nil {
+			t.Fatalf("Get(%s) returned error: %v", party.name, err)
+		}
+		if len(view.Connections) != 1 || view.Connections[0].UserID != party.other {
+			t.Errorf("%s.Connections = %+v, want exactly the other party", party.name, view.Connections)
+			continue
+		}
+		if view.Connections[0].Status != "accepted" {
+			t.Errorf("%s.Connections[0].Status = %q, want %q", party.name, view.Connections[0].Status, "accepted")
+		}
+		if view.Connections[0].ConnectionID != pending.ID {
+			t.Errorf("%s.Connections[0].ConnectionID = %q, want %q", party.name, view.Connections[0].ConnectionID, pending.ID)
+		}
+		if len(view.RequestsSent) != 0 || len(view.RequestsReceived) != 0 {
+			t.Errorf("%s still has request buckets %+v / %+v, want both empty once accepted",
+				party.name, view.RequestsSent, view.RequestsReceived)
+		}
 	}
-	if count != 1 {
-		t.Fatalf("row count = %d, want exactly 1 (no duplicate A/B + B/A pair)", count)
+}
+
+func TestConnectionRepo_Accept_ByRequesterIsForbidden(t *testing.T) {
+	ctx := context.Background()
+	repo := newConnectionRepo()
+
+	alice := newConnectionAttendeeFixture(t, ctx, "Alice7", "X")
+	bob := newConnectionAttendeeFixture(t, ctx, "Bob7", "Y")
+	cleanupConnection(t, alice, bob)
+
+	pending, err := repo.Request(ctx, alice, bob)
+	if err != nil {
+		t.Fatalf("Request returned error: %v", err)
+	}
+	// Accept-your-own-request, the headline bug: alice sent it, so only bob
+	// may move it to accepted.
+	if _, err := repo.Accept(ctx, pending.ID, alice); !errors.Is(err, ErrConnectionForbidden) {
+		t.Fatalf("Accept by requester returned %v, want ErrConnectionForbidden", err)
+	}
+	if state := connectionStateByID(t, ctx, pending.ID); state != "pending" {
+		t.Errorf("state after refused Accept = %q, want %q", state, "pending")
+	}
+}
+
+func TestConnectionRepo_Accept_AlreadyAcceptedReturnsErrConnectionNotPending(t *testing.T) {
+	ctx := context.Background()
+	repo := newConnectionRepo()
+
+	alice := newConnectionAttendeeFixture(t, ctx, "Alice8", "X")
+	bob := newConnectionAttendeeFixture(t, ctx, "Bob8", "Y")
+	cleanupConnection(t, alice, bob)
+
+	pending, err := repo.Request(ctx, alice, bob)
+	if err != nil {
+		t.Fatalf("Request returned error: %v", err)
+	}
+	if _, err := repo.Accept(ctx, pending.ID, bob); err != nil {
+		t.Fatalf("first Accept returned error: %v", err)
+	}
+	if _, err := repo.Accept(ctx, pending.ID, bob); !errors.Is(err, ErrConnectionNotPending) {
+		t.Fatalf("second Accept returned %v, want ErrConnectionNotPending", err)
+	}
+}
+
+func TestConnectionRepo_Accept_ByThirdPartyReturnsErrNotFound(t *testing.T) {
+	ctx := context.Background()
+	repo := newConnectionRepo()
+
+	alice := newConnectionAttendeeFixture(t, ctx, "Alice9", "X")
+	bob := newConnectionAttendeeFixture(t, ctx, "Bob9", "Y")
+	carol := newConnectionAttendeeFixture(t, ctx, "Carol9", "Z")
+	cleanupConnection(t, alice, bob)
+
+	pending, err := repo.Request(ctx, alice, bob)
+	if err != nil {
+		t.Fatalf("Request returned error: %v", err)
+	}
+	// Not 403: telling a stranger "forbidden" would confirm that the id is
+	// a real connection.
+	if _, err := repo.Accept(ctx, pending.ID, carol); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Accept by third party returned %v, want ErrNotFound", err)
+	}
+	if state := connectionStateByID(t, ctx, pending.ID); state != "pending" {
+		t.Errorf("state after third-party Accept = %q, want %q", state, "pending")
+	}
+}
+
+func TestConnectionRepo_Accept_UnknownIDReturnsErrNotFound(t *testing.T) {
+	ctx := context.Background()
+	repo := newConnectionRepo()
+
+	alice := newConnectionAttendeeFixture(t, ctx, "Alice10", "X")
+
+	if _, err := repo.Accept(ctx, newUUID(), alice); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Accept of an unknown id returned %v, want ErrNotFound", err)
+	}
+}
+
+func TestConnectionRepo_Delete_ByRequesterWithdrawsAndAllowsReconnect(t *testing.T) {
+	ctx := context.Background()
+	repo := newConnectionRepo()
+
+	alice := newConnectionAttendeeFixture(t, ctx, "Alice11", "X")
+	bob := newConnectionAttendeeFixture(t, ctx, "Bob11", "Y")
+	cleanupConnection(t, alice, bob)
+
+	first, err := repo.Request(ctx, alice, bob)
+	if err != nil {
+		t.Fatalf("Request returned error: %v", err)
+	}
+	if err := repo.Delete(ctx, first.ID, alice); err != nil {
+		t.Fatalf("Delete by requester returned error: %v", err)
+	}
+	if n := countConnectionRows(t, ctx, alice, bob); n != 0 {
+		t.Fatalf("row count after withdraw = %d, want 0", n)
+	}
+
+	// Deleting rather than storing a 'declined' state is what makes this
+	// possible: a stored declined row would conflict on the pair unique
+	// index and silently no-op every future request between the two.
+	again, err := repo.Request(ctx, alice, bob)
+	if err != nil {
+		t.Fatalf("Request after withdraw returned error: %v", err)
+	}
+	if again.ID == first.ID {
+		t.Errorf("Request after withdraw reused id %q, want a new row", again.ID)
+	}
+	if again.State != models.ConnectionPending {
+		t.Errorf("re-request state = %q, want %q", again.State, models.ConnectionPending)
+	}
+}
+
+func TestConnectionRepo_Delete_ByAddresseeDeclinesRequest(t *testing.T) {
+	ctx := context.Background()
+	repo := newConnectionRepo()
+
+	alice := newConnectionAttendeeFixture(t, ctx, "Alice12", "X")
+	bob := newConnectionAttendeeFixture(t, ctx, "Bob12", "Y")
+	cleanupConnection(t, alice, bob)
+
+	pending, err := repo.Request(ctx, alice, bob)
+	if err != nil {
+		t.Fatalf("Request returned error: %v", err)
+	}
+	if err := repo.Delete(ctx, pending.ID, bob); err != nil {
+		t.Fatalf("Delete by addressee returned error: %v", err)
+	}
+	if n := countConnectionRows(t, ctx, alice, bob); n != 0 {
+		t.Errorf("row count after decline = %d, want 0", n)
+	}
+
+	bobView, err := repo.Get(ctx, bob)
+	if err != nil {
+		t.Fatalf("Get(bob) returned error: %v", err)
+	}
+	if len(bobView.RequestsReceived) != 0 {
+		t.Errorf("bob.RequestsReceived = %+v, want empty after declining", bobView.RequestsReceived)
+	}
+}
+
+func TestConnectionRepo_Delete_AcceptedConnectionRemovableByEitherParty(t *testing.T) {
+	ctx := context.Background()
+	repo := newConnectionRepo()
+
+	// Run the same removal from both sides: an accepted connection is
+	// symmetric, so neither party is privileged when it comes to ending it.
+	for _, remover := range []string{"requester", "addressee"} {
+		t.Run(remover, func(t *testing.T) {
+			alice := newConnectionAttendeeFixture(t, ctx, "Alice13"+remover, "X")
+			bob := newConnectionAttendeeFixture(t, ctx, "Bob13"+remover, "Y")
+			cleanupConnection(t, alice, bob)
+
+			conn, err := repo.Request(ctx, alice, bob)
+			if err != nil {
+				t.Fatalf("Request returned error: %v", err)
+			}
+			if _, err := repo.Accept(ctx, conn.ID, bob); err != nil {
+				t.Fatalf("Accept returned error: %v", err)
+			}
+
+			caller := alice
+			if remover == "addressee" {
+				caller = bob
+			}
+			if err := repo.Delete(ctx, conn.ID, caller); err != nil {
+				t.Fatalf("Delete by %s returned error: %v", remover, err)
+			}
+			if n := countConnectionRows(t, ctx, alice, bob); n != 0 {
+				t.Errorf("row count after removal by %s = %d, want 0", remover, n)
+			}
+		})
+	}
+}
+
+func TestConnectionRepo_Delete_ByThirdPartyReturnsErrNotFound(t *testing.T) {
+	ctx := context.Background()
+	repo := newConnectionRepo()
+
+	alice := newConnectionAttendeeFixture(t, ctx, "Alice14", "X")
+	bob := newConnectionAttendeeFixture(t, ctx, "Bob14", "Y")
+	carol := newConnectionAttendeeFixture(t, ctx, "Carol14", "Z")
+	cleanupConnection(t, alice, bob)
+
+	conn, err := repo.Request(ctx, alice, bob)
+	if err != nil {
+		t.Fatalf("Request returned error: %v", err)
+	}
+	if err := repo.Delete(ctx, conn.ID, carol); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Delete by third party returned %v, want ErrNotFound", err)
+	}
+	if n := countConnectionRows(t, ctx, alice, bob); n != 1 {
+		t.Errorf("row count after third-party Delete = %d, want the row still there", n)
 	}
 }
 
@@ -181,43 +495,31 @@ func TestConnectionRepo_Get_NoConnectionsReturnsEmptyNotNil(t *testing.T) {
 	}
 }
 
-func TestConnectionRepo_Find_ReturnsStoredDirection(t *testing.T) {
+func TestConnectionRepo_Schema_RefusesSelfAndMirrorRows(t *testing.T) {
 	ctx := context.Background()
-	repo := newConnectionRepo()
 
-	alice := newConnectionAttendeeFixture(t, ctx, "Alice4", "X")
-	bob := newConnectionAttendeeFixture(t, ctx, "Bob4", "Y")
+	alice := newConnectionAttendeeFixture(t, ctx, "Alice15", "X")
+	bob := newConnectionAttendeeFixture(t, ctx, "Bob15", "Y")
 	cleanupConnection(t, alice, bob)
+	cleanupConnection(t, alice, alice)
 
-	if err := repo.Upsert(ctx, alice, bob, models.ConnectionPending); err != nil {
-		t.Fatalf("Upsert returned error: %v", err)
+	// The Go guards above are convenience, not the guarantee. Assert the
+	// constraints directly, so a future refactor that drops a check in Go
+	// still cannot write a self row or a mirror row.
+	if _, err := testDB.Exec(ctx,
+		"INSERT INTO user_connection (requester_id, addressee_id) VALUES ($1, $1)", alice,
+	); err == nil {
+		t.Error("inserting a self row succeeded, want user_connection_no_self to refuse it")
 	}
 
-	// Looked up from either side, the stored direction must be reported
-	// unchanged -- the handler uses it to decide who may accept.
-	for _, args := range [][2]string{{alice, bob}, {bob, alice}} {
-		conn, err := repo.Find(ctx, args[0], args[1])
-		if err != nil {
-			t.Fatalf("Find(%q, %q) returned error: %v", args[0], args[1], err)
-		}
-		if conn.InitiatorID != alice || conn.RecipientID != bob {
-			t.Errorf("Find(%q, %q) = (%q -> %q), want (%q -> %q)",
-				args[0], args[1], conn.InitiatorID, conn.RecipientID, alice, bob)
-		}
-		if conn.Status != models.ConnectionPending {
-			t.Errorf("Find status = %v, want %v", conn.Status, models.ConnectionPending)
-		}
+	if _, err := testDB.Exec(ctx,
+		"INSERT INTO user_connection (requester_id, addressee_id) VALUES ($1, $2)", alice, bob,
+	); err != nil {
+		t.Fatalf("inserting the first row of the pair failed: %v", err)
 	}
-}
-
-func TestConnectionRepo_Find_NoRowReturnsErrNotFound(t *testing.T) {
-	ctx := context.Background()
-	repo := newConnectionRepo()
-
-	alice := newConnectionAttendeeFixture(t, ctx, "Alice5", "X")
-	bob := newConnectionAttendeeFixture(t, ctx, "Bob5", "Y")
-
-	if _, err := repo.Find(ctx, alice, bob); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("Find returned %v, want ErrNotFound", err)
+	if _, err := testDB.Exec(ctx,
+		"INSERT INTO user_connection (requester_id, addressee_id) VALUES ($1, $2)", bob, alice,
+	); err == nil {
+		t.Error("inserting the mirror row succeeded, want user_connection_pair_unique to refuse it")
 	}
 }

@@ -34,3 +34,25 @@ var ErrInvalidCursor = errors.New("invalid pagination cursor")
 // after a preceding Exists check passed, since two concurrent scans of the
 // same QR by the same user can both pass Exists before either has inserted.
 var ErrDuplicateAllocation = errors.New("coin allocation already exists for this qr_id and user_uuid")
+
+// ErrSelfConnection is returned by ConnectionRepo.Request when the requester
+// and the addressee are the same person. The user_connection_no_self CHECK
+// refuses the row anyway; this turns that into a distinguishable error rather
+// than an opaque constraint violation, so the handler can answer 400 instead
+// of 500.
+var ErrSelfConnection = errors.New("cannot connect to yourself")
+
+// ErrConnectionForbidden is returned when the caller is a party to a
+// connection but not the party allowed to make the transition they asked for
+// -- in practice, a requester trying to accept their own request. Handlers
+// map it to 403.
+//
+// A caller who is not a party at all gets ErrNotFound instead, deliberately:
+// answering 403 there would confirm to a stranger that the id exists.
+var ErrConnectionForbidden = errors.New("caller may not perform this transition")
+
+// ErrConnectionNotPending is returned by ConnectionRepo.Accept when the row
+// exists and the caller really is its addressee, but the connection has
+// already moved on (it is accepted). Handlers map it to 409 Conflict: the
+// request was legitimate, it just lost a race or was replayed.
+var ErrConnectionNotPending = errors.New("connection is not pending")

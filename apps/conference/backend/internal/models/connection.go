@@ -16,64 +16,90 @@
 
 package models
 
-// ConnectionStatus mirrors the old Ballerina CONNECTION_PENDING/ACCEPTED/
-// REJECTED constants.
-type ConnectionStatus int
+import "time"
+
+// ConnectionState is the stored state of one connection. It is deliberately
+// not a request field: the route names the transition (request / accept /
+// delete), so there is no value a caller can set to a state they are not
+// allowed to reach. The old signed-int ConnectionStatus, which callers *did*
+// set, is what made accept-your-own-request possible.
+//
+// There is no "declined": declining, withdrawing and removing all delete the
+// row, so a refused pair returns to having no relationship at all. See
+// migrations/014_user_connection_redesign.sql.
+type ConnectionState string
 
 const (
-	ConnectionRejected ConnectionStatus = -1
-	ConnectionPending  ConnectionStatus = 0
-	ConnectionAccepted ConnectionStatus = 1
+	ConnectionPending  ConnectionState = "pending"
+	ConnectionAccepted ConnectionState = "accepted"
 )
 
-// IsValid reports whether s is one of the defined connection statuses.
-func (s ConnectionStatus) IsValid() bool {
+// IsValid reports whether s is one of the defined connection states. Nothing
+// on the request path needs this -- states arrive from the database, never
+// from a payload -- but it guards against a row written by an older build or
+// by hand.
+func (s ConnectionState) IsValid() bool {
 	switch s {
-	case ConnectionRejected, ConnectionPending, ConnectionAccepted:
+	case ConnectionPending, ConnectionAccepted:
 		return true
 	default:
 		return false
 	}
 }
 
-// String is the JSON-facing label for a connection status, so responses carry
-// the state explicitly instead of encoding it only via which array an item
-// sits in.
-func (s ConnectionStatus) String() string {
-	switch s {
-	case ConnectionRejected:
-		return "rejected"
-	case ConnectionPending:
-		return "pending"
-	case ConnectionAccepted:
-		return "accepted"
-	default:
+// String is the JSON-facing label for a connection state.
+func (s ConnectionState) String() string {
+	if !s.IsValid() {
 		return "unknown"
+	}
+	return string(s)
+}
+
+// Connection is one stored user_connection row -- one per unordered pair, not
+// one per direction. RequesterID and AddresseeID still record who started it,
+// because only the addressee may accept; the pair itself is unique regardless
+// of which of the two is which.
+type Connection struct {
+	ID          string
+	RequesterID string
+	AddresseeID string
+	State       ConnectionState
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+// Other returns the id of whichever party is not callerUUID, and whether
+// callerUUID is a party to the connection at all. Handlers use it to decide
+// whose profile to enrich the response with.
+func (c Connection) Other(callerUUID string) (string, bool) {
+	switch callerUUID {
+	case c.RequesterID:
+		return c.AddresseeID, true
+	case c.AddresseeID:
+		return c.RequesterID, true
+	default:
+		return "", false
 	}
 }
 
-// Connection is one stored user_connection row. The direction matters: only
-// RecipientID may accept a pending request, so callers need the stored
-// direction, not just the pair.
-type Connection struct {
-	InitiatorID string
-	RecipientID string
-	Status      ConnectionStatus
-}
-
-// ConnectionUserInfo describes the other party in a connection, enriched
-// from that user's attendee profile. Status is the explicit connection state
-// ("pending"/"accepted"), always present so the client reads it directly
-// rather than inferring it from which array the item sits in.
+// ConnectionUserInfo describes the other party in a connection, enriched from
+// that user's attendee profile.
+//
+// ConnectionID is the row's own id, and it is what the accept and delete
+// routes address -- without it a client holding a GET response has no way to
+// name the connection it wants to act on. Status is the explicit state,
+// always present so the client reads it directly rather than inferring it
+// from which array the item sits in.
 type ConnectionUserInfo struct {
-	UserID     string `json:"userId"`
-	Name       string `json:"name"`
-	Email      string `json:"email"`
-	Status     string `json:"status"`
-	ProfileURL string `json:"profileUrl,omitempty"`
-	Title      string `json:"title,omitempty"`
-	Company    string `json:"company,omitempty"`
-	Country    string `json:"country,omitempty"`
+	ConnectionID string `json:"connectionId"`
+	UserID       string `json:"userId"`
+	Name         string `json:"name"`
+	Email        string `json:"email"`
+	Status       string `json:"status"`
+	ProfileURL   string `json:"profileUrl,omitempty"`
+	Title        string `json:"title,omitempty"`
+	Company      string `json:"company,omitempty"`
+	Country      string `json:"country,omitempty"`
 }
 
 // UserConnectionsInfo is the response shape for GET /users/me/connections.
@@ -83,10 +109,8 @@ type UserConnectionsInfo struct {
 	Connections      []ConnectionUserInfo `json:"connections"`
 }
 
-// UserConnectionRequest is the payload for POST /users/me/connections.
-// userId is required: an empty target used to be written as a row against
-// the empty string.
-type UserConnectionRequest struct {
-	UserID string           `json:"userId" binding:"required"`
-	Status ConnectionStatus `json:"status"`
+// ConnectionRequest is the payload for POST /users/me/connections. targetId is
+// the only id ever taken from a body; the requester is always the JWT sub.
+type ConnectionRequest struct {
+	TargetID string `json:"targetId" binding:"required"`
 }

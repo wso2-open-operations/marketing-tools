@@ -251,6 +251,8 @@ func main() {
 
 		api.GET("/users/me/connections", connectionHandler.Get)
 		api.POST("/users/me/connections", connectionHandler.Create)
+		api.POST("/users/me/connections/:id/accept", connectionHandler.Accept)
+		api.DELETE("/users/me/connections/:id", connectionHandler.Delete)
 
 		api.GET("/users/me/favorites", favoritesHandler.List)
 		api.PUT("/users/me/favorites/:sessionId", favoritesHandler.Add)
