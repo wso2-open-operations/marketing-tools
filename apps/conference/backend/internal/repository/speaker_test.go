@@ -79,6 +79,49 @@ func newSpeakerFixture(t *testing.T, ctx context.Context, name, title, bio, phot
 	return &speakerFixture{speakerID: speakerID}
 }
 
+// newRawSpeakerFixture inserts a speaker row with the column values written
+// verbatim -- no encryption -- so a test can plant a row this repo's key
+// cannot decrypt.
+func newRawSpeakerFixture(t *testing.T, ctx context.Context, name, title, bio string, visible bool) *speakerFixture {
+	t.Helper()
+
+	var speakerID string
+	err := testDB.QueryRow(ctx,
+		`INSERT INTO speakers (name, title, bio, visible) VALUES ($1, $2, $3, $4) RETURNING id`,
+		name, title, bio, visible,
+	).Scan(&speakerID)
+	if err != nil {
+		t.Fatalf("failed to insert raw test speaker: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = testDB.Exec(context.Background(), "DELETE FROM speakers WHERE id = $1", speakerID)
+	})
+
+	return &speakerFixture{speakerID: speakerID}
+}
+
+// setCompany encrypts and stores this fixture's company, which
+// newSpeakerFixture leaves NULL.
+func (f *speakerFixture) setCompany(t *testing.T, ctx context.Context, company string) {
+	t.Helper()
+	if _, err := testDB.Exec(ctx,
+		"UPDATE speakers SET company = $1 WHERE id = $2", mustEncrypt(t, company), f.speakerID,
+	); err != nil {
+		t.Fatalf("failed to set fixture company: %v", err)
+	}
+}
+
+// setRawCompany stores this fixture's company verbatim -- no encryption -- so
+// a test can plant a company this repo's key cannot decrypt.
+func (f *speakerFixture) setRawCompany(t *testing.T, ctx context.Context, company string) {
+	t.Helper()
+	if _, err := testDB.Exec(ctx,
+		"UPDATE speakers SET company = $1 WHERE id = $2", company, f.speakerID,
+	); err != nil {
+		t.Fatalf("failed to set raw fixture company: %v", err)
+	}
+}
+
 // Room name and colour token the fixture session is placed in, asserted by
 // TestSpeakerRepo_GetSpeakerSummary_ScopedByEventEmbedsResolvedSessions. The
 // room and its track carry different tokens so the assertion also pins the
@@ -114,8 +157,17 @@ func (f *speakerFixture) attachToSession(t *testing.T, ctx context.Context) (ses
 		_, _ = testDB.Exec(context.Background(), "DELETE FROM conference_config WHERE id = $1", configID)
 	})
 
+	return f.attachToSessionIn(t, ctx, configID), configID
+}
+
+// attachToSessionIn is attachToSession against an existing conference, so two
+// fixtures can share one event and a test can scope its assertion to that
+// event instead of querying every speaker in the shared database.
+func (f *speakerFixture) attachToSessionIn(t *testing.T, ctx context.Context, configID string) (sessionID string) {
+	t.Helper()
+
 	var roomID string
-	err = testDB.QueryRow(ctx,
+	err := testDB.QueryRow(ctx,
 		"INSERT INTO rooms (config_id, name) VALUES ($1, $2) RETURNING id",
 		configID, testSpeakerRoomName,
 	).Scan(&roomID)
@@ -127,7 +179,8 @@ func (f *speakerFixture) attachToSession(t *testing.T, ctx context.Context) (ses
 
 	var dayID string
 	err = testDB.QueryRow(ctx,
-		"INSERT INTO conference_days (config_id, day_index, date) VALUES ($1, 0, $2) RETURNING id",
+		`INSERT INTO conference_days (config_id, day_index, date) VALUES ($1, 0, $2)
+		 ON CONFLICT (config_id, day_index) DO UPDATE SET date = EXCLUDED.date RETURNING id`,
 		configID, "2026-08-01",
 	).Scan(&dayID)
 	if err != nil {
@@ -157,7 +210,7 @@ func (f *speakerFixture) attachToSession(t *testing.T, ctx context.Context) (ses
 		t.Fatalf("failed to insert test session_speakers row: %v", err)
 	}
 
-	return sessionID, configID
+	return sessionID
 }
 
 func TestSpeakerRepo_GetSpeaker_DecryptsFields(t *testing.T) {
@@ -209,14 +262,19 @@ func TestSpeakerRepo_GetSpeaker_NotFoundWhenNotVisible(t *testing.T) {
 	}
 }
 
+// Scoped by eventId, like every other summary test: an unfiltered call reads
+// (and decrypts, with this file's throwaway key) every speaker in the shared
+// database, which is both slow and a decrypt failure waiting to happen.
 func TestSpeakerRepo_GetSpeakerSummary_FiltersToVisibleOnly(t *testing.T) {
 	ctx := context.Background()
 	repo := NewSpeakerRepo(testDB, speakerTestKey, 5, time.UTC)
 
 	visible := newSpeakerFixture(t, ctx, "Visible Speaker", "", "", "", true)
 	hidden := newSpeakerFixture(t, ctx, "Hidden Speaker", "", "", "", false)
+	_, configID := visible.attachToSession(t, ctx)
+	hidden.attachToSessionIn(t, ctx, configID)
 
-	summaries, err := repo.GetSpeakerSummary(ctx, models.SpeakerFilter{})
+	summaries, err := repo.GetSpeakerSummary(ctx, models.SpeakerFilter{EventID: configID})
 	if err != nil {
 		t.Fatalf("GetSpeakerSummary returned error: %v", err)
 	}
@@ -436,6 +494,106 @@ func TestSpeakerRepo_GetSpeakerSummary_QueryFiltersByDecryptedName(t *testing.T)
 
 	// A non-matching query excludes it.
 	got, err = repo.GetSpeakerSummary(ctx, models.SpeakerFilter{EventID: configID, Query: "zzz-no-match"})
+	if err != nil {
+		t.Fatalf("GetSpeakerSummary returned error: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("non-matching query returned %+v, want empty", got)
+	}
+}
+
+// One row this key cannot decrypt must cost that row, not the directory: the
+// serving key is not the key every historical row was written with, and a
+// single bad ciphertext used to 500 all 263 speakers.
+func TestSpeakerRepo_GetSpeakerSummary_SkipsUndecryptableRow(t *testing.T) {
+	ctx := context.Background()
+	repo := NewSpeakerRepo(testDB, speakerTestKey, 5, time.UTC)
+
+	good := newSpeakerFixture(t, ctx, "Readable Speaker", "", "", "", true)
+	_, configID := good.attachToSession(t, ctx)
+
+	bad := newRawSpeakerFixture(t, ctx, "not-base64-ciphertext!!", "", "", true)
+	bad.attachToSessionIn(t, ctx, configID)
+
+	summaries, err := repo.GetSpeakerSummary(ctx, models.SpeakerFilter{EventID: configID})
+	if err != nil {
+		t.Fatalf("GetSpeakerSummary returned error: %v", err)
+	}
+
+	ids := make(map[string]bool)
+	for _, s := range summaries {
+		ids[s.ID] = true
+	}
+	if !ids[good.speakerID] {
+		t.Errorf("decryptable speaker %s missing; one bad row must not drop the rest", good.speakerID)
+	}
+	if ids[bad.speakerID] {
+		t.Errorf("undecryptable speaker %s should have been skipped", bad.speakerID)
+	}
+}
+
+// company is searched but never serialized, so a company this key cannot read
+// must cost the search term and not the speaker: the directory has to keep
+// rendering someone whose only unreadable column is one it does not return.
+func TestSpeakerRepo_GetSpeakerSummary_KeepsRowWithUndecryptableCompany(t *testing.T) {
+	ctx := context.Background()
+	repo := NewSpeakerRepo(testDB, speakerTestKey, 5, time.UTC)
+
+	fixture := newSpeakerFixture(t, ctx, "Barbara Liskov", "Institute Professor", "", "", true)
+	fixture.setRawCompany(t, ctx, "not-base64-ciphertext!!")
+	_, configID := fixture.attachToSession(t, ctx)
+
+	// Unfiltered: the speaker is still in the directory.
+	summaries, err := repo.GetSpeakerSummary(ctx, models.SpeakerFilter{EventID: configID})
+	if err != nil {
+		t.Fatalf("GetSpeakerSummary returned error: %v", err)
+	}
+	found := false
+	for _, s := range summaries {
+		if s.ID == fixture.speakerID {
+			found = true
+			if s.Name != "Barbara Liskov" {
+				t.Errorf("speaker name = %q, want %q", s.Name, "Barbara Liskov")
+			}
+		}
+	}
+	if !found {
+		t.Errorf("speaker %s dropped from the unfiltered directory over an unreadable company", fixture.speakerID)
+	}
+
+	// Searching a readable field still finds it; only the company search term
+	// is lost.
+	got, err := repo.GetSpeakerSummary(ctx, models.SpeakerFilter{EventID: configID, Query: "liskov"})
+	if err != nil {
+		t.Fatalf("GetSpeakerSummary returned error: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != fixture.speakerID {
+		t.Errorf("query 'liskov' returned %+v, want the one matching speaker", got)
+	}
+}
+
+// ?q= is the directory's one search box, so it has to cover the fields the
+// directory renders: q=wso2 matched nothing while every speaker's company said
+// WSO2.
+func TestSpeakerRepo_GetSpeakerSummary_QueryMatchesCompanyAndTitle(t *testing.T) {
+	ctx := context.Background()
+	repo := NewSpeakerRepo(testDB, speakerTestKey, 5, time.UTC)
+
+	fixture := newSpeakerFixture(t, ctx, "Grace Hopper", "Principal Architect", "", "", true)
+	fixture.setCompany(t, ctx, "WSO2 LLC")
+	_, configID := fixture.attachToSession(t, ctx)
+
+	for _, q := range []string{"hopper", "architect", "wso2"} {
+		got, err := repo.GetSpeakerSummary(ctx, models.SpeakerFilter{EventID: configID, Query: q})
+		if err != nil {
+			t.Fatalf("GetSpeakerSummary(%q) returned error: %v", q, err)
+		}
+		if len(got) != 1 || got[0].ID != fixture.speakerID {
+			t.Errorf("query %q returned %+v, want the one matching speaker", q, got)
+		}
+	}
+
+	got, err := repo.GetSpeakerSummary(ctx, models.SpeakerFilter{EventID: configID, Query: "zzz-no-match"})
 	if err != nil {
 		t.Fatalf("GetSpeakerSummary returned error: %v", err)
 	}

@@ -203,7 +203,7 @@ func TestShopRepo_CurrentShopEvent_BreaksStartDateTiesOnID(t *testing.T) {
 	}
 
 	// The real invariant: it must agree with GET /events/current.
-	current, err := NewEventRepo(testDB, 5, time.UTC, "UTC").GetCurrentEvent(ctx)
+	current, err := NewEventRepo(testDB, 5, speakerTestKey, time.UTC, "UTC").GetCurrentEvent(ctx)
 	if err != nil {
 		t.Fatalf("GetCurrentEvent returned error: %v", err)
 	}

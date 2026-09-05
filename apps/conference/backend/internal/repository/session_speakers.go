@@ -19,6 +19,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sort"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -78,13 +79,19 @@ func fetchSessionSpeakers(ctx context.Context, pool *pgxpool.Pool, piiKey []byte
 		if err := rows.Scan(&sessionID, &speakerID, &encName, &encTitle, &encCompany, &photoURL, &isModerator); err != nil {
 			return nil, err
 		}
+		// A speaker this key cannot decrypt is dropped from the session rather
+		// than failing the whole request: one bad ciphertext must not 500 the
+		// agenda. The id is the whole log line -- the field that failed and the
+		// ciphertext are both PII.
 		name, err := decryptPII(encName, piiKey)
 		if err != nil {
-			return nil, fmt.Errorf("decrypting speaker name: %w", err)
+			slog.WarnContext(ctx, "skipping speaker with undecryptable field", "speakerId", speakerID, "field", "name")
+			continue
 		}
 		title, err := decryptPII(encTitle, piiKey)
 		if err != nil {
-			return nil, fmt.Errorf("decrypting speaker title: %w", err)
+			slog.WarnContext(ctx, "skipping speaker with undecryptable field", "speakerId", speakerID, "field", "title")
+			continue
 		}
 		sp := models.SessionSpeaker{ID: speakerID, Name: name, Title: title, IsModerator: isModerator}
 		// Unlike name/title, company is a nullable column, so NULL and "" both
@@ -92,7 +99,8 @@ func fetchSessionSpeakers(ctx context.Context, pool *pgxpool.Pool, piiKey []byte
 		if encCompany != nil {
 			company, err := decryptPII(*encCompany, piiKey)
 			if err != nil {
-				return nil, fmt.Errorf("decrypting speaker company: %w", err)
+				slog.WarnContext(ctx, "skipping speaker with undecryptable field", "speakerId", speakerID, "field", "company")
+				continue
 			}
 			sp.Company = company
 		}
