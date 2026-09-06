@@ -39,6 +39,7 @@ func clearEnv(t *testing.T) {
 		"AI_REQUEST_TIMEOUT_SECONDS",
 		"AI_ENABLED_CHAT_ASSISTANT", "AI_ENABLED_PERSONALIZED_AGENDA", "AI_ENABLED_MATCH_MAKER", "AI_ENABLED_O2_BAR",
 		"VENUE_TIMEZONE",
+		"MOESIF_ENABLED", "MOESIF_APPLICATION_ID", "MOESIF_API_ENDPOINT", "MOESIF_PROJECT_NAME", "MOESIF_APP_NAME",
 	}
 	for _, k := range keys {
 		t.Setenv(k, "")
@@ -492,5 +493,86 @@ func TestShopPaymentsConfigured(t *testing.T) {
 	t.Setenv("SHOP_MASTER_WALLET_ADDRESS", "0xabc")
 	if !Load().ShopPaymentsConfigured() {
 		t.Error("ShopPaymentsConfigured() = false with an address set, want true")
+	}
+}
+
+func TestLoad_MoesifDefaultsToDisabled(t *testing.T) {
+	clearEnv(t)
+
+	cfg := Load()
+
+	if cfg.Moesif.Enabled {
+		t.Error("expected Moesif analytics disabled by default")
+	}
+	if cfg.Moesif.ProjectName != "marketing-web" {
+		t.Errorf("expected default ProjectName marketing-web, got %q", cfg.Moesif.ProjectName)
+	}
+	if cfg.Moesif.AppName != "con-app-backend" {
+		t.Errorf("expected default AppName con-app-backend, got %q", cfg.Moesif.AppName)
+	}
+	if cfg.Moesif.APIEndpoint != "" {
+		t.Errorf("expected empty APIEndpoint so internal/analytics picks the collector, got %q", cfg.Moesif.APIEndpoint)
+	}
+}
+
+func TestLoad_MoesifFromEnv(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("MOESIF_ENABLED", "true")
+	t.Setenv("MOESIF_APPLICATION_ID", "collector-app-id")
+	t.Setenv("MOESIF_API_ENDPOINT", "https://api-eu.moesif.net")
+	t.Setenv("MOESIF_PROJECT_NAME", "some-project")
+	t.Setenv("MOESIF_APP_NAME", "some-app")
+
+	cfg := Load()
+
+	if !cfg.Moesif.Enabled {
+		t.Error("expected Moesif enabled")
+	}
+	if cfg.Moesif.ApplicationID != "collector-app-id" {
+		t.Errorf("expected ApplicationID collector-app-id, got %q", cfg.Moesif.ApplicationID)
+	}
+	if cfg.Moesif.APIEndpoint != "https://api-eu.moesif.net" {
+		t.Errorf("expected the EU collector, got %q", cfg.Moesif.APIEndpoint)
+	}
+	if cfg.Moesif.ProjectName != "some-project" || cfg.Moesif.AppName != "some-app" {
+		t.Errorf("expected the env names to win, got %q/%q", cfg.Moesif.ProjectName, cfg.Moesif.AppName)
+	}
+}
+
+// Enabled-but-unconfigured is rejected rather than degraded, because analytics
+// that is switched on and silently discarding every event looks identical to a
+// conference nobody attended.
+func TestValidate_MoesifEnabledRequiresApplicationID(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("DB_HOST", "localhost")
+	t.Setenv("DB_USER", "administrator")
+	t.Setenv("DB_NAME", "agenda_organizer")
+	t.Setenv("DB_SCHEMA", "marketingops")
+	t.Setenv("APP_ENV", "development")
+	t.Setenv("PII_ENCRYPTION_KEY", "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=")
+	t.Setenv("MOESIF_ENABLED", "true")
+
+	cfg := Load()
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected an error when MOESIF_ENABLED=true without an application id")
+	}
+	if !strings.Contains(err.Error(), "MOESIF_APPLICATION_ID") {
+		t.Errorf("expected the error to name the env var, got %v", err)
+	}
+}
+
+func TestValidate_MoesifDisabledNeedsNothing(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("DB_HOST", "localhost")
+	t.Setenv("DB_USER", "administrator")
+	t.Setenv("DB_NAME", "agenda_organizer")
+	t.Setenv("DB_SCHEMA", "marketingops")
+	t.Setenv("APP_ENV", "development")
+	t.Setenv("PII_ENCRYPTION_KEY", "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=")
+
+	cfg := Load()
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected no error with analytics off, got %v", err)
 	}
 }
