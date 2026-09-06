@@ -25,7 +25,7 @@
 // own OAuth2 client-credentials token, which is for the Choreo gateway in front
 // of the AI service. The AI service authenticates nobody -- the token never
 // reaches it -- but its gateway rejects a tokenless call outright. See
-// config.AIAgentConfig and CLAUDE.md.
+// config.AIAgentConfig.
 package aiagent
 
 import (

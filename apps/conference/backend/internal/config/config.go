@@ -74,8 +74,7 @@ type EmailServiceConfig struct {
 //
 // This mirrors push-notification-gateway-api -> push-notification-service in
 // digiops-superapp, a public-calls-organization pair reported to work in
-// production; see CLAUDE.md, "Calling an Organization-visibility Choreo
-// service", which records what that claim rests on.
+// production.
 //
 // OAuth is optional, but only for a ServiceURL on this machine: leave
 // OAuth.TokenURL empty and no token is fetched or sent, which is what a
