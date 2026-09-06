@@ -20,6 +20,8 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -52,16 +54,40 @@ type EmailServiceConfig struct {
 	From     string
 }
 
-// AIAgentConfig holds the base URL for the external AI agent service and the
-// request timeout applied to its calls. Matchmaking, personalize,
-// picked-for-you and chat are one consolidated service that answers every one
-// of those paths off a single root with no path prefix, so one URL configures
-// all of them. Deliberately no OAuth sub-struct: unlike
-// QRPortal/Wallet/Transaction, nothing in the AI agent integration uses
-// OAuth2 -- auth is pure pass-through of the caller's own JWT (see
-// .claude/PLAN.md).
+// AIAgentConfig holds the base URL for the external AI agent service, the
+// credentials used to reach it, and the request timeout applied to its calls.
+// Matchmaking, personalize, picked-for-you and chat are one consolidated
+// service that answers every one of those paths off a single root with no path
+// prefix, so one URL configures all of them.
+//
+// Two credentials travel on every AI call and they answer different questions:
+//
+//   - x-jwt-assertion is the *caller's* own JWT, forwarded verbatim. It is how
+//     the AI service knows which attendee is asking. It is not a credential the
+//     AI service checks -- that service authenticates nobody.
+//   - Authorization is *this* service's OAuth2 client-credentials token, and it
+//     is for the Choreo gateway in front of the AI service, not for the service
+//     itself. The AI service is published at Organization network visibility,
+//     which restricts who can reach it but does not make it unauthenticated:
+//     its gateway rejects a tokenless call with
+//     401 {"code":"900901","error_message":"Invalid Credentials"}.
+//
+// This mirrors push-notification-gateway-api -> push-notification-service in
+// digiops-superapp, a public-calls-organization pair reported to work in
+// production.
+//
+// OAuth is optional, but only for a ServiceURL on this machine: leave
+// OAuth.TokenURL empty and no token is fetched or sent, which is what a
+// locally-run AI service with no gateway in front of it expects. Point
+// ServiceURL anywhere else with the credentials blank and Validate() refuses to
+// start -- see validateAIAgent.
+//
+// Every field is trimmed at load time (see Load), because these values are
+// compared against "" in this package and parsed as URLs in the client, and
+// those two disagree about "   ".
 type AIAgentConfig struct {
 	ServiceURL     string
+	OAuth          OAuthClientConfig
 	RequestTimeout time.Duration
 }
 
@@ -253,7 +279,14 @@ func Load() Config {
 
 	aiRequestTimeoutSeconds := 120
 	if v := os.Getenv("AI_REQUEST_TIMEOUT_SECONDS"); v != "" {
-		if parsed, err := strconv.Atoi(v); err == nil {
+		// Only a positive value is accepted: http.Client reads Timeout <= 0 as
+		// "no timeout at all", so AI_REQUEST_TIMEOUT_SECONDS=0 (or a negative)
+		// parses fine and then removes the AI deadline entirely. The server's
+		// write deadline still fires -- HTTPWriteTimeout floors at 130s -- so
+		// gin truncates the response while the handler goes on waiting on an
+		// upstream that may never answer. Anything non-positive falls back to
+		// the default rather than being honoured.
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
 			aiRequestTimeoutSeconds = parsed
 		}
 	}
@@ -343,7 +376,30 @@ func Load() Config {
 		ShopMasterWalletAddress: strings.TrimSpace(os.Getenv("SHOP_MASTER_WALLET_ADDRESS")),
 
 		AIAgent: AIAgentConfig{
-			ServiceURL:     os.Getenv("AI_SERVICE_URL"),
+			// Trimmed here, like SHOP_MASTER_WALLET_ADDRESS above, so the value
+			// validateAIAgent inspects is the value the client actually sends.
+			// Untrimmed, two config shapes that look fine at startup fail every
+			// AI request:
+			//
+			//   - A secret pasted into a Choreo config field keeps its trailing
+			//     newline. Validation compares with TrimSpace and passes, then
+			//     http.NewRequest rejects the URL with "net/url: invalid control
+			//     character in URL" -- a *url.Error, not an oauth2.RetrieveError,
+			//     so the handlers classify it as an unreachable service and every
+			//     AI route answers 503 "temporarily unavailable" forever, with
+			//     nothing pointing at the credential. url.JoinPath on a padded
+			//     AI_SERVICE_URL fails the same way ("first path segment in URL
+			//     cannot contain colon").
+			//   - Whitespace-only credentials count as unset in validateAIAgent
+			//     (the local-dev, no-gateway shape it allows) but "   " != "" in
+			//     the client, which then takes the OAuth branch with a blank
+			//     token URL.
+			ServiceURL: strings.TrimSpace(os.Getenv("AI_SERVICE_URL")),
+			OAuth: OAuthClientConfig{
+				TokenURL:     strings.TrimSpace(os.Getenv("AI_TOKEN_URL")),
+				ClientID:     strings.TrimSpace(os.Getenv("AI_CLIENT_ID")),
+				ClientSecret: strings.TrimSpace(os.Getenv("AI_CLIENT_SECRET")),
+			},
 			RequestTimeout: time.Duration(aiRequestTimeoutSeconds) * time.Second,
 		},
 		AIFeatureStatus: AIFeatureStatus{
@@ -463,7 +519,86 @@ func (c Config) Validate() error {
 			return err
 		}
 	}
+	if err := c.validateAIAgent(); err != nil {
+		return err
+	}
 	return nil
+}
+
+// validateAIAgent rejects the AI configurations that produce a service which
+// boots happily and then fails every AI request.
+//
+// These checks exist because that exact deployment shipped: all four feature
+// flags on, AI_SERVICE_URL pointing at a gateway, no credentials for it, and
+// every AI route answering 500 with the real cause (a gateway 401) visible only
+// in a log attribute. A flag that is on must mean the feature can actually
+// work, so these fail at startup instead.
+//
+// "No credentials" cannot simply be banned, because it is also the correct
+// local shape: an AI service run on the developer's own machine has no gateway
+// in front of it and nothing to authenticate to. The address is what tells the
+// two apart, so the credential requirement is keyed on it -- off-machine means
+// a gateway is in the path.
+func (c Config) validateAIAgent() error {
+	anyAIEnabled := c.AIFeatureStatus.EnabledChatAssistant ||
+		c.AIFeatureStatus.EnabledPersonalizedAgenda ||
+		c.AIFeatureStatus.EnabledMatchMaker ||
+		c.AIFeatureStatus.EnabledO2Bar
+	if anyAIEnabled && c.AIAgent.ServiceURL == "" {
+		return errors.New("AI_SERVICE_URL is required when any AI_ENABLED_* flag is true")
+	}
+	// Partial credentials are always a mistake: two thirds of a
+	// client-credentials grant authenticates nothing, and the resulting 401
+	// looks identical to sending no token at all.
+	oauth := c.AIAgent.OAuth
+	set := 0
+	for _, v := range []string{oauth.TokenURL, oauth.ClientID, oauth.ClientSecret} {
+		if v != "" {
+			set++
+		}
+	}
+	if set != 0 && set != 3 {
+		return errors.New("AI_TOKEN_URL, AI_CLIENT_ID and AI_CLIENT_SECRET must be set together, or all left empty")
+	}
+	// Zero of three is a legal shape only for a local AI service. Anywhere else
+	// it is the regression above verbatim, which the all-or-nothing rule alone
+	// stays silent about.
+	if anyAIEnabled && set == 0 && !isLocalServiceAddress(c.AIAgent.ServiceURL) {
+		return errors.New("AI_TOKEN_URL, AI_CLIENT_ID and AI_CLIENT_SECRET are required when an AI_ENABLED_* flag is true and AI_SERVICE_URL is not a local address: the Choreo gateway in front of a remote AI service rejects a tokenless call with 401 900901, so every AI route would fail")
+	}
+	return nil
+}
+
+// isLocalServiceAddress reports whether rawURL names a service on this machine
+// -- the one deployment shape that legitimately has no gateway, and so no
+// credentials, in front of it.
+//
+// Matched on the parsed host rather than on substrings, so that
+// "https://ai-localhost.example.com" is not mistaken for local. Anything that
+// does not parse, or that carries no recognisable host, is reported as remote:
+// the caller uses this to decide whether credentials may be omitted, and the
+// safe answer when the address is unreadable is that they may not.
+func isLocalServiceAddress(rawURL string) bool {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+	// Empty for a schemeless value like "localhost:8000", which url.Parse reads
+	// as scheme "localhost" with opaque "8000" -- not an address this service
+	// can call anyway.
+	host := u.Hostname()
+	if host == "" {
+		return false
+	}
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	// Covers all of 127.0.0.0/8 and ::1; Hostname() has already stripped the
+	// brackets from an "[::1]:8000" authority.
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	return false
 }
 
 // httpWriteTimeoutFloor is the lower bound on the server's write deadline.

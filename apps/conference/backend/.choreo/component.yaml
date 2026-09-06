@@ -16,6 +16,23 @@ schemaVersion: 1.2
 #   JWT_AUDIENCE                   expected `aud` claim
 # Confirm the exact JWKS/issuer/audience with the platform team (they depend on
 # whether the gateway forwards the IdP token or substitutes its own assertion).
+#
+# The AI routes additionally need credentials for the AI service's gateway:
+#   AI_SERVICE_URL       the AI service's endpoint URL
+#   AI_TOKEN_URL         Asgardeo token endpoint (same one the wallet, QR portal
+#                        and transaction integrations already use)
+#   AI_CLIENT_ID         OAuth2 application subscribed to the AI service's API
+#   AI_CLIENT_SECRET
+# The AI service is published at Organization network visibility, which limits
+# *who can reach* it but does not make it unauthenticated: its gateway still
+# demands a token. Without these, every AI route answers 500 while the gateway
+# is really returning 401 {"code":"900901"}. Set AI_CLIENT_ID, AI_CLIENT_SECRET
+# and AI_TOKEN_URL all three or none -- a partial set fails at startup.
+# AI_SERVICE_URL is separate from that rule and is always required.
+#
+# This file carries these as comments only: it declares no `configurations:`
+# entries, so nothing here sets the variables. They must still be entered by
+# hand in the Choreo console.
 
 endpoints:
   # +required Unique name for the endpoint (lowercase alphanumeric + dashes).

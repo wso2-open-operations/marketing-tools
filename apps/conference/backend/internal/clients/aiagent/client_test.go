@@ -18,10 +18,12 @@ package aiagent
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -251,5 +253,226 @@ func TestRetrieveChatResponse_Success(t *testing.T) {
 	}
 	if got.Response != "hello" || len(got.Suggestions) != 1 {
 		t.Errorf("unexpected result: %+v", got)
+	}
+}
+
+// TestNewClient_SendsGatewayTokenAndAssertion pins the two-credential contract:
+// the caller's JWT keeps travelling in x-jwt-assertion while an OAuth2
+// client-credentials token is added in Authorization for the Choreo gateway
+// fronting the AI service. Dropping either is a live outage -- without the
+// token the gateway answers 401 {"code":"900901"} and every AI route surfaces a
+// bare 500; without the assertion the AI service cannot tell who is asking.
+func TestNewClient_SendsGatewayTokenAndAssertion(t *testing.T) {
+	const jwt = "user-jwt-assertion"
+
+	var gotGrantType, gotTokenAuth string
+	tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Errorf("parsing token request form: %v", err)
+		}
+		gotGrantType = r.PostFormValue("grant_type")
+		gotTokenAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"access_token":"gateway-token","token_type":"Bearer","expires_in":3600}`)
+	}))
+	defer tokenSrv.Close()
+
+	var gotAuth, gotAssertion string
+	aiSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		gotAssertion = r.Header.Get("x-jwt-assertion")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"response":"hi","suggestions":[]}`)
+	}))
+	defer aiSrv.Close()
+
+	c := NewClient(config.AIAgentConfig{
+		ServiceURL: aiSrv.URL,
+		OAuth: config.OAuthClientConfig{
+			TokenURL:     tokenSrv.URL,
+			ClientID:     "ai-client",
+			ClientSecret: "ai-secret",
+		},
+		RequestTimeout: 10 * time.Second,
+	})
+
+	if _, err := c.RetrieveChatResponse(context.Background(), jwt, models.ChatRequest{Question: "q"}); err != nil {
+		t.Fatalf("RetrieveChatResponse: %v", err)
+	}
+	if gotAuth != "Bearer gateway-token" {
+		t.Errorf("Authorization = %q, want %q", gotAuth, "Bearer gateway-token")
+	}
+	if gotAssertion != jwt {
+		t.Errorf("x-jwt-assertion = %q, want %q", gotAssertion, jwt)
+	}
+	if gotGrantType != "client_credentials" {
+		t.Errorf("grant_type = %q, want client_credentials", gotGrantType)
+	}
+	// AuthStyleInHeader: credentials as HTTP Basic on the token request, which
+	// is what Asgardeo expects and what the reference gateway sends by hand.
+	wantBasic := "Basic " + base64.StdEncoding.EncodeToString([]byte("ai-client:ai-secret"))
+	if gotTokenAuth != wantBasic {
+		t.Errorf("token request Authorization = %q, want %q", gotTokenAuth, wantBasic)
+	}
+}
+
+// TestNewClient_NoTokenWhenTokenURLEmpty covers an AI service reached directly
+// with no gateway in front of it: no token is fetched and no Authorization
+// header is sent, so an empty AI_TOKEN_URL stays a working local configuration.
+func TestNewClient_NoTokenWhenTokenURLEmpty(t *testing.T) {
+	var gotAuth string
+	aiSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"response":"hi","suggestions":[]}`)
+	}))
+	defer aiSrv.Close()
+
+	c := NewClient(config.AIAgentConfig{ServiceURL: aiSrv.URL, RequestTimeout: 10 * time.Second})
+
+	if _, err := c.RetrieveChatResponse(context.Background(), "jwt", models.ChatRequest{Question: "q"}); err != nil {
+		t.Fatalf("RetrieveChatResponse: %v", err)
+	}
+	if gotAuth != "" {
+		t.Errorf("Authorization = %q, want no header", gotAuth)
+	}
+}
+
+// A non-2xx from the AI service (or a gateway in front of it) must carry its
+// status out of this package, so handlers can name it in the log message
+// instead of burying it in an attribute the deployed log viewer hides.
+func TestStatusCodeFrom_CarriesUpstreamStatus(t *testing.T) {
+	const gatewayBody = `{"error_message":"Invalid Credentials","code":"900901"}`
+	aiSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = io.WriteString(w, gatewayBody)
+	}))
+	defer aiSrv.Close()
+
+	c := NewClient(config.AIAgentConfig{ServiceURL: aiSrv.URL, RequestTimeout: 10 * time.Second})
+
+	_, err := c.RetrieveChatResponse(context.Background(), "jwt", models.ChatRequest{Question: "q"})
+	if err == nil {
+		t.Fatal("expected an error for a 401 from the AI service")
+	}
+	status, ok := StatusCodeFrom(err)
+	if !ok {
+		t.Fatalf("StatusCodeFrom did not recognise %v as an upstream status failure", err)
+	}
+	if status != http.StatusUnauthorized {
+		t.Errorf("status = %d, want %d", status, http.StatusUnauthorized)
+	}
+	if !strings.Contains(err.Error(), "900901") {
+		t.Errorf("error = %q, want it to retain the upstream body", err.Error())
+	}
+	if _, isTokenFailure := TokenFetchStatusFrom(err); isTokenFailure {
+		t.Error("a service 401 must not be reported as a token-fetch failure")
+	}
+}
+
+// A rejected token request never reaches the AI service, so it must be
+// distinguishable from that service being down -- bad credentials will not fix
+// themselves, and reporting them as "temporarily unavailable" hides the cause.
+func TestTokenFetchStatusFrom_DistinguishesRejectedCredentials(t *testing.T) {
+	tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = io.WriteString(w, `{"error":"invalid_client"}`)
+	}))
+	defer tokenSrv.Close()
+
+	aiCalled := false
+	aiSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		aiCalled = true
+	}))
+	defer aiSrv.Close()
+
+	c := NewClient(config.AIAgentConfig{
+		ServiceURL: aiSrv.URL,
+		OAuth: config.OAuthClientConfig{
+			TokenURL:     tokenSrv.URL,
+			ClientID:     "ai-client",
+			ClientSecret: "wrong-secret",
+		},
+		RequestTimeout: 10 * time.Second,
+	})
+
+	_, err := c.RetrieveChatResponse(context.Background(), "jwt", models.ChatRequest{Question: "q"})
+	if err == nil {
+		t.Fatal("expected an error when the token endpoint rejects the credentials")
+	}
+	status, ok := TokenFetchStatusFrom(err)
+	if !ok {
+		t.Fatalf("TokenFetchStatusFrom did not recognise %v as a token-fetch failure", err)
+	}
+	if status != http.StatusUnauthorized {
+		t.Errorf("token status = %d, want %d", status, http.StatusUnauthorized)
+	}
+	if _, isServiceStatus := StatusCodeFrom(err); isServiceStatus {
+		t.Error("a token-fetch failure must not be reported as an AI service status")
+	}
+	if aiCalled {
+		t.Error("the AI service must not be called when the token request fails")
+	}
+}
+
+// TestNewClient_SetsTimeoutOnOAuthBranch pins the client-level deadline on the
+// branch production actually takes. TestNewClient_SetsTimeout only exercises
+// the TokenURL == "" branch, which never runs this code. oauth2.NewClient
+// returns a client carrying the *token fetch* client's Timeout, so dropping the
+// explicit assignment does not leave the AI call unbounded in an obvious way --
+// it silently gives it the 15s token budget instead, failing every AI answer
+// that legitimately takes longer, which is most of them.
+func TestNewClient_SetsTimeoutOnOAuthBranch(t *testing.T) {
+	c := NewClient(config.AIAgentConfig{
+		ServiceURL: "https://ai.example.com",
+		OAuth: config.OAuthClientConfig{
+			TokenURL:     "https://api.asgardeo.io/t/wso2/oauth2/token",
+			ClientID:     "ai-client",
+			ClientSecret: "ai-secret",
+		},
+		RequestTimeout: 45 * time.Second,
+	})
+	if c.httpClient.Timeout != 45*time.Second {
+		t.Errorf("httpClient.Timeout = %v, want 45s (the AI request budget, not the %v token-fetch budget)",
+			c.httpClient.Timeout, tokenFetchTimeout)
+	}
+}
+
+// A non-positive AI_REQUEST_TIMEOUT_SECONDS must not produce a client with no
+// deadline at all: http.Client reads Timeout <= 0 as "wait forever", so a
+// stalled AI service would pin the request past the server's write deadline and
+// truncate the response mid-write rather than failing cleanly. Both
+// construction branches are reachable with a misconfigured value, so both are
+// checked.
+func TestNewClient_NonPositiveTimeoutFallsBackToDefault(t *testing.T) {
+	behindGateway := config.OAuthClientConfig{
+		TokenURL:     "https://api.asgardeo.io/t/wso2/oauth2/token",
+		ClientID:     "ai-client",
+		ClientSecret: "ai-secret",
+	}
+	tests := []struct {
+		name    string
+		timeout time.Duration
+		oauth   config.OAuthClientConfig
+	}{
+		{"zero, addressed directly", 0, config.OAuthClientConfig{}},
+		{"negative, addressed directly", -1 * time.Second, config.OAuthClientConfig{}},
+		{"zero, behind the gateway", 0, behindGateway},
+		{"negative, behind the gateway", -1 * time.Second, behindGateway},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewClient(config.AIAgentConfig{
+				ServiceURL:     "https://ai.example.com",
+				OAuth:          tt.oauth,
+				RequestTimeout: tt.timeout,
+			})
+			if c.httpClient.Timeout != defaultRequestTimeout {
+				t.Errorf("httpClient.Timeout = %v, want the %v backstop", c.httpClient.Timeout, defaultRequestTimeout)
+			}
+		})
 	}
 }
