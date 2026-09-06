@@ -26,6 +26,7 @@ import (
 	"syscall"
 	"time"
 
+	"wso2-coin-backend/internal/analytics"
 	"wso2-coin-backend/internal/clients/aiagent"
 	"wso2-coin-backend/internal/clients/email"
 	"wso2-coin-backend/internal/clients/notification"
@@ -203,6 +204,27 @@ func main() {
 	aiAgentHandler := handlers.NewAIAgentHandler(aiAgentClient, attendeeProfileRepo, cfg.AIFeatureStatus, sessionRepo)
 	leaderboardHandler := handlers.NewLeaderboardHandler(leaderboardRepo, eventRepo)
 
+	// API-usage analytics. Nop unless MOESIF_ENABLED=true, so the middleware is
+	// registered unconditionally below and there is no nil check anywhere. A
+	// missing application id was already rejected by cfg.Validate(); New's own
+	// check is the belt to that braces.
+	var recorder analytics.Recorder = analytics.Nop{}
+	if cfg.Moesif.Enabled {
+		moesif, err := analytics.New(analytics.Config{
+			ApplicationID: cfg.Moesif.ApplicationID,
+			APIEndpoint:   cfg.Moesif.APIEndpoint,
+			ProjectName:   cfg.Moesif.ProjectName,
+			AppName:       cfg.Moesif.AppName,
+			Environment:   cfg.AppEnv,
+		}, logger)
+		if err != nil {
+			slog.Error("analytics init failed", "error", err)
+			os.Exit(1)
+		}
+		recorder = moesif
+		slog.Info("api analytics enabled", "project", cfg.Moesif.ProjectName, "app", cfg.Moesif.AppName)
+	}
+
 	r := gin.New()
 
 	if cfg.AppEnv == "development" {
@@ -220,6 +242,12 @@ func main() {
 	}
 
 	r.Use(middleware.Logger(logger))
+	// Analytics sits between Logger and Recovery on purpose. Outside Recovery,
+	// so a panicking handler still produces an event (the 500 Recovery writes);
+	// outside the JWT-gated group below, so a request Auth rejects is recorded
+	// as the 401 it is rather than disappearing. It still sees the attendee Auth
+	// resolved -- see the comment on middleware.Analytics.
+	r.Use(middleware.Analytics(recorder, analytics.DefaultRoutePolicy()))
 	r.Use(gin.Recovery())
 
 	// /health stays outside the JWT-gated group: load balancer/k8s liveness
@@ -339,6 +367,17 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		slog.Error("graceful shutdown failed", "error", err)
 	}
+
+	// Flush the last analytics batch, on its own deadline rather than on what
+	// is left of shutdownCtx: a slow drain above would otherwise hand this an
+	// already-expired context and throw away the final events for no reason.
+	// Bounded because an unreachable Moesif must not keep the process alive.
+	flushCtx, cancelFlush := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelFlush()
+	if err := recorder.Close(flushCtx); err != nil {
+		slog.Error("flushing analytics failed", "error", err)
+	}
+
 	pool.Close()
 	slog.Info("shutdown complete")
 }

@@ -24,6 +24,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"wso2-coin-backend/internal/analytics"
 )
 
 // OAuthClientConfig holds OAuth2 client-credentials settings for an external service.
@@ -71,6 +73,29 @@ type AIFeatureStatus struct {
 	EnabledPersonalizedAgenda bool
 	EnabledMatchMaker         bool
 	EnabledO2Bar              bool
+}
+
+// MoesifConfig configures the API-usage analytics sink in internal/analytics.
+//
+// Enabled defaults to false, so a deployment that says nothing about analytics
+// gets none -- the same "everything off unless asked for" default the AI flags
+// use. Unlike those, though, enabling it without an application id is a startup
+// error rather than a silent no-op (see Validate): analytics that is switched on
+// but throwing every event away looks exactly like a conference nobody attended,
+// and that is the one wrong answer this feature must not produce.
+type MoesifConfig struct {
+	Enabled       bool
+	ApplicationID string
+	// APIEndpoint overrides Moesif's collector base URL. Empty means the global
+	// collector; set it for Moesif EU or to point a test at a local stub.
+	APIEndpoint string
+	// ProjectName and AppName are stamped into every event's metadata.
+	// ProjectName matches what the Ballerina conference service already writes
+	// ("marketing-web") so the two services' events sit in one comparable
+	// project; AppName differs from it deliberately, so they can still be told
+	// apart.
+	ProjectName string
+	AppName     string
 }
 
 type Config struct {
@@ -154,6 +179,9 @@ type Config struct {
 	// AI Features
 	AIAgent         AIAgentConfig
 	AIFeatureStatus AIFeatureStatus
+
+	// Moesif is the API-usage analytics sink. Off unless MOESIF_ENABLED=true.
+	Moesif MoesifConfig
 }
 
 func Load() Config {
@@ -230,6 +258,15 @@ func Load() Config {
 		}
 	}
 
+	moesifProjectName := os.Getenv("MOESIF_PROJECT_NAME")
+	if moesifProjectName == "" {
+		moesifProjectName = "marketing-web"
+	}
+	moesifAppName := os.Getenv("MOESIF_APP_NAME")
+	if moesifAppName == "" {
+		moesifAppName = "con-app-backend"
+	}
+
 	return Config{
 		DBHost:     os.Getenv("DB_HOST"),
 		DBPort:     dbPort,
@@ -248,17 +285,17 @@ func Load() Config {
 		TokenValidatorEnabled: tokenValidatorEnabled,
 		AdminRoles:            parseList(os.Getenv("RBAC_ADMIN_ROLES")),
 
-		ExcludeEmployeeCoinAllocation: excludeEmployeeCoinAllocation,
-		EnableQrValidations:           enableQrValidations,
-		SessionEndTimeOffsetMinutes:   sessionEndTimeOffsetMinutes,
-		SessionSlotMinutes:            sessionSlotMinutes,
+		ExcludeEmployeeCoinAllocation:    excludeEmployeeCoinAllocation,
+		EnableQrValidations:              enableQrValidations,
+		SessionEndTimeOffsetMinutes:      sessionEndTimeOffsetMinutes,
+		SessionSlotMinutes:               sessionSlotMinutes,
 		StaleOrderCleanupIntervalSeconds: staleOrderCleanupIntervalSeconds,
 		CoinStaleOrderTimeoutMinutes:     coinStaleOrderTimeoutMinutes,
-		VenueTimezone:                 venueTimezone,
-		VenueLocation:                 venueLocation,
-		venueTZLoadErr:                venueTZLoadErr,
-		PIIEncryptionKey:              piiEncryptionKey,
-		piiKeyDecodeErr:               piiKeyDecodeErr,
+		VenueTimezone:                    venueTimezone,
+		VenueLocation:                    venueLocation,
+		venueTZLoadErr:                   venueTZLoadErr,
+		PIIEncryptionKey:                 piiEncryptionKey,
+		piiKeyDecodeErr:                  piiKeyDecodeErr,
 
 		QRPortal: ExternalServiceConfig{
 			Endpoint: os.Getenv("QR_PORTAL_ENDPOINT"),
@@ -314,6 +351,14 @@ func Load() Config {
 			EnabledPersonalizedAgenda: boolWithDefault("AI_ENABLED_PERSONALIZED_AGENDA", false),
 			EnabledMatchMaker:         boolWithDefault("AI_ENABLED_MATCH_MAKER", false),
 			EnabledO2Bar:              boolWithDefault("AI_ENABLED_O2_BAR", false),
+		},
+
+		Moesif: MoesifConfig{
+			Enabled:       boolWithDefault("MOESIF_ENABLED", false),
+			ApplicationID: os.Getenv("MOESIF_APPLICATION_ID"),
+			APIEndpoint:   os.Getenv("MOESIF_API_ENDPOINT"),
+			ProjectName:   moesifProjectName,
+			AppName:       moesifAppName,
 		},
 	}
 }
@@ -401,6 +446,21 @@ func (c Config) Validate() error {
 		}
 		if c.Audience == "" {
 			return errors.New("JWT_AUDIENCE is required when TOKEN_VALIDATOR_ENABLED=true")
+		}
+	}
+	// Deliberately strict rather than degrading to a no-op recorder: see
+	// MoesifConfig. Analytics that is on and silently discarding is worse than
+	// analytics that refuses to start.
+	if c.Moesif.Enabled && c.Moesif.ApplicationID == "" {
+		return errors.New("MOESIF_APPLICATION_ID is required when MOESIF_ENABLED=true")
+	}
+	// Every batch carries the application id as a header, so a plaintext
+	// collector leaks a credential on the wire. Checked here as well as in
+	// analytics.New so the deployer hears about a bad endpoint from the config
+	// layer that owns the env var.
+	if c.Moesif.Enabled {
+		if err := analytics.CheckEndpoint(c.Moesif.APIEndpoint); err != nil {
+			return err
 		}
 	}
 	return nil
