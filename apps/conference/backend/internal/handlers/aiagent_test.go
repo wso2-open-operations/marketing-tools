@@ -17,14 +17,19 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 
+	"wso2-coin-backend/internal/clients/aiagent"
 	"wso2-coin-backend/internal/config"
 	"wso2-coin-backend/internal/middleware"
 	"wso2-coin-backend/internal/models"
@@ -148,5 +153,103 @@ func TestAIAgentHandler_MaintenanceStatus_NoAuthRequired(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+}
+
+// captureAILogs redirects slog to a buffer for the duration of the test and
+// returns it, so assertions can be made about what an operator actually sees.
+func captureAILogs(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	return &buf
+}
+
+// logMessages returns the "msg" field of every JSON log record in buf. The
+// deployed log viewer shows this field and drops the attributes beside it,
+// which is why the tests below assert on it specifically.
+func logMessages(t *testing.T, buf *bytes.Buffer) []string {
+	t.Helper()
+	var msgs []string
+	for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+		if line == "" {
+			continue
+		}
+		var record struct {
+			Msg string `json:"msg"`
+		}
+		if err := json.Unmarshal([]byte(line), &record); err != nil {
+			t.Fatalf("log line is not JSON: %q: %v", line, err)
+		}
+		msgs = append(msgs, record.Msg)
+	}
+	return msgs
+}
+
+// A gateway 401 must name itself in the log *message*. It previously appeared
+// only as "retrieving chat response failed", with the status hidden in an
+// attribute the deployed log viewer does not render -- which is how an
+// unauthenticated gateway call read as an unexplained server bug.
+func TestAIAgentHandler_UpstreamUnauthorized_NamesCauseInLogMessage(t *testing.T) {
+	logs := captureAILogs(t)
+	err := &aiagent.StatusError{
+		StatusCode: http.StatusUnauthorized,
+		URL:        "https://ai.example.com/assistant/chat",
+		Body:       `{"error_message":"Invalid Credentials","code":"900901"}`,
+	}
+	h := NewAIAgentHandler(&fakeAIAgentClient{chatErr: err}, &fakeAttendeeRepo{}, allAIFeaturesOn, nil)
+	r := newAIAgentTestRouter(h, testUser)
+
+	w := doRequest(r, http.MethodPost, "/assistant/chat", models.ChatRequest{Question: "hi"})
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusInternalServerError)
+	}
+	msgs := logMessages(t, logs)
+	if len(msgs) == 0 {
+		t.Fatal("expected a log record")
+	}
+	joined := strings.Join(msgs, "\n")
+	if !strings.Contains(joined, "401") {
+		t.Errorf("log message %q should name the upstream status", joined)
+	}
+	if !strings.Contains(joined, "AI_CLIENT_ID") {
+		t.Errorf("log message %q should point at this service's gateway credentials", joined)
+	}
+}
+
+// The client-facing body stays generic: the upstream's own error text is for
+// the logs, not for an attendee.
+func TestAIAgentHandler_UpstreamUnauthorized_DoesNotLeakUpstreamBody(t *testing.T) {
+	captureAILogs(t)
+	err := &aiagent.StatusError{
+		StatusCode: http.StatusUnauthorized,
+		URL:        "https://ai.example.com/assistant/chat",
+		Body:       `{"error_message":"Invalid Credentials","code":"900901"}`,
+	}
+	h := NewAIAgentHandler(&fakeAIAgentClient{chatErr: err}, &fakeAttendeeRepo{}, allAIFeaturesOn, nil)
+	r := newAIAgentTestRouter(h, testUser)
+
+	w := doRequest(r, http.MethodPost, "/assistant/chat", models.ChatRequest{Question: "hi"})
+
+	if body := w.Body.String(); strings.Contains(body, "900901") || strings.Contains(body, "Invalid Credentials") {
+		t.Errorf("response body %q leaks the upstream error", body)
+	}
+}
+
+// A transport failure still degrades to a retriable 503 -- the AI service being
+// briefly unreachable is not the same as this service being misconfigured.
+func TestAIAgentHandler_UnreachableService_Returns503(t *testing.T) {
+	captureAILogs(t)
+	err := &url.Error{Op: "Post", URL: "https://ai.example.com/assistant/chat", Err: errBoom}
+	h := NewAIAgentHandler(&fakeAIAgentClient{chatErr: err}, &fakeAttendeeRepo{}, allAIFeaturesOn, nil)
+	r := newAIAgentTestRouter(h, testUser)
+
+	w := doRequest(r, http.MethodPost, "/assistant/chat", models.ChatRequest{Question: "hi"})
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusServiceUnavailable)
 	}
 }

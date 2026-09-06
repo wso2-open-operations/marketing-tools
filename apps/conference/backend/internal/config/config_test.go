@@ -35,7 +35,7 @@ func clearEnv(t *testing.T) {
 		"TRANSACTION_ENDPOINT", "TRANSACTION_TOKEN_URL", "TRANSACTION_CLIENT_ID", "TRANSACTION_CLIENT_SECRET",
 		"NOTIFICATION_ENDPOINT", "NOTIFICATION_TOKEN_URL", "NOTIFICATION_CLIENT_ID", "NOTIFICATION_CLIENT_SECRET", "NOTIFICATION_SCOPES",
 		"PII_ENCRYPTION_KEY", "SHOP_MASTER_WALLET_ADDRESS",
-		"AI_SERVICE_URL",
+		"AI_SERVICE_URL", "AI_TOKEN_URL", "AI_CLIENT_ID", "AI_CLIENT_SECRET",
 		"AI_REQUEST_TIMEOUT_SECONDS",
 		"AI_ENABLED_CHAT_ASSISTANT", "AI_ENABLED_PERSONALIZED_AGENDA", "AI_ENABLED_MATCH_MAKER", "AI_ENABLED_O2_BAR",
 		"VENUE_TIMEZONE",
@@ -200,6 +200,11 @@ func TestLoad_AIAgentDefaults(t *testing.T) {
 	if cfg.AIAgent.ServiceURL != "" {
 		t.Errorf("expected empty AIAgent.ServiceURL by default, got %+v", cfg.AIAgent)
 	}
+	// An unset AI_TOKEN_URL is what makes the client skip OAuth entirely, so
+	// "empty by default" keeps a local AI service with no gateway working.
+	if cfg.AIAgent.OAuth.TokenURL != "" || cfg.AIAgent.OAuth.ClientID != "" || cfg.AIAgent.OAuth.ClientSecret != "" {
+		t.Errorf("expected empty AIAgent.OAuth by default, got %+v", cfg.AIAgent.OAuth)
+	}
 	if cfg.AIAgent.RequestTimeout != 120*time.Second {
 		t.Errorf("expected default AIAgent.RequestTimeout 120s, got %v", cfg.AIAgent.RequestTimeout)
 	}
@@ -212,6 +217,9 @@ func TestLoad_AIAgentDefaults(t *testing.T) {
 func TestLoad_AIAgentConfigFromEnv(t *testing.T) {
 	clearEnv(t)
 	t.Setenv("AI_SERVICE_URL", "https://ai.example.com")
+	t.Setenv("AI_TOKEN_URL", "https://api.asgardeo.io/t/wso2/oauth2/token")
+	t.Setenv("AI_CLIENT_ID", "ai-client")
+	t.Setenv("AI_CLIENT_SECRET", "ai-secret")
 	t.Setenv("AI_REQUEST_TIMEOUT_SECONDS", "30")
 	t.Setenv("AI_ENABLED_CHAT_ASSISTANT", "true")
 	t.Setenv("AI_ENABLED_PERSONALIZED_AGENDA", "true")
@@ -222,6 +230,10 @@ func TestLoad_AIAgentConfigFromEnv(t *testing.T) {
 
 	if cfg.AIAgent.ServiceURL != "https://ai.example.com" {
 		t.Errorf("ServiceURL = %q", cfg.AIAgent.ServiceURL)
+	}
+	if cfg.AIAgent.OAuth.TokenURL != "https://api.asgardeo.io/t/wso2/oauth2/token" ||
+		cfg.AIAgent.OAuth.ClientID != "ai-client" || cfg.AIAgent.OAuth.ClientSecret != "ai-secret" {
+		t.Errorf("AIAgent.OAuth = %+v", cfg.AIAgent.OAuth)
 	}
 	if cfg.AIAgent.RequestTimeout != 30*time.Second {
 		t.Errorf("RequestTimeout = %v, want 30s", cfg.AIAgent.RequestTimeout)
@@ -619,4 +631,84 @@ func TestValidate_MoesifDisabledNeedsNothing(t *testing.T) {
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("expected no error with analytics off, got %v", err)
 	}
+}
+
+// validAIBaseConfig sets the minimum a Config needs to pass Validate() so the
+// AI cases below fail for their own reason and not an unrelated one.
+func validAIBaseConfig(t *testing.T) {
+	t.Helper()
+	clearEnv(t)
+	t.Setenv("DB_HOST", "localhost")
+	t.Setenv("DB_USER", "administrator")
+	t.Setenv("DB_NAME", "agenda_organizer")
+	t.Setenv("DB_SCHEMA", "marketingops")
+	t.Setenv("APP_ENV", "development")
+	t.Setenv("PII_ENCRYPTION_KEY", "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=")
+}
+
+func TestValidate_RejectsEnabledAIWithoutServiceURL(t *testing.T) {
+	validAIBaseConfig(t)
+	t.Setenv("AI_ENABLED_CHAT_ASSISTANT", "true")
+
+	err := Load().Validate()
+	if err == nil {
+		t.Fatal("expected an error when an AI feature is enabled with no AI_SERVICE_URL")
+	}
+	if !strings.Contains(err.Error(), "AI_SERVICE_URL") {
+		t.Errorf("error = %q, want it to mention AI_SERVICE_URL", err.Error())
+	}
+}
+
+// Partial credentials authenticate nothing, and the gateway 401 they produce is
+// indistinguishable from sending no token at all -- so they must not reach a
+// running service.
+func TestValidate_RejectsPartialAIOAuthCredentials(t *testing.T) {
+	cases := map[string]map[string]string{
+		"token URL only":     {"AI_TOKEN_URL": "https://api.asgardeo.io/t/wso2/oauth2/token"},
+		"missing secret":     {"AI_TOKEN_URL": "https://api.asgardeo.io/t/wso2/oauth2/token", "AI_CLIENT_ID": "id"},
+		"credentials no URL": {"AI_CLIENT_ID": "id", "AI_CLIENT_SECRET": "secret"},
+	}
+	for name, env := range cases {
+		t.Run(name, func(t *testing.T) {
+			validAIBaseConfig(t)
+			for k, v := range env {
+				t.Setenv(k, v)
+			}
+
+			err := Load().Validate()
+			if err == nil {
+				t.Fatal("expected an error for partially configured AI OAuth credentials")
+			}
+			if !strings.Contains(err.Error(), "AI_TOKEN_URL") {
+				t.Errorf("error = %q, want it to mention AI_TOKEN_URL", err.Error())
+			}
+		})
+	}
+}
+
+func TestValidate_AcceptsCompleteAndAbsentAIOAuthCredentials(t *testing.T) {
+	t.Run("all three set", func(t *testing.T) {
+		validAIBaseConfig(t)
+		t.Setenv("AI_SERVICE_URL", "https://ai.example.com")
+		t.Setenv("AI_TOKEN_URL", "https://api.asgardeo.io/t/wso2/oauth2/token")
+		t.Setenv("AI_CLIENT_ID", "id")
+		t.Setenv("AI_CLIENT_SECRET", "secret")
+		t.Setenv("AI_ENABLED_CHAT_ASSISTANT", "true")
+
+		if err := Load().Validate(); err != nil {
+			t.Errorf("Validate() = %v, want nil", err)
+		}
+	})
+
+	// The local-development shape: an AI service addressed directly, with no
+	// gateway in front of it and so nothing to authenticate to.
+	t.Run("none set", func(t *testing.T) {
+		validAIBaseConfig(t)
+		t.Setenv("AI_SERVICE_URL", "http://localhost:8000")
+		t.Setenv("AI_ENABLED_CHAT_ASSISTANT", "true")
+
+		if err := Load().Validate(); err != nil {
+			t.Errorf("Validate() = %v, want nil", err)
+		}
+	})
 }

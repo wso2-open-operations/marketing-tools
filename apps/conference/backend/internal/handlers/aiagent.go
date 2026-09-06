@@ -19,12 +19,14 @@ package handlers
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
 
 	"github.com/gin-gonic/gin"
 
+	"wso2-coin-backend/internal/clients/aiagent"
 	"wso2-coin-backend/internal/config"
 	"wso2-coin-backend/internal/models"
 )
@@ -81,12 +83,21 @@ func respondFeatureDisabled(c *gin.Context, name string) {
 // aiServiceUnreachable reports whether err is a transport-level failure to
 // reach the external AI service (connection refused, DNS failure, TLS error,
 // request timeout) rather than an error *response* from a service that was
-// reached. The aiagent client builds its request- and status-level errors with
-// plain fmt.Errorf, but a failed http.Client.Do surfaces as a *url.Error, so a
-// *url.Error anywhere in the chain means "couldn't reach it". Handlers map that
-// to a retriable 503; every other failure (a reachable service returning a bad
-// status, a decode error, an internal bug) stays a 500.
+// reached. A reached-but-unhappy service yields an *aiagent.StatusError, while
+// a failed http.Client.Do surfaces as a *url.Error, so a *url.Error anywhere in
+// the chain means "couldn't reach it". Handlers map that to a retriable 503;
+// every other failure (a bad status, a decode error, an internal bug) stays a
+// 500.
+//
+// One case is deliberately excluded: a rejected OAuth2 token fetch also travels
+// as a *url.Error, because the oauth2 transport fails the request before it is
+// ever sent. Bad or unsubscribed credentials are a deployment error that will
+// never fix itself, so calling them "temporarily unavailable" would be a lie
+// that hides the one thing worth acting on.
 func aiServiceUnreachable(err error) bool {
+	if _, isTokenFailure := aiagent.TokenFetchStatusFrom(err); isTokenFailure {
+		return false
+	}
 	var urlErr *url.Error
 	return errors.As(err, &urlErr)
 }
@@ -97,6 +108,25 @@ func aiServiceUnreachable(err error) bool {
 // stays a 500. Used by every AI endpoint so an enabled-but-not-yet-plugged-in
 // backend reports "temporarily unavailable" instead of "server bug".
 func respondAIUpstreamError(c *gin.Context, logMsg string, err error) {
+	// The upstream status goes in the message, not only in an attribute. The
+	// deployed log viewer renders slog's message and drops its attributes, so a
+	// gateway 401 previously read as a bare "retrieving chat response failed"
+	// with the one useful fact invisible.
+	const credentialHint = " -- check this service's AI gateway credentials (AI_TOKEN_URL/AI_CLIENT_ID/AI_CLIENT_SECRET), not the caller's JWT"
+	switch status, ok := aiagent.StatusCodeFrom(err); {
+	case ok:
+		logMsg = fmt.Sprintf("%s: AI service returned HTTP %d", logMsg, status)
+		if status == http.StatusUnauthorized || status == http.StatusForbidden {
+			// Nothing about the attendee's own token can cause this: the AI
+			// service authenticates nobody, so its gateway is what rejected us
+			// -- credentials absent, wrong, or not subscribed to its API.
+			logMsg += credentialHint
+		}
+	default:
+		if tokenStatus, isTokenFailure := aiagent.TokenFetchStatusFrom(err); isTokenFailure {
+			logMsg = fmt.Sprintf("%s: OAuth2 token request for the AI service returned HTTP %d%s", logMsg, tokenStatus, credentialHint)
+		}
+	}
 	slog.ErrorContext(c.Request.Context(), logMsg, "error", err)
 	if aiServiceUnreachable(err) {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"message": "AI service is temporarily unavailable"})

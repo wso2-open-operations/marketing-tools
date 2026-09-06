@@ -52,16 +52,35 @@ type EmailServiceConfig struct {
 	From     string
 }
 
-// AIAgentConfig holds the base URL for the external AI agent service and the
-// request timeout applied to its calls. Matchmaking, personalize,
-// picked-for-you and chat are one consolidated service that answers every one
-// of those paths off a single root with no path prefix, so one URL configures
-// all of them. Deliberately no OAuth sub-struct: unlike
-// QRPortal/Wallet/Transaction, nothing in the AI agent integration uses
-// OAuth2 -- auth is pure pass-through of the caller's own JWT (see
-// .claude/PLAN.md).
+// AIAgentConfig holds the base URL for the external AI agent service, the
+// credentials used to reach it, and the request timeout applied to its calls.
+// Matchmaking, personalize, picked-for-you and chat are one consolidated
+// service that answers every one of those paths off a single root with no path
+// prefix, so one URL configures all of them.
+//
+// Two credentials travel on every AI call and they answer different questions:
+//
+//   - x-jwt-assertion is the *caller's* own JWT, forwarded verbatim. It is how
+//     the AI service knows which attendee is asking. It is not a credential the
+//     AI service checks -- that service authenticates nobody.
+//   - Authorization is *this* service's OAuth2 client-credentials token, and it
+//     is for the Choreo gateway in front of the AI service, not for the service
+//     itself. The AI service is published at Organization network visibility,
+//     which restricts who can reach it but does not make it unauthenticated:
+//     its gateway rejects a tokenless call with
+//     401 {"code":"900901","error_message":"Invalid Credentials"}.
+//
+// This mirrors push-notification-gateway-api -> push-notification-service in
+// digiops-superapp, the public-calls-organization pair that has run in
+// production unchanged; see CLAUDE.md, "Calling an Organization-visibility
+// Choreo service".
+//
+// OAuth is optional. Leave OAuth.TokenURL empty and no token is fetched or
+// sent, which is what a locally-run AI service with no gateway in front of it
+// expects.
 type AIAgentConfig struct {
 	ServiceURL     string
+	OAuth          OAuthClientConfig
 	RequestTimeout time.Duration
 }
 
@@ -343,7 +362,12 @@ func Load() Config {
 		ShopMasterWalletAddress: strings.TrimSpace(os.Getenv("SHOP_MASTER_WALLET_ADDRESS")),
 
 		AIAgent: AIAgentConfig{
-			ServiceURL:     os.Getenv("AI_SERVICE_URL"),
+			ServiceURL: os.Getenv("AI_SERVICE_URL"),
+			OAuth: OAuthClientConfig{
+				TokenURL:     os.Getenv("AI_TOKEN_URL"),
+				ClientID:     os.Getenv("AI_CLIENT_ID"),
+				ClientSecret: os.Getenv("AI_CLIENT_SECRET"),
+			},
 			RequestTimeout: time.Duration(aiRequestTimeoutSeconds) * time.Second,
 		},
 		AIFeatureStatus: AIFeatureStatus{
@@ -462,6 +486,41 @@ func (c Config) Validate() error {
 		if err := analytics.CheckEndpoint(c.Moesif.APIEndpoint); err != nil {
 			return err
 		}
+	}
+	if err := c.validateAIAgent(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// validateAIAgent rejects the AI configurations that produce a service which
+// boots happily and then fails every AI request.
+//
+// Both checks exist because that exact deployment shipped: all four feature
+// flags on, AI_SERVICE_URL pointing at a gateway, no credentials for it, and
+// every AI route answering 500 with the real cause (a gateway 401) visible only
+// in a log attribute. A flag that is on must mean the feature can actually
+// work, so these fail at startup instead.
+func (c Config) validateAIAgent() error {
+	anyAIEnabled := c.AIFeatureStatus.EnabledChatAssistant ||
+		c.AIFeatureStatus.EnabledPersonalizedAgenda ||
+		c.AIFeatureStatus.EnabledMatchMaker ||
+		c.AIFeatureStatus.EnabledO2Bar
+	if anyAIEnabled && strings.TrimSpace(c.AIAgent.ServiceURL) == "" {
+		return errors.New("AI_SERVICE_URL is required when any AI_ENABLED_* flag is true")
+	}
+	// Partial credentials are always a mistake: two thirds of a
+	// client-credentials grant authenticates nothing, and the resulting 401
+	// looks identical to sending no token at all.
+	oauth := c.AIAgent.OAuth
+	set := 0
+	for _, v := range []string{oauth.TokenURL, oauth.ClientID, oauth.ClientSecret} {
+		if strings.TrimSpace(v) != "" {
+			set++
+		}
+	}
+	if set != 0 && set != 3 {
+		return errors.New("AI_TOKEN_URL, AI_CLIENT_ID and AI_CLIENT_SECRET must be set together, or all left empty")
 	}
 	return nil
 }

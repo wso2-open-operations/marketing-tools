@@ -17,20 +17,29 @@
 // Package aiagent provides an HTTP client for the external AI agent service.
 // Matchmaking, personalize, picked-for-you and chat are one consolidated
 // service serving all of those paths off a single root with no path prefix,
-// so every call in this package shares one base URL. Unlike
-// qrportal/wallet/transaction, auth here is pure pass-through of the
-// caller's own JWT via the x-jwt-assertion header -- no OAuth2 client
-// credentials at all (see .claude/PLAN.md).
+// so every call in this package shares one base URL.
+//
+// Every request carries two credentials, answering two different questions:
+// x-jwt-assertion is the caller's own JWT forwarded verbatim, which is how the
+// AI service knows which attendee is asking; Authorization is this service's
+// own OAuth2 client-credentials token, which is for the Choreo gateway in front
+// of the AI service. The AI service authenticates nobody -- the token never
+// reaches it -- but its gateway rejects a tokenless call outright. See
+// config.AIAgentConfig and CLAUDE.md.
 package aiagent
 
 import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/clientcredentials"
 
 	"wso2-coin-backend/internal/config"
 	"wso2-coin-backend/internal/models"
@@ -40,6 +49,49 @@ import (
 // error message, so a huge/unexpected body doesn't blow up logs.
 const maxErrBodyBytes = 2048
 
+// StatusError is returned when the AI service, or a gateway in front of it,
+// answers with a non-2xx status. It carries the status out of this package so
+// handlers can log it in the message itself rather than burying it in an
+// attribute -- the deployed log viewer renders only the message, which is how a
+// gateway 401 spent a day looking like an unexplained 500.
+type StatusError struct {
+	StatusCode int
+	URL        string
+	Body       string
+}
+
+func (e *StatusError) Error() string {
+	return fmt.Sprintf("POST %s returned status %d: %s", e.URL, e.StatusCode, e.Body)
+}
+
+// StatusCodeFrom reports the upstream HTTP status carried by err, and whether
+// err was an upstream status failure at all.
+func StatusCodeFrom(err error) (int, bool) {
+	var statusErr *StatusError
+	if errors.As(err, &statusErr) {
+		return statusErr.StatusCode, true
+	}
+	return 0, false
+}
+
+// TokenFetchStatusFrom reports the status the OAuth2 token endpoint answered
+// with, and whether err was a token-fetch failure at all.
+//
+// This failure never reaches the AI service: the oauth2 transport gives up
+// before sending the request, so it presents as a transport error even though
+// nothing about the AI service is wrong. Telling the two apart is what stops a
+// rejected client secret from being reported as "AI service unavailable".
+func TokenFetchStatusFrom(err error) (int, bool) {
+	var retrieveErr *oauth2.RetrieveError
+	if errors.As(err, &retrieveErr) {
+		if retrieveErr.Response != nil {
+			return retrieveErr.Response.StatusCode, true
+		}
+		return 0, true
+	}
+	return 0, false
+}
+
 // Client is an HTTP client for the external AI agent service.
 type Client struct {
 	baseURL    string
@@ -47,8 +99,38 @@ type Client struct {
 }
 
 // NewClient builds a production Client bounded by cfg.RequestTimeout.
+//
+// With cfg.OAuth.TokenURL set, every request carries an OAuth2
+// client-credentials token for the Choreo gateway fronting the AI service. The
+// token is fetched lazily on the first call, then cached and refreshed by the
+// oauth2 transport. AuthStyleInHeader presents the client id and secret as HTTP
+// Basic at the token endpoint, which is what Asgardeo expects and what the
+// push-notification gateway does by hand; without it the oauth2 package spends
+// a probe request per process discovering the same thing.
+//
+// An empty TokenURL means no gateway -- the AI service addressed directly, as
+// when it runs on localhost -- and no Authorization header is sent. Either way
+// x-jwt-assertion still travels on every request: the gateway token identifies
+// this service, never the attendee.
 func NewClient(cfg config.AIAgentConfig) *Client {
-	return NewClientWithHTTPClient(cfg, &http.Client{Timeout: cfg.RequestTimeout})
+	if cfg.OAuth.TokenURL == "" {
+		return NewClientWithHTTPClient(cfg, &http.Client{Timeout: cfg.RequestTimeout})
+	}
+
+	oauthCfg := clientcredentials.Config{
+		ClientID:     cfg.OAuth.ClientID,
+		ClientSecret: cfg.OAuth.ClientSecret,
+		TokenURL:     cfg.OAuth.TokenURL,
+		Scopes:       cfg.OAuth.Scopes,
+		AuthStyle:    oauth2.AuthStyleInHeader,
+	}
+	// oauth2.HTTPClient bounds the token fetch; the same budget is applied to
+	// the returned client below so an unreachable token endpoint fails on the
+	// same deadline as a slow AI answer instead of outliving it.
+	tokenFetchCtx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Timeout: cfg.RequestTimeout})
+	httpClient := oauthCfg.Client(tokenFetchCtx)
+	httpClient.Timeout = cfg.RequestTimeout
+	return NewClientWithHTTPClient(cfg, httpClient)
 }
 
 // NewClientWithHTTPClient builds a Client using httpClient directly. This is
@@ -168,7 +250,7 @@ func (c *Client) doJSON(ctx context.Context, path, jwtAssertion string, bodyRead
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		errBody, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrBodyBytes))
-		return fmt.Errorf("POST %s returned status %d: %s", req.URL, resp.StatusCode, errBody)
+		return &StatusError{StatusCode: resp.StatusCode, URL: req.URL.String(), Body: string(errBody)}
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
