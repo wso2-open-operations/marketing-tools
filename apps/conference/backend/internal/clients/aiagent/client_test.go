@@ -416,3 +416,63 @@ func TestTokenFetchStatusFrom_DistinguishesRejectedCredentials(t *testing.T) {
 		t.Error("the AI service must not be called when the token request fails")
 	}
 }
+
+// TestNewClient_SetsTimeoutOnOAuthBranch pins the client-level deadline on the
+// branch production actually takes. TestNewClient_SetsTimeout only exercises
+// the TokenURL == "" branch, which never runs this code. oauth2.NewClient
+// returns a client carrying the *token fetch* client's Timeout, so dropping the
+// explicit assignment does not leave the AI call unbounded in an obvious way --
+// it silently gives it the 15s token budget instead, failing every AI answer
+// that legitimately takes longer, which is most of them.
+func TestNewClient_SetsTimeoutOnOAuthBranch(t *testing.T) {
+	c := NewClient(config.AIAgentConfig{
+		ServiceURL: "https://ai.example.com",
+		OAuth: config.OAuthClientConfig{
+			TokenURL:     "https://api.asgardeo.io/t/wso2/oauth2/token",
+			ClientID:     "ai-client",
+			ClientSecret: "ai-secret",
+		},
+		RequestTimeout: 45 * time.Second,
+	})
+	if c.httpClient.Timeout != 45*time.Second {
+		t.Errorf("httpClient.Timeout = %v, want 45s (the AI request budget, not the %v token-fetch budget)",
+			c.httpClient.Timeout, tokenFetchTimeout)
+	}
+}
+
+// A non-positive AI_REQUEST_TIMEOUT_SECONDS must not produce a client with no
+// deadline at all: http.Client reads Timeout <= 0 as "wait forever", so a
+// stalled AI service would pin the request past the server's write deadline and
+// truncate the response mid-write rather than failing cleanly. Both
+// construction branches are reachable with a misconfigured value, so both are
+// checked.
+func TestNewClient_NonPositiveTimeoutFallsBackToDefault(t *testing.T) {
+	behindGateway := config.OAuthClientConfig{
+		TokenURL:     "https://api.asgardeo.io/t/wso2/oauth2/token",
+		ClientID:     "ai-client",
+		ClientSecret: "ai-secret",
+	}
+	tests := []struct {
+		name    string
+		timeout time.Duration
+		oauth   config.OAuthClientConfig
+	}{
+		{"zero, addressed directly", 0, config.OAuthClientConfig{}},
+		{"negative, addressed directly", -1 * time.Second, config.OAuthClientConfig{}},
+		{"zero, behind the gateway", 0, behindGateway},
+		{"negative, behind the gateway", -1 * time.Second, behindGateway},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewClient(config.AIAgentConfig{
+				ServiceURL:     "https://ai.example.com",
+				OAuth:          tt.oauth,
+				RequestTimeout: tt.timeout,
+			})
+			if c.httpClient.Timeout != defaultRequestTimeout {
+				t.Errorf("httpClient.Timeout = %v, want the %v backstop", c.httpClient.Timeout, defaultRequestTimeout)
+			}
+		})
+	}
+}

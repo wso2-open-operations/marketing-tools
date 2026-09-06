@@ -37,6 +37,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sync"
+	"time"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
@@ -48,6 +50,31 @@ import (
 // maxErrBodyBytes caps how much of an error response body we read into an
 // error message, so a huge/unexpected body doesn't blow up logs.
 const maxErrBodyBytes = 2048
+
+const (
+	// tokenFetchTimeout bounds the OAuth2 token fetch, deliberately separate
+	// from cfg.RequestTimeout. The two measure different things: an AI answer
+	// legitimately takes a minute (AI_REQUEST_TIMEOUT_SECONDS defaults to 120),
+	// while a token endpoint that has not answered in fifteen seconds is not
+	// going to. Spending the AI budget on the token fetch is what turns one
+	// unreachable token endpoint into minutes of blocked requests, because the
+	// fetch is serialized -- see failCachingTokenSource.
+	tokenFetchTimeout = 15 * time.Second
+
+	// tokenFailureTTL is how long a failed token fetch is remembered. Long
+	// enough that a burst of concurrent requests pays for exactly one fetch,
+	// short enough that a token endpoint coming back is noticed on the next
+	// request rather than after a cooldown the user can feel.
+	tokenFailureTTL = 5 * time.Second
+
+	// defaultRequestTimeout backstops a non-positive cfg.RequestTimeout.
+	// http.Client reads Timeout <= 0 as "no timeout at all", so a misconfigured
+	// AI_REQUEST_TIMEOUT_SECONDS would otherwise produce a client that hangs on
+	// the AI service forever and holds the connection past the server's write
+	// deadline. Config validation should catch that first; this makes the
+	// client safe on its own regardless.
+	defaultRequestTimeout = 120 * time.Second
+)
 
 // StatusError is returned when the AI service, or a gateway in front of it,
 // answers with a non-2xx status. It carries the status out of this package so
@@ -87,6 +114,10 @@ func TokenFetchStatusFrom(err error) (int, bool) {
 		if retrieveErr.Response != nil {
 			return retrieveErr.Response.StatusCode, true
 		}
+		// Unreachable in practice: oauth2 builds a RetrieveError only after a
+		// successful round trip, so Response is always set. Kept so a future
+		// oauth2 that constructs one differently still reports a token-fetch
+		// failure rather than silently reading as an AI service error.
 		return 0, true
 	}
 	return 0, false
@@ -105,16 +136,21 @@ type Client struct {
 // token is fetched lazily on the first call, then cached and refreshed by the
 // oauth2 transport. AuthStyleInHeader presents the client id and secret as HTTP
 // Basic at the token endpoint, which is what Asgardeo expects and what the
-// push-notification gateway does by hand; without it the oauth2 package spends
-// a probe request per process discovering the same thing.
+// push-notification gateway does by hand. Pinning it is documentation rather
+// than optimisation: left unset, the library's auto-detect already tries Basic
+// first and only falls back to in-body credentials if that errors, so against
+// Asgardeo there is no probe request to save. Saying it outright means the
+// contract survives a future where the fallback would silently take over.
 //
 // An empty TokenURL means no gateway -- the AI service addressed directly, as
 // when it runs on localhost -- and no Authorization header is sent. Either way
 // x-jwt-assertion still travels on every request: the gateway token identifies
 // this service, never the attendee.
 func NewClient(cfg config.AIAgentConfig) *Client {
+	timeout := requestTimeout(cfg)
+
 	if cfg.OAuth.TokenURL == "" {
-		return NewClientWithHTTPClient(cfg, &http.Client{Timeout: cfg.RequestTimeout})
+		return NewClientWithHTTPClient(cfg, &http.Client{Timeout: timeout})
 	}
 
 	oauthCfg := clientcredentials.Config{
@@ -124,13 +160,75 @@ func NewClient(cfg config.AIAgentConfig) *Client {
 		Scopes:       cfg.OAuth.Scopes,
 		AuthStyle:    oauth2.AuthStyleInHeader,
 	}
-	// oauth2.HTTPClient bounds the token fetch; the same budget is applied to
-	// the returned client below so an unreachable token endpoint fails on the
-	// same deadline as a slow AI answer instead of outliving it.
-	tokenFetchCtx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Timeout: cfg.RequestTimeout})
-	httpClient := oauthCfg.Client(tokenFetchCtx)
-	httpClient.Timeout = cfg.RequestTimeout
+	// The token fetch gets its own, much smaller budget via oauth2.HTTPClient
+	// rather than reusing the AI request budget. oauth2.Transport fetches the
+	// token before the AI request is sent, under a background context this
+	// client's Timeout cannot reach, so the AI budget spent here is time no
+	// caller can cancel: at the default 120s a stalled token endpoint would
+	// pin a request past the server's 130s write deadline and truncate the
+	// response mid-write.
+	tokenFetchCtx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Timeout: tokenFetchTimeout})
+	tokenSource := &failCachingTokenSource{base: oauthCfg.TokenSource(tokenFetchCtx)}
+	httpClient := oauth2.NewClient(tokenFetchCtx, tokenSource)
+	// oauth2.NewClient copies the token-fetch client's Timeout onto the
+	// returned client; the AI call is the thing it actually bounds, so set it.
+	httpClient.Timeout = timeout
 	return NewClientWithHTTPClient(cfg, httpClient)
+}
+
+// requestTimeout is the deadline for a call to the AI service, guarding against
+// a non-positive configured value which http.Client reads as no deadline at
+// all. See defaultRequestTimeout.
+func requestTimeout(cfg config.AIAgentConfig) time.Duration {
+	if cfg.RequestTimeout <= 0 {
+		return defaultRequestTimeout
+	}
+	return cfg.RequestTimeout
+}
+
+// failCachingTokenSource remembers a *failed* token fetch for tokenFailureTTL
+// so a queue of concurrent requests does not each retry it in turn.
+//
+// oauth2's ReuseTokenSource holds one mutex for the whole fetch, and
+// oauth2.Transport calls it before the AI request exists, so a request waiting
+// its turn is not released by its own deadline -- it waits for every fetch
+// ahead of it. With a hanging token endpoint that made five concurrent
+// requests take five fetch timeouts end to end, the last one answering long
+// after the client that asked had given up.
+//
+// Only failures are cached here. A successful fetch is handed straight back and
+// its caching, expiry and refresh remain entirely the underlying
+// ReuseTokenSource's job. The error is stored and returned by value so
+// TokenFetchStatusFrom -- and errors.As for *oauth2.RetrieveError generally --
+// still recognises it, which is what keeps a rejected client secret reported as
+// rejected credentials instead of "AI service unavailable".
+type failCachingTokenSource struct {
+	base oauth2.TokenSource
+
+	// mu is held across the fetch on purpose: ReuseTokenSource already
+	// serializes it, so this adds no contention, and it means a caller that
+	// waited behind an in-flight fetch sees that fetch's cached failure the
+	// moment it acquires the lock rather than starting another one.
+	mu       sync.Mutex
+	lastErr  error
+	failedAt time.Time
+}
+
+func (s *failCachingTokenSource) Token() (*oauth2.Token, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.lastErr != nil && time.Since(s.failedAt) < tokenFailureTTL {
+		return nil, s.lastErr
+	}
+
+	tok, err := s.base.Token()
+	if err != nil {
+		s.lastErr, s.failedAt = err, time.Now()
+		return nil, err
+	}
+	s.lastErr = nil
+	return tok, nil
 }
 
 // NewClientWithHTTPClient builds a Client using httpClient directly. This is

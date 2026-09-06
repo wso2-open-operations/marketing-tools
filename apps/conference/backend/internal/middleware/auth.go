@@ -50,9 +50,11 @@ type UserInfo struct {
 	// claim yields nil, which denies rather than allows.
 	Groups []string
 	// RawToken is the literal incoming x-jwt-assertion value, before any
-	// parsing. The AI agent routes forward this verbatim to external AI
-	// services (pure pass-through auth, see .claude/PLAN.md) -- everything
-	// else uses the parsed claims above instead.
+	// parsing. The AI agent routes forward it as the caller's identity ("who
+	// is asking"); the credential that gets them past the AI service's
+	// gateway travels separately in Authorization (see
+	// internal/clients/aiagent). Everything else uses the parsed claims
+	// above instead.
 	RawToken string
 }
 
