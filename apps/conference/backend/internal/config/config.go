@@ -24,6 +24,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"wso2-coin-backend/internal/analytics"
 )
 
 // OAuthClientConfig holds OAuth2 client-credentials settings for an external service.
@@ -283,17 +285,17 @@ func Load() Config {
 		TokenValidatorEnabled: tokenValidatorEnabled,
 		AdminRoles:            parseList(os.Getenv("RBAC_ADMIN_ROLES")),
 
-		ExcludeEmployeeCoinAllocation: excludeEmployeeCoinAllocation,
-		EnableQrValidations:           enableQrValidations,
-		SessionEndTimeOffsetMinutes:   sessionEndTimeOffsetMinutes,
-		SessionSlotMinutes:            sessionSlotMinutes,
+		ExcludeEmployeeCoinAllocation:    excludeEmployeeCoinAllocation,
+		EnableQrValidations:              enableQrValidations,
+		SessionEndTimeOffsetMinutes:      sessionEndTimeOffsetMinutes,
+		SessionSlotMinutes:               sessionSlotMinutes,
 		StaleOrderCleanupIntervalSeconds: staleOrderCleanupIntervalSeconds,
 		CoinStaleOrderTimeoutMinutes:     coinStaleOrderTimeoutMinutes,
-		VenueTimezone:                 venueTimezone,
-		VenueLocation:                 venueLocation,
-		venueTZLoadErr:                venueTZLoadErr,
-		PIIEncryptionKey:              piiEncryptionKey,
-		piiKeyDecodeErr:               piiKeyDecodeErr,
+		VenueTimezone:                    venueTimezone,
+		VenueLocation:                    venueLocation,
+		venueTZLoadErr:                   venueTZLoadErr,
+		PIIEncryptionKey:                 piiEncryptionKey,
+		piiKeyDecodeErr:                  piiKeyDecodeErr,
 
 		QRPortal: ExternalServiceConfig{
 			Endpoint: os.Getenv("QR_PORTAL_ENDPOINT"),
@@ -451,6 +453,15 @@ func (c Config) Validate() error {
 	// analytics that refuses to start.
 	if c.Moesif.Enabled && c.Moesif.ApplicationID == "" {
 		return errors.New("MOESIF_APPLICATION_ID is required when MOESIF_ENABLED=true")
+	}
+	// Every batch carries the application id as a header, so a plaintext
+	// collector leaks a credential on the wire. Checked here as well as in
+	// analytics.New so the deployer hears about a bad endpoint from the config
+	// layer that owns the env var.
+	if c.Moesif.Enabled {
+		if err := analytics.CheckEndpoint(c.Moesif.APIEndpoint); err != nil {
+			return err
+		}
 	}
 	return nil
 }

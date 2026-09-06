@@ -102,6 +102,37 @@ func TestNew_WithoutApplicationID_Errors(t *testing.T) {
 	}
 }
 
+// The application id travels as a header on every batch, so a plaintext
+// collector puts a credential on the wire. Loopback is the deliberate hole: a
+// local stub has no network to intercept.
+func TestNew_RejectsInsecureEndpoint(t *testing.T) {
+	tests := []struct {
+		name     string
+		endpoint string
+		wantErr  bool
+	}{
+		{"empty means the global https collector", "", false},
+		{"https collector", "https://api-eu.moesif.net", false},
+		{"loopback stub over http", "http://127.0.0.1:8080", false},
+		{"localhost stub over http", "http://localhost:8080", false},
+		{"remote collector over http", "http://api.moesif.net", true},
+		{"no scheme at all", "api.moesif.net", true},
+		{"a scheme that is neither", "ftp://api.moesif.net", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := CheckEndpoint(tt.endpoint)
+			if tt.wantErr && !errors.Is(err, ErrInsecureEndpoint) {
+				t.Fatalf("CheckEndpoint(%q) = %v, want ErrInsecureEndpoint", tt.endpoint, err)
+			}
+			if !tt.wantErr && err != nil {
+				t.Fatalf("CheckEndpoint(%q) = %v, want nil", tt.endpoint, err)
+			}
+		})
+	}
+}
+
 func TestRecord_MapsEventOntoMoesifModel(t *testing.T) {
 	api := &fakeAPI{}
 	rec := newWithAPI(api, testConfig(), discardLogger())

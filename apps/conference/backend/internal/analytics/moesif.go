@@ -21,6 +21,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -87,6 +89,16 @@ type Config struct {
 // app today", and that is the one wrong answer this package exists to avoid.
 var ErrNoApplicationID = errors.New("analytics: MOESIF_APPLICATION_ID is required when MOESIF_ENABLED=true")
 
+// ErrInsecureEndpoint is returned by New when APIEndpoint names a collector
+// reachable over plaintext HTTP. Every batch carries the collector application
+// id in an X-Moesif-Application-Id header, which is a credential; over http://
+// that credential crosses the network in the clear.
+//
+// Loopback is exempt, because the documented non-production use of this setting
+// is pointing a local run at a stub collector, and traffic that never leaves the
+// host has nothing to intercept.
+var ErrInsecureEndpoint = errors.New("analytics: MOESIF_API_ENDPOINT must be https:// (http:// is allowed only for a loopback stub)")
+
 // Moesif is a Recorder that batches events to the Moesif collector through the
 // official SDK. The SDK owns the queue, the batching timer, gzip, and the HTTP
 // call; this type owns the mapping from Event onto Moesif's wire model and the
@@ -131,10 +143,57 @@ func New(cfg Config, logger *slog.Logger) (*Moesif, error) {
 	if endpoint == "" {
 		endpoint = defaultAPIEndpoint
 	}
+	if err := checkEndpoint(endpoint); err != nil {
+		return nil, err
+	}
 
 	api := moesifapi.NewAPI(cfg.ApplicationID, &endpoint, queueSize, batchSize, int(flushInterval.Seconds()))
 
 	return newWithAPI(api, cfg, logger), nil
+}
+
+// CheckEndpoint reports whether endpoint is safe to hand to the SDK. It is
+// exported so config.Validate can reject a bad MOESIF_API_ENDPOINT at startup,
+// before anything else has been built, rather than leaving the first complaint
+// to come from the analytics wiring several hundred lines later.
+//
+// An empty endpoint is fine: it means the global collector, which is https.
+func CheckEndpoint(endpoint string) error {
+	if endpoint == "" {
+		return nil
+	}
+	return checkEndpoint(endpoint)
+}
+
+// checkEndpoint rejects anything that is not https, with a hole for loopback.
+//
+// A missing scheme is rejected too, and deliberately: "api.moesif.net" parses
+// as a path with no host at all, and the SDK would build a nonsense URL from it
+// rather than fail, so the batch would 404 silently forever.
+func checkEndpoint(endpoint string) error {
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrInsecureEndpoint, err)
+	}
+
+	switch u.Scheme {
+	case "https":
+		return nil
+	case "http":
+		if isLoopbackHost(u.Hostname()) {
+			return nil
+		}
+	}
+	return ErrInsecureEndpoint
+}
+
+// isLoopbackHost covers the three spellings a stub collector is reached by.
+func isLoopbackHost(host string) bool {
+	switch strings.ToLower(host) {
+	case "localhost", "127.0.0.1", "::1":
+		return true
+	}
+	return false
 }
 
 // newWithAPI is the seam the tests use: it takes an already-built API so a fake

@@ -562,6 +562,50 @@ func TestValidate_MoesifEnabledRequiresApplicationID(t *testing.T) {
 	}
 }
 
+// A plaintext collector would put the application id -- a credential -- on the
+// wire in the clear, so it is refused at startup like a missing id is.
+func TestValidate_MoesifRejectsPlaintextEndpoint(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("DB_HOST", "localhost")
+	t.Setenv("DB_USER", "administrator")
+	t.Setenv("DB_NAME", "agenda_organizer")
+	t.Setenv("DB_SCHEMA", "marketingops")
+	t.Setenv("APP_ENV", "development")
+	t.Setenv("PII_ENCRYPTION_KEY", "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=")
+	t.Setenv("MOESIF_ENABLED", "true")
+	t.Setenv("MOESIF_APPLICATION_ID", "collector-app-id")
+	t.Setenv("MOESIF_API_ENDPOINT", "http://api.moesif.net")
+
+	cfg := Load()
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected an error for a plaintext collector endpoint")
+	}
+	if !strings.Contains(err.Error(), "MOESIF_API_ENDPOINT") {
+		t.Errorf("expected the error to name the env var, got %v", err)
+	}
+}
+
+// The one non-production use of the override is a stub on the same host, and
+// that stays allowed: there is no network hop to intercept.
+func TestValidate_MoesifAllowsLoopbackStub(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("DB_HOST", "localhost")
+	t.Setenv("DB_USER", "administrator")
+	t.Setenv("DB_NAME", "agenda_organizer")
+	t.Setenv("DB_SCHEMA", "marketingops")
+	t.Setenv("APP_ENV", "development")
+	t.Setenv("PII_ENCRYPTION_KEY", "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=")
+	t.Setenv("MOESIF_ENABLED", "true")
+	t.Setenv("MOESIF_APPLICATION_ID", "collector-app-id")
+	t.Setenv("MOESIF_API_ENDPOINT", "http://localhost:9999")
+
+	cfg := Load()
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected a loopback stub to be allowed, got %v", err)
+	}
+}
+
 func TestValidate_MoesifDisabledNeedsNothing(t *testing.T) {
 	clearEnv(t)
 	t.Setenv("DB_HOST", "localhost")
