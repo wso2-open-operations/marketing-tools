@@ -56,6 +56,27 @@ const (
 	ShopHiddenKey = "is_shop_hidden"
 )
 
+// redactedConfigKeys are rows this endpoint holds back.
+//
+// GET /app-configs answers every authenticated attendee, and it returns rows
+// verbatim precisely because a key is opaque operational data to it. That is
+// fine for a flag and wrong for a row whose value is a list of real email
+// addresses: features.GateBypassEmailsKey is read by this service's own gate
+// middleware and by nothing in the microapp, so returning it would publish
+// staff addresses to every phone holding a token and buy no client anything.
+//
+// Held back rather than blanked, and not by name in the response either: an
+// entry with an empty value would still say "these people exist and this is
+// what the row is called", and a client that keys its config by `key` handles
+// a key it never receives exactly the way it already handles an unseeded one.
+//
+// Redaction lives here, not in the repository, because features.Resolver reads
+// the row through the same AppConfigRepo.List -- filtering there would take
+// the allowlist away from the middleware that is the only thing that wants it.
+var redactedConfigKeys = map[string]struct{}{
+	features.GateBypassEmailsKey: {},
+}
+
 // shopHiddenDefault keeps the Shop tab visible. It matches the '0' seeded by
 // migrations/016_shop_hidden.sql, so an unseeded database and a seeded one
 // answer identically.
@@ -100,6 +121,7 @@ func (h *AppConfigHandler) List(c *gin.Context) {
 		configs = []models.AppConfig{}
 	}
 
+	configs = redact(configs)
 	configs = h.withDefaults(c.Request.Context(), configs)
 
 	if h.merchantWalletAddress != "" {
@@ -110,6 +132,24 @@ func (h *AppConfigHandler) List(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, configs)
+}
+
+// redact drops every row in redactedConfigKeys, in place, preserving the
+// order of the rows that survive.
+//
+// Runs before withDefaults so that a redacted key cannot be re-added as a
+// synthetic default -- today none of them is a key withDefaults knows about,
+// but the ordering makes that a property of the pipeline rather than a
+// coincidence between two lists.
+func redact(configs []models.AppConfig) []models.AppConfig {
+	kept := configs[:0]
+	for _, cfg := range configs {
+		if _, hidden := redactedConfigKeys[cfg.Key]; hidden {
+			continue
+		}
+		kept = append(kept, cfg)
+	}
+	return kept
 }
 
 // withDefaults appends a row for every key the microapp expects to always be

@@ -31,6 +31,13 @@ import (
 // on.
 type FeatureGateResolver interface {
 	Gate(ctx context.Context, method, routePattern string) (features.State, bool)
+	// BypassesGates reports whether this caller is on the app_config
+	// allowlist (features.GateBypassEmailsKey) that is served a switched-off
+	// feature anyway. Part of this interface rather than an optional one a
+	// type assertion sniffs for: a resolver that cannot answer it would
+	// silently take the bypass away, and the symptom -- a tester who still
+	// gets 503 -- looks like a wrong row, not like missing wiring.
+	BypassesGates(ctx context.Context, email string) bool
 }
 
 // FeatureGate refuses a request whose feature is switched off in app_config.
@@ -53,6 +60,12 @@ type FeatureGateResolver interface {
 // A route with no entry in the mapping is untouched, so the default posture is
 // "serves normally" -- the same posture as before this middleware existed.
 //
+// One set of callers is exempt: the addresses in
+// features.GateBypassEmailsKey, which exist so that the endpoints behind an
+// unannounced feature can be exercised while every microapp still hides the
+// screen. The exemption is per caller, so refusing everybody else is
+// unaffected, and the row is empty until an operator fills it.
+//
 // The response is 503, matching the shop's master-wallet gate
 // (internal/handlers/shop.go) and for the same reason: nothing about the
 // request is wrong, the caller cannot fix it, and it will start working again
@@ -73,13 +86,33 @@ func FeatureGate(resolver FeatureGateResolver) gin.HandlerFunc {
 			return
 		}
 
-		state, gated := resolver.Gate(c.Request.Context(), c.Request.Method, routePattern)
+		ctx := c.Request.Context()
+
+		state, gated := resolver.Gate(ctx, c.Request.Method, routePattern)
 		if !gated || state.Enabled {
 			c.Next()
 			return
 		}
 
-		slog.InfoContext(c.Request.Context(), "refusing request for a disabled feature",
+		// The allowlist is checked only once the gate has already decided to
+		// refuse, so an ordinary request never pays for it and the log line
+		// below is emitted only for a route that was genuinely closed.
+		//
+		// UserInfoFromContext is populated because this middleware is
+		// registered after Auth on the same group (cmd/server/main.go); a nil
+		// here means someone reordered them, and it denies rather than
+		// letting an unidentified caller through.
+		if user := UserInfoFromContext(ctx); user != nil && resolver.BypassesGates(ctx, user.Email) {
+			// Warn, not Info: a route the operator switched off is answering,
+			// which is correct here but is also the shape of a misconfigured
+			// allowlist, so it should be visible without turning up the level.
+			slog.WarnContext(ctx, "serving a disabled feature to an allowlisted caller",
+				"feature", string(state.Feature), "method", c.Request.Method, "route", routePattern)
+			c.Next()
+			return
+		}
+
+		slog.InfoContext(ctx, "refusing request for a disabled feature",
 			"feature", string(state.Feature), "method", c.Request.Method, "route", routePattern)
 
 		// ETag() buffers the handler's body and only stamps a validator on

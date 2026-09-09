@@ -295,3 +295,62 @@ func TestShopHiddenKeyIsNotAFeatureFlagSpelling(t *testing.T) {
 		t.Errorf("%q collides with the shop's gating flag", ShopHiddenKey)
 	}
 }
+
+// The allowlist row holds real addresses and this endpoint answers every
+// authenticated attendee, so it must never appear in the response -- not even
+// with an empty value, which would still publish that the row exists.
+func TestAppConfigHandler_List_RedactsTheGateBypassAllowlist(t *testing.T) {
+	reader := &fakeAppConfigReader{configs: []models.AppConfig{
+		{Key: "ATTENDEES_SYNC", Value: "COMPLETED"},
+		{Key: features.GateBypassEmailsKey, Value: "tester@wso2.com, other@wso2.com"},
+		{Key: "is_shop_enabled", Value: "0"},
+	}}
+	r := newAppConfigTestRouter(NewAppConfigHandler(reader, nil, ""))
+
+	w := doRequest(r, http.MethodGet, "/app-configs", nil)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+	if body := w.Body.String(); strings.Contains(body, "tester@wso2.com") || strings.Contains(body, features.GateBypassEmailsKey) {
+		t.Errorf("the allowlist row leaked into the response: %s", body)
+	}
+
+	got := decodeAppConfigs(t, w.Body.Bytes())
+	if _, present := got[features.GateBypassEmailsKey]; present {
+		t.Error("the allowlist key must be absent, not blanked")
+	}
+	// Redaction must drop that row and nothing else.
+	if got["ATTENDEES_SYNC"] != "COMPLETED" {
+		t.Errorf("ATTENDEES_SYNC = %q, want COMPLETED", got["ATTENDEES_SYNC"])
+	}
+	if got["is_shop_enabled"] != "0" {
+		t.Errorf("is_shop_enabled = %q, want 0 -- the flag itself is unchanged by the bypass", got["is_shop_enabled"])
+	}
+	if got[ShopHiddenKey] != "0" {
+		t.Errorf("%s = %q, want the synthesised default to survive redaction", ShopHiddenKey, got[ShopHiddenKey])
+	}
+}
+
+// Redaction reuses the input slice's backing array, so a caller that reads the
+// rows after redact() must not find a survivor overwritten or duplicated.
+func TestRedactPreservesTheSurvivingRowsInOrder(t *testing.T) {
+	in := []models.AppConfig{
+		{Key: "a", Value: "1"},
+		{Key: features.GateBypassEmailsKey, Value: "tester@wso2.com"},
+		{Key: "b", Value: "2"},
+		{Key: "c", Value: "3"},
+	}
+
+	got := redact(in)
+
+	want := []struct{ key, value string }{{"a", "1"}, {"b", "2"}, {"c", "3"}}
+	if len(got) != len(want) {
+		t.Fatalf("redact returned %d rows, want %d: %+v", len(got), len(want), got)
+	}
+	for i, w := range want {
+		if got[i].Key != w.key || got[i].Value != w.value {
+			t.Errorf("row %d = %s/%s, want %s/%s", i, got[i].Key, got[i].Value, w.key, w.value)
+		}
+	}
+}
