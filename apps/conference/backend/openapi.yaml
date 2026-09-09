@@ -1583,10 +1583,10 @@ components:
         trackId: { type: string, format: uuid }
         colorToken:
           type: string
-          enum: [red, yellow, green, blue, purple, dark-blue, main]
+          enum: [red, orange, yellow, green, blue, purple, dark-blue, main]
           description: >-
             Names which colour the session is, without saying what that colour
-            looks like — the client owns the seven values and can define a
+            looks like — the client owns the eight values and can define a
             different one per light/dark appearance. This is the only colour
             field the API publishes; the trackColor/roomColor hexes it replaced
             were each one fixed value a theme could not reinterpret. Resolved
@@ -1716,7 +1716,7 @@ components:
         roomName: { type: string, description: "Absent when the session has no room." }
         colorToken:
           type: string
-          enum: [red, yellow, green, blue, purple, dark-blue, main]
+          enum: [red, orange, yellow, green, blue, purple, dark-blue, main]
           description: >-
             Mirrors Session.colorToken exactly — the name of the session's
             colour, resolved by the same room → track → "main" chain, so a

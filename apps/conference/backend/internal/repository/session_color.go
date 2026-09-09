@@ -21,7 +21,7 @@ package repository
 //
 // One field reaches a client: colorToken -- a name from a small closed set
 // ("red", "main", …). It says *which* colour the session is and nothing about
-// what that colour looks like, so the app owns the seven values and can define
+// what that colour looks like, so the app owns the eight values and can define
 // a different one per light/dark appearance. A hex cannot do that: it is one
 // fixed value the client has no licence to reinterpret, which is why the
 // trackColor/roomColor hex fields this replaced could never theme, and why they
@@ -65,6 +65,14 @@ const ColorTokenDefault = "main"
 // client.
 //
 // Published as the openapi enum for Session.colorToken and
-// SpeakerSession.colorToken, and mirrored by the CHECK constraints upstream 027
-// puts on rooms.color_token / tracks.color_token; keep all three in step.
-var ColorTokens = []string{"red", "yellow", "green", "blue", "purple", "dark-blue", "main"}
+// SpeakerSession.colorToken, and mirrored by the CHECK constraints on
+// rooms.color_token / tracks.color_token -- originally upstream 027's seven,
+// widened to eight by upstream 030; keep all three in step.
+//
+// "orange" is the one name that is not from the microapp's original map. It was
+// added for WSO2Con Hollywood's "Orange Room", whose 16 sessions had been
+// squatting on "red" because no closer name existed -- and Hollywood also has a
+// separate Yellow Room, so neither neighbour was free to borrow. Ordered here by
+// hue rather than alphabetically, so the slice reads as a spectrum with the
+// achromatic default last.
+var ColorTokens = []string{"red", "orange", "yellow", "green", "blue", "purple", "dark-blue", "main"}

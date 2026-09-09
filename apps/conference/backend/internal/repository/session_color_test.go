@@ -130,7 +130,7 @@ func TestColorTokenSQLUsesTheCachedCapability(t *testing.T) {
 // (agenda-organizer migration 027) -- a token the database accepts and this
 // list omits would reach a client unannounced.
 func TestColorTokensMatchThePublishedSet(t *testing.T) {
-	want := []string{"red", "yellow", "green", "blue", "purple", "dark-blue", "main"}
+	want := []string{"red", "orange", "yellow", "green", "blue", "purple", "dark-blue", "main"}
 	if len(ColorTokens) != len(want) {
 		t.Fatalf("ColorTokens = %v, want %v", ColorTokens, want)
 	}
