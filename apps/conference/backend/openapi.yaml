@@ -953,6 +953,17 @@ paths:
         plus coming-soon copy); a shop can be enabled and still hidden. It is
         deliberately not spelled `is_shop_<x>_enabled`, so that it is not
         picked up as a feature flag.
+        One key is stored but deliberately never returned:
+        `feature_gate_bypass_emails`, the allowlist of callers whose requests
+        reach a switched-off feature's routes instead of the 503 the feature
+        gate would otherwise answer. Its value is a list of real email
+        addresses and this endpoint answers every authenticated attendee, so
+        the handler drops the row rather than blanking it -- a client sees the
+        key exactly the way it already sees an unseeded one, and nothing on the
+        client reads it. Inspect it with SQL. It changes no value here: a
+        feature the allowlist opens up still reports
+        `is_<feature>_enabled: "0"`, which is the point -- the screen stays
+        hidden for everybody while the endpoints answer the listed callers.
       responses:
         "200":
           description: "OK"

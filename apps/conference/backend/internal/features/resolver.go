@@ -78,6 +78,11 @@ type State struct {
 type snapshot struct {
 	states map[Feature]State
 	gates  GateMap
+	// bypass is the set of case-folded addresses from GateBypassEmailsKey
+	// that are served a disabled feature anyway. Part of the snapshot, and
+	// not a field of its own, for the same reason gates is: a gate decision
+	// must not mix a new allowlist with an old flag.
+	bypass map[string]struct{}
 }
 
 // Resolver answers "is this feature on" and "which feature owns this route"
@@ -124,7 +129,11 @@ func defaultSnapshot() *snapshot {
 			Message: d.DefaultMessage,
 		}
 	}
-	return &snapshot{states: states, gates: DefaultGateMap()}
+	// No compiled-in bypass list. Unlike the flags and the gate map, whose
+	// defaults keep an unseeded database serving the app this build was
+	// tested against, a default here would name a person -- and an address
+	// baked into a binary is one nobody can revoke with an UPDATE.
+	return &snapshot{states: states, gates: DefaultGateMap(), bypass: nil}
 }
 
 // featureFromEnabledKey extracts "agenda" from "is_agenda_enabled". It is how
@@ -219,6 +228,13 @@ func apply(rows []models.AppConfig) *snapshot {
 		if gates, parsed := parseGateMap(raw); parsed {
 			out.gates = gates
 		}
+	}
+
+	// Unlike the mapping above there is no malformed case to fall back
+	// from: parseBypassEmails cannot fail, and a value it makes nothing of
+	// yields an empty set, which is the same posture as an absent row.
+	if raw, ok := byKey[GateBypassEmailsKey]; ok {
+		out.bypass = parseBypassEmails(raw)
 	}
 
 	return out

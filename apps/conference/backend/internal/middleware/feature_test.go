@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -28,12 +29,47 @@ import (
 	"wso2-coin-backend/internal/features"
 )
 
-// stubGate answers from a fixed table keyed by "<METHOD> <route>".
+// stubGate answers from a fixed table keyed by "<METHOD> <route>". It lets
+// nobody past a closed gate; bypassGate wraps it for the cases that do.
 type stubGate map[string]features.State
 
 func (s stubGate) Gate(_ context.Context, method, routePattern string) (features.State, bool) {
 	st, ok := s[method+" "+routePattern]
 	return st, ok
+}
+
+func (s stubGate) BypassesGates(context.Context, string) bool { return false }
+
+// bypassGate is a stubGate whose allowlist holds exactly the addresses in
+// allow, compared the way the real resolver compares them: case-folded, and
+// never matching the empty string.
+type bypassGate struct {
+	stubGate
+	allow []string
+}
+
+func (b bypassGate) BypassesGates(_ context.Context, email string) bool {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if email == "" {
+		return false
+	}
+	for _, a := range b.allow {
+		if strings.ToLower(a) == email {
+			return true
+		}
+	}
+	return false
+}
+
+// getAs issues a GET whose request context carries an authenticated caller,
+// the way Auth leaves it for FeatureGate on the same group. An empty email
+// stands for a token that verified but carried no email claim.
+func getAs(r *gin.Engine, path, email string) *httptest.ResponseRecorder {
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	req = req.WithContext(WithUserInfo(req.Context(), &UserInfo{Email: email}))
+	r.ServeHTTP(w, req)
+	return w
 }
 
 func newFeatureTestRouter(t *testing.T, gate FeatureGateResolver) *gin.Engine {
@@ -153,5 +189,78 @@ func TestFeatureGate_RefusalIsNotGivenAnETag(t *testing.T) {
 	}
 	if etag := w.Header().Get("ETag"); etag != "" {
 		t.Errorf("ETag = %q, want none on a refusal", etag)
+	}
+}
+
+// The point of the whole change: the flag stays off -- so every microapp keeps
+// hiding the screen -- and the listed caller still reaches the endpoint.
+func TestFeatureGate_AllowlistedCallerIsServedADisabledFeature(t *testing.T) {
+	r := newFeatureTestRouter(t, bypassGate{
+		stubGate: stubGate{
+			"GET /speakers": {Feature: features.Speakers, Enabled: false, Message: "later"},
+		},
+		allow: []string{"tester@wso2.com"},
+	})
+
+	w := getAs(r, "/speakers", "tester@wso2.com")
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d for an allowlisted caller", w.Code, http.StatusOK)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshalling body: %v", err)
+	}
+	if body["ok"] != true {
+		t.Errorf("body = %v, want the handler's own response", body)
+	}
+}
+
+// The bypass is per caller, so it must not relax the gate for anyone else.
+func TestFeatureGate_UnlistedCallerStillGets503(t *testing.T) {
+	r := newFeatureTestRouter(t, bypassGate{
+		stubGate: stubGate{
+			"GET /speakers": {Feature: features.Speakers, Enabled: false, Message: "later"},
+		},
+		allow: []string{"tester@wso2.com"},
+	})
+
+	if w := getAs(r, "/speakers", "attendee@example.com"); w.Code != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want %d for a caller not on the list", w.Code, http.StatusServiceUnavailable)
+	}
+}
+
+// A request with no UserInfo in its context -- FeatureGate registered without
+// Auth in front of it -- must deny rather than consult the allowlist with an
+// empty address.
+func TestFeatureGate_UnidentifiedCallerIsNotBypassed(t *testing.T) {
+	r := newFeatureTestRouter(t, bypassGate{
+		stubGate: stubGate{
+			"GET /speakers": {Feature: features.Speakers, Enabled: false, Message: "later"},
+		},
+		// An allowlist that would match an empty email if it were consulted.
+		allow: []string{""},
+	})
+
+	if w := get(r, "/speakers"); w.Code != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want %d with no authenticated caller", w.Code, http.StatusServiceUnavailable)
+	}
+}
+
+// An enabled feature is not affected by the allowlist either way, and an
+// allowlisted caller on an ungated route is an ordinary request.
+func TestFeatureGate_AllowlistDoesNotChangeAnOpenRoute(t *testing.T) {
+	r := newFeatureTestRouter(t, bypassGate{
+		stubGate: stubGate{
+			"GET /speakers": {Feature: features.Speakers, Enabled: true},
+		},
+		allow: []string{"tester@wso2.com"},
+	})
+
+	if w := getAs(r, "/speakers", "tester@wso2.com"); w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+	if w := getAs(r, "/events/current", "tester@wso2.com"); w.Code != http.StatusOK {
+		t.Errorf("ungated route status = %d, want %d", w.Code, http.StatusOK)
 	}
 }
