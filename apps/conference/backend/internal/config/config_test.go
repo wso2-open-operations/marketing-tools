@@ -28,7 +28,7 @@ func clearEnv(t *testing.T) {
 	keys := []string{
 		"DB_HOST", "DB_PORT", "DB_USER", "DB_PASSWORD", "DB_NAME", "DB_SCHEMA", "DB_SSLMODE",
 		"PORT", "LOG_LEVEL", "APP_ENV",
-		"TOKEN_VALIDATOR_ENABLED", "JWKS_ENDPOINT", "JWT_ISSUER", "JWT_AUDIENCE", "RBAC_ADMIN_ROLES", "AI_ADMIN_ROLES",
+		"TOKEN_VALIDATOR_ENABLED", "JWKS_ENDPOINT", "JWT_ISSUER", "JWT_AUDIENCE", "RBAC_ADMIN_ROLES", "AI_ADMIN_ROLES", "NOTIFICATION_ADMIN_ROLES",
 		"EXCLUDE_EMPLOYEE_COIN_ALLOCATION", "ENABLE_QR_VALIDATIONS", "SESSION_END_TIME_OFFSET_MINUTES", "SESSION_SLOT_MINUTES",
 		"QR_PORTAL_ENDPOINT", "QR_PORTAL_TOKEN_URL", "QR_PORTAL_CLIENT_ID", "QR_PORTAL_CLIENT_SECRET",
 		"WALLET_ENDPOINT", "WALLET_TOKEN_URL", "WALLET_CLIENT_ID", "WALLET_CLIENT_SECRET",
@@ -179,6 +179,51 @@ func TestLoad_AIAdminRolesUnsetIsNil(t *testing.T) {
 
 	if cfg.AIAdminRoles != nil {
 		t.Errorf("expected AIAdminRoles nil when AI_ADMIN_ROLES unset, got %v", cfg.AIAdminRoles)
+	}
+}
+
+func TestLoad_NotificationAdminRolesParsedAsList(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("NOTIFICATION_ADMIN_ROLES", "app-push-notification-admin, push-admin-prod ,other")
+
+	cfg := Load()
+
+	want := []string{"app-push-notification-admin", "push-admin-prod", "other"}
+	if len(cfg.NotificationAdminRoles) != len(want) {
+		t.Fatalf("expected %d notification admin roles, got %d (%v)", len(want), len(cfg.NotificationAdminRoles), cfg.NotificationAdminRoles)
+	}
+	for i, w := range want {
+		if cfg.NotificationAdminRoles[i] != w {
+			t.Errorf("NotificationAdminRoles[%d] = %q, want %q", i, cfg.NotificationAdminRoles[i], w)
+		}
+	}
+}
+
+func TestLoad_NotificationAdminRolesUnsetIsNil(t *testing.T) {
+	clearEnv(t)
+
+	cfg := Load()
+
+	if cfg.NotificationAdminRoles != nil {
+		t.Errorf("expected NotificationAdminRoles nil when NOTIFICATION_ADMIN_ROLES unset, got %v", cfg.NotificationAdminRoles)
+	}
+}
+
+// The broadcast list is its own variable, so populating the general event-admin
+// list must not entitle anybody to push. This is the whole point of the split
+// and the one behaviour a future refactor is most likely to collapse by
+// accident.
+func TestLoad_NotificationAdminRolesIndependentOfRBACAdminRoles(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("RBAC_ADMIN_ROLES", "event-admin-stg,app-con-registrant-admin")
+
+	cfg := Load()
+
+	if cfg.NotificationAdminRoles != nil {
+		t.Errorf("RBAC_ADMIN_ROLES leaked into NotificationAdminRoles: %v", cfg.NotificationAdminRoles)
+	}
+	if len(cfg.AdminRoles) != 2 {
+		t.Fatalf("expected RBAC_ADMIN_ROLES to still load, got %v", cfg.AdminRoles)
 	}
 }
 

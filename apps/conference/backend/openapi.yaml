@@ -1476,12 +1476,17 @@ paths:
       tags: [notifications]
       summary: Broadcast a push notification to every attendee (admin only)
       description: >
-        Restricted to callers in one of the configured admin groups
-        (RBAC_ADMIN_ROLES); the frontend hides its trigger UI behind the same
-        check, but this group check is the real gate. Delivery is delegated
-        wholesale to the external notification service, so there is no
-        per-recipient status and the response carries no body -- treat any 2xx as
-        sent.
+        Restricted to callers holding one of NOTIFICATION_ADMIN_ROLES, matched
+        against both the `groups` and the `roles` claim. That is deliberately
+        its own allow-list and not RBAC_ADMIN_ROLES: a broadcast reaches every
+        attendee's device, cannot be recalled once the notification service has
+        accepted it, and exposes no per-recipient status afterwards, so it is a
+        narrower entitlement than general event administration. An empty list
+        denies every caller. The frontend hides its trigger UI behind its own
+        role check, but this one is the real gate -- if the two disagree, the
+        button appears and the call answers 403. Delivery is delegated wholesale
+        to the external notification service, so there is no per-recipient
+        status and the response carries no body -- treat any 2xx as sent.
       requestBody:
         required: true
         content:
@@ -1505,7 +1510,10 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
         "403":
-          description: "The caller is not in any configured admin group."
+          description: >-
+            The caller holds none of NOTIFICATION_ADMIN_ROLES. Holding an
+            RBAC_ADMIN_ROLES entry is not sufficient, and an unconfigured
+            allow-list answers 403 to everyone rather than falling open.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
