@@ -219,6 +219,9 @@ type Config struct {
 	// Notification is the external WSO2 notification service that fans a
 	// broadcast out to attendees' devices. This backend never talks to FCM
 	// itself -- it hands the recipient list to that service and stops there.
+	//
+	// Optional as a block and all-or-nothing within it -- see
+	// validateNotification.
 	Notification ExternalServiceConfig
 
 	// ShopMasterWalletAddress is the merchant wallet that shop payments must be
@@ -403,11 +406,16 @@ func Load() Config {
 			From: os.Getenv("EMAIL_FROM"),
 		},
 		Notification: ExternalServiceConfig{
-			Endpoint: os.Getenv("NOTIFICATION_ENDPOINT"),
+			// Trimmed like the AI credentials below, and for the same reasons:
+			// validateNotification's all-or-nothing rule only means anything if
+			// a whitespace-only value reads as unset to it and to the client
+			// alike, and a secret pasted into a Choreo config field keeps its
+			// trailing newline.
+			Endpoint: strings.TrimSpace(os.Getenv("NOTIFICATION_ENDPOINT")),
 			OAuth: OAuthClientConfig{
-				TokenURL:     os.Getenv("NOTIFICATION_TOKEN_URL"),
-				ClientID:     os.Getenv("NOTIFICATION_CLIENT_ID"),
-				ClientSecret: os.Getenv("NOTIFICATION_CLIENT_SECRET"),
+				TokenURL:     strings.TrimSpace(os.Getenv("NOTIFICATION_TOKEN_URL")),
+				ClientID:     strings.TrimSpace(os.Getenv("NOTIFICATION_CLIENT_ID")),
+				ClientSecret: strings.TrimSpace(os.Getenv("NOTIFICATION_CLIENT_SECRET")),
 				Scopes:       parseList(os.Getenv("NOTIFICATION_SCOPES")),
 			},
 		},
@@ -572,6 +580,43 @@ func (c Config) Validate() error {
 	}
 	if err := c.validateAIAgent(); err != nil {
 		return err
+	}
+	if err := c.validateNotification(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// validateNotification rejects a half-configured notification integration.
+//
+// The four values are all-or-nothing. Three of four is never a working
+// deployment: the client builds its OAuth2 client-credentials grant from the
+// token URL, id and secret together, so a missing one produces either no
+// Authorization header or an unusable one, and the push gateway answers 401
+// either way -- the broadcast handler surfaces that as a generic failure with
+// nothing naming the absent variable.
+//
+// All four empty stays legal, and is not merely tolerated but expected: not
+// every deployment broadcasts, and one that never calls POST
+// /users/notifications has nothing to configure. This is why the check cannot
+// simply require the block outright.
+//
+// Nor can it key off the feature flag the way validateAIAgent keys off the
+// AI_ENABLED_* flags. `is_notifications_enabled` lives in the app_config table
+// (migrations/015_feature_flags.sql seeds it to '1'), not in the environment,
+// so it is not readable here -- a flag that is on by default over a block that
+// is empty by default is exactly the gap this rule cannot close, and the
+// all-or-nothing shape is what is left.
+func (c Config) validateNotification() error {
+	n := c.Notification
+	set := 0
+	for _, v := range []string{n.Endpoint, n.OAuth.TokenURL, n.OAuth.ClientID, n.OAuth.ClientSecret} {
+		if v != "" {
+			set++
+		}
+	}
+	if set != 0 && set != 4 {
+		return errors.New("NOTIFICATION_ENDPOINT, NOTIFICATION_TOKEN_URL, NOTIFICATION_CLIENT_ID and NOTIFICATION_CLIENT_SECRET must be set together, or all left empty")
 	}
 	return nil
 }

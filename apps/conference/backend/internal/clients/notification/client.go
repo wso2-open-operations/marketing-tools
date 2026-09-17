@@ -27,8 +27,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
+	"regexp"
 	"time"
 
 	"golang.org/x/oauth2"
@@ -53,6 +55,29 @@ const (
 	eventType = "attendee_notification"
 	source    = "wso2con"
 )
+
+// uuidPattern matches the textual, hyphenated form of a UUID -- the same
+// pattern the handlers and repository packages use for ids bound for UUID
+// columns.
+//
+// Here it is a safety gate rather than a validation convenience. The
+// notification service classifies every recipient string it receives
+// (push-notification-service/internal/services/event/service.go): an email
+// goes to that address, a UUID goes to that user, and anything that is
+// *neither* falls through to a default case that treats the string as a GROUP
+// NAME and resolves it via CollectFCMTokens against the super-app backend --
+// delivering to everyone in that group. There is no error for an unrecognised
+// recipient; the fan-out is silent.
+//
+// The recipient list this client is handed comes from
+// AttendeeProfileRepo.ListAllUUIDs, i.e. SELECT DISTINCT idp_uuid FROM
+// attendees. attendees.idp_uuid is a `text` column, not `uuid`, so nothing in
+// the schema stops a malformed or hand-edited row from sitting in it. One such
+// row is all it takes to turn a targeted broadcast into an unbounded one, and
+// this check is the only thing standing between the two -- so filter here, at
+// the last point before the payload is built, rather than trusting any
+// caller's list.
+var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 // Client is an HTTP client for the external notification service.
 type Client struct {
@@ -108,7 +133,33 @@ type eventRequest struct {
 // fan-out, so there is no partial success to report: it either delivers to the
 // service or it doesn't. Passing an empty recipients list is a no-op rather
 // than a request, since a broadcast to nobody has nothing to deliver.
+//
+// Recipients that are not syntactically valid UUIDs are dropped before the
+// payload is built -- see uuidPattern for why sending one is dangerous rather
+// than merely useless. Dropping is deliberately silent as far as the caller is
+// concerned: the alternative, failing the whole broadcast on one bad row,
+// would let a single malformed attendee record block every conference-wide
+// push, and the handler has no way to repair the row anyway. The drop is
+// recorded in the logs instead.
 func (c *Client) SendAttendeeNotification(ctx context.Context, senderUUID string, recipients []string, title, body string) error {
+	recipients, dropped := filterUUIDRecipients(recipients)
+	if dropped > 0 {
+		// Only the count is logged, never the discarded values. A dropped
+		// recipient is by definition *not* an opaque UUID -- it is whatever
+		// ended up in that text column, which could be an email address or
+		// free text typed by a human -- so unlike the attendee UUIDs this
+		// codebase logs freely ("sender", "speakerId") these strings can carry
+		// PII. Warn level, because a malformed row is a data problem someone
+		// has to go and fix, not routine traffic.
+		slog.WarnContext(ctx,
+			"notification: dropped recipients that are not valid UUIDs; downstream reads a non-UUID recipient as a group name and fans out to that whole group",
+			"dropped", dropped, "kept", len(recipients))
+	}
+
+	// An all-invalid list lands here exactly as an empty one does, and that is
+	// the point: filtering must never be able to turn a broadcast that would
+	// have reached nobody into one that reaches everybody. No recipients, no
+	// request.
 	if len(recipients) == 0 {
 		return nil
 	}
@@ -152,4 +203,28 @@ func (c *Client) SendAttendeeNotification(ctx context.Context, senderUUID string
 	// The service answers with {event_id, message}; nothing downstream needs
 	// either, and the handler returns no body, so the response is discarded.
 	return nil
+}
+
+// filterUUIDRecipients returns the recipients that are syntactically valid
+// UUIDs, in their original order, along with how many were discarded. It
+// allocates only when something actually has to be dropped, which is the
+// expected case for a list of several thousand attendees.
+func filterUUIDRecipients(recipients []string) ([]string, int) {
+	dropped := 0
+	for _, r := range recipients {
+		if !uuidPattern.MatchString(r) {
+			dropped++
+		}
+	}
+	if dropped == 0 {
+		return recipients, 0
+	}
+
+	kept := make([]string, 0, len(recipients)-dropped)
+	for _, r := range recipients {
+		if uuidPattern.MatchString(r) {
+			kept = append(kept, r)
+		}
+	}
+	return kept, dropped
 }

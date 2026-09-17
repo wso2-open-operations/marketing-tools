@@ -1492,7 +1492,8 @@ paths:
         "400":
           description: >-
             Malformed body, a missing or whitespace-only `title`, or a `title` or
-            `description` past its length bound. Lengths count runes, not bytes.
+            `description` past its length bound. Lengths count bytes, not runes
+            -- non-ASCII text fits proportionally fewer characters.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -2902,11 +2903,17 @@ components:
       description: >-
         POST /users/notifications body. `title` is required and trimmed
         server-side; a whitespace-only title counts as missing. Lengths are
-        measured in runes, not bytes, so a non-ASCII title is not rejected early.
+        measured in UTF-8 bytes, not runes, because the downstream push service
+        enforces the same byte caps to stay inside FCM's 4 KB payload limit --
+        so a non-ASCII title (Sinhala, Tamil, an emoji) fits proportionally
+        fewer characters. JSON Schema's `maxLength` counts characters and has
+        no byte-length equivalent, so the numbers below state the byte budget
+        the server actually enforces; treat them as an upper bound on
+        characters, not a promise that that many will fit.
       required: [title]
       properties:
-        title: { type: string, minLength: 1, maxLength: 200, description: "Trimmed server-side; at most 200 runes." }
-        description: { type: string, maxLength: 1024, description: "Optional body; at most 1024 runes." }
+        title: { type: string, minLength: 1, maxLength: 200, description: "Trimmed server-side; at most 200 UTF-8 bytes." }
+        description: { type: string, maxLength: 1000, description: "Optional body; at most 1000 UTF-8 bytes." }
     ConferenceQrCodesResponse:
       type: object
       description: >-

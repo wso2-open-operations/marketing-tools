@@ -40,7 +40,7 @@ import (
 // The value is addresses separated by commas, semicolons or newlines --
 // whatever a human editing the row by hand reaches for:
 //
-//	'visalr@wso2.com, someone.else@wso2.com'
+//	'someone@wso2.com, someone.else@wso2.com'
 //
 // Matching is against the JWT `email` claim, case-folded, because no IdP in
 // front of this service treats an address as case-sensitive even though the

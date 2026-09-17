@@ -430,7 +430,7 @@ func TestNewClient_SetsTimeoutOnOAuthBranch(t *testing.T) {
 	c := NewClient(config.AIAgentConfig{
 		ServiceURL: "https://ai.example.com",
 		OAuth: config.OAuthClientConfig{
-			TokenURL:     "https://api.asgardeo.io/t/wso2/oauth2/token",
+			TokenURL:     "https://auth.example.com/token",
 			ClientID:     "ai-client",
 			ClientSecret: "ai-secret",
 		},
@@ -450,7 +450,7 @@ func TestNewClient_SetsTimeoutOnOAuthBranch(t *testing.T) {
 // checked.
 func TestNewClient_NonPositiveTimeoutFallsBackToDefault(t *testing.T) {
 	behindGateway := config.OAuthClientConfig{
-		TokenURL:     "https://api.asgardeo.io/t/wso2/oauth2/token",
+		TokenURL:     "https://auth.example.com/token",
 		ClientID:     "ai-client",
 		ClientSecret: "ai-secret",
 	}

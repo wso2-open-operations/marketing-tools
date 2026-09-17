@@ -36,6 +36,14 @@ schemaVersion: 1.2
 # and AI_TOKEN_URL all three or none -- a partial set fails at startup.
 # AI_SERVICE_URL is separate from that rule and is always required.
 #
+# The admin broadcast (POST /users/notifications) needs both of the following.
+# One gates who may call the route; the other is how this backend reaches the
+# service that delivers the push:
+#   RBAC_ADMIN_ROLES   comma-separated JWT `groups` values allowed to broadcast.
+#                      Empty DENIES every caller rather than allowing every
+#                      caller, so an unset value looks like a broken route, not
+#                      an open one.
+#
 # The admin AI-management routes gate on their own group list, kept separate from
 # RBAC_ADMIN_ROLES because they write into every attendee's recommendations and
 # con-ai enforces no authorisation of its own -- this list is the only gate:
@@ -44,6 +52,31 @@ schemaVersion: 1.2
 #                      engineers, GET /admin/o2bar/engineers/exists) and attendee
 #                      AI profiles (POST/GET/PATCH/DELETE /admin/ai-profiles, GET
 #                      /admin/ai-profiles/exists). Empty DENIES every caller.
+#   NOTIFICATION_ENDPOINT        push-notification-gateway-api's Choreo URL,
+#                                version suffix included -- e.g. staging's
+#                                https://apis-stg.wso2.com/urwb/push-notification-gateway/v1.0
+#                                This is the Public component that fronts the
+#                                Organization-visibility push-notification-
+#                                service; it is NOT the notification service's
+#                                own URL.
+#   NOTIFICATION_TOKEN_URL       Asgardeo token endpoint, as above
+#   NOTIFICATION_CLIENT_ID       OAuth2 client whose id is on the gateway's
+#                                ALLOWED_CLIENT_IDS list -- that gateway
+#                                authorises by reading the `client_id` claim of
+#                                the inbound Bearer token, so a valid token from
+#                                an unlisted client is still rejected
+#   NOTIFICATION_CLIENT_SECRET
+#   NOTIFICATION_SCOPES          comma-separated; unlike the wallet/QR-portal/
+#                                transaction integrations, this IdP client needs
+#                                its scopes requested explicitly
+# Set NOTIFICATION_ENDPOINT, NOTIFICATION_TOKEN_URL, NOTIFICATION_CLIENT_ID and
+# NOTIFICATION_CLIENT_SECRET all four or none -- a partial set fails at startup.
+# NOTIFICATION_SCOPES sits outside that rule: it is never validated, which does
+# not make it dispensable. All four empty still boots, because a deployment that
+# never broadcasts has nothing to configure. Note that the `notifications` feature
+# flag defaults to ON (it is seeded '1' in the app_config table, not set here),
+# so an environment that leaves this block empty still advertises the feature
+# and fails the call.
 #
 # This file carries these as comments only: it declares no `configurations:`
 # entries, so nothing here sets the variables. They must still be entered by

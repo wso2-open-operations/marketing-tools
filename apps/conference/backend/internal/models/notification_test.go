@@ -33,19 +33,31 @@ func TestUserNotificationRequest_Validate(t *testing.T) {
 		{"whitespace-only title", "   \t\n ", "body", "title is required"},
 		{"empty description is allowed", "title", "", ""},
 
-		{"title at limit", strings.Repeat("a", NotificationTitleMaxLen), "", ""},
-		{"title over limit", strings.Repeat("a", NotificationTitleMaxLen+1), "", "title exceeds the maximum length"},
-		{"description at limit", "title", strings.Repeat("a", NotificationBodyMaxLen), ""},
-		{"description over limit", "title", strings.Repeat("a", NotificationBodyMaxLen+1), "description exceeds the maximum length"},
+		// ASCII: one byte per character, so the byte boundary and the character
+		// boundary coincide. These pin the exact limit and one byte past it.
+		{"title at byte limit", strings.Repeat("a", NotificationTitleMaxBytes), "", ""},
+		{"title one byte over limit", strings.Repeat("a", NotificationTitleMaxBytes+1), "", "title exceeds the maximum length"},
+		{"description at byte limit", "title", strings.Repeat("a", NotificationBodyMaxBytes), ""},
+		{"description one byte over limit", "title", strings.Repeat("a", NotificationBodyMaxBytes+1), "description exceeds the maximum length"},
 
-		// Multi-byte input must be counted in runes: each of these is well
-		// over the byte limit while sitting exactly on the rune limit.
-		{"multi-byte title at limit", strings.Repeat("ම", NotificationTitleMaxLen), "", ""},
-		{"multi-byte title over limit", strings.Repeat("ම", NotificationTitleMaxLen+1), "", "title exceeds the maximum length"},
-		{"emoji title at limit", strings.Repeat("🎉", NotificationTitleMaxLen), "", ""},
-		{"emoji title over limit", strings.Repeat("🎉", NotificationTitleMaxLen+1), "", "title exceeds the maximum length"},
-		{"multi-byte description at limit", "title", strings.Repeat("ම", NotificationBodyMaxLen), ""},
-		{"multi-byte description over limit", "title", strings.Repeat("ම", NotificationBodyMaxLen+1), "description exceeds the maximum length"},
+		// Multi-byte input must be counted in BYTES, matching the downstream
+		// wso2con handler's len() check and FCM's 4 KB byte budget. Each of
+		// these Sinhala/emoji cases sits at or under the *rune* limit and so
+		// used to be accepted here -- and was then rejected downstream, turning
+		// a clean 400 into a 500 for the admin.
+		{"multi-byte title within the rune limit but over the byte limit", strings.Repeat("ම", NotificationTitleMaxBytes), "", "title exceeds the maximum length"},
+		{"emoji title within the rune limit but over the byte limit", strings.Repeat("🎉", NotificationTitleMaxBytes), "", "title exceeds the maximum length"},
+		{"multi-byte description within the rune limit but over the byte limit", "title", strings.Repeat("ම", NotificationBodyMaxBytes), "description exceeds the maximum length"},
+
+		// The byte boundary itself, reached with multi-byte runes: "ම" is 3
+		// bytes and "🎉" is 4, so these land exactly on the cap (66*3 = 198,
+		// plus two ASCII bytes = 200) and exactly one byte past it.
+		{"multi-byte title exactly at the byte limit", strings.Repeat("ම", 66) + "aa", "", ""},
+		{"multi-byte title one byte over the byte limit", strings.Repeat("ම", 66) + "aaa", "", "title exceeds the maximum length"},
+		{"emoji title exactly at the byte limit", strings.Repeat("🎉", 50), "", ""},
+		{"emoji title one byte over the byte limit", strings.Repeat("🎉", 50) + "a", "", "title exceeds the maximum length"},
+		{"multi-byte description exactly at the byte limit", "title", strings.Repeat("ම", 333) + "a", ""},
+		{"multi-byte description one byte over the byte limit", "title", strings.Repeat("ම", 333) + "aa", "description exceeds the maximum length"},
 	}
 
 	for _, tt := range tests {
@@ -75,7 +87,7 @@ func TestUserNotificationRequest_ValidateTrimsInPlace(t *testing.T) {
 // Surrounding whitespace must not push an otherwise-valid title over the
 // limit, since trimming happens before the length check.
 func TestUserNotificationRequest_ValidateTrimsBeforeLengthCheck(t *testing.T) {
-	req := UserNotificationRequest{Title: "  " + strings.Repeat("a", NotificationTitleMaxLen) + "  "}
+	req := UserNotificationRequest{Title: "  " + strings.Repeat("a", NotificationTitleMaxBytes) + "  "}
 
 	if got := req.Validate(); got != "" {
 		t.Errorf("Validate() = %q, want no problem", got)
