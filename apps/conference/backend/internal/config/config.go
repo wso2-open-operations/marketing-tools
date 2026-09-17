@@ -168,10 +168,29 @@ type Config struct {
 	// and /admin/ai-profiles* routes). Kept separate from AdminRoles because
 	// these routes write into every attendee's recommendations -- con-ai
 	// performs no authorisation of its own, so this list is the only gate --
-	// and that is a narrower trust than the notification broadcast. Empty
+	// and that is a narrower trust than general event administration. Empty
 	// DENIES every caller rather than opening the routes up, so an unset value
 	// looks like a closed route, not an open one.
 	AIAdminRoles []string
+
+	// NotificationAdminRoles is the allow-list of JWT `groups`/`roles`
+	// permitted to broadcast a push to every attendee (POST
+	// /users/notifications).
+	//
+	// Kept separate from AdminRoles for the same reason AIAdminRoles is. A
+	// broadcast reaches every attendee's lock screen, cannot be recalled once
+	// the notification service has accepted it, and there is no per-recipient
+	// status to inspect afterwards -- the only irreversible, externally-visible
+	// action this backend exposes. RBAC_ADMIN_ROLES is the general event-admin
+	// list and grants things like the coin-allocation view; entitling that
+	// whole population to push to every device is wider than the action
+	// deserves, and wider than any of them would expect.
+	//
+	// Empty DENIES every caller. That is the same fail-closed posture as
+	// AIAdminRoles and it is load-bearing here: this list is the only thing
+	// between an authenticated attendee and a conference-wide push, so an
+	// unset variable has to read as a closed route rather than an open one.
+	NotificationAdminRoles []string
 
 	// WSO2 Coin / O2C feature flags
 	ExcludeEmployeeCoinAllocation bool
@@ -353,12 +372,13 @@ func Load() Config {
 		LogLevel:   logLevel,
 		AppEnv:     appEnv,
 
-		JWKSEndpoint:          os.Getenv("JWKS_ENDPOINT"),
-		Issuer:                os.Getenv("JWT_ISSUER"),
-		Audiences:             parseList(os.Getenv("JWT_AUDIENCE")),
-		TokenValidatorEnabled: tokenValidatorEnabled,
-		AdminRoles:            parseList(os.Getenv("RBAC_ADMIN_ROLES")),
-		AIAdminRoles:          parseList(os.Getenv("AI_ADMIN_ROLES")),
+		JWKSEndpoint:           os.Getenv("JWKS_ENDPOINT"),
+		Issuer:                 os.Getenv("JWT_ISSUER"),
+		Audiences:              parseList(os.Getenv("JWT_AUDIENCE")),
+		TokenValidatorEnabled:  tokenValidatorEnabled,
+		AdminRoles:             parseList(os.Getenv("RBAC_ADMIN_ROLES")),
+		AIAdminRoles:           parseList(os.Getenv("AI_ADMIN_ROLES")),
+		NotificationAdminRoles: parseList(os.Getenv("NOTIFICATION_ADMIN_ROLES")),
 
 		ExcludeEmployeeCoinAllocation:    excludeEmployeeCoinAllocation,
 		EnableQrValidations:              enableQrValidations,

@@ -197,7 +197,7 @@ func main() {
 	favoritesHandler := handlers.NewFavoritesHandler(favoritesRepo)
 	feedbackHandler := handlers.NewFeedbackHandler(feedbackRepo, eventRepo)
 	appConfigHandler := handlers.NewAppConfigHandler(appConfigRepo, featureResolver, cfg.ShopMasterWalletAddress)
-	notificationHandler := handlers.NewNotificationHandler(attendeeProfileRepo, notificationClient, cfg.AdminRoles)
+	notificationHandler := handlers.NewNotificationHandler(attendeeProfileRepo, notificationClient, cfg.NotificationAdminRoles)
 	activityHandler := handlers.NewActivityHandler(activityRepo)
 	shopHandler := handlers.NewShopHandler(shopService)
 	walletHandler := handlers.NewWalletHandler(walletClient, transactionClient)
@@ -313,7 +313,9 @@ func main() {
 
 		api.POST("/feedback", feedbackHandler.Create)
 
-		// Admin-gated broadcast: restricted to RBAC_ADMIN_ROLES groups.
+		// Admin-gated broadcast: restricted to NOTIFICATION_ADMIN_ROLES, which
+		// is deliberately its own list rather than RBAC_ADMIN_ROLES -- see
+		// config.Config.NotificationAdminRoles.
 		api.POST("/users/notifications", notificationHandler.Create)
 
 		api.GET("/app-configs", appConfigHandler.List)

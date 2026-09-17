@@ -39,10 +39,18 @@ schemaVersion: 1.2
 # The admin broadcast (POST /users/notifications) needs both of the following.
 # One gates who may call the route; the other is how this backend reaches the
 # service that delivers the push:
-#   RBAC_ADMIN_ROLES   comma-separated JWT `groups` values allowed to broadcast.
-#                      Empty DENIES every caller rather than allowing every
-#                      caller, so an unset value looks like a broken route, not
-#                      an open one.
+#   NOTIFICATION_ADMIN_ROLES   comma-separated JWT `groups`/`roles` values
+#                      allowed to broadcast. Empty DENIES every caller rather
+#                      than allowing every caller, so an unset value looks like
+#                      a broken route, not an open one -- and this list is the
+#                      only thing between an authenticated attendee and a
+#                      conference-wide push.
+#                      Deliberately NOT RBAC_ADMIN_ROLES: that is the general
+#                      event-admin population, and a push reaches every
+#                      attendee's device, cannot be recalled once the
+#                      notification service accepts it, and reports no
+#                      per-recipient status. Setting only RBAC_ADMIN_ROLES
+#                      leaves this route answering 403 to everybody.
 #
 # The admin AI-management routes gate on their own group list, kept separate from
 # RBAC_ADMIN_ROLES because they write into every attendee's recommendations and

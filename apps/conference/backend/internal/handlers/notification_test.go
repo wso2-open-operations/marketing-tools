@@ -124,6 +124,55 @@ func TestNotificationHandler_Create_EmptyAdminRolesDeniesEveryone(t *testing.T) 
 	}
 }
 
+// The entitlement may arrive in `roles` rather than `groups` -- which claim an
+// Asgardeo application stamps is its own attribute-mapping decision -- so the
+// gate has to honour both. Checking only `groups` would 403 a legitimately
+// entitled admin on a deployment whose app maps to `roles`, and the symptom
+// (a correct role name that still gets refused) reads as a wrong allow-list
+// rather than as a claim this code never looked at.
+func TestNotificationHandler_Create_RoleClaimEntitlesLikeGroupClaim(t *testing.T) {
+	recipients := &fakeNotificationRecipients{uuids: []string{"uuid-1"}}
+	sender := &fakeNotificationSender{}
+	h := NewNotificationHandler(recipients, sender, notificationAdminRoles)
+	r := newNotificationTestRouter(h, &middleware.UserInfo{
+		Email:  "admin@example.com",
+		UserID: "admin-1",
+		// Nothing in Groups; the entitlement is in Roles only.
+		Roles: []string{"app-con-registrant-admin"},
+	})
+
+	w := doRequest(r, http.MethodPost, "/users/notifications", validNotificationBody())
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+	if !sender.called {
+		t.Error("sender was not called for an admin entitled via the roles claim")
+	}
+}
+
+// The broadcast gates on NOTIFICATION_ADMIN_ROLES, not RBAC_ADMIN_ROLES. A
+// general event admin who is not named on the broadcast list must be refused:
+// a push reaches every attendee's device and cannot be recalled, so it is a
+// narrower entitlement than the rest of event administration.
+func TestNotificationHandler_Create_GeneralEventAdminIsForbidden(t *testing.T) {
+	sender := &fakeNotificationSender{}
+	h := NewNotificationHandler(&fakeNotificationRecipients{}, sender, []string{"app-push-notification-admin"})
+	r := newNotificationTestRouter(h, &middleware.UserInfo{
+		Email:  "eventadmin@example.com",
+		UserID: "event-admin-1",
+		// The RBAC_ADMIN_ROLES population, minus the broadcast role.
+		Groups: []string{"event-admin-stg", "app-con-registrant-admin"},
+	})
+
+	w := doRequest(r, http.MethodPost, "/users/notifications", validNotificationBody())
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusForbidden)
+	}
+	if sender.called {
+		t.Error("sender was called for a caller holding only general event-admin roles")
+	}
+}
+
 func TestNotificationHandler_Create_BroadcastsToAllAttendees(t *testing.T) {
 	recipients := &fakeNotificationRecipients{uuids: []string{"uuid-1", "uuid-2"}}
 	sender := &fakeNotificationSender{}
