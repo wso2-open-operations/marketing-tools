@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -29,6 +30,26 @@ type Config struct {
 	Port     string
 	LogLevel string
 	AppEnv   string
+
+	// JWT / auth. Same four variables, same names and same semantics as
+	// apps/conference/backend, so both services are pointed at one set of
+	// Asgardeo values.
+	JWKSEndpoint string
+	Issuer       string
+	// Audiences is the set of `aud` values the token validator accepts, read
+	// from JWT_AUDIENCE as a comma-separated list. A token is accepted when
+	// its aud claim names AT LEAST ONE of these (see middleware.AuthConfig),
+	// not all of them: more than one Asgardeo application can reach this
+	// service -- the registrant microapp directly, and the conference
+	// backend's /registrant reverse proxy -- and each mints tokens carrying
+	// its own client id as the audience. A single value keeps working exactly
+	// as one would expect: a one-element list is the old equality check.
+	Audiences []string
+	// TokenValidatorEnabled turns on signature/issuer/audience/expiry
+	// verification. Defaults to false so dev and tests keep working with
+	// hand-made tokens; production cannot boot without it (see
+	// InsecureAuthConfig, enforced in cmd/server/main.go).
+	TokenValidatorEnabled bool
 
 	// Database (Postgres, shared agenda_organizer/marketingops schema with
 	// apps/conference/backend)
@@ -68,12 +89,6 @@ type Config struct {
 	SheetsSheetID       int
 	SheetsSheetName     string
 	SheetsURL           string
-
-	// AuthorizedRole mirrors authorization.bal's `configurable string
-	// authorizedRole = ?;` from the original Ballerina service. It was never
-	// read anywhere in that service's interceptor logic — kept here,
-	// unused, for parity rather than ported as dead code.
-	AuthorizedRole string
 }
 
 func Load() Config {
@@ -97,6 +112,7 @@ func Load() Config {
 	if appEnv == "" {
 		appEnv = "production"
 	}
+	tokenValidatorEnabled := boolWithDefault("TOKEN_VALIDATOR_ENABLED", false)
 
 	// Decoded best-effort here; Validate() is where a missing/malformed key
 	// is actually rejected, matching this file's existing Load()-is-tolerant,
@@ -107,6 +123,11 @@ func Load() Config {
 		Port:     port,
 		LogLevel: logLevel,
 		AppEnv:   appEnv,
+
+		JWKSEndpoint:          os.Getenv("JWKS_ENDPOINT"),
+		Issuer:                os.Getenv("JWT_ISSUER"),
+		Audiences:             parseList(os.Getenv("JWT_AUDIENCE")),
+		TokenValidatorEnabled: tokenValidatorEnabled,
 
 		DBHost:     os.Getenv("DB_HOST"),
 		DBPort:     dbPort,
@@ -131,8 +152,6 @@ func Load() Config {
 		SheetsSheetID:       getEnvInt("SHEETS_SHEET_ID", 0),
 		SheetsSheetName:     os.Getenv("SHEETS_SHEET_NAME"),
 		SheetsURL:           os.Getenv("SHEETS_URL"),
-
-		AuthorizedRole: os.Getenv("AUTHORIZED_ROLE"),
 	}
 }
 
@@ -146,6 +165,36 @@ func getEnvInt(key string, def int) int {
 		return def
 	}
 	return v
+}
+
+func boolWithDefault(key string, def bool) bool {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	parsed, err := strconv.ParseBool(v)
+	if err != nil {
+		return def
+	}
+	return parsed
+}
+
+// parseList splits a comma-separated env var, trimming blanks. A value that is
+// nothing but separators and spaces yields an empty list rather than a list of
+// empty strings -- which would look configured and match nothing.
+func parseList(v string) []string {
+	if v == "" {
+		return nil
+	}
+	parts := strings.Split(v, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func getEnvFloat(key string, def float64) float64 {
@@ -214,8 +263,38 @@ func (c Config) Validate() error {
 	if c.SheetsSpreadsheetID == "" {
 		return errors.New("SHEETS_SPREADSHEET_ID is required")
 	}
-	if c.AuthorizedRole == "" {
-		return errors.New("AUTHORIZED_ROLE is required")
+	// When the token validator is on, JWKS/issuer/audience are all required --
+	// signature verification and the iss/aud checks cannot run without them. In
+	// production this chain is not optional: main.go fails closed on
+	// InsecureAuthConfig(), so a production deployment is forced to set
+	// TOKEN_VALIDATOR_ENABLED=true to boot, and reaching that state forces these
+	// three to be set here as well. Dev/test keep the validator off by default
+	// and skip this block.
+	if c.TokenValidatorEnabled {
+		if c.JWKSEndpoint == "" {
+			return errors.New("JWKS_ENDPOINT is required when TOKEN_VALIDATOR_ENABLED=true")
+		}
+		if c.Issuer == "" {
+			return errors.New("JWT_ISSUER is required when TOKEN_VALIDATOR_ENABLED=true")
+		}
+		if len(c.Audiences) == 0 {
+			return errors.New("JWT_AUDIENCE is required when TOKEN_VALIDATOR_ENABLED=true")
+		}
 	}
 	return nil
+}
+
+// InsecureAuthConfig reports a production deployment running with JWT signature
+// validation switched off, which accepts forged and expired tokens.
+//
+// TOKEN_VALIDATOR_ENABLED still defaults to false on purpose: flipping the
+// global default would break dev/test, which rely on it being off. The
+// AppEnv=="production" gate here is what enforces prod -- main.go FAILS CLOSED
+// on this predicate, so a production container refuses to boot with signature
+// validation off. Deliberately not a Validate() failure: Validate() has no view
+// of "is this prod" beyond AppEnv, and keeping the refusal in main.go keeps the
+// fail-closed decision in one place. Mirrors the identically-named predicate in
+// apps/conference/backend.
+func (c Config) InsecureAuthConfig() bool {
+	return c.AppEnv == "production" && !c.TokenValidatorEnabled
 }

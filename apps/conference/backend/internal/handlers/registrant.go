@@ -4,12 +4,14 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
-	"strings"
 	"net/http/httputil"
 	"net/url"
+	"strings"
+
 	"github.com/gin-gonic/gin"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
+
 	"wso2-coin-backend/internal/config"
 )
 
@@ -29,6 +31,10 @@ func RegistrantProxyHandler(cfg config.ExternalServiceConfig) gin.HandlerFunc {
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.SetURL(remote)
 			pr.SetXForwarded()
+			// Cloudflare fronting the registrant gateway issues a JS bot challenge when
+			// X-Forwarded-Host names a host outside its own zone, which a server-to-server
+			// call can never solve. Keep X-Forwarded-For/Proto, drop the host.
+			pr.Out.Header.Del("X-Forwarded-Host")
 			// Preserve the full original path including /registrant (and the base path of the external gateway)
 			trimmedPath := strings.TrimPrefix(pr.In.URL.Path, "/registrant/")
 			basePath := strings.TrimSuffix(remote.Path, "/")
@@ -53,7 +59,7 @@ func RegistrantProxyHandler(cfg config.ExternalServiceConfig) gin.HandlerFunc {
 			ClientSecret: cfg.OAuth.ClientSecret,
 			TokenURL:     cfg.OAuth.TokenURL,
 		}
-		
+
 		// The proxy Transport is responsible for fetching and attaching the Bearer token
 		ctx := context.Background()
 		proxy.Transport = &oauth2Transport{
@@ -79,10 +85,10 @@ func (t *oauth2Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Clone the request to modify headers safely
 	req2 := req.Clone(req.Context())
 	token.SetAuthHeader(req2)
-	
+
 	return t.base.RoundTrip(req2)
 }

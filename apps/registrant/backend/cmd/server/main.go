@@ -77,6 +77,23 @@ func main() {
 
 	slog.Info("logger initialised", "level", cfg.LogLevel, "env", cfg.AppEnv)
 
+	// Fail closed: a production deployment with JWT signature validation off
+	// accepts forged and expired tokens (ParseUnverified decodes claims without
+	// verifying signature or expiry), letting anything that can reach this
+	// service forge the x-jwt-assertion header to impersonate any user -- and
+	// POST /attendees/sync writes to the shared Google Sheet. A crash-loop is
+	// strictly better than silently authenticating forged identities, so this is
+	// a hard startup failure, not a warning. Prod MUST set
+	// TOKEN_VALIDATOR_ENABLED=true (plus JWKS/issuer/audience, which
+	// cfg.Validate then requires). See config.InsecureAuthConfig.
+	if cfg.InsecureAuthConfig() {
+		slog.Error("SECURITY: refusing to boot -- TOKEN_VALIDATOR_ENABLED is false in a production "+
+			"environment; JWT signatures would NOT be verified and forged or expired tokens would be "+
+			"accepted. Set TOKEN_VALIDATOR_ENABLED=true and JWKS_ENDPOINT/JWT_ISSUER/JWT_AUDIENCE.",
+			"appEnv", cfg.AppEnv)
+		os.Exit(1)
+	}
+
 	connectCtx, cancelConnect := context.WithTimeout(context.Background(), 10*time.Second)
 	db, err := repository.Connect(connectCtx, cfg.DSN(), repository.PoolConfig{
 		MaxOpenConns:    cfg.DBMaxOpenConns,
@@ -120,7 +137,13 @@ func main() {
 	r.Use(gin.Recovery())
 
 	api := r.Group("/")
-	api.Use(middleware.JwtInterceptor())
+	api.Use(middleware.Auth(middleware.AuthConfig{
+		JWKSEndpoint:          cfg.JWKSEndpoint,
+		Issuer:                cfg.Issuer,
+		Audiences:             cfg.Audiences,
+		ClockSkew:             5 * time.Minute,
+		TokenValidatorEnabled: cfg.TokenValidatorEnabled,
+	}))
 	{
 		api.GET("/events/current/agendas", agendaH.ListCurrentAgendas)
 		api.POST("/agendas/:agendaId/attendees", agendaH.RegisterAttendee)

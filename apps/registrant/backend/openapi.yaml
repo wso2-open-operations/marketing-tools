@@ -7,7 +7,11 @@ info:
     attendees.
 servers:
   - url: /
+# Either credential is accepted; each is verified identically (RS256 against
+# JWKS_ENDPOINT, plus issuer/audience/expiry). The microapp sends bearerAuth;
+# jwtAssertion is present for a gateway configured to inject it.
 security:
+  - bearerAuth: []
   - jwtAssertion: []
 paths:
   /events/current/agendas:
@@ -23,6 +27,8 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Agenda"
+        "401":
+          description: Missing, malformed, expired or unverifiable x-jwt-assertion token
         "500":
           description: Internal server error
   /agendas/{agendaId}/attendees:
@@ -48,6 +54,8 @@ paths:
           description: Missing or invalid payload
         "409":
           description: Attendee already registered for the agenda
+        "401":
+          description: Missing, malformed, expired or unverifiable x-jwt-assertion token
         "500":
           description: Internal server error
   /agendas/{agendaId}/attendees/count:
@@ -67,6 +75,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AgendaAttendeeCount"
+        "401":
+          description: Missing, malformed, expired or unverifiable x-jwt-assertion token
         "500":
           description: Internal server error
   /attendees/sync:
@@ -84,18 +94,29 @@ paths:
           description: Synced successfully
         "400":
           description: Missing or invalid payload
+        "401":
+          description: Missing, malformed, expired or unverifiable x-jwt-assertion token
         "500":
           description: Internal server error
 components:
   securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        The caller's Asgardeo id_token, as sent by the registrant microapp
+        (Authorization: Bearer). Verified against JWKS_ENDPOINT; the email
+        claim identifies the registering user.
     jwtAssertion:
       type: apiKey
       in: header
       name: x-jwt-assertion
       description: >
-        Invoker identity JWT. The payload is decoded for the caller's email;
-        the signature is not verified by this service (trust boundary is the
-        gateway in front of it).
+        Invoker identity JWT. When TOKEN_VALIDATOR_ENABLED=true (required in
+        production) the RS256 signature is verified against JWKS_ENDPOINT and
+        the issuer, audience and expiry are checked; the caller's email claim
+        is then used as the registering user. Any failure is a 401.
   schemas:
     Agenda:
       type: object

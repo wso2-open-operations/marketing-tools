@@ -36,7 +36,120 @@ func validConfig() Config {
 		SheetsRefreshToken:  "refresh-token",
 		SheetsTokenURL:      "https://oauth.example.com/token",
 		SheetsSpreadsheetID: "sheet-id",
-		AuthorizedRole:      "admin-role",
+	}
+}
+
+func TestValidate_TokenValidatorRequirements(t *testing.T) {
+	tests := []struct {
+		name    string
+		mutate  func(*Config)
+		wantErr string
+	}{
+		{
+			"validator off needs no jwt config",
+			func(c *Config) { c.TokenValidatorEnabled = false },
+			"",
+		},
+		{
+			"validator on with full jwt config",
+			func(c *Config) {
+				c.TokenValidatorEnabled = true
+				c.JWKSEndpoint = "https://idp.example/jwks"
+				c.Issuer = "https://idp.example/token"
+				c.Audiences = []string{"client-id"}
+			},
+			"",
+		},
+		{
+			"validator on without jwks",
+			func(c *Config) {
+				c.TokenValidatorEnabled = true
+				c.Issuer = "https://idp.example/token"
+				c.Audiences = []string{"client-id"}
+			},
+			"JWKS_ENDPOINT is required when TOKEN_VALIDATOR_ENABLED=true",
+		},
+		{
+			"validator on without issuer",
+			func(c *Config) {
+				c.TokenValidatorEnabled = true
+				c.JWKSEndpoint = "https://idp.example/jwks"
+				c.Audiences = []string{"client-id"}
+			},
+			"JWT_ISSUER is required when TOKEN_VALIDATOR_ENABLED=true",
+		},
+		{
+			"validator on without audience",
+			func(c *Config) {
+				c.TokenValidatorEnabled = true
+				c.JWKSEndpoint = "https://idp.example/jwks"
+				c.Issuer = "https://idp.example/token"
+			},
+			"JWT_AUDIENCE is required when TOKEN_VALIDATOR_ENABLED=true",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := validConfig()
+			tt.mutate(&c)
+			err := c.Validate()
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("Validate() = %v, want nil", err)
+				}
+				return
+			}
+			if err == nil || err.Error() != tt.wantErr {
+				t.Fatalf("Validate() = %v, want %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestInsecureAuthConfig pins the predicate cmd/server/main.go exits on: only
+// production with the validator off is a refusal to boot.
+func TestInsecureAuthConfig(t *testing.T) {
+	tests := []struct {
+		appEnv    string
+		validator bool
+		want      bool
+	}{
+		{"production", false, true},
+		{"production", true, false},
+		{"development", false, false},
+		{"development", true, false},
+	}
+	for _, tt := range tests {
+		c := Config{AppEnv: tt.appEnv, TokenValidatorEnabled: tt.validator}
+		if got := c.InsecureAuthConfig(); got != tt.want {
+			t.Fatalf("InsecureAuthConfig(appEnv=%q, validator=%v) = %v, want %v",
+				tt.appEnv, tt.validator, got, tt.want)
+		}
+	}
+}
+
+func TestParseList(t *testing.T) {
+	tests := []struct {
+		in   string
+		want []string
+	}{
+		{"", nil},
+		{"a", []string{"a"}},
+		{"a,b", []string{"a", "b"}},
+		{" a , b ", []string{"a", "b"}},
+		{" , ", []string{}},
+	}
+	for _, tt := range tests {
+		got := parseList(tt.in)
+		if len(got) != len(tt.want) {
+			t.Fatalf("parseList(%q) = %v, want %v", tt.in, got, tt.want)
+		}
+		for i := range got {
+			if got[i] != tt.want[i] {
+				t.Fatalf("parseList(%q) = %v, want %v", tt.in, got, tt.want)
+			}
+		}
 	}
 }
 
@@ -64,7 +177,6 @@ func TestValidate_MissingFields(t *testing.T) {
 		{"missing sheets refresh token", func(c *Config) { c.SheetsRefreshToken = "" }, "SHEETS_REFRESH_TOKEN is required"},
 		{"missing sheets token url", func(c *Config) { c.SheetsTokenURL = "" }, "SHEETS_TOKEN_URL is required"},
 		{"missing spreadsheet id", func(c *Config) { c.SheetsSpreadsheetID = "" }, "SHEETS_SPREADSHEET_ID is required"},
-		{"missing authorized role", func(c *Config) { c.AuthorizedRole = "" }, "AUTHORIZED_ROLE is required"},
 	}
 
 	for _, tt := range tests {
