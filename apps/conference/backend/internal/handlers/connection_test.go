@@ -20,7 +20,9 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -120,7 +122,7 @@ func TestConnectionHandler_AllRoutes_Unauthenticated(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			reader := &fakeConnectionReader{}
-			h := NewConnectionHandler(reader, &fakeAttendeeRepo{})
+			h := NewConnectionHandler(reader, &fakeAttendeeRepo{}, nil, "")
 			r := newConnectionTestRouter(h, nil)
 
 			w := doRequest(r, tc.method, tc.path, tc.body)
@@ -138,7 +140,7 @@ func TestConnectionHandler_Get_ReturnsInfo(t *testing.T) {
 	reader := &fakeConnectionReader{info: models.UserConnectionsInfo{
 		Connections: []models.ConnectionUserInfo{{ConnectionID: testConnID, UserID: "user-2", Name: "Bob Receiver"}},
 	}}
-	h := NewConnectionHandler(reader, &fakeAttendeeRepo{})
+	h := NewConnectionHandler(reader, &fakeAttendeeRepo{}, nil, "")
 	r := newConnectionTestRouter(h, testUser)
 
 	w := doRequest(r, http.MethodGet, "/users/me/connections", nil)
@@ -156,7 +158,7 @@ func TestConnectionHandler_Get_ReturnsInfo(t *testing.T) {
 }
 
 func TestConnectionHandler_Get_RepoErrorMapsTo500(t *testing.T) {
-	h := NewConnectionHandler(&fakeConnectionReader{getErr: errBoom}, &fakeAttendeeRepo{})
+	h := NewConnectionHandler(&fakeConnectionReader{getErr: errBoom}, &fakeAttendeeRepo{}, nil, "")
 	r := newConnectionTestRouter(h, testUser)
 
 	w := doRequest(r, http.MethodGet, "/users/me/connections", nil)
@@ -173,7 +175,7 @@ func TestConnectionHandler_Create_RequesterIsTheJWTSub(t *testing.T) {
 	reader := &fakeConnectionReader{requestConn: models.Connection{
 		ID: testConnID, RequesterID: testUser.UserID, AddresseeID: "user-2", State: models.ConnectionPending,
 	}}
-	h := NewConnectionHandler(reader, bobProfile())
+	h := NewConnectionHandler(reader, bobProfile(), nil, "")
 	r := newConnectionTestRouter(h, testUser)
 
 	w := doRequest(r, http.MethodPost, "/users/me/connections", map[string]any{
@@ -207,7 +209,7 @@ func TestConnectionHandler_Create_MissingTargetIDIsRejected(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			reader := &fakeConnectionReader{}
-			h := NewConnectionHandler(reader, bobProfile())
+			h := NewConnectionHandler(reader, bobProfile(), nil, "")
 			r := newConnectionTestRouter(h, testUser)
 
 			w := doRequest(r, http.MethodPost, "/users/me/connections", tc.body)
@@ -223,7 +225,7 @@ func TestConnectionHandler_Create_MissingTargetIDIsRejected(t *testing.T) {
 
 func TestConnectionHandler_Create_MalformedJSONIsRejected(t *testing.T) {
 	reader := &fakeConnectionReader{}
-	h := NewConnectionHandler(reader, bobProfile())
+	h := NewConnectionHandler(reader, bobProfile(), nil, "")
 	r := newConnectionTestRouter(h, testUser)
 
 	// A JSON string where an object is expected: well-formed JSON that cannot
@@ -248,7 +250,7 @@ func TestConnectionHandler_Create_RepoErrorsMapToStatuses(t *testing.T) {
 		{"unexpected", errBoom, http.StatusInternalServerError},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			h := NewConnectionHandler(&fakeConnectionReader{requestErr: tc.err}, bobProfile())
+			h := NewConnectionHandler(&fakeConnectionReader{requestErr: tc.err}, bobProfile(), nil, "")
 			r := newConnectionTestRouter(h, testUser)
 
 			w := doRequest(r, http.MethodPost, "/users/me/connections", models.ConnectionRequest{TargetID: "user-2"})
@@ -263,7 +265,7 @@ func TestConnectionHandler_Create_ReturnsEnrichedTargetInfo(t *testing.T) {
 	reader := &fakeConnectionReader{requestConn: models.Connection{
 		ID: testConnID, RequesterID: testUser.UserID, AddresseeID: "user-2", State: models.ConnectionPending,
 	}}
-	h := NewConnectionHandler(reader, bobProfile())
+	h := NewConnectionHandler(reader, bobProfile(), nil, "")
 	r := newConnectionTestRouter(h, testUser)
 
 	w := doRequest(r, http.MethodPost, "/users/me/connections", models.ConnectionRequest{TargetID: "user-2"})
@@ -306,7 +308,7 @@ func TestConnectionHandler_Create_PendingBodyHasNoEmailKey(t *testing.T) {
 	reader := &fakeConnectionReader{requestConn: models.Connection{
 		ID: testConnID, RequesterID: testUser.UserID, AddresseeID: "user-2", State: models.ConnectionPending,
 	}}
-	h := NewConnectionHandler(reader, bobProfile())
+	h := NewConnectionHandler(reader, bobProfile(), nil, "")
 	r := newConnectionTestRouter(h, testUser)
 
 	w := doRequest(r, http.MethodPost, "/users/me/connections", models.ConnectionRequest{TargetID: "user-2"})
@@ -341,7 +343,7 @@ func TestConnectionHandler_Accept_AcceptedBodyCarriesEmail(t *testing.T) {
 	reader := &fakeConnectionReader{acceptConn: models.Connection{
 		ID: testConnID, RequesterID: "user-2", AddresseeID: testUser.UserID, State: models.ConnectionAccepted,
 	}}
-	h := NewConnectionHandler(reader, bobProfile())
+	h := NewConnectionHandler(reader, bobProfile(), nil, "")
 	r := newConnectionTestRouter(h, testUser)
 
 	w := doRequest(r, http.MethodPost, "/users/me/connections/"+testConnID+"/accept", nil)
@@ -369,7 +371,7 @@ func TestConnectionHandler_Create_IgnoresAnyStateInTheBody(t *testing.T) {
 	reader := &fakeConnectionReader{requestConn: models.Connection{
 		ID: testConnID, RequesterID: testUser.UserID, AddresseeID: "user-2", State: models.ConnectionPending,
 	}}
-	h := NewConnectionHandler(reader, bobProfile())
+	h := NewConnectionHandler(reader, bobProfile(), nil, "")
 	r := newConnectionTestRouter(h, testUser)
 
 	w := doRequest(r, http.MethodPost, "/users/me/connections", map[string]any{
@@ -400,7 +402,7 @@ func TestConnectionHandler_Create_ProfileLookupFailureStillReports201(t *testing
 	reader := &fakeConnectionReader{requestConn: models.Connection{
 		ID: testConnID, RequesterID: testUser.UserID, AddresseeID: "user-2", State: models.ConnectionPending,
 	}}
-	h := NewConnectionHandler(reader, &fakeAttendeeRepo{getErr: errBoom})
+	h := NewConnectionHandler(reader, &fakeAttendeeRepo{getErr: errBoom}, nil, "")
 	r := newConnectionTestRouter(h, testUser)
 
 	w := doRequest(r, http.MethodPost, "/users/me/connections", models.ConnectionRequest{TargetID: "user-2"})
@@ -421,7 +423,7 @@ func TestConnectionHandler_Accept_UsesPathIDAndJWTSub(t *testing.T) {
 	reader := &fakeConnectionReader{acceptConn: models.Connection{
 		ID: testConnID, RequesterID: "user-2", AddresseeID: testUser.UserID, State: models.ConnectionAccepted,
 	}}
-	h := NewConnectionHandler(reader, bobProfile())
+	h := NewConnectionHandler(reader, bobProfile(), nil, "")
 	r := newConnectionTestRouter(h, testUser)
 
 	w := doRequest(r, http.MethodPost, "/users/me/connections/"+testConnID+"/accept", nil)
@@ -441,7 +443,7 @@ func TestConnectionHandler_Accept_UsesPathIDAndJWTSub(t *testing.T) {
 
 func TestConnectionHandler_Accept_NonUUIDIsRejected(t *testing.T) {
 	reader := &fakeConnectionReader{}
-	h := NewConnectionHandler(reader, bobProfile())
+	h := NewConnectionHandler(reader, bobProfile(), nil, "")
 	r := newConnectionTestRouter(h, testUser)
 
 	w := doRequest(r, http.MethodPost, "/users/me/connections/not-a-uuid/accept", nil)
@@ -467,7 +469,7 @@ func TestConnectionHandler_Accept_RepoErrorsMapToStatuses(t *testing.T) {
 		{"unexpected", errBoom, http.StatusInternalServerError},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			h := NewConnectionHandler(&fakeConnectionReader{acceptErr: tc.err}, bobProfile())
+			h := NewConnectionHandler(&fakeConnectionReader{acceptErr: tc.err}, bobProfile(), nil, "")
 			r := newConnectionTestRouter(h, testUser)
 
 			w := doRequest(r, http.MethodPost, "/users/me/connections/"+testConnID+"/accept", nil)
@@ -484,7 +486,7 @@ func TestConnectionHandler_Accept_ReturnsRequesterProfile(t *testing.T) {
 	reader := &fakeConnectionReader{acceptConn: models.Connection{
 		ID: testConnID, RequesterID: "user-2", AddresseeID: testUser.UserID, State: models.ConnectionAccepted,
 	}}
-	h := NewConnectionHandler(reader, bobProfile())
+	h := NewConnectionHandler(reader, bobProfile(), nil, "")
 	r := newConnectionTestRouter(h, testUser)
 
 	w := doRequest(r, http.MethodPost, "/users/me/connections/"+testConnID+"/accept", nil)
@@ -514,7 +516,7 @@ func TestConnectionHandler_Accept_ReturnsRequesterProfile(t *testing.T) {
 
 func TestConnectionHandler_Delete_ReturnsNoContent(t *testing.T) {
 	reader := &fakeConnectionReader{}
-	h := NewConnectionHandler(reader, bobProfile())
+	h := NewConnectionHandler(reader, bobProfile(), nil, "")
 	r := newConnectionTestRouter(h, testUser)
 
 	w := doRequest(r, http.MethodDelete, "/users/me/connections/"+testConnID, nil)
@@ -532,7 +534,7 @@ func TestConnectionHandler_Delete_ReturnsNoContent(t *testing.T) {
 
 func TestConnectionHandler_Delete_NonUUIDIsRejected(t *testing.T) {
 	reader := &fakeConnectionReader{}
-	h := NewConnectionHandler(reader, bobProfile())
+	h := NewConnectionHandler(reader, bobProfile(), nil, "")
 	r := newConnectionTestRouter(h, testUser)
 
 	w := doRequest(r, http.MethodDelete, "/users/me/connections/not-a-uuid", nil)
@@ -554,7 +556,7 @@ func TestConnectionHandler_Delete_RepoErrorsMapToStatuses(t *testing.T) {
 		{"unexpected", errBoom, http.StatusInternalServerError},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			h := NewConnectionHandler(&fakeConnectionReader{deleteErr: tc.err}, bobProfile())
+			h := NewConnectionHandler(&fakeConnectionReader{deleteErr: tc.err}, bobProfile(), nil, "")
 			r := newConnectionTestRouter(h, testUser)
 
 			w := doRequest(r, http.MethodDelete, "/users/me/connections/"+testConnID, nil)
@@ -563,4 +565,232 @@ func TestConnectionHandler_Delete_RepoErrorsMapToStatuses(t *testing.T) {
 			}
 		})
 	}
+}
+
+// --- connection notifications -------------------------------------------
+//
+// notifyConnection sends on its own goroutine so that a slow notification
+// service cannot hold the response open, which means these tests need a fake
+// that can be waited on rather than read directly. capturedPush carries the
+// one send off the goroutine; a test that expects silence asserts on the
+// channel still being empty after the handler has returned.
+
+type capturedPush struct {
+	senderUUID string
+	recipients []string
+	title      string
+	body       string
+}
+
+type recordingNotifier struct {
+	err   error
+	sends chan capturedPush
+}
+
+func newRecordingNotifier() *recordingNotifier {
+	// Buffered: a send must not block even when nothing ever reads it, or a
+	// test asserting that no push happens would leak the goroutine instead.
+	return &recordingNotifier{sends: make(chan capturedPush, 4)}
+}
+
+func (n *recordingNotifier) SendAttendeeNotification(ctx context.Context, senderUUID string, recipients []string, title, body string) error {
+	n.sends <- capturedPush{senderUUID: senderUUID, recipients: recipients, title: title, body: body}
+	return n.err
+}
+
+// await returns the next push, failing the test if none arrives. The wait is
+// generous because it only ever runs to completion on a passing test.
+func (n *recordingNotifier) await(t *testing.T) capturedPush {
+	t.Helper()
+	select {
+	case p := <-n.sends:
+		return p
+	case <-time.After(2 * time.Second):
+		t.Fatal("no notification sent, want one")
+		return capturedPush{}
+	}
+}
+
+// connectionNotifyProfiles gives both parties a profile, so a test can tell a
+// real name apart from the unknown-actor fallback.
+func connectionNotifyProfiles() *fakeAttendeeRepo {
+	return &fakeAttendeeRepo{byUUID: map[string]models.Attendee{
+		"user-1": {ID: "attendee-1", Email: "alice@example.com", FirstName: "Alice", LastName: "Sender"},
+		"user-2": {ID: "attendee-2", Email: "bob@example.com", FirstName: "Bob", LastName: "Receiver"},
+	}}
+}
+
+func TestConnectionHandler_Create_NotifiesTheTarget(t *testing.T) {
+	reader := &fakeConnectionReader{requestConn: models.Connection{
+		ID: testConnID, RequesterID: testUser.UserID, AddresseeID: "user-2", State: models.ConnectionPending,
+	}}
+	notifier := newRecordingNotifier()
+	h := NewConnectionHandler(reader, connectionNotifyProfiles(), notifier, "")
+	r := newConnectionTestRouter(h, testUser)
+
+	w := doRequest(r, http.MethodPost, "/users/me/connections", map[string]any{"targetId": "user-2"})
+	if w.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d, body: %s", w.Code, http.StatusCreated, w.Body.String())
+	}
+
+	push := notifier.await(t)
+	// The push goes to the addressee, never back to the requester who caused
+	// it -- addressing it by the actor's own uuid is the mistake that would
+	// make everyone notify themselves.
+	if len(push.recipients) != 1 || push.recipients[0] != "user-2" {
+		t.Errorf("recipients = %v, want just the addressee [user-2]", push.recipients)
+	}
+	if push.senderUUID != testUser.UserID {
+		t.Errorf("senderUUID = %q, want the actor %q", push.senderUUID, testUser.UserID)
+	}
+	if push.title != DefaultNotificationTitle {
+		t.Errorf("title = %q, want the default %q", push.title, DefaultNotificationTitle)
+	}
+	// The body must not name the requester: a lock screen is not a place to
+	// publish who is connecting with whom.
+	if push.body != connectionRequestBody {
+		t.Errorf("body = %q, want the fixed request copy %q", push.body, connectionRequestBody)
+	}
+	if strings.Contains(push.body, "Alice") || strings.Contains(push.body, "Sender") {
+		t.Errorf("body = %q, want no attendee name in it at all", push.body)
+	}
+}
+
+func TestConnectionHandler_Accept_NotifiesTheRequester(t *testing.T) {
+	// The accepter is the addressee here, so "the other party" is the person
+	// who sent the request -- the direction is the mirror of Create's.
+	reader := &fakeConnectionReader{acceptConn: models.Connection{
+		ID: testConnID, RequesterID: "user-2", AddresseeID: testUser.UserID, State: models.ConnectionAccepted,
+	}}
+	notifier := newRecordingNotifier()
+	h := NewConnectionHandler(reader, connectionNotifyProfiles(), notifier, "")
+	r := newConnectionTestRouter(h, testUser)
+
+	w := doRequest(r, http.MethodPost, "/users/me/connections/"+testConnID+"/accept", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+
+	push := notifier.await(t)
+	if len(push.recipients) != 1 || push.recipients[0] != "user-2" {
+		t.Errorf("recipients = %v, want just the requester [user-2]", push.recipients)
+	}
+	// Same title as the request push: the title is common to every
+	// notification, and the body is the only thing that distinguishes them.
+	if push.title != DefaultNotificationTitle {
+		t.Errorf("title = %q, want the default %q", push.title, DefaultNotificationTitle)
+	}
+	if push.body != connectionAcceptBody {
+		t.Errorf("body = %q, want the fixed accept copy %q", push.body, connectionAcceptBody)
+	}
+	if strings.Contains(push.body, "Alice") || strings.Contains(push.body, "Sender") {
+		t.Errorf("body = %q, want no attendee name in it at all", push.body)
+	}
+}
+
+func TestConnectionHandler_Delete_NotifiesNobody(t *testing.T) {
+	// Decline, withdraw and unfriend share this route. Pushing on any of them
+	// would hand the other party news the redesign deliberately does not
+	// store, so the silence here is the feature.
+	reader := &fakeConnectionReader{}
+	notifier := newRecordingNotifier()
+	h := NewConnectionHandler(reader, connectionNotifyProfiles(), notifier, "")
+	r := newConnectionTestRouter(h, testUser)
+
+	w := doRequest(r, http.MethodDelete, "/users/me/connections/"+testConnID, nil)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d, body: %s", w.Code, http.StatusNoContent, w.Body.String())
+	}
+
+	select {
+	case push := <-notifier.sends:
+		t.Fatalf("Delete sent a notification %+v, want none", push)
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+func TestConnectionHandler_UsesTheConfiguredTitleForEveryPush(t *testing.T) {
+	// The title is the half of the copy marketing can change without a code
+	// change, so a configured value has to survive the constructor. It is one
+	// value for the whole service, so the request push and the accept push
+	// must both carry it -- a title that varied by event would be describing
+	// the event, which is the body's job.
+	const configured = "WSO2Con 2026"
+
+	requestReader := &fakeConnectionReader{requestConn: models.Connection{
+		ID: testConnID, RequesterID: testUser.UserID, AddresseeID: "user-2", State: models.ConnectionPending,
+	}}
+	requestNotifier := newRecordingNotifier()
+	rh := NewConnectionHandler(requestReader, connectionNotifyProfiles(), requestNotifier, configured)
+	w := doRequest(newConnectionTestRouter(rh, testUser), http.MethodPost,
+		"/users/me/connections", map[string]any{"targetId": "user-2"})
+	if w.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d, body: %s", w.Code, http.StatusCreated, w.Body.String())
+	}
+	requestPush := requestNotifier.await(t)
+
+	acceptReader := &fakeConnectionReader{acceptConn: models.Connection{
+		ID: testConnID, RequesterID: "user-2", AddresseeID: testUser.UserID, State: models.ConnectionAccepted,
+	}}
+	acceptNotifier := newRecordingNotifier()
+	ah := NewConnectionHandler(acceptReader, connectionNotifyProfiles(), acceptNotifier, configured)
+	w = doRequest(newConnectionTestRouter(ah, testUser), http.MethodPost,
+		"/users/me/connections/"+testConnID+"/accept", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+	acceptPush := acceptNotifier.await(t)
+
+	if requestPush.title != configured || acceptPush.title != configured {
+		t.Errorf("titles = %q and %q, want both to be the configured %q",
+			requestPush.title, acceptPush.title, configured)
+	}
+	// Configuring the title must not smuggle data into the bodies, and the
+	// bodies must still differ -- they are all that tells the two apart.
+	if requestPush.body != connectionRequestBody || acceptPush.body != connectionAcceptBody {
+		t.Errorf("bodies = %q and %q, want the fixed request and accept copy",
+			requestPush.body, acceptPush.body)
+	}
+}
+
+func TestConnectionHandler_BlankTitleFallsBackToTheDefault(t *testing.T) {
+	for _, tc := range []struct{ name, title string }{
+		{"empty", ""},
+		{"whitespace", "   "},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			reader := &fakeConnectionReader{requestConn: models.Connection{
+				ID: testConnID, RequesterID: testUser.UserID, AddresseeID: "user-2", State: models.ConnectionPending,
+			}}
+			notifier := newRecordingNotifier()
+			h := NewConnectionHandler(reader, connectionNotifyProfiles(), notifier, tc.title)
+			r := newConnectionTestRouter(h, testUser)
+
+			w := doRequest(r, http.MethodPost, "/users/me/connections", map[string]any{"targetId": "user-2"})
+			if w.Code != http.StatusCreated {
+				t.Fatalf("status = %d, want %d, body: %s", w.Code, http.StatusCreated, w.Body.String())
+			}
+			if push := notifier.await(t); push.title != DefaultNotificationTitle {
+				t.Errorf("title = %q, want the default %q", push.title, DefaultNotificationTitle)
+			}
+		})
+	}
+}
+
+func TestConnectionHandler_Create_FailedPushDoesNotFailTheRequest(t *testing.T) {
+	// The client must never be told a committed request failed: it would
+	// retry, and the second attempt is the one that 409s.
+	reader := &fakeConnectionReader{requestConn: models.Connection{
+		ID: testConnID, RequesterID: testUser.UserID, AddresseeID: "user-2", State: models.ConnectionPending,
+	}}
+	notifier := newRecordingNotifier()
+	notifier.err = errBoom
+	h := NewConnectionHandler(reader, connectionNotifyProfiles(), notifier, "")
+	r := newConnectionTestRouter(h, testUser)
+
+	w := doRequest(r, http.MethodPost, "/users/me/connections", map[string]any{"targetId": "user-2"})
+	if w.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d, body: %s", w.Code, http.StatusCreated, w.Body.String())
+	}
+	notifier.await(t)
 }
