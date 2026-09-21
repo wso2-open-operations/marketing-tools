@@ -192,6 +192,23 @@ type Config struct {
 	// unset variable has to read as a closed route rather than an open one.
 	NotificationAdminRoles []string
 
+	// NotificationTitle heads the connection request/accept pushes. One value
+	// covers both: the title names the conference, not the event, and the
+	// body is what says what happened. It is configurable because the wording
+	// is the kind of thing marketing changes mid-conference, and a redeploy
+	// with a new string beats a code change.
+	//
+	// It does not reach POST /users/notifications: an admin writing a one-off
+	// broadcast supplies its title in the request body, and that stays theirs
+	// to choose.
+	//
+	// Only the title moves. The bodies deliberately name no attendee, which
+	// is a property of the feature and not a setting -- see the copy
+	// constants in internal/handlers/connection.go. Blank falls back to
+	// handlers.DefaultNotificationTitle, so an unset variable is the default
+	// rather than an empty notification header.
+	NotificationTitle string
+
 	// WSO2 Coin / O2C feature flags
 	ExcludeEmployeeCoinAllocation bool
 	EnableQrValidations           bool
@@ -379,6 +396,8 @@ func Load() Config {
 		AdminRoles:             parseList(os.Getenv("RBAC_ADMIN_ROLES")),
 		AIAdminRoles:           parseList(os.Getenv("AI_ADMIN_ROLES")),
 		NotificationAdminRoles: parseList(os.Getenv("NOTIFICATION_ADMIN_ROLES")),
+
+		NotificationTitle: strings.TrimSpace(os.Getenv("NOTIFICATION_TITLE")),
 
 		ExcludeEmployeeCoinAllocation:    excludeEmployeeCoinAllocation,
 		EnableQrValidations:              enableQrValidations,

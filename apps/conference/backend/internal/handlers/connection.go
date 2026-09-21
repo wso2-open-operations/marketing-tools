@@ -22,6 +22,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -48,15 +49,71 @@ type ConnectionReader interface {
 type ConnectionHandler struct {
 	connections ConnectionReader
 	attendees   AttendeeProfileReader
+	notifier    NotificationSender
+	notifyTitle string
 }
 
 // NewConnectionHandler constructs a ConnectionHandler. attendees is used to
 // enrich a written connection with the *other* party's profile, so that a
 // POST response carries the same fields the GET listing does -- omitting them
 // made the two report different shapes for the same connection.
-func NewConnectionHandler(connections ConnectionReader, attendees AttendeeProfileReader) *ConnectionHandler {
-	return &ConnectionHandler{connections: connections, attendees: attendees}
+//
+// notifier pushes the request/accept notification to the other party. A nil
+// notifier disables those pushes and leaves every route otherwise intact,
+// which is what a deployment with no NOTIFICATION_* configuration gets --
+// silence rather than a nil dereference on every connection write.
+//
+// notifyTitle is the one title every push from this service carries; blank
+// falls back to DefaultNotificationTitle. It does not describe the event --
+// the body does -- so it is the same string for a request as for an accept,
+// and the handler holds one rather than one per transition.
+func NewConnectionHandler(
+	connections ConnectionReader,
+	attendees AttendeeProfileReader,
+	notifier NotificationSender,
+	notifyTitle string,
+) *ConnectionHandler {
+	if strings.TrimSpace(notifyTitle) == "" {
+		// An unset environment variable arrives as "", and a push with an
+		// empty title renders as a blank header on the device rather than as
+		// an error anyone would notice.
+		notifyTitle = DefaultNotificationTitle
+	}
+	return &ConnectionHandler{
+		connections: connections,
+		attendees:   attendees,
+		notifier:    notifier,
+		notifyTitle: notifyTitle,
+	}
 }
+
+const (
+	// DefaultNotificationTitle heads the connection pushes when no title is
+	// configured. It names the conference rather than the event, so that what
+	// lands on an attendee's lock screen reads as coming from the app.
+	//
+	// The admin broadcast is not covered by it: that endpoint takes its title
+	// from the request body, because an admin writing a one-off announcement
+	// is choosing the whole message.
+	DefaultNotificationTitle = "WSO2Con"
+
+	// The bodies carry the meaning, since the title is common to every push.
+	// They are not configurable: keeping them free of attendee data is a
+	// property of the feature rather than a preference. A push is delivered
+	// by an external service and rendered on a lock screen, so anything put
+	// in one is readable by whoever is holding the phone and is retained in a
+	// system the conference does not control -- naming the other party would
+	// leak who is connecting with whom to a shoulder-surfer, for a
+	// notification whose whole job is to get the attendee to open the app,
+	// where the name is already waiting.
+	connectionRequestBody = "Someone would like to connect with you. Open WSO2Con to see who."
+	connectionAcceptBody  = "Someone accepted your connection request. Open WSO2Con to see who."
+
+	// connectionNotifyTimeout bounds the detached send. The notification
+	// client has its own 10s request timeout; this is the outer bound on the
+	// goroutine that wraps it.
+	connectionNotifyTimeout = 30 * time.Second
+)
 
 // Get handles GET /users/me/connections.
 func (h *ConnectionHandler) Get(c *gin.Context) {
@@ -119,6 +176,8 @@ func (h *ConnectionHandler) Create(c *gin.Context) {
 		return
 	}
 
+	h.notifyConnection(conn, user.UserID, connectionRequestBody)
+
 	c.JSON(http.StatusCreated, h.describeOtherParty(c.Request.Context(), conn, user.UserID))
 }
 
@@ -146,6 +205,8 @@ func (h *ConnectionHandler) Accept(c *gin.Context) {
 		return
 	}
 
+	h.notifyConnection(conn, user.UserID, connectionAcceptBody)
+
 	c.JSON(http.StatusOK, h.describeOtherParty(c.Request.Context(), conn, user.UserID))
 }
 
@@ -172,6 +233,52 @@ func (h *ConnectionHandler) Delete(c *gin.Context) {
 		return
 	}
 	c.Status(http.StatusNoContent)
+}
+
+// notifyConnection pushes the transition to whichever party did not cause it.
+//
+// Delete deliberately sends nothing: one route covers declining, withdrawing
+// and unfriending, so a push there would tell the other party they had been
+// turned down or removed -- three different pieces of bad news the redesign
+// keeps private by storing no declined state in the first place.
+//
+// The send is fire-and-forget on its own goroutine, for the same reason
+// describeOtherParty swallows its lookup error: the row is already committed,
+// so the notification service may not turn a successful transition into a 500
+// the client would retry. It carries its own context because the request's is
+// cancelled the moment the handler returns.
+//
+// Only the recipient uuid varies per call -- the title is common to every
+// push and the body is a fixed string, so no profile is read here and nothing
+// about either party travels to the notification service beyond the two uuids
+// it routes on.
+func (h *ConnectionHandler) notifyConnection(conn models.Connection, actorUUID, body string) {
+	if h.notifier == nil {
+		return
+	}
+
+	recipient, ok := conn.Other(actorUUID)
+	if !ok {
+		// Unreachable through these routes, and already logged as an error by
+		// describeOtherParty; guarded here so a row the actor is not party to
+		// cannot address a push at an arbitrary attendee.
+		return
+	}
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), connectionNotifyTimeout)
+		defer cancel()
+
+		if err := h.notifier.SendAttendeeNotification(
+			ctx, actorUUID, []string{recipient}, h.notifyTitle, body,
+		); err != nil {
+			slog.ErrorContext(ctx, "sending connection notification failed",
+				"error", err, "connectionId", conn.ID)
+			return
+		}
+		slog.InfoContext(ctx, "connection notification sent",
+			"connectionId", conn.ID, "actor", actorUUID)
+	}()
 }
 
 // writeConnectionTransitionError maps the errors the id-addressed transitions

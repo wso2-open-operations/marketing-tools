@@ -193,7 +193,7 @@ func main() {
 	sessionHandler := handlers.NewSessionHandler(sessionRepo)
 	eventHandler := handlers.NewEventHandler(eventRepo)
 	attendeeHandler := handlers.NewAttendeeHandler(attendeeProfileRepo)
-	connectionHandler := handlers.NewConnectionHandler(connectionRepo, attendeeProfileRepo)
+	connectionHandler := handlers.NewConnectionHandler(connectionRepo, attendeeProfileRepo, notificationClient, cfg.NotificationTitle)
 	favoritesHandler := handlers.NewFavoritesHandler(favoritesRepo)
 	feedbackHandler := handlers.NewFeedbackHandler(feedbackRepo, eventRepo)
 	appConfigHandler := handlers.NewAppConfigHandler(appConfigRepo, featureResolver, cfg.ShopMasterWalletAddress)
