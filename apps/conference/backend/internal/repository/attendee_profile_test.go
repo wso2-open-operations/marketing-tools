@@ -22,6 +22,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -787,5 +788,99 @@ func TestAttendeeQRFromMemberID(t *testing.T) {
 		if got := attendeeQRFromMemberID(c.memberID); got != c.want {
 			t.Errorf("attendeeQRFromMemberID(%q) = %q, want %q", c.memberID, got, c.want)
 		}
+	}
+}
+
+// resolveFixture inserts one attendee and returns its email and idp_uuid, so
+// a ResolveUUID case can address the row by either identity form.
+func resolveFixture(t *testing.T, ctx context.Context, name string) (email, idpUUID string) {
+	t.Helper()
+	repo := NewAttendeeProfileRepo(testDB, attendeeProfileTestKey)
+	idpUUID = newUUID()
+	email = fmt.Sprintf("%s-%s@example.com", name, newUUID())
+	if err := repo.Insert(ctx, models.AttendeeInsert{
+		FirstName: name, LastName: "Resolver", MemberID: "m-" + newUUID(),
+	}, email, idpUUID); err != nil {
+		t.Fatalf("failed to insert test attendee: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = testDB.Exec(context.Background(), "DELETE FROM attendees WHERE idp_uuid = $1", idpUUID)
+	})
+	return email, idpUUID
+}
+
+// TestAttendeeProfileRepo_ResolveUUID_AcceptsEitherIdentityForm covers the
+// production failure directly: the microapp's JWT presents the attendee's
+// email as sub, while every id this API stores and serves is an idp_uuid.
+func TestAttendeeProfileRepo_ResolveUUID_AcceptsEitherIdentityForm(t *testing.T) {
+	ctx := context.Background()
+	repo := NewAttendeeProfileRepo(testDB, attendeeProfileTestKey)
+
+	email, idpUUID := resolveFixture(t, ctx, "Rez1")
+
+	for _, tc := range []struct {
+		name, sub, emailClaim string
+	}{
+		{"sub is the uuid", idpUUID, email},
+		{"sub is the email -- the production case", email, email},
+		{"sub is unknown, email claim carries it", "not-an-identity", email},
+		{"email differs in case", strings.ToUpper(email), ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := repo.ResolveUUID(ctx, tc.sub, tc.emailClaim)
+			if err != nil {
+				t.Fatalf("ResolveUUID(%q, %q) error = %v", tc.sub, tc.emailClaim, err)
+			}
+			if got != idpUUID {
+				t.Errorf("ResolveUUID(%q, %q) = %q, want %q", tc.sub, tc.emailClaim, got, idpUUID)
+			}
+		})
+	}
+}
+
+// TestAttendeeProfileRepo_ResolveUUID_PrefersTheSubMatch pins the ORDER BY:
+// if one attendee's sub happens to be another attendee's email address, the
+// row the caller actually owns still wins.
+func TestAttendeeProfileRepo_ResolveUUID_PrefersTheSubMatch(t *testing.T) {
+	ctx := context.Background()
+	repo := NewAttendeeProfileRepo(testDB, attendeeProfileTestKey)
+
+	_, mine := resolveFixture(t, ctx, "Rez2")
+	theirEmail, theirs := resolveFixture(t, ctx, "Rez3")
+
+	got, err := repo.ResolveUUID(ctx, mine, theirEmail)
+	if err != nil {
+		t.Fatalf("ResolveUUID error = %v", err)
+	}
+	if got != mine {
+		t.Errorf("ResolveUUID = %q, want the sub match %q rather than the email match %q", got, mine, theirs)
+	}
+}
+
+func TestAttendeeProfileRepo_ResolveUUID_NotFound(t *testing.T) {
+	ctx := context.Background()
+	repo := NewAttendeeProfileRepo(testDB, attendeeProfileTestKey)
+
+	// An unclaimed roster row (idp_uuid IS NULL, migration 003) is not an
+	// identity: resolving onto it would hand the caller a NULL.
+	unclaimed := fmt.Sprintf("unclaimed-%s@example.com", newUUID())
+	if _, err := testDB.Exec(ctx,
+		"INSERT INTO attendees (email, idp_uuid) VALUES ($1, NULL)", unclaimed); err != nil {
+		t.Fatalf("failed to insert unclaimed attendee: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = testDB.Exec(context.Background(), "DELETE FROM attendees WHERE email = $1", unclaimed)
+	})
+
+	for _, tc := range []struct{ name, sub, emailClaim string }{
+		{"nobody at all", "not-an-identity", "nobody-" + newUUID() + "@example.com"},
+		{"an unclaimed roster row", unclaimed, unclaimed},
+		{"no email claim and an unknown sub", "not-an-identity", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := repo.ResolveUUID(ctx, tc.sub, tc.emailClaim); !errors.Is(err, ErrNotFound) {
+				t.Errorf("ResolveUUID error = %v, want ErrNotFound", err)
+			}
+		})
 	}
 }

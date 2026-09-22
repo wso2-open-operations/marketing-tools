@@ -41,6 +41,7 @@ type fakeAttendeeRepo struct {
 	byEmail     map[string]models.Attendee
 	byUUID      map[string]models.Attendee
 	getErr      error
+	resolveErr  error
 	patchErr    error
 	patchedWith struct {
 		email     string
@@ -80,6 +81,28 @@ func (f *fakeAttendeeRepo) GetByUUID(ctx context.Context, idpUUID string) (model
 		return models.Attendee{}, repository.ErrNotFound
 	}
 	return a, nil
+}
+
+func (f *fakeAttendeeRepo) ResolveUUID(ctx context.Context, sub, email string) (string, error) {
+	if f.resolveErr != nil {
+		return "", f.resolveErr
+	}
+	if a, ok := f.byUUID[sub]; ok {
+		// A row found under idp_uuid = sub resolves to sub; the fixtures
+		// mostly leave Attendee.IDPUUID zero and carry the uuid in the key.
+		if a.IDPUUID != "" {
+			return a.IDPUUID, nil
+		}
+		return sub, nil
+	}
+	// The real query tries the sub as an email in its own right before it
+	// falls back to the email claim; the fake keeps that order.
+	for _, key := range []string{sub, email} {
+		if a, ok := f.byEmail[key]; ok && a.IDPUUID != "" {
+			return a.IDPUUID, nil
+		}
+	}
+	return "", repository.ErrNotFound
 }
 
 func (f *fakeAttendeeRepo) PatchByEmail(ctx context.Context, email string, patch models.AttendeePatch, updatedBy string) error {

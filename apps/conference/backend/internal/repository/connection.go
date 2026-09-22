@@ -19,6 +19,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -89,7 +90,7 @@ func (r *ConnectionRepo) Get(ctx context.Context, userUUID string) (models.UserC
 		        a.idp_uuid, a.email, a.first_name, a.last_name,
 		        a.title, a.company, a.country, a.profile_url
 		 FROM user_connection uc
-		 JOIN attendees a ON a.idp_uuid = CASE WHEN uc.requester_id = $1 THEN uc.addressee_id ELSE uc.requester_id END
+		 LEFT JOIN attendees a ON a.idp_uuid = CASE WHEN uc.requester_id = $1 THEN uc.addressee_id ELSE uc.requester_id END
 		 WHERE uc.requester_id = $1 OR uc.addressee_id = $1`,
 		userUUID,
 	)
@@ -115,6 +116,20 @@ func (r *ConnectionRepo) Get(ctx context.Context, userUUID string) (models.UserC
 			return models.UserConnectionsInfo{}, err
 		}
 
+		// The join is a LEFT JOIN so that a pair whose other side matches no
+		// attendee is still seen here rather than disappearing between the
+		// WHERE and the JOIN. Such a row cannot be rendered -- there is no
+		// name, and userId would be null -- so it is still left out of the
+		// response, but it is left out loudly. An inner join made the
+		// identity-namespace bug migration 017 repairs completely silent:
+		// the endpoint answered 200 with three empty buckets while the rows
+		// sat in the table.
+		if idpUUID == nil {
+			slog.WarnContext(ctx, "connection references an unknown attendee; omitting it",
+				"connectionId", connectionID)
+			continue
+		}
+
 		plain, err := r.decryptAll(firstName, lastName, title, company, country)
 		if err != nil {
 			return models.UserConnectionsInfo{}, err
@@ -128,9 +143,7 @@ func (r *ConnectionRepo) Get(ctx context.Context, userUUID string) (models.UserC
 			Company:      plain[3],
 			Country:      plain[4],
 		}
-		if idpUUID != nil {
-			user.UserID = *idpUUID
-		}
+		user.UserID = *idpUUID
 		// The address is released only once the pair is actually connected.
 		// A pending row shows up in both parties' responses, so populating it
 		// unconditionally handed the recipient's email to whoever sent the

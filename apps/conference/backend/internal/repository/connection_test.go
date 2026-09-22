@@ -634,3 +634,35 @@ func TestConnectionRepo_Schema_RefusesSelfAndMirrorRows(t *testing.T) {
 		t.Error("inserting the mirror row succeeded, want user_connection_pair_unique to refuse it")
 	}
 }
+
+// TestConnectionRepo_Get_OmitsRowWhoseOtherPartyIsUnknown covers the read
+// path's half of the identity-namespace failure (migration 017): a row whose
+// other side matches no attendee.
+//
+// The join is a LEFT JOIN so such a row is seen and logged rather than
+// vanishing between the WHERE and the JOIN, which means the scan now takes
+// NULLs in every profile column -- including idp_uuid, which the response's
+// userId is read from. Getting that wrong is a nil dereference on a live
+// request, so it is asserted here rather than reasoned about.
+func TestConnectionRepo_Get_OmitsRowWhoseOtherPartyIsUnknown(t *testing.T) {
+	ctx := context.Background()
+	repo := newConnectionRepo()
+
+	alice := newConnectionAttendeeFixture(t, ctx, "Alice16", "X")
+	stranger := newUUID() // never inserted into attendees
+	cleanupConnection(t, alice, stranger)
+
+	if _, err := testDB.Exec(ctx,
+		"INSERT INTO user_connection (requester_id, addressee_id) VALUES ($1, $2)", alice, stranger,
+	); err != nil {
+		t.Fatalf("failed to insert the orphan row: %v", err)
+	}
+
+	info, err := repo.Get(ctx, alice)
+	if err != nil {
+		t.Fatalf("Get error = %v", err)
+	}
+	if n := len(info.RequestsSent) + len(info.RequestsReceived) + len(info.Connections); n != 0 {
+		t.Errorf("Get returned %d item(s), want none: a row with no attendee behind it cannot be rendered", n)
+	}
+}

@@ -41,8 +41,9 @@ const testConnID = "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
 // identity always comes from the JWT and the row id always from the path,
 // never from a payload.
 type fakeConnectionReader struct {
-	info   models.UserConnectionsInfo
-	getErr error
+	info    models.UserConnectionsInfo
+	getErr  error
+	getWith struct{ userUUID string }
 
 	requestConn   models.Connection
 	requestErr    error
@@ -60,6 +61,7 @@ type fakeConnectionReader struct {
 }
 
 func (f *fakeConnectionReader) Get(ctx context.Context, userUUID string) (models.UserConnectionsInfo, error) {
+	f.getWith.userUUID = userUUID
 	return f.info, f.getErr
 }
 
@@ -793,4 +795,102 @@ func TestConnectionHandler_Create_FailedPushDoesNotFailTheRequest(t *testing.T) 
 		t.Fatalf("status = %d, want %d, body: %s", w.Code, http.StatusCreated, w.Body.String())
 	}
 	notifier.await(t)
+}
+
+// emailSubUser is the shape of caller that broke every connection on
+// production: the Asgardeo application behind the microapp puts the
+// attendee's email in sub, while targetId and every id this API returns are
+// idp_uuids. See ConnectionHandler.callerUUID and migration 017.
+var emailSubUser = &middleware.UserInfo{Email: "alice@example.com", UserID: "alice@example.com"}
+
+// emailSubProfiles resolves that caller to their real uuid, the way the
+// attendees table does, and keeps the target reachable by uuid.
+func emailSubProfiles() *fakeAttendeeRepo {
+	return &fakeAttendeeRepo{
+		byEmail: map[string]models.Attendee{
+			"alice@example.com": {ID: "attendee-1", Email: "alice@example.com", IDPUUID: "user-1"},
+		},
+		byUUID: map[string]models.Attendee{
+			"user-2": {ID: "attendee-2", Email: "bob@example.com", FirstName: "Bob", LastName: "Receiver"},
+		},
+	}
+}
+
+func TestConnectionHandler_EmailSubIsResolvedToTheAttendeeUUID(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		call    func(*gin.Engine)
+		callerf func(*fakeConnectionReader) string
+	}{
+		{
+			"get",
+			func(r *gin.Engine) { doRequest(r, http.MethodGet, "/users/me/connections", nil) },
+			func(f *fakeConnectionReader) string { return f.getWith.userUUID },
+		},
+		{
+			"create",
+			func(r *gin.Engine) {
+				doRequest(r, http.MethodPost, "/users/me/connections", map[string]any{"targetId": "user-2"})
+			},
+			func(f *fakeConnectionReader) string { return f.requestedWith.requesterUUID },
+		},
+		{
+			"accept",
+			func(r *gin.Engine) {
+				doRequest(r, http.MethodPost, "/users/me/connections/"+testConnID+"/accept", nil)
+			},
+			func(f *fakeConnectionReader) string { return f.acceptedWith.callerUUID },
+		},
+		{
+			"delete",
+			func(r *gin.Engine) { doRequest(r, http.MethodDelete, "/users/me/connections/"+testConnID, nil) },
+			func(f *fakeConnectionReader) string { return f.deletedWith.callerUUID },
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			reader := &fakeConnectionReader{
+				requestConn: models.Connection{ID: testConnID, RequesterID: "user-1", AddresseeID: "user-2", State: models.ConnectionPending},
+				acceptConn:  models.Connection{ID: testConnID, RequesterID: "user-2", AddresseeID: "user-1", State: models.ConnectionAccepted},
+			}
+			h := NewConnectionHandler(reader, emailSubProfiles(), nil, "")
+			tc.call(newConnectionTestRouter(h, emailSubUser))
+
+			if got := tc.callerf(reader); got != "user-1" {
+				t.Errorf("caller identity = %q, want the resolved uuid %q -- an email here is the bug migration 017 repairs", got, "user-1")
+			}
+		})
+	}
+}
+
+func TestConnectionHandler_CallerWithNoAttendeeRowFallsBackToTheSub(t *testing.T) {
+	reader := &fakeConnectionReader{}
+	// No profile for anyone, so resolution misses. Refusing here would lock
+	// an unregistered caller out mid conference; the raw sub is what the
+	// handler used before resolution existed.
+	h := NewConnectionHandler(reader, &fakeAttendeeRepo{}, nil, "")
+	r := newConnectionTestRouter(h, testUser)
+
+	w := doRequest(r, http.MethodGet, "/users/me/connections", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+	if reader.getWith.userUUID != testUser.UserID {
+		t.Errorf("caller identity = %q, want the raw sub %q", reader.getWith.userUUID, testUser.UserID)
+	}
+}
+
+func TestConnectionHandler_ResolutionFailureFallsBackToTheSub(t *testing.T) {
+	reader := &fakeConnectionReader{}
+	// A resolution error is not ErrNotFound -- the database is unhappy, not
+	// the roster. The route still answers rather than 500ing on a lookup the
+	// feature can proceed without.
+	h := NewConnectionHandler(reader, &fakeAttendeeRepo{resolveErr: errBoom}, nil, "")
+	r := newConnectionTestRouter(h, testUser)
+
+	if w := doRequest(r, http.MethodGet, "/users/me/connections", nil); w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+	if reader.getWith.userUUID != testUser.UserID {
+		t.Errorf("caller identity = %q, want the raw sub %q", reader.getWith.userUUID, testUser.UserID)
+	}
 }
