@@ -69,13 +69,27 @@ func scanConnection(row rowScanner) (models.Connection, error) {
 	return c, nil
 }
 
-// Get returns userUUID's connections, bucketed into sent/received requests
+// Get returns the caller's connections, bucketed into sent/received requests
 // and accepted connections, each enriched with the other user's attendee
 // profile. One SQL join instead of the old code's N+1 (one query for
 // connections, one per row for user details). Because the name-bearing
 // columns are encrypted, the join fetches ciphertext only; decryption and
 // name assembly happen in Go after the join, the same order of operations as
 // SpeakerRepo.GetSpeakerSummary's per-row decrypt-after-join.
+//
+// Both the filter and the join match a party under *any* form the caller
+// answers to (models.CallerIdentity), not just their idp_uuid. A row written
+// before the identity fix keys a party by their raw JWT sub, which for the
+// microapp's Asgardeo application is their email; matching only the uuid
+// would leave every such row invisible until a migration had rewritten it,
+// and would reopen the same hole for anything written by an older build
+// still running during a rollout. Nothing has to be rewritten for a
+// connection to be readable -- migration 017 is a tidy-up, not a
+// prerequisite.
+//
+// The other party is resolved the same way, by idp_uuid or by email, which
+// is why it is computed once in a LATERAL rather than spelled out in both
+// halves of the join condition.
 //
 // Every returned item carries ConnectionID. The accept and delete routes
 // address a connection by its row id and nothing else, so a client holding a
@@ -84,15 +98,21 @@ func scanConnection(row rowScanner) (models.Connection, error) {
 // The three slices are always non-nil: the microapp iterates them directly
 // and a JSON `null` would break that, so an empty bucket must serialize as
 // [].
-func (r *ConnectionRepo) Get(ctx context.Context, userUUID string) (models.UserConnectionsInfo, error) {
+func (r *ConnectionRepo) Get(ctx context.Context, caller models.CallerIdentity) (models.UserConnectionsInfo, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT uc.id, uc.requester_id, uc.state,
 		        a.idp_uuid, a.email, a.first_name, a.last_name,
 		        a.title, a.company, a.country, a.profile_url
 		 FROM user_connection uc
-		 LEFT JOIN attendees a ON a.idp_uuid = CASE WHEN uc.requester_id = $1 THEN uc.addressee_id ELSE uc.requester_id END
-		 WHERE uc.requester_id = $1 OR uc.addressee_id = $1`,
-		userUUID,
+		 CROSS JOIN LATERAL (
+		   SELECT CASE WHEN uc.requester_id = ANY($1) THEN uc.addressee_id
+		               ELSE uc.requester_id END AS id
+		 ) AS other
+		 LEFT JOIN attendees a
+		        ON a.idp_uuid IS NOT NULL
+		       AND (a.idp_uuid = other.id OR LOWER(a.email) = LOWER(other.id))
+		 WHERE uc.requester_id = ANY($1) OR uc.addressee_id = ANY($1)`,
+		caller.Aliases,
 	)
 	if err != nil {
 		return models.UserConnectionsInfo{}, err
@@ -161,7 +181,7 @@ func (r *ConnectionRepo) Get(ctx context.Context, userUUID string) (models.UserC
 		switch {
 		case models.ConnectionState(state) == models.ConnectionAccepted:
 			info.Connections = append(info.Connections, user)
-		case requesterID == userUUID:
+		case caller.Matches(requesterID):
 			info.RequestsSent = append(info.RequestsSent, user)
 		default:
 			info.RequestsReceived = append(info.RequestsReceived, user)
@@ -270,7 +290,10 @@ func (r *ConnectionRepo) Request(ctx context.Context, requesterUUID, addresseeUU
 // the bug this redesign exists to close, so it gets its own error, while a
 // caller who is not a party at all is told ErrNotFound. Answering 403 to a
 // stranger would confirm that the id exists.
-func (r *ConnectionRepo) Accept(ctx context.Context, connectionID, callerUUID string) (models.Connection, error) {
+// The addressee is matched under any of the caller's identity forms, for the
+// same reason Get is: a pending request stored against their email must be
+// acceptable by the person that email belongs to.
+func (r *ConnectionRepo) Accept(ctx context.Context, connectionID string, caller models.CallerIdentity) (models.Connection, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return models.Connection{}, err
@@ -279,9 +302,9 @@ func (r *ConnectionRepo) Accept(ctx context.Context, connectionID, callerUUID st
 
 	conn, err := scanConnection(tx.QueryRow(ctx,
 		`UPDATE user_connection SET state = 'accepted'
-		 WHERE id = $1 AND addressee_id = $2 AND state = 'pending'
+		 WHERE id = $1 AND addressee_id = ANY($2) AND state = 'pending'
 		 RETURNING `+connectionColumns,
-		connectionID, callerUUID,
+		connectionID, caller.Aliases,
 	))
 	if err == nil {
 		if err := tx.Commit(ctx); err != nil {
@@ -305,9 +328,9 @@ func (r *ConnectionRepo) Accept(ctx context.Context, connectionID, callerUUID st
 	}
 
 	switch {
-	case existing.RequesterID == callerUUID:
+	case caller.Matches(existing.RequesterID):
 		return models.Connection{}, ErrConnectionForbidden
-	case existing.AddresseeID == callerUUID:
+	case caller.Matches(existing.AddresseeID):
 		// The caller is the right person, so the only remaining reason
 		// the update matched nothing is that the row already moved on.
 		return models.Connection{}, ErrConnectionNotPending
@@ -325,11 +348,11 @@ func (r *ConnectionRepo) Accept(ctx context.Context, connectionID, callerUUID st
 // between the two. A miss reports ErrNotFound whether the id does not exist
 // or belongs to two other people, on the same don't-confirm-the-id reasoning
 // as Accept.
-func (r *ConnectionRepo) Delete(ctx context.Context, connectionID, callerUUID string) error {
+func (r *ConnectionRepo) Delete(ctx context.Context, connectionID string, caller models.CallerIdentity) error {
 	tag, err := r.pool.Exec(ctx,
 		`DELETE FROM user_connection
-		 WHERE id = $1 AND (requester_id = $2 OR addressee_id = $2)`,
-		connectionID, callerUUID,
+		 WHERE id = $1 AND (requester_id = ANY($2) OR addressee_id = ANY($2))`,
+		connectionID, caller.Aliases,
 	)
 	if err != nil {
 		return err

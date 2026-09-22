@@ -43,7 +43,7 @@ const testConnID = "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
 type fakeConnectionReader struct {
 	info    models.UserConnectionsInfo
 	getErr  error
-	getWith struct{ userUUID string }
+	getWith struct{ caller models.CallerIdentity }
 
 	requestConn   models.Connection
 	requestErr    error
@@ -53,15 +53,21 @@ type fakeConnectionReader struct {
 	acceptConn   models.Connection
 	acceptErr    error
 	acceptCalls  int
-	acceptedWith struct{ connectionID, callerUUID string }
+	acceptedWith struct {
+		connectionID string
+		caller       models.CallerIdentity
+	}
 
 	deleteErr   error
 	deleteCalls int
-	deletedWith struct{ connectionID, callerUUID string }
+	deletedWith struct {
+		connectionID string
+		caller       models.CallerIdentity
+	}
 }
 
-func (f *fakeConnectionReader) Get(ctx context.Context, userUUID string) (models.UserConnectionsInfo, error) {
-	f.getWith.userUUID = userUUID
+func (f *fakeConnectionReader) Get(ctx context.Context, caller models.CallerIdentity) (models.UserConnectionsInfo, error) {
+	f.getWith.caller = caller
 	return f.info, f.getErr
 }
 
@@ -72,17 +78,17 @@ func (f *fakeConnectionReader) Request(ctx context.Context, requesterUUID, addre
 	return f.requestConn, f.requestErr
 }
 
-func (f *fakeConnectionReader) Accept(ctx context.Context, connectionID, callerUUID string) (models.Connection, error) {
+func (f *fakeConnectionReader) Accept(ctx context.Context, connectionID string, caller models.CallerIdentity) (models.Connection, error) {
 	f.acceptCalls++
 	f.acceptedWith.connectionID = connectionID
-	f.acceptedWith.callerUUID = callerUUID
+	f.acceptedWith.caller = caller
 	return f.acceptConn, f.acceptErr
 }
 
-func (f *fakeConnectionReader) Delete(ctx context.Context, connectionID, callerUUID string) error {
+func (f *fakeConnectionReader) Delete(ctx context.Context, connectionID string, caller models.CallerIdentity) error {
 	f.deleteCalls++
 	f.deletedWith.connectionID = connectionID
-	f.deletedWith.callerUUID = callerUUID
+	f.deletedWith.caller = caller
 	return f.deleteErr
 }
 
@@ -438,8 +444,8 @@ func TestConnectionHandler_Accept_UsesPathIDAndJWTSub(t *testing.T) {
 	if reader.acceptedWith.connectionID != testConnID {
 		t.Errorf("connectionID = %q, want the path id %q", reader.acceptedWith.connectionID, testConnID)
 	}
-	if reader.acceptedWith.callerUUID != testUser.UserID {
-		t.Errorf("caller = %q, want the JWT sub %q", reader.acceptedWith.callerUUID, testUser.UserID)
+	if reader.acceptedWith.caller.Canonical != testUser.UserID {
+		t.Errorf("caller = %q, want the JWT sub %q", reader.acceptedWith.caller.Canonical, testUser.UserID)
 	}
 }
 
@@ -528,9 +534,9 @@ func TestConnectionHandler_Delete_ReturnsNoContent(t *testing.T) {
 	if w.Body.Len() != 0 {
 		t.Errorf("body = %q, want empty", w.Body.String())
 	}
-	if reader.deletedWith.connectionID != testConnID || reader.deletedWith.callerUUID != testUser.UserID {
+	if reader.deletedWith.connectionID != testConnID || reader.deletedWith.caller.Canonical != testUser.UserID {
 		t.Errorf("Delete called with (%q, %q), want (%q, %q)",
-			reader.deletedWith.connectionID, reader.deletedWith.callerUUID, testConnID, testUser.UserID)
+			reader.deletedWith.connectionID, reader.deletedWith.caller.Canonical, testConnID, testUser.UserID)
 	}
 }
 
@@ -800,7 +806,7 @@ func TestConnectionHandler_Create_FailedPushDoesNotFailTheRequest(t *testing.T) 
 // emailSubUser is the shape of caller that broke every connection on
 // production: the Asgardeo application behind the microapp puts the
 // attendee's email in sub, while targetId and every id this API returns are
-// idp_uuids. See ConnectionHandler.callerUUID and migration 017.
+// idp_uuids. See ConnectionHandler.callerIdentity and migration 017.
 var emailSubUser = &middleware.UserInfo{Email: "alice@example.com", UserID: "alice@example.com"}
 
 // emailSubProfiles resolves that caller to their real uuid, the way the
@@ -825,7 +831,7 @@ func TestConnectionHandler_EmailSubIsResolvedToTheAttendeeUUID(t *testing.T) {
 		{
 			"get",
 			func(r *gin.Engine) { doRequest(r, http.MethodGet, "/users/me/connections", nil) },
-			func(f *fakeConnectionReader) string { return f.getWith.userUUID },
+			func(f *fakeConnectionReader) string { return f.getWith.caller.Canonical },
 		},
 		{
 			"create",
@@ -839,12 +845,12 @@ func TestConnectionHandler_EmailSubIsResolvedToTheAttendeeUUID(t *testing.T) {
 			func(r *gin.Engine) {
 				doRequest(r, http.MethodPost, "/users/me/connections/"+testConnID+"/accept", nil)
 			},
-			func(f *fakeConnectionReader) string { return f.acceptedWith.callerUUID },
+			func(f *fakeConnectionReader) string { return f.acceptedWith.caller.Canonical },
 		},
 		{
 			"delete",
 			func(r *gin.Engine) { doRequest(r, http.MethodDelete, "/users/me/connections/"+testConnID, nil) },
-			func(f *fakeConnectionReader) string { return f.deletedWith.callerUUID },
+			func(f *fakeConnectionReader) string { return f.deletedWith.caller.Canonical },
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -874,8 +880,8 @@ func TestConnectionHandler_CallerWithNoAttendeeRowFallsBackToTheSub(t *testing.T
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
 	}
-	if reader.getWith.userUUID != testUser.UserID {
-		t.Errorf("caller identity = %q, want the raw sub %q", reader.getWith.userUUID, testUser.UserID)
+	if reader.getWith.caller.Canonical != testUser.UserID {
+		t.Errorf("caller identity = %q, want the raw sub %q", reader.getWith.caller.Canonical, testUser.UserID)
 	}
 }
 
@@ -890,7 +896,50 @@ func TestConnectionHandler_ResolutionFailureFallsBackToTheSub(t *testing.T) {
 	if w := doRequest(r, http.MethodGet, "/users/me/connections", nil); w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
 	}
-	if reader.getWith.userUUID != testUser.UserID {
-		t.Errorf("caller identity = %q, want the raw sub %q", reader.getWith.userUUID, testUser.UserID)
+	if reader.getWith.caller.Canonical != testUser.UserID {
+		t.Errorf("caller identity = %q, want the raw sub %q", reader.getWith.caller.Canonical, testUser.UserID)
+	}
+}
+
+// TestConnectionHandler_CarriesEveryIdentityFormAsAnAlias is the handler's
+// half of the backward compatibility guarantee: the repository is handed the
+// caller's sub and email alongside their canonical uuid, so it can match a
+// row an older build keyed by either one. Without the aliases the fix would
+// depend on migration 017 having run everywhere first.
+func TestConnectionHandler_CarriesEveryIdentityFormAsAnAlias(t *testing.T) {
+	reader := &fakeConnectionReader{}
+	h := NewConnectionHandler(reader, emailSubProfiles(), nil, "")
+
+	doRequest(newConnectionTestRouter(h, emailSubUser), http.MethodGet, "/users/me/connections", nil)
+
+	got := reader.getWith.caller
+	if got.Canonical != "user-1" {
+		t.Errorf("Canonical = %q, want the resolved uuid %q", got.Canonical, "user-1")
+	}
+	for _, want := range []string{"user-1", "alice@example.com"} {
+		if !got.Matches(want) {
+			t.Errorf("aliases %v do not match %q", got.Aliases, want)
+		}
+	}
+	// Canonical first, and no duplicate when sub and email are the same
+	// string -- which is exactly the production case.
+	if len(got.Aliases) != 2 || got.Aliases[0] != "user-1" {
+		t.Errorf("Aliases = %v, want the canonical id first and no duplicates", got.Aliases)
+	}
+}
+
+// TestConnectionHandler_WritesOnlyTheCanonicalIdentity pins the other half:
+// aliases exist to read what older builds stored, never to keep storing it.
+func TestConnectionHandler_WritesOnlyTheCanonicalIdentity(t *testing.T) {
+	reader := &fakeConnectionReader{requestConn: models.Connection{
+		ID: testConnID, RequesterID: "user-1", AddresseeID: "user-2", State: models.ConnectionPending,
+	}}
+	h := NewConnectionHandler(reader, emailSubProfiles(), nil, "")
+
+	doRequest(newConnectionTestRouter(h, emailSubUser), http.MethodPost,
+		"/users/me/connections", map[string]any{"targetId": "user-2"})
+
+	if got := reader.requestedWith.requesterUUID; got != "user-1" {
+		t.Errorf("stored requester = %q, want the canonical uuid %q -- an alias must never be written", got, "user-1")
 	}
 }

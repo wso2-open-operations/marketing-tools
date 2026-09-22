@@ -82,6 +82,78 @@ func (c Connection) Other(callerUUID string) (string, bool) {
 	}
 }
 
+// CallerIdentity is every identity form one authenticated caller answers to.
+//
+// It exists because a stored connection id is not guaranteed to be in the
+// form the caller's token presents. Rows written before the identity fix key
+// a party by whatever their JWT sub happened to be -- for the Asgardeo
+// application behind the microapp, their email -- while rows written since
+// key them by attendees.idp_uuid. Matching on a single string therefore made
+// one of those two populations invisible, whichever one was chosen.
+//
+// Carrying the set instead means the reads match a party under any form they
+// have ever been stored under, so a legacy row is readable with no migration
+// having been run. Canonical is what any *new* write uses, so the set stops
+// growing.
+type CallerIdentity struct {
+	// Canonical is the caller's attendees.idp_uuid where it resolved, and
+	// their raw sub where it did not. Every write uses it and nothing else.
+	Canonical string
+
+	// Aliases is every form the caller may be stored under, Canonical
+	// included: deduplicated, never empty, and safe to pass straight to a
+	// `= ANY($1)`.
+	Aliases []string
+}
+
+// NewCallerIdentity builds the set from the canonical id plus whatever other
+// forms the token carried, dropping blanks and duplicates. Canonical is
+// always first, so a reader of the slice sees the authoritative id up front.
+func NewCallerIdentity(canonical string, others ...string) CallerIdentity {
+	aliases := make([]string, 0, len(others)+1)
+	seen := make(map[string]struct{}, len(others)+1)
+	for _, id := range append([]string{canonical}, others...) {
+		if id == "" {
+			continue
+		}
+		if _, dup := seen[id]; dup {
+			continue
+		}
+		seen[id] = struct{}{}
+		aliases = append(aliases, id)
+	}
+	return CallerIdentity{Canonical: canonical, Aliases: aliases}
+}
+
+// Matches reports whether a stored party id names this caller, under any
+// form. Used to bucket a row as sent rather than received, and to tell a
+// caller who is party to a connection from one who is not.
+func (c CallerIdentity) Matches(partyID string) bool {
+	for _, alias := range c.Aliases {
+		if alias == partyID {
+			return true
+		}
+	}
+	return false
+}
+
+// OtherFor returns the id of whichever party is not the caller, under any of
+// the caller's identity forms, and whether the caller is a party at all.
+//
+// The id it returns is whatever the row stores, which for a legacy row may
+// itself be an email rather than a uuid; callers that need a uuid (a push
+// recipient, a profile lookup) resolve it.
+func (c Connection) OtherFor(caller CallerIdentity) (string, bool) {
+	switch {
+	case caller.Matches(c.RequesterID):
+		return c.AddresseeID, true
+	case caller.Matches(c.AddresseeID):
+		return c.RequesterID, true
+	default:
+		return "", false
+	}
+}
+
 // ConnectionUserInfo describes the other party in a connection, enriched from
 // that user's attendee profile.
 //
