@@ -126,7 +126,7 @@ func TestConnectionRepo_Get_PendingWithholdsEmailFromBothParties(t *testing.T) {
 	aliceEmail := connectionAttendeeEmail(t, ctx, alice)
 	bobEmail := connectionAttendeeEmail(t, ctx, bob)
 
-	aliceView, err := repo.Get(ctx, alice)
+	aliceView, err := repo.Get(ctx, models.NewCallerIdentity(alice))
 	if err != nil {
 		t.Fatalf("Get(alice) returned error: %v", err)
 	}
@@ -147,7 +147,7 @@ func TestConnectionRepo_Get_PendingWithholdsEmailFromBothParties(t *testing.T) {
 		t.Errorf("alice.RequestsSent[0] = %+v, want bob's uuid and a pending status", sent)
 	}
 
-	bobView, err := repo.Get(ctx, bob)
+	bobView, err := repo.Get(ctx, models.NewCallerIdentity(bob))
 	if err != nil {
 		t.Fatalf("Get(bob) returned error: %v", err)
 	}
@@ -178,7 +178,7 @@ func TestConnectionRepo_Get_AcceptedReleasesEmailToBothParties(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Request returned error: %v", err)
 	}
-	if _, err := repo.Accept(ctx, pending.ID, bob); err != nil {
+	if _, err := repo.Accept(ctx, pending.ID, models.NewCallerIdentity(bob)); err != nil {
 		t.Fatalf("Accept returned error: %v", err)
 	}
 
@@ -188,7 +188,7 @@ func TestConnectionRepo_Get_AcceptedReleasesEmailToBothParties(t *testing.T) {
 		{"alice", alice, connectionAttendeeEmail(t, ctx, bob)},
 		{"bob", bob, connectionAttendeeEmail(t, ctx, alice)},
 	} {
-		view, err := repo.Get(ctx, party.self)
+		view, err := repo.Get(ctx, models.NewCallerIdentity(party.self))
 		if err != nil {
 			t.Fatalf("Get(%s) returned error: %v", party.name, err)
 		}
@@ -220,7 +220,7 @@ func TestConnectionRepo_Request_CreatesPendingVisibleToBothParties(t *testing.T)
 		t.Errorf("Request parties = (%q -> %q), want (%q -> %q)", conn.RequesterID, conn.AddresseeID, alice, bob)
 	}
 
-	aliceView, err := repo.Get(ctx, alice)
+	aliceView, err := repo.Get(ctx, models.NewCallerIdentity(alice))
 	if err != nil {
 		t.Fatalf("Get(alice) returned error: %v", err)
 	}
@@ -242,7 +242,7 @@ func TestConnectionRepo_Request_CreatesPendingVisibleToBothParties(t *testing.T)
 		t.Errorf("alice.RequestsSent[0].ConnectionID = %q, want %q", sent.ConnectionID, conn.ID)
 	}
 
-	bobView, err := repo.Get(ctx, bob)
+	bobView, err := repo.Get(ctx, models.NewCallerIdentity(bob))
 	if err != nil {
 		t.Fatalf("Get(bob) returned error: %v", err)
 	}
@@ -366,7 +366,7 @@ func TestConnectionRepo_Accept_ByAddresseeConnectsBothParties(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Request returned error: %v", err)
 	}
-	accepted, err := repo.Accept(ctx, pending.ID, bob)
+	accepted, err := repo.Accept(ctx, pending.ID, models.NewCallerIdentity(bob))
 	if err != nil {
 		t.Fatalf("Accept returned error: %v", err)
 	}
@@ -377,7 +377,7 @@ func TestConnectionRepo_Accept_ByAddresseeConnectsBothParties(t *testing.T) {
 	for _, party := range []struct {
 		name, self, other string
 	}{{"alice", alice, bob}, {"bob", bob, alice}} {
-		view, err := repo.Get(ctx, party.self)
+		view, err := repo.Get(ctx, models.NewCallerIdentity(party.self))
 		if err != nil {
 			t.Fatalf("Get(%s) returned error: %v", party.name, err)
 		}
@@ -412,7 +412,7 @@ func TestConnectionRepo_Accept_ByRequesterIsForbidden(t *testing.T) {
 	}
 	// Accept-your-own-request, the headline bug: alice sent it, so only bob
 	// may move it to accepted.
-	if _, err := repo.Accept(ctx, pending.ID, alice); !errors.Is(err, ErrConnectionForbidden) {
+	if _, err := repo.Accept(ctx, pending.ID, models.NewCallerIdentity(alice)); !errors.Is(err, ErrConnectionForbidden) {
 		t.Fatalf("Accept by requester returned %v, want ErrConnectionForbidden", err)
 	}
 	if state := connectionStateByID(t, ctx, pending.ID); state != "pending" {
@@ -432,10 +432,10 @@ func TestConnectionRepo_Accept_AlreadyAcceptedReturnsErrConnectionNotPending(t *
 	if err != nil {
 		t.Fatalf("Request returned error: %v", err)
 	}
-	if _, err := repo.Accept(ctx, pending.ID, bob); err != nil {
+	if _, err := repo.Accept(ctx, pending.ID, models.NewCallerIdentity(bob)); err != nil {
 		t.Fatalf("first Accept returned error: %v", err)
 	}
-	if _, err := repo.Accept(ctx, pending.ID, bob); !errors.Is(err, ErrConnectionNotPending) {
+	if _, err := repo.Accept(ctx, pending.ID, models.NewCallerIdentity(bob)); !errors.Is(err, ErrConnectionNotPending) {
 		t.Fatalf("second Accept returned %v, want ErrConnectionNotPending", err)
 	}
 }
@@ -455,7 +455,7 @@ func TestConnectionRepo_Accept_ByThirdPartyReturnsErrNotFound(t *testing.T) {
 	}
 	// Not 403: telling a stranger "forbidden" would confirm that the id is
 	// a real connection.
-	if _, err := repo.Accept(ctx, pending.ID, carol); !errors.Is(err, ErrNotFound) {
+	if _, err := repo.Accept(ctx, pending.ID, models.NewCallerIdentity(carol)); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("Accept by third party returned %v, want ErrNotFound", err)
 	}
 	if state := connectionStateByID(t, ctx, pending.ID); state != "pending" {
@@ -469,7 +469,7 @@ func TestConnectionRepo_Accept_UnknownIDReturnsErrNotFound(t *testing.T) {
 
 	alice := newConnectionAttendeeFixture(t, ctx, "Alice10", "X")
 
-	if _, err := repo.Accept(ctx, newUUID(), alice); !errors.Is(err, ErrNotFound) {
+	if _, err := repo.Accept(ctx, newUUID(), models.NewCallerIdentity(alice)); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("Accept of an unknown id returned %v, want ErrNotFound", err)
 	}
 }
@@ -486,7 +486,7 @@ func TestConnectionRepo_Delete_ByRequesterWithdrawsAndAllowsReconnect(t *testing
 	if err != nil {
 		t.Fatalf("Request returned error: %v", err)
 	}
-	if err := repo.Delete(ctx, first.ID, alice); err != nil {
+	if err := repo.Delete(ctx, first.ID, models.NewCallerIdentity(alice)); err != nil {
 		t.Fatalf("Delete by requester returned error: %v", err)
 	}
 	if n := countConnectionRows(t, ctx, alice, bob); n != 0 {
@@ -520,14 +520,14 @@ func TestConnectionRepo_Delete_ByAddresseeDeclinesRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Request returned error: %v", err)
 	}
-	if err := repo.Delete(ctx, pending.ID, bob); err != nil {
+	if err := repo.Delete(ctx, pending.ID, models.NewCallerIdentity(bob)); err != nil {
 		t.Fatalf("Delete by addressee returned error: %v", err)
 	}
 	if n := countConnectionRows(t, ctx, alice, bob); n != 0 {
 		t.Errorf("row count after decline = %d, want 0", n)
 	}
 
-	bobView, err := repo.Get(ctx, bob)
+	bobView, err := repo.Get(ctx, models.NewCallerIdentity(bob))
 	if err != nil {
 		t.Fatalf("Get(bob) returned error: %v", err)
 	}
@@ -552,7 +552,7 @@ func TestConnectionRepo_Delete_AcceptedConnectionRemovableByEitherParty(t *testi
 			if err != nil {
 				t.Fatalf("Request returned error: %v", err)
 			}
-			if _, err := repo.Accept(ctx, conn.ID, bob); err != nil {
+			if _, err := repo.Accept(ctx, conn.ID, models.NewCallerIdentity(bob)); err != nil {
 				t.Fatalf("Accept returned error: %v", err)
 			}
 
@@ -560,7 +560,7 @@ func TestConnectionRepo_Delete_AcceptedConnectionRemovableByEitherParty(t *testi
 			if remover == "addressee" {
 				caller = bob
 			}
-			if err := repo.Delete(ctx, conn.ID, caller); err != nil {
+			if err := repo.Delete(ctx, conn.ID, models.NewCallerIdentity(caller)); err != nil {
 				t.Fatalf("Delete by %s returned error: %v", remover, err)
 			}
 			if n := countConnectionRows(t, ctx, alice, bob); n != 0 {
@@ -583,7 +583,7 @@ func TestConnectionRepo_Delete_ByThirdPartyReturnsErrNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Request returned error: %v", err)
 	}
-	if err := repo.Delete(ctx, conn.ID, carol); !errors.Is(err, ErrNotFound) {
+	if err := repo.Delete(ctx, conn.ID, models.NewCallerIdentity(carol)); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("Delete by third party returned %v, want ErrNotFound", err)
 	}
 	if n := countConnectionRows(t, ctx, alice, bob); n != 1 {
@@ -597,7 +597,7 @@ func TestConnectionRepo_Get_NoConnectionsReturnsEmptyNotNil(t *testing.T) {
 
 	solo := newConnectionAttendeeFixture(t, ctx, "Solo", "Nobody")
 
-	view, err := repo.Get(ctx, solo)
+	view, err := repo.Get(ctx, models.NewCallerIdentity(solo))
 	if err != nil {
 		t.Fatalf("Get returned error: %v", err)
 	}
@@ -658,11 +658,148 @@ func TestConnectionRepo_Get_OmitsRowWhoseOtherPartyIsUnknown(t *testing.T) {
 		t.Fatalf("failed to insert the orphan row: %v", err)
 	}
 
-	info, err := repo.Get(ctx, alice)
+	info, err := repo.Get(ctx, models.NewCallerIdentity(alice))
 	if err != nil {
 		t.Fatalf("Get error = %v", err)
 	}
 	if n := len(info.RequestsSent) + len(info.RequestsReceived) + len(info.Connections); n != 0 {
 		t.Errorf("Get returned %d item(s), want none: a row with no attendee behind it cannot be rendered", n)
+	}
+}
+
+// legacyFixture inserts an attendee and returns both identity forms, so a
+// test can store a connection under the form an older build would have
+// written -- the JWT sub, which for the microapp's Asgardeo application is
+// the email -- and read it back under the canonical one.
+func legacyFixture(t *testing.T, ctx context.Context, name string) (idpUUID, email string) {
+	t.Helper()
+	repo := NewAttendeeProfileRepo(testDB, attendeeProfileTestKey)
+	idpUUID = newUUID()
+	email = fmt.Sprintf("%s-%s@example.com", name, newUUID())
+	if err := repo.Insert(ctx, models.AttendeeInsert{
+		FirstName: name, LastName: "Legacy", MemberID: "m-" + newUUID(),
+	}, email, idpUUID); err != nil {
+		t.Fatalf("failed to insert test attendee: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = testDB.Exec(context.Background(), "DELETE FROM attendees WHERE idp_uuid = $1", idpUUID)
+	})
+	return idpUUID, email
+}
+
+// TestConnectionRepo_Get_ReadsRowsKeyedByEitherIdentityForm is the backward
+// compatibility guarantee: a connection written before the identity fix,
+// keyed by a party's email rather than their idp_uuid, is readable by both
+// parties with no migration having been run.
+//
+// This is what makes migration 017 a tidy-up rather than a prerequisite, and
+// what closes the window during a rollout while an older build is still
+// writing such rows.
+func TestConnectionRepo_Get_ReadsRowsKeyedByEitherIdentityForm(t *testing.T) {
+	ctx := context.Background()
+	repo := newConnectionRepo()
+
+	aliceUUID, aliceEmail := legacyFixture(t, ctx, "Alice17")
+	bobUUID, bobEmail := legacyFixture(t, ctx, "Bob17")
+	cleanupConnection(t, aliceEmail, bobUUID)
+
+	// Exactly the shape production wrote: the requester as their email
+	// (their JWT sub), the addressee as the uuid the directory served.
+	if _, err := testDB.Exec(ctx,
+		"INSERT INTO user_connection (requester_id, addressee_id) VALUES ($1, $2)", aliceEmail, bobUUID,
+	); err != nil {
+		t.Fatalf("failed to insert the legacy row: %v", err)
+	}
+
+	alice := models.NewCallerIdentity(aliceUUID, aliceEmail)
+	bob := models.NewCallerIdentity(bobUUID, bobEmail)
+
+	aliceView, err := repo.Get(ctx, alice)
+	if err != nil {
+		t.Fatalf("Get(alice) error = %v", err)
+	}
+	if len(aliceView.RequestsSent) != 1 {
+		t.Fatalf("alice sees %d sent request(s), want 1 -- the row is keyed by her email", len(aliceView.RequestsSent))
+	}
+	if got := aliceView.RequestsSent[0].UserID; got != bobUUID {
+		t.Errorf("other party userId = %q, want bob's uuid %q", got, bobUUID)
+	}
+
+	// The half that was broken in production: the recipient could never see
+	// it, because the row named the requester in a form nothing matched.
+	bobView, err := repo.Get(ctx, bob)
+	if err != nil {
+		t.Fatalf("Get(bob) error = %v", err)
+	}
+	if len(bobView.RequestsReceived) != 1 {
+		t.Fatalf("bob sees %d received request(s), want 1", len(bobView.RequestsReceived))
+	}
+	if got := bobView.RequestsReceived[0].UserID; got != aliceUUID {
+		t.Errorf("other party userId = %q, want alice's uuid %q -- the email side must resolve to a uuid", got, aliceUUID)
+	}
+	if got := bobView.RequestsReceived[0].Name; got != "Alice17 Legacy" {
+		t.Errorf("other party name = %q, want the profile joined by email", got)
+	}
+}
+
+// TestConnectionRepo_Accept_AcceptsALegacyEmailKeyedRow closes the loop: a
+// request stored against the addressee's email is acceptable by the person
+// that email belongs to, so a pair is not merely visible but usable.
+func TestConnectionRepo_Accept_AcceptsALegacyEmailKeyedRow(t *testing.T) {
+	ctx := context.Background()
+	repo := newConnectionRepo()
+
+	aliceUUID, _ := legacyFixture(t, ctx, "Alice18")
+	bobUUID, bobEmail := legacyFixture(t, ctx, "Bob18")
+	cleanupConnection(t, aliceUUID, bobEmail)
+
+	var connID string
+	if err := testDB.QueryRow(ctx,
+		"INSERT INTO user_connection (requester_id, addressee_id) VALUES ($1, $2) RETURNING id",
+		aliceUUID, bobEmail,
+	).Scan(&connID); err != nil {
+		t.Fatalf("failed to insert the legacy row: %v", err)
+	}
+
+	bob := models.NewCallerIdentity(bobUUID, bobEmail)
+	accepted, err := repo.Accept(ctx, connID, bob)
+	if err != nil {
+		t.Fatalf("Accept by the addressee under their uuid failed: %v", err)
+	}
+	if accepted.State != models.ConnectionAccepted {
+		t.Errorf("state = %q, want accepted", accepted.State)
+	}
+
+	// And the requester still may not accept their own request, even though
+	// the addressee is stored in a different form than the caller presents.
+	alice := models.NewCallerIdentity(aliceUUID)
+	if _, err := repo.Accept(ctx, connID, alice); err == nil {
+		t.Error("the requester accepted their own request, want it refused")
+	}
+}
+
+// TestConnectionRepo_Delete_RemovesALegacyEmailKeyedRow covers decline and
+// withdraw on the same shape.
+func TestConnectionRepo_Delete_RemovesALegacyEmailKeyedRow(t *testing.T) {
+	ctx := context.Background()
+	repo := newConnectionRepo()
+
+	aliceUUID, aliceEmail := legacyFixture(t, ctx, "Alice19")
+	bobUUID, _ := legacyFixture(t, ctx, "Bob19")
+	cleanupConnection(t, aliceEmail, bobUUID)
+
+	var connID string
+	if err := testDB.QueryRow(ctx,
+		"INSERT INTO user_connection (requester_id, addressee_id) VALUES ($1, $2) RETURNING id",
+		aliceEmail, bobUUID,
+	).Scan(&connID); err != nil {
+		t.Fatalf("failed to insert the legacy row: %v", err)
+	}
+
+	if err := repo.Delete(ctx, connID, models.NewCallerIdentity(aliceUUID, aliceEmail)); err != nil {
+		t.Fatalf("Delete by the requester under their uuid failed: %v", err)
+	}
+	if n := countConnectionRows(t, ctx, aliceEmail, bobUUID); n != 0 {
+		t.Errorf("%d row(s) left, want 0", n)
 	}
 }

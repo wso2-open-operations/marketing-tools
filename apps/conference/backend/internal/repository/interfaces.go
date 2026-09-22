@@ -82,10 +82,10 @@ type AttendeeProfileReader interface {
 // caller cannot name a state at all -- Accept is the only way to reach
 // 'accepted', and it refuses anyone but the addressee.
 type ConnectionReader interface {
-	Get(ctx context.Context, userUUID string) (models.UserConnectionsInfo, error)
+	Get(ctx context.Context, caller models.CallerIdentity) (models.UserConnectionsInfo, error)
 	Request(ctx context.Context, requesterUUID, addresseeUUID string) (models.Connection, error)
-	Accept(ctx context.Context, connectionID, callerUUID string) (models.Connection, error)
-	Delete(ctx context.Context, connectionID, callerUUID string) error
+	Accept(ctx context.Context, connectionID string, caller models.CallerIdentity) (models.Connection, error)
+	Delete(ctx context.Context, connectionID string, caller models.CallerIdentity) error
 }
 
 // FeedbackReader is satisfied by *FeedbackRepo.

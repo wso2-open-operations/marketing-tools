@@ -39,10 +39,10 @@ import (
 // a payload rather than a property of the endpoint. Each method here decides
 // for itself who is allowed to call it, and none of them accepts a state.
 type ConnectionReader interface {
-	Get(ctx context.Context, userUUID string) (models.UserConnectionsInfo, error)
+	Get(ctx context.Context, caller models.CallerIdentity) (models.UserConnectionsInfo, error)
 	Request(ctx context.Context, requesterUUID, addresseeUUID string) (models.Connection, error)
-	Accept(ctx context.Context, connectionID, callerUUID string) (models.Connection, error)
-	Delete(ctx context.Context, connectionID, callerUUID string) error
+	Accept(ctx context.Context, connectionID string, caller models.CallerIdentity) (models.Connection, error)
+	Delete(ctx context.Context, connectionID string, caller models.CallerIdentity) error
 }
 
 // ConnectionHandler exposes the network connections HTTP endpoints.
@@ -123,7 +123,7 @@ func (h *ConnectionHandler) Get(c *gin.Context) {
 		return
 	}
 
-	info, err := h.connections.Get(c.Request.Context(), h.callerUUID(c.Request.Context(), user))
+	info, err := h.connections.Get(c.Request.Context(), h.callerIdentity(c.Request.Context(), user))
 	if err != nil {
 		slog.ErrorContext(c.Request.Context(), "fetching connections failed", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "internal error"})
@@ -162,9 +162,11 @@ func (h *ConnectionHandler) Create(c *gin.Context) {
 		return
 	}
 
-	caller := h.callerUUID(c.Request.Context(), user)
+	caller := h.callerIdentity(c.Request.Context(), user)
 
-	conn, err := h.connections.Request(c.Request.Context(), caller, req.TargetID)
+	// A write always uses the canonical id, never an alias: the aliases
+	// exist to read what older builds stored, not to keep storing it.
+	conn, err := h.connections.Request(c.Request.Context(), caller.Canonical, req.TargetID)
 	if err != nil {
 		switch {
 		case errors.Is(err, repository.ErrSelfConnection):
@@ -178,7 +180,7 @@ func (h *ConnectionHandler) Create(c *gin.Context) {
 		return
 	}
 
-	h.notifyConnection(conn, caller, connectionRequestBody)
+	h.notifyConnection(c.Request.Context(), conn, caller, connectionRequestBody)
 
 	c.JSON(http.StatusCreated, h.describeOtherParty(c.Request.Context(), conn, caller))
 }
@@ -201,7 +203,7 @@ func (h *ConnectionHandler) Accept(c *gin.Context) {
 		return
 	}
 
-	caller := h.callerUUID(c.Request.Context(), user)
+	caller := h.callerIdentity(c.Request.Context(), user)
 
 	conn, err := h.connections.Accept(c.Request.Context(), id, caller)
 	if err != nil {
@@ -209,7 +211,7 @@ func (h *ConnectionHandler) Accept(c *gin.Context) {
 		return
 	}
 
-	h.notifyConnection(conn, caller, connectionAcceptBody)
+	h.notifyConnection(c.Request.Context(), conn, caller, connectionAcceptBody)
 
 	c.JSON(http.StatusOK, h.describeOtherParty(c.Request.Context(), conn, caller))
 }
@@ -232,43 +234,68 @@ func (h *ConnectionHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	if err := h.connections.Delete(c.Request.Context(), id, h.callerUUID(c.Request.Context(), user)); err != nil {
+	if err := h.connections.Delete(c.Request.Context(), id, h.callerIdentity(c.Request.Context(), user)); err != nil {
 		writeConnectionTransitionError(c, "deleting connection failed", err)
 		return
 	}
 	c.Status(http.StatusNoContent)
 }
 
-// callerUUID resolves the authenticated caller onto the identity every
-// user_connection row is keyed on -- attendees.idp_uuid -- rather than
-// trusting the JWT sub verbatim.
+// callerIdentity collects every identity form the authenticated caller
+// answers to, so a connection can be read under any of them and written
+// under exactly one.
 //
-// The two are not the same string for every Asgardeo application the gateway
-// accepts (see repository.AttendeeProfileRepo.ResolveUUID): some present the
-// attendee's email as sub. Meanwhile the only id a client can put in
-// targetId is an idp_uuid, because that is what the attendee directory
-// serves. So a request written from a raw sub stored an email on one side of
-// the pair and a uuid on the other, and the read path -- which joins the
-// other party against attendees.idp_uuid and filters on "either side is me"
-// -- could match neither. The row was visible to nobody but its sender, and
-// accepting it was impossible. Migration 017 repairs the rows this produced.
+// Canonical is attendees.idp_uuid, resolved from the token rather than taken
+// from the JWT sub verbatim: the two are not the same string for every
+// Asgardeo application the gateway accepts (see
+// repository.AttendeeProfileRepo.ResolveUUID), and the only id a client can
+// put in targetId is an idp_uuid, because that is what the attendee
+// directory serves. Writing a raw sub stored an email on one side of a pair
+// and a uuid on the other, and the read path could match neither.
 //
-// Resolution failure falls back to the raw sub rather than refusing the
-// request. A caller with no attendees row has no profile for any response to
-// enrich and cannot appear in anyone else's listing either way, so failing
-// here would convert a caller who is merely unregistered into an error mid
-// conference. It is logged, because in a seeded roster it should not happen.
-func (h *ConnectionHandler) callerUUID(ctx context.Context, user *middleware.UserInfo) string {
-	uuid, err := h.attendees.ResolveUUID(ctx, user.UserID, user.Email)
-	switch {
+// The sub and the email claim ride along as aliases, which is what makes
+// this backward compatible: rows an older build keyed by either one stay
+// readable, acceptable and deletable with no migration having been run, and
+// a build still writing them during a rollout does not open a gap. Migration
+// 017 canonicalizes the stored rows so the alias set stops mattering; it is
+// a tidy-up, not a prerequisite.
+//
+// Resolution failure leaves Canonical as the raw sub rather than refusing
+// the request. A caller with no attendees row has no profile for any
+// response to enrich and cannot appear in anyone else's listing either way,
+// so failing here would convert a caller who is merely unregistered into an
+// error mid conference. It is logged, because in a seeded roster it should
+// not happen.
+func (h *ConnectionHandler) callerIdentity(ctx context.Context, user *middleware.UserInfo) models.CallerIdentity {
+	canonical := user.UserID
+
+	switch uuid, err := h.attendees.ResolveUUID(ctx, user.UserID, user.Email); {
 	case err == nil:
-		return uuid
+		canonical = uuid
 	case errors.Is(err, repository.ErrNotFound):
 		slog.WarnContext(ctx, "connection caller has no attendee row; using the raw JWT sub")
 	default:
 		slog.ErrorContext(ctx, "resolving connection caller failed; using the raw JWT sub", "error", err)
 	}
-	return user.UserID
+
+	return models.NewCallerIdentity(canonical, user.UserID, user.Email)
+}
+
+// otherPartyUUID resolves whichever party the caller is not onto an
+// idp_uuid. A legacy row may store that party as an email, and both callers
+// of this need a uuid: a push is routed on one, and a profile is looked up
+// by one. A miss returns false rather than passing the stored string on,
+// since addressing a notification at an email would silently deliver it
+// nowhere.
+func (h *ConnectionHandler) otherPartyUUID(ctx context.Context, conn models.Connection, caller models.CallerIdentity) (string, bool) {
+	other, ok := conn.OtherFor(caller)
+	if !ok {
+		return "", false
+	}
+	if uuid, err := h.attendees.ResolveUUID(ctx, other, ""); err == nil {
+		return uuid, true
+	}
+	return "", false
 }
 
 // notifyConnection pushes the transition to whichever party did not cause it.
@@ -288,32 +315,34 @@ func (h *ConnectionHandler) callerUUID(ctx context.Context, user *middleware.Use
 // push and the body is a fixed string, so no profile is read here and nothing
 // about either party travels to the notification service beyond the two uuids
 // it routes on.
-func (h *ConnectionHandler) notifyConnection(conn models.Connection, actorUUID, body string) {
+func (h *ConnectionHandler) notifyConnection(ctx context.Context, conn models.Connection, actor models.CallerIdentity, body string) {
 	if h.notifier == nil {
 		return
 	}
 
-	recipient, ok := conn.Other(actorUUID)
+	recipient, ok := h.otherPartyUUID(ctx, conn, actor)
 	if !ok {
-		// Unreachable through these routes, and already logged as an error by
-		// describeOtherParty; guarded here so a row the actor is not party to
-		// cannot address a push at an arbitrary attendee.
+		// Either the actor is not a party -- unreachable through these
+		// routes, and already logged as an error by describeOtherParty -- or
+		// the other party is stored in a form no attendee resolves, which a
+		// push cannot be routed to. Both are guarded here so a row cannot
+		// address a push at an arbitrary attendee or at nobody.
 		return
 	}
 
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), connectionNotifyTimeout)
+		sendCtx, cancel := context.WithTimeout(context.Background(), connectionNotifyTimeout)
 		defer cancel()
 
 		if err := h.notifier.SendAttendeeNotification(
-			ctx, actorUUID, []string{recipient}, h.notifyTitle, body,
+			sendCtx, actor.Canonical, []string{recipient}, h.notifyTitle, body,
 		); err != nil {
-			slog.ErrorContext(ctx, "sending connection notification failed",
+			slog.ErrorContext(sendCtx, "sending connection notification failed",
 				"error", err, "connectionId", conn.ID)
 			return
 		}
-		slog.InfoContext(ctx, "connection notification sent",
-			"connectionId", conn.ID, "actor", actorUUID)
+		slog.InfoContext(sendCtx, "connection notification sent",
+			"connectionId", conn.ID, "actor", actor.Canonical)
 	}()
 }
 
@@ -344,13 +373,13 @@ func writeConnectionTransitionError(c *gin.Context, logMsg string, err error) {
 // or missing profile therefore degrades to the ids and status the handler
 // already knows, which is enough for the client to address the row, and the
 // lookup failure is logged for us rather than surfaced to them.
-func (h *ConnectionHandler) describeOtherParty(ctx context.Context, conn models.Connection, callerUUID string) models.ConnectionUserInfo {
+func (h *ConnectionHandler) describeOtherParty(ctx context.Context, conn models.Connection, caller models.CallerIdentity) models.ConnectionUserInfo {
 	info := models.ConnectionUserInfo{
 		ConnectionID: conn.ID,
 		Status:       conn.State.String(),
 	}
 
-	other, ok := conn.Other(callerUUID)
+	other, ok := conn.OtherFor(caller)
 	if !ok {
 		// Unreachable through these routes -- every transition is authorized
 		// against the caller -- but a row the caller is not party to must not
@@ -358,9 +387,17 @@ func (h *ConnectionHandler) describeOtherParty(ctx context.Context, conn models.
 		slog.ErrorContext(ctx, "connection does not involve the caller", "connectionId", conn.ID)
 		return info
 	}
+	// Upgraded to an idp_uuid where that resolves, so userId is a uuid even
+	// when a legacy row stores the other party as an email. A failure to
+	// resolve falls back to the stored id rather than blanking the field:
+	// the lookup runs after the write has committed, and a response that
+	// names nobody is worse for the client than one naming the id it sent.
 	info.UserID = other
+	if uuid, err := h.attendees.ResolveUUID(ctx, other, ""); err == nil {
+		info.UserID = uuid
+	}
 
-	attendee, err := h.attendees.GetByUUID(ctx, other)
+	attendee, err := h.attendees.GetByUUID(ctx, info.UserID)
 	if err != nil {
 		slog.ErrorContext(ctx, "enriching connection with attendee profile failed",
 			"error", err, "connectionId", conn.ID)

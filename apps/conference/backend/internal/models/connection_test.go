@@ -185,3 +185,53 @@ func TestConnection_Other(t *testing.T) {
 		}
 	}
 }
+
+func TestNewCallerIdentity_DedupesAndKeepsCanonicalFirst(t *testing.T) {
+	// The production shape: sub and email are the same string, and the
+	// canonical uuid came from resolving it.
+	id := NewCallerIdentity("uuid-1", "alice@example.com", "alice@example.com", "")
+
+	if id.Canonical != "uuid-1" {
+		t.Errorf("Canonical = %q, want %q", id.Canonical, "uuid-1")
+	}
+	want := []string{"uuid-1", "alice@example.com"}
+	if len(id.Aliases) != len(want) {
+		t.Fatalf("Aliases = %v, want %v", id.Aliases, want)
+	}
+	for i, w := range want {
+		if id.Aliases[i] != w {
+			t.Errorf("Aliases[%d] = %q, want %q", i, id.Aliases[i], w)
+		}
+	}
+}
+
+func TestCallerIdentity_MatchesAnyFormAndNothingElse(t *testing.T) {
+	id := NewCallerIdentity("uuid-1", "alice@example.com")
+
+	for _, form := range []string{"uuid-1", "alice@example.com"} {
+		if !id.Matches(form) {
+			t.Errorf("Matches(%q) = false, want true", form)
+		}
+	}
+	for _, other := range []string{"uuid-2", "bob@example.com", ""} {
+		if id.Matches(other) {
+			t.Errorf("Matches(%q) = true, want false", other)
+		}
+	}
+}
+
+func TestConnection_OtherFor_ResolvesUnderEitherForm(t *testing.T) {
+	// A row keyed by the caller's email, read by a caller presenting their
+	// uuid -- the case that was invisible in production.
+	conn := Connection{RequesterID: "alice@example.com", AddresseeID: "uuid-2"}
+	alice := NewCallerIdentity("uuid-1", "alice@example.com")
+
+	other, ok := conn.OtherFor(alice)
+	if !ok || other != "uuid-2" {
+		t.Errorf("OtherFor = (%q, %v), want (uuid-2, true)", other, ok)
+	}
+
+	if _, ok := conn.OtherFor(NewCallerIdentity("uuid-3", "carol@example.com")); ok {
+		t.Error("a non-party matched the connection, want false")
+	}
+}
