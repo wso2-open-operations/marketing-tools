@@ -150,6 +150,51 @@ func (r *AttendeeProfileRepo) GetByUUID(ctx context.Context, idpUUID string) (mo
 	return r.get(ctx, "idp_uuid = $1", idpUUID)
 }
 
+// ResolveUUID maps an authenticated caller onto the identity the rest of the
+// schema keys attendees by: attendees.idp_uuid.
+//
+// It exists because the two are not always the same string. The JWT sub the
+// microapp presents is, for some Asgardeo applications, the user's email
+// rather than their uuid, while every id this API hands out -- the attendee
+// directory, a connection's userId, a notification recipient -- is an
+// idp_uuid. Writing a raw sub into a column that is joined against idp_uuid
+// produces a row that satisfies its own write and then matches nothing on
+// read: that is exactly how every prod connection request became invisible to
+// the person it was sent to (see migration 017).
+//
+// Three ways to match, in the ORDER BY's order of preference: the sub as a
+// uuid, the sub as an email address, then the token's email claim. The sub
+// is tried as an email in its own right rather than leaning on the claim
+// beside it, so resolution does not silently depend on a second claim being
+// present and agreeing -- and so a sub that is some other attendee's email
+// cannot outrank the row the caller actually owns.
+//
+// One statement rather than a chain of Get calls, so the common case costs a
+// single round trip.
+//
+// Rows whose idp_uuid is still NULL are skipped -- an unclaimed roster entry
+// is not an identity anything can be keyed on.
+func (r *AttendeeProfileRepo) ResolveUUID(ctx context.Context, sub, email string) (string, error) {
+	var idpUUID string
+	err := r.pool.QueryRow(ctx,
+		`SELECT idp_uuid FROM attendees
+		 WHERE idp_uuid IS NOT NULL
+		   AND (idp_uuid = $1
+		        OR LOWER(email) = LOWER($1)
+		        OR ($2 <> '' AND LOWER(email) = LOWER($2)))
+		 ORDER BY (idp_uuid = $1) DESC, (LOWER(email) = LOWER($1)) DESC
+		 LIMIT 1`,
+		sub, email,
+	).Scan(&idpUUID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", ErrNotFound
+		}
+		return "", err
+	}
+	return idpUUID, nil
+}
+
 func (r *AttendeeProfileRepo) get(ctx context.Context, whereClause, arg string) (models.Attendee, error) {
 	var a models.Attendee
 	var idpUUID, memberID, title, company, country, firstName, lastName, profileURL, createdBy, updatedBy *string

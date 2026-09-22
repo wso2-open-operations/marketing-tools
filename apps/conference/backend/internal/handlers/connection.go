@@ -123,7 +123,7 @@ func (h *ConnectionHandler) Get(c *gin.Context) {
 		return
 	}
 
-	info, err := h.connections.Get(c.Request.Context(), user.UserID)
+	info, err := h.connections.Get(c.Request.Context(), h.callerUUID(c.Request.Context(), user))
 	if err != nil {
 		slog.ErrorContext(c.Request.Context(), "fetching connections failed", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "internal error"})
@@ -162,7 +162,9 @@ func (h *ConnectionHandler) Create(c *gin.Context) {
 		return
 	}
 
-	conn, err := h.connections.Request(c.Request.Context(), user.UserID, req.TargetID)
+	caller := h.callerUUID(c.Request.Context(), user)
+
+	conn, err := h.connections.Request(c.Request.Context(), caller, req.TargetID)
 	if err != nil {
 		switch {
 		case errors.Is(err, repository.ErrSelfConnection):
@@ -176,9 +178,9 @@ func (h *ConnectionHandler) Create(c *gin.Context) {
 		return
 	}
 
-	h.notifyConnection(conn, user.UserID, connectionRequestBody)
+	h.notifyConnection(conn, caller, connectionRequestBody)
 
-	c.JSON(http.StatusCreated, h.describeOtherParty(c.Request.Context(), conn, user.UserID))
+	c.JSON(http.StatusCreated, h.describeOtherParty(c.Request.Context(), conn, caller))
 }
 
 // Accept handles POST /users/me/connections/:id/accept. Only the addressee may
@@ -199,15 +201,17 @@ func (h *ConnectionHandler) Accept(c *gin.Context) {
 		return
 	}
 
-	conn, err := h.connections.Accept(c.Request.Context(), id, user.UserID)
+	caller := h.callerUUID(c.Request.Context(), user)
+
+	conn, err := h.connections.Accept(c.Request.Context(), id, caller)
 	if err != nil {
 		writeConnectionTransitionError(c, "accepting connection failed", err)
 		return
 	}
 
-	h.notifyConnection(conn, user.UserID, connectionAcceptBody)
+	h.notifyConnection(conn, caller, connectionAcceptBody)
 
-	c.JSON(http.StatusOK, h.describeOtherParty(c.Request.Context(), conn, user.UserID))
+	c.JSON(http.StatusOK, h.describeOtherParty(c.Request.Context(), conn, caller))
 }
 
 // Delete handles DELETE /users/me/connections/:id. One route covers declining,
@@ -228,11 +232,43 @@ func (h *ConnectionHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	if err := h.connections.Delete(c.Request.Context(), id, user.UserID); err != nil {
+	if err := h.connections.Delete(c.Request.Context(), id, h.callerUUID(c.Request.Context(), user)); err != nil {
 		writeConnectionTransitionError(c, "deleting connection failed", err)
 		return
 	}
 	c.Status(http.StatusNoContent)
+}
+
+// callerUUID resolves the authenticated caller onto the identity every
+// user_connection row is keyed on -- attendees.idp_uuid -- rather than
+// trusting the JWT sub verbatim.
+//
+// The two are not the same string for every Asgardeo application the gateway
+// accepts (see repository.AttendeeProfileRepo.ResolveUUID): some present the
+// attendee's email as sub. Meanwhile the only id a client can put in
+// targetId is an idp_uuid, because that is what the attendee directory
+// serves. So a request written from a raw sub stored an email on one side of
+// the pair and a uuid on the other, and the read path -- which joins the
+// other party against attendees.idp_uuid and filters on "either side is me"
+// -- could match neither. The row was visible to nobody but its sender, and
+// accepting it was impossible. Migration 017 repairs the rows this produced.
+//
+// Resolution failure falls back to the raw sub rather than refusing the
+// request. A caller with no attendees row has no profile for any response to
+// enrich and cannot appear in anyone else's listing either way, so failing
+// here would convert a caller who is merely unregistered into an error mid
+// conference. It is logged, because in a seeded roster it should not happen.
+func (h *ConnectionHandler) callerUUID(ctx context.Context, user *middleware.UserInfo) string {
+	uuid, err := h.attendees.ResolveUUID(ctx, user.UserID, user.Email)
+	switch {
+	case err == nil:
+		return uuid
+	case errors.Is(err, repository.ErrNotFound):
+		slog.WarnContext(ctx, "connection caller has no attendee row; using the raw JWT sub")
+	default:
+		slog.ErrorContext(ctx, "resolving connection caller failed; using the raw JWT sub", "error", err)
+	}
+	return user.UserID
 }
 
 // notifyConnection pushes the transition to whichever party did not cause it.
