@@ -110,13 +110,13 @@ isolated function tokenPartitionReport(postgresql:Client pg) returns TokenPartit
 #
 # `CAST(... AS int)` is load-bearing: a Ballerina `int` reaches PostgreSQL as `bigint`, and the function is
 # declared `(p_days_ahead int, p_from date)`, so a bare `${...}` resolves to no function at all
-# (`42883: function connection.create_token_partitions(bigint) does not exist`). The tests never caught it
+# (`42883: function connection_create_token_partitions(bigint) does not exist`). The tests never caught it
 # because they call the function with a literal.
 #
 # + pg - Jobs database client (`amplify_jobs` may execute the function)
 # + return - An error when the database refused
 isolated function ensureTokenPartitions(postgresql:Client pg) returns error? {
-    int _ = check pg->queryRow(`SELECT connection.create_token_partitions(CAST(${TOKEN_PARTITION_DAYS_AHEAD} AS int))`);
+    int _ = check pg->queryRow(`SELECT connection_create_token_partitions(CAST(${TOKEN_PARTITION_DAYS_AHEAD} AS int))`);
 }
 
 # Creates the partitions once the database answers, so a worker that restarts after a long outage does not wait for the

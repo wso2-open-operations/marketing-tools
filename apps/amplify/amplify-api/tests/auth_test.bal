@@ -480,3 +480,15 @@ function testJwksUrlMustBeHttpsExceptOnALocalStack() {
     test:assertTrue(checkJwksUrl("local", "http://localhost.evil.example/jwks") is error);
     test:assertTrue(checkJwksUrl("prod", "") is error);
 }
+
+// A plain employee has no groups claim, so the "token has no groups" warning must not repeat on every request: it
+// goes out once, then not again until the interval has passed.
+@test:Config {}
+function testNoGroupsWarningIsThrottled() {
+    auth:WarningThrottle throttle = new;
+    test:assertTrue(throttle.due(1000, 300), "the first token without groups warns");
+    test:assertFalse(throttle.due(1001, 300), "the next request inside the interval does not");
+    test:assertFalse(throttle.due(1299, 300), "still inside the interval");
+    test:assertTrue(throttle.due(1300, 300), "the interval has passed, so it warns again");
+    test:assertFalse(throttle.due(1400, 300));
+}

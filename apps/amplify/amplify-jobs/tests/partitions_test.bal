@@ -45,15 +45,15 @@ function testReadinessCarriesTheRunwayOnlyWhenItWasRead() {
 }
 
 // The start-up path parameterizes the days-ahead value, and a Ballerina `int` binds as `bigint`, which matches no
-// `connection.create_token_partitions` overload: the worker logged `42883 ... (bigint) does not exist` on every
+// `connection_create_token_partitions` overload: the worker logged `42883 ... (bigint) does not exist` on every
 // start while the tests above stayed green, because they only call the pure helpers with a literal.
 @test:Config {groups: ["integration"], enable: itEnabled}
 function testStartupCreatesThePartitionsThroughTheRealFunction() returns error? {
-    postgresql:Client pg = check itConnect("amplify_jobs", itJobsPassword, 1);
+    postgresql:Client pg = check itConnect(itLoginUser, itLoginPassword, 1);
     check ensureTokenPartitions(pg);
     int partitions = check pg->queryRow(`SELECT count(*)::int FROM pg_class c
         JOIN pg_namespace n ON n.oid = c.relnamespace
-        WHERE n.nspname = 'connection' AND c.relname LIKE 'provider_token_p%'`);
+        WHERE n.nspname = current_schema() AND c.relname LIKE 'provider_token_p%'`);
     test:assertTrue(partitions >= TOKEN_PARTITION_DAYS_AHEAD + 1,
             string `today plus the ${TOKEN_PARTITION_DAYS_AHEAD}-day runway, found ${partitions} partition(s)`);
     check pg.close();

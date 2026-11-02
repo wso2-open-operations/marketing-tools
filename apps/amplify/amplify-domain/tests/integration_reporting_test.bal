@@ -108,7 +108,7 @@ function testRepostsAndPostsFeedTheBoards() returns error? {
     test:assertEquals(campaigns[0].repostsWithCommentary, 1, "one plain repost, one with commentary");
     test:assertEquals(campaigns[0].status, "OPEN");
     test:assertEquals(campaigns[0].categoryCode, "PRODUCT");
-    test:assertTrue(campaigns[0].categoryLabel != "", "label joined from campaign.category");
+    test:assertTrue(campaigns[0].categoryLabel != "", "label joined from campaign_category");
 
     int[] byDay = check reporting:repostsByDay(apiDb, c.id, 7);
     test:assertEquals(byDay.length(), 7);
@@ -146,15 +146,15 @@ function testConnectionBreakdownSplitsExpiredFromRevoked() returns error? {
 
     // Token past its expiry.
     _ = check db->execute(`
-        INSERT INTO connection.member_connection (employee_id, provider, member_urn, provider_api, access_expires_at, connected_at)
+        INSERT INTO connection_member_connection (employee_id, provider, member_urn, provider_api, access_expires_at, connected_at)
         VALUES (${expiredEmp}, 'linkedin', ${"urn:li:person:" + uniq()}, 'SHARE_ON_LINKEDIN', now() - interval '1 day', now() - interval '61 days')`);
     // Not expired, but no token to use: needs reconnect for another reason.
     _ = check db->execute(`
-        INSERT INTO connection.member_connection (employee_id, provider, member_urn, provider_api, access_expires_at, connected_at)
+        INSERT INTO connection_member_connection (employee_id, provider, member_urn, provider_api, access_expires_at, connected_at)
         VALUES (${revokedEmp}, 'linkedin', ${"urn:li:person:" + uniq()}, 'SHARE_ON_LINKEDIN', now() + interval '30 days', now() - interval '1 day')`);
     // Removed connections are not counted at all.
     _ = check db->execute(`
-        INSERT INTO connection.member_connection (employee_id, provider, member_urn, provider_api, access_expires_at, connected_at, removed_at)
+        INSERT INTO connection_member_connection (employee_id, provider, member_urn, provider_api, access_expires_at, connected_at, removed_at)
         VALUES (${removedEmp}, 'linkedin', ${"urn:li:person:" + uniq()}, 'SHARE_ON_LINKEDIN', now() - interval '1 day', now() - interval '5 days', now())`);
 
     reporting:ConnectionBreakdown after = check reporting:connectionBreakdown(db);
@@ -175,7 +175,7 @@ function testAnnouncementDeliveryShowsRetriesAndCounts() returns error? {
     time:Utc since = time:utcAddSeconds(time:utcNow(), -60);
     reporting:CardCounts before = check reporting:cardCounts(apiDb, since);
     campaign:Campaign c = check registerCampaign(apiDb, po);
-    int outboxId = check apiDb->queryRow(`SELECT id FROM messaging.outbox WHERE idempotency_key = ${"CampaignRegistered:" + c.id}`);
+    int outboxId = check apiDb->queryRow(`SELECT id FROM messaging_outbox WHERE idempotency_key = ${"CampaignRegistered:" + c.id}`);
 
     reporting:CardCounts registered = check reporting:cardCounts(apiDb, since);
     test:assertEquals(registered.total, before.total + 1);
@@ -184,9 +184,9 @@ function testAnnouncementDeliveryShowsRetriesAndCounts() returns error? {
 
     // Jobs creates the row and fails once: queued and retrying.
     _ = check jobsDb->execute(`
-        INSERT INTO announcement.announcement (campaign_id, outbox_id, space, thread_key)
+        INSERT INTO announcement (campaign_id, outbox_id, space, thread_key)
         VALUES (CAST(${c.id} AS uuid), ${outboxId}, 'dev-test', ${"campaign-" + c.id})`);
-    _ = check jobsDb->execute(`UPDATE messaging.outbox SET attempts = 2 WHERE id = ${outboxId}`);
+    _ = check jobsDb->execute(`UPDATE messaging_outbox SET attempts = 2 WHERE id = ${outboxId}`);
     reporting:Delivery queued = check deliveryFor(apiDb, c.id);
     test:assertEquals(queued.status, "QUEUED");
     test:assertEquals(queued.attempts, 2, "the retry the worker is on");
@@ -194,7 +194,7 @@ function testAnnouncementDeliveryShowsRetriesAndCounts() returns error? {
     test:assertEquals(retrying.retrying, before.retrying + 1);
 
     // Sent.
-    _ = check jobsDb->execute(`UPDATE announcement.announcement SET sent_at = now() WHERE campaign_id = CAST(${c.id} AS uuid)`);
+    _ = check jobsDb->execute(`UPDATE announcement SET sent_at = now() WHERE campaign_id = CAST(${c.id} AS uuid)`);
     reporting:Delivery sent = check deliveryFor(apiDb, c.id);
     test:assertEquals(sent.status, "SENT");
     test:assertEquals(sent.attempts, (), "attempts only show while queued");

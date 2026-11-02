@@ -40,10 +40,12 @@ configurable string dbHost = "";
 configurable int dbPort = 5432;
 # Database name.
 configurable string dbName = "amplify";
-# DB user.
-configurable string dbUser = "amplify_api";
+# The one database login every component shares (staging `amplify_stg_user`, production its own name).
+configurable string dbUser = "amplify_stg_user";
 # DB password (Choreo secret).
 configurable string dbPassword = "";
+# Schema that holds the tables. Empty = the login user's name (the schema the DBA created for it).
+configurable string dbSchema = "";
 # TLS mode. `VERIFY_FULL` (default) checks the server certificate against `dbSslRootCert` and the host
 # name, as the deployment security checklist requires; `DISABLE` only for local Docker.
 configurable postgresql:SSLMode dbSslMode = postgresql:VERIFY_FULL;
@@ -144,6 +146,7 @@ isolated function dbConfig() returns store:DbConfig => {
     database: dbName,
     user: dbUser,
     password: dbPassword,
+    schema: dbSchema.trim() == "" ? dbUser : dbSchema.trim(),
     sslMode: dbSslMode,
     sslRootCert: dbSslRootCert,
     maxOpenConnections: dbMaxOpenConnections,
@@ -203,7 +206,7 @@ isolated function pointRuleRepository(store:Actor actor) returns scoring:PointRu
 isolated function announcementRepository(store:Actor actor) returns announcements:AnnouncementRepository|error =>
     new announcements:PgAnnouncementRepository(check db(), actor);
 
-# Writes one denial to `audit.audit_log` in its own transaction.
+# Writes one denial to `audit_log` in its own transaction.
 #
 # + entry - Audit row (`outcome = DENIED`)
 # + return - An error on failure

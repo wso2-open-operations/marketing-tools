@@ -18,7 +18,7 @@
 // Leaderboards by group and the employee count (ADR-035). The company board is open to every employee: people
 // ranked within the company, a business unit (BU) or a team, and the teams or BUs ranked against each
 // other. Amplify stores no org data (ADR-009), so membership comes from the people directory index
-// (outbound.bal) and points from `recognition.standing`.
+// (outbound.bal) and points from `recognition_standing`.
 
 import amplify_api.auth;
 import amplify_domain.recognition;

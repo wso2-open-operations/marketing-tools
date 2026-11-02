@@ -741,7 +741,7 @@ service http:InterceptableService / on apiListener {
     }
 }
 
-# Creates or refreshes the caller's `identity.employee` row from the token claims (claims, not
+# Creates or refreshes the caller's `identity_employee` row from the token claims (claims, not
 # userinfo: ADR-022).
 #
 # + principal - Verified caller

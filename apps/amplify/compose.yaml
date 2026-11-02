@@ -26,21 +26,30 @@ x-db-common: &db-common
   BAL_CONFIG_VAR_DBHOST: postgres
   BAL_CONFIG_VAR_DBNAME: amplify
   BAL_CONFIG_VAR_DBSSLMODE: DISABLE
+  # One database login for every component, as in staging and production (ADR-043). The schema named after the
+  # login is first on the search_path (BAL_CONFIG_VAR_DBSCHEMA empty = the user name).
+  BAL_CONFIG_VAR_DBUSER: amplify_local_user
+  BAL_CONFIG_VAR_DBPASSWORD: ${AMPLIFY_DB_PASSWORD:?}
 
 services:
   postgres:
-    # Same major as Choreo (M3): native uuidv7() needs PostgreSQL 18.
-    image: postgres:18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+    # The same version staging runs (17.11, ADR-044): local work must not use a newer server than we deploy to. There
+    # is no native uuidv7() before 18, so DB Migrate installs a compatible one first. The scripts also run on 15 and 18.
+    image: postgres:17.11@sha256:3b0cda93be7c8dba2ed484d19393d93845dc3dafb88973e248ba8e6d99d784e1
     environment:
       POSTGRES_DB: amplify
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in local/.env (make env)}
+      # The stand-in for the DBA's setup (login user, schema, roles, extensions), run on a fresh volume
+      AMPLIFY_DB_USER: amplify_local_user
+      AMPLIFY_DB_PASSWORD: ${AMPLIFY_DB_PASSWORD:?set AMPLIFY_DB_PASSWORD in local/.env (make env)}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d amplify"]
       interval: 5s
       retries: 10
     volumes:
-      - pgdata:/var/lib/postgresql
+      - pgdata:/var/lib/postgresql/data
+      - ./local/db-init:/docker-entrypoint-initdb.d:ro
     networks: [internal]
 
   # Amplify DB Migrate: one-shot, migrations then seeds (idempotent; `make seed` reruns it).
@@ -49,11 +58,6 @@ services:
       context: amplify-database
     environment:
       <<: *db-common
-      BAL_CONFIG_VAR_DBUSER: postgres
-      BAL_CONFIG_VAR_DBPASSWORD: ${POSTGRES_PASSWORD:?}
-      BAL_CONFIG_VAR_APIDBPASSWORD: ${AMPLIFY_API_DB_PASSWORD:?}
-      BAL_CONFIG_VAR_JOBSDBPASSWORD: ${AMPLIFY_JOBS_DB_PASSWORD:?}
-      BAL_CONFIG_VAR_READONLYDBPASSWORD: ${AMPLIFY_READONLY_DB_PASSWORD:-}
     depends_on:
       postgres: {condition: service_healthy}
     networks: [internal]
@@ -65,7 +69,6 @@ services:
       dockerfile: amplify-api/Dockerfile
     environment:
       <<: *db-common
-      BAL_CONFIG_VAR_DBPASSWORD: ${AMPLIFY_API_DB_PASSWORD:?}
       # Identity (ADR-022). Default profile: no gateway, dev JWT from local/dev-jwt (ADR-023, local only).
       BAL_CONFIG_VAR_ENVIRONMENT: local
       # The default must start with http://localhost: the dev-JWT switch is refused otherwise (ADR-023, config.bal).
@@ -152,7 +155,6 @@ services:
       dockerfile: amplify/amplify-jobs/Dockerfile
     environment:
       <<: *db-common
-      BAL_CONFIG_VAR_DBPASSWORD: ${AMPLIFY_JOBS_DB_PASSWORD:?}
       BAL_CONFIG_VAR_LINKEDINCLIENTID: ${LINKEDIN_APP_CLIENT_ID:-${LINKEDIN_CLIENT_ID:?}}
       BAL_CONFIG_VAR_LINKEDINAPIBASEURL: ${LINKEDIN_API_BASE_URL:-http://mock-linkedin:9090}
       BAL_CONFIG_VAR_LINKEDINAUTHBASEURL: ${LINKEDIN_OAUTH_BASE_URL:-http://mock-linkedin:9091}
@@ -210,7 +212,7 @@ services:
   # One-shot: installs the job_history retention trigger (amplify-scheduler/history-retention.sql) once
   # the scheduler has created its tables. Its own database and user only.
   scheduler-retention:
-    image: postgres:18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+    image: postgres:17.11@sha256:3b0cda93be7c8dba2ed484d19393d93845dc3dafb88973e248ba8e6d99d784e1
     environment:
       PGHOST: scheduler-db
       PGUSER: scheduler
@@ -233,7 +235,7 @@ services:
 
   # The scheduler's own database and user, never Amplify's (ADR-026).
   scheduler-db:
-    image: postgres:18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+    image: postgres:17.11@sha256:3b0cda93be7c8dba2ed484d19393d93845dc3dafb88973e248ba8e6d99d784e1
     environment:
       POSTGRES_DB: scheduler
       POSTGRES_USER: scheduler
@@ -243,7 +245,7 @@ services:
       interval: 5s
       retries: 10
     volumes:
-      - scheduler-pgdata:/var/lib/postgresql
+      - scheduler-pgdata:/var/lib/postgresql/data
     networks: [internal]
 
   # Mock LinkedIn (apps/amplify/linkedin/apps/mock_linkedin): api 9090 (api.linkedin.com), www 9091
