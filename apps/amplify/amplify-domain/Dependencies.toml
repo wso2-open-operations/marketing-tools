@@ -487,7 +487,12 @@ modules = [
 	{org = "wso2", packageName = "amplify_domain", moduleName = "amplify_domain.announcements"},
 	{org = "wso2", packageName = "amplify_domain", moduleName = "amplify_domain.campaign"},
 	{org = "wso2", packageName = "amplify_domain", moduleName = "amplify_domain.connection"},
+	{org = "wso2", packageName = "amplify_domain", moduleName = "amplify_domain.external_sharing"},
 	{org = "wso2", packageName = "amplify_domain", moduleName = "amplify_domain.identity"},
+	{org = "wso2", packageName = "amplify_domain", moduleName = "amplify_domain.recognition"},
+	{org = "wso2", packageName = "amplify_domain", moduleName = "amplify_domain.reporting"},
+	{org = "wso2", packageName = "amplify_domain", moduleName = "amplify_domain.scoring"},
+	{org = "wso2", packageName = "amplify_domain", moduleName = "amplify_domain.sharing"},
 	{org = "wso2", packageName = "amplify_domain", moduleName = "amplify_domain.store"}
 ]
 
