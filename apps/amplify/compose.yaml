@@ -1,0 +1,317 @@
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# Local stack (plan M8a). Run through the Makefile: `make up`, `make e2e`, `make down`.
+#   docker compose --env-file local/.env up -d --build
+# Only amplify-api (127.0.0.1:9090) and the mock LinkedIn OAuth page (127.0.0.1:19091, the browser has to
+# reach it) are published to the host. Everything else stays on the compose network.
+# Docker contexts match Choreo, one per component (ADR-027). Config: BAL_CONFIG_VAR_* names, the same in
+# Choreo (.choreo/component.yaml) and OpenChoreo (workload.yaml); scripts/check-descriptors.sh checks them.
+# local/.env only feeds ${...} interpolation; it is never passed whole into a container.
+name: wso2-amplify
+
+x-db-common: &db-common
+  BAL_CONFIG_VAR_DBHOST: postgres
+  BAL_CONFIG_VAR_DBNAME: amplify
+  BAL_CONFIG_VAR_DBSSLMODE: DISABLE
+
+services:
+  postgres:
+    # Same major as Choreo (M3): native uuidv7() needs PostgreSQL 18.
+    image: postgres:18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+    environment:
+      POSTGRES_DB: amplify
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in local/.env (make env)}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d amplify"]
+      interval: 5s
+      retries: 10
+    volumes:
+      - pgdata:/var/lib/postgresql
+    networks: [internal]
+
+  # Amplify DB Migrate: one-shot, migrations then seeds (idempotent; `make seed` reruns it).
+  amplify-db-migrate:
+    build:
+      context: amplify-database
+    environment:
+      <<: *db-common
+      BAL_CONFIG_VAR_DBUSER: postgres
+      BAL_CONFIG_VAR_DBPASSWORD: ${POSTGRES_PASSWORD:?}
+      BAL_CONFIG_VAR_APIDBPASSWORD: ${AMPLIFY_API_DB_PASSWORD:?}
+      BAL_CONFIG_VAR_JOBSDBPASSWORD: ${AMPLIFY_JOBS_DB_PASSWORD:?}
+      BAL_CONFIG_VAR_READONLYDBPASSWORD: ${AMPLIFY_READONLY_DB_PASSWORD:-}
+    depends_on:
+      postgres: {condition: service_healthy}
+    networks: [internal]
+    restart: "no"
+
+  amplify-api:
+    build:
+      context: .
+      dockerfile: amplify-api/Dockerfile
+    environment:
+      <<: *db-common
+      BAL_CONFIG_VAR_DBPASSWORD: ${AMPLIFY_API_DB_PASSWORD:?}
+      # Identity (ADR-022). Default profile: no gateway, dev JWT from local/dev-jwt (ADR-023, local only).
+      BAL_CONFIG_VAR_ENVIRONMENT: local
+      # The default must start with http://localhost: the dev-JWT switch is refused otherwise (ADR-023, config.bal).
+      BAL_CONFIG_VAR_GATEWAYJWKSURL: ${GATEWAY_JWKS_URL:-http://localhost:1/unset}
+      BAL_CONFIG_VAR_GATEWAYISSUER: ${GATEWAY_ISSUER:-unset-gateway-issuer}
+      BAL_CONFIG_VAR_GATEWAYAUDIENCES: ${GATEWAY_AUDIENCES:-amplify-local}
+      BAL_CONFIG_VAR_DEVLOCALJWTENABLED: ${AMPLIFY_DEV_LOCAL_JWT:-false}
+      BAL_CONFIG_VAR_DEVJWKSFILE: /dev-jwt/jwks.json
+      # amplify-jobs ("Save & Share Now") and the scheduler (ADR-026)
+      BAL_CONFIG_VAR_JOBSURL: http://amplify-jobs:9091
+      # Shared with amplify-jobs (security review): jobs refuses every call but its probes without a key. The
+      # internal key opens every route (amplify-api's own triggers); the scheduler key, set on the jobs registered
+      # with the scheduler, opens only POST /runs and POST /maintenance/partitions (ADR-039).
+      BAL_CONFIG_VAR_INTERNALAPIKEY: ${AMPLIFY_INTERNAL_API_KEY:?set AMPLIFY_INTERNAL_API_KEY in local/.env (make env)}
+      BAL_CONFIG_VAR_SCHEDULERAPIKEY: ${AMPLIFY_SCHEDULER_API_KEY:?set AMPLIFY_SCHEDULER_API_KEY in local/.env (make env)}
+      BAL_CONFIG_VAR_SCHEDULERURL: http://scheduler:8080
+      BAL_CONFIG_VAR_SCHEDULERJOBSURL: http://amplify-jobs:9091
+      BAL_CONFIG_VAR_MINRUNINTERVALSECONDS: ${AMPLIFY_MIN_RUN_INTERVAL_SECONDS:-60}
+      BAL_CONFIG_VAR_RECONCILEDELAYSECONDS: "5"
+      # LinkedIn = mock-linkedin by default. The server reaches it by service name; the browser by the published
+      # port. To use real LinkedIn, see README "LinkedIn: mock or real".
+      # Mock credentials by default; scripts/compose.sh sets LINKEDIN_APP_* when LINKEDIN_USE_MOCK=false.
+      BAL_CONFIG_VAR_LINKEDINCLIENTID: ${LINKEDIN_APP_CLIENT_ID:-${LINKEDIN_CLIENT_ID:?}}
+      BAL_CONFIG_VAR_LINKEDINCLIENTSECRET: ${LINKEDIN_APP_CLIENT_SECRET:-${LINKEDIN_CLIENT_SECRET:?}}
+      BAL_CONFIG_VAR_LINKEDINREDIRECTURI: ${LINKEDIN_REDIRECT_URI:?}
+      BAL_CONFIG_VAR_LINKEDINAPIBASEURL: ${LINKEDIN_API_BASE_URL:-http://mock-linkedin:9090}
+      BAL_CONFIG_VAR_LINKEDINAUTHBASEURL: ${LINKEDIN_OAUTH_BASE_URL:-http://mock-linkedin:9091}
+      # No colon on purpose: unset = the mock's browser-facing port; set but empty = use LINKEDINAUTHBASEURL.
+      BAL_CONFIG_VAR_LINKEDINAUTHORIZEBASEURL: ${LINKEDIN_AUTHORIZE_BASE_URL-http://localhost:19091}
+      # The mock issues no ID token, so this only makes sense against real LinkedIn.
+      BAL_CONFIG_VAR_LINKEDINIDTOKENVALIDATION: ${LINKEDIN_ID_TOKEN_VALIDATION:-false}
+      BAL_CONFIG_VAR_LINKEDINNONCEMODE: ${LINKEDIN_NONCE_MODE:-OFF}
+      # The company page posts must belong to. Default = WSO2's page; local/.env can point at a test page.
+      BAL_CONFIG_VAR_WSO2ORGANIZATIONURN: ${WSO2_ORGANIZATION_URN:-urn:li:organization:1477}
+      # Team rosters (D13) = people-stub by default: copy local/people-stub/directory.json.example to directory.json (gitignored) and edit it.
+      BAL_CONFIG_VAR_PEOPLEDIRECTORYURL: ${PEOPLE_DIRECTORY_URL:-http://people-stub:9096/employees/basic-info}
+      # Post links: LinkedIn, plus the mock's browser-facing origin for local demos.
+      BAL_CONFIG_VAR_CAMPAIGNLINKORIGINS: ${CAMPAIGN_LINK_ORIGINS:-https://www.linkedin.com,https://linkedin.com,http://localhost:19091}
+      # Employee count cache and the scorecard lines (ADR-036): local/.env overrides, these are the defaults.
+      BAL_CONFIG_VAR_HEADCOUNTCACHESECONDS: ${HEADCOUNT_CACHE_SECONDS:-86400}
+      # Celebrate top three: monthly totals shared by all callers (ADR-037).
+      BAL_CONFIG_VAR_TOPBOARDCACHESECONDS: ${TOP_BOARD_CACHE_SECONDS:-7200}
+      BAL_CONFIG_VAR_SCORECARDTARGETCONNECTEDPCT: ${SCORECARD_TARGET_CONNECTED_PCT:-25}
+      BAL_CONFIG_VAR_SCORECARDMAXEXPIREDPCT: ${SCORECARD_MAX_EXPIRED_PCT:-5}
+      BAL_CONFIG_VAR_SCORECARDTARGETSHARESUCCESSPCT: ${SCORECARD_TARGET_SHARE_SUCCESS_PCT:-98}
+      BAL_CONFIG_VAR_SCORECARDTARGETPRIORITYREACHPCT: ${SCORECARD_TARGET_PRIORITY_REACH_PCT:-25}
+      BAL_CONFIG_VAR_SCORECARDTARGETACTIVE30D: ${SCORECARD_TARGET_ACTIVE_30D:-100}
+      BAL_CONFIG_VAR_SCORECARDTARGETREPOSTSPERMONTH: ${SCORECARD_TARGET_REPOSTS_PER_MONTH:-600}
+      # Access (ADR-038): Asgardeo groups per capability, comma separated. local/.env overrides.
+      BAL_CONFIG_VAR_CANCAMPAIGNGROUPS: ${AMPLIFY_CAN_CAMPAIGN_GROUPS:-amplify_po,amplify_marketing}
+      BAL_CONFIG_VAR_CANDASHBOARDGROUPS: ${AMPLIFY_CAN_DASHBOARD_GROUPS:-amplify_po,amplify_marketing,amplify_slt,amplify_admin}
+      BAL_CONFIG_VAR_CANEXPORTGROUPS: ${AMPLIFY_CAN_EXPORT_GROUPS:-amplify_po,amplify_marketing,amplify_slt,amplify_admin}
+      BAL_CONFIG_VAR_CANREVIEWSHARESGROUPS: ${AMPLIFY_CAN_REVIEW_SHARES_GROUPS:-amplify_po}
+      BAL_CONFIG_VAR_CANPOINTRULESGROUPS: ${AMPLIFY_CAN_POINT_RULES_GROUPS:-amplify_po}
+      BAL_CONFIG_VAR_CANADJUSTPOINTSGROUPS: ${AMPLIFY_CAN_ADJUST_POINTS_GROUPS:-amplify_po}
+      BAL_CONFIG_VAR_CANPODASHBOARDGROUPS: ${AMPLIFY_CAN_PO_DASHBOARD_GROUPS:-amplify_po}
+      BAL_CONFIG_VAR_CANREPORTSGROUPS: ${AMPLIFY_CAN_REPORTS_GROUPS:-amplify_slt,amplify_po}
+      BAL_CONFIG_VAR_CANADMINGROUPS: ${AMPLIFY_CAN_ADMIN_GROUPS:-amplify_admin}
+      # Set by local/people-app-proto/run.sh to try the real people-app behind a gateway stand-in.
+      BAL_CONFIG_VAR_PEOPLEDIRECTORYTOKENURL: ${PEOPLE_DIRECTORY_TOKEN_URL:-}
+      BAL_CONFIG_VAR_PEOPLEDIRECTORYCLIENTID: ${PEOPLE_DIRECTORY_CLIENT_ID:-}
+      BAL_CONFIG_VAR_PEOPLEDIRECTORYCLIENTSECRET: ${PEOPLE_DIRECTORY_CLIENT_SECRET:-}
+      BAL_CONFIG_VAR_TOKENKEYS: ${TOKEN_ENCRYPTION_KEY_ID:?}:${TOKEN_ENCRYPTION_KEY:?}
+      BAL_CONFIG_VAR_TOKENCURRENTKEYID: ${TOKEN_ENCRYPTION_KEY_ID:?}
+    volumes:
+      - ./local/dev-jwt/jwks.json:/dev-jwt/jwks.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/health >/dev/null"]
+      interval: 5s
+      retries: 30
+    depends_on:
+      amplify-db-migrate: {condition: service_completed_successfully}
+      scheduler: {condition: service_started}
+      scheduler-retention: {condition: service_completed_successfully}
+      people-stub: {condition: service_healthy}
+    ports:
+      - "127.0.0.1:9090:9090"
+    networks: [internal]
+
+  # Worker: internal only, never published (cell rules). Healthy = `GET /ready` (the database answers).
+  amplify-jobs:
+    build:
+      context: ..
+      dockerfile: amplify/amplify-jobs/Dockerfile
+    environment:
+      <<: *db-common
+      BAL_CONFIG_VAR_DBPASSWORD: ${AMPLIFY_JOBS_DB_PASSWORD:?}
+      BAL_CONFIG_VAR_LINKEDINCLIENTID: ${LINKEDIN_APP_CLIENT_ID:-${LINKEDIN_CLIENT_ID:?}}
+      BAL_CONFIG_VAR_LINKEDINAPIBASEURL: ${LINKEDIN_API_BASE_URL:-http://mock-linkedin:9090}
+      BAL_CONFIG_VAR_LINKEDINAUTHBASEURL: ${LINKEDIN_OAUTH_BASE_URL:-http://mock-linkedin:9091}
+      BAL_CONFIG_VAR_INTERNALAPIKEY: ${AMPLIFY_INTERNAL_API_KEY:?set AMPLIFY_INTERNAL_API_KEY in local/.env (make env)}
+      BAL_CONFIG_VAR_SCHEDULERAPIKEY: ${AMPLIFY_SCHEDULER_API_KEY:?set AMPLIFY_SCHEDULER_API_KEY in local/.env (make env)}
+      # Leaver sweep (ADR-040): off unless local/.env says otherwise; reads the same people-stub as amplify-api.
+      BAL_CONFIG_VAR_LEAVERSWEEPMODE: ${LEAVER_SWEEP_MODE:-OFF}
+      BAL_CONFIG_VAR_PEOPLEDIRECTORYURL: ${PEOPLE_DIRECTORY_URL:-http://people-stub:9096/employees/basic-info}
+      BAL_CONFIG_VAR_TOKENKEYS: ${TOKEN_ENCRYPTION_KEY_ID:?}:${TOKEN_ENCRYPTION_KEY:?}
+      BAL_CONFIG_VAR_TOKENCURRENTKEYID: ${TOKEN_ENCRYPTION_KEY_ID:?}
+      # Google Chat (M6a). Default: chat-stub. "Send to dev space": GOOGLE_CHAT_WEBHOOK_URL = the dev test
+      # space's webhook (https) + GOOGLE_CHAT_SPACE=dev-test. Never the Club.
+      BAL_CONFIG_VAR_CHATWEBHOOKURL: ${GOOGLE_CHAT_WEBHOOK_URL:-http://chat-stub:9095/v1/spaces/local/messages?key=local&token=local}
+      BAL_CONFIG_VAR_CHATSPACE: ${GOOGLE_CHAT_SPACE:-dev-test}
+      # Lets only the plain-http stub URL through; a real webhook is https. Never set in Choreo.
+      BAL_CONFIG_VAR_CHATALLOWINSECUREHTTP: "true"
+      BAL_CONFIG_VAR_CHATCARDAVATARURL: ${GOOGLE_CHAT_AVATAR_URL:-}
+      BAL_CONFIG_VAR_CHATDEFAULTIMAGEURL: ${GOOGLE_CHAT_DEFAULT_IMAGE_URL:-}
+      BAL_CONFIG_VAR_SHAREPAGEBASEURL: ${AMPLIFY_SHARE_PAGE_BASE_URL:-https://one.wso2.com/amplify/celebrate}
+      BAL_CONFIG_VAR_AMPLIFYONNOVERA: ${AMPLIFY_ON_NOVERA:-true}
+      BAL_CONFIG_VAR_AMPLIFYONWEBHOOK: ${AMPLIFY_ON_WEBHOOK:-false}
+      # Novera (Google Chat assistant): the Choreo gateway URL of its POST /internal/notifications and the
+      # client-credentials application subscribed to it. Empty = Novera not configured (announcements defer
+      # unless the webhook is on). Local try-out: run local/novera-mock (node server.mjs, :3003) and see docs/HowToTestLocally/TestNovera.md.
+      BAL_CONFIG_VAR_NOVERANOTIFYURL: ${NOVERA_NOTIFY_URL:-}
+      BAL_CONFIG_VAR_NOVERATOKENURL: ${NOVERA_TOKEN_URL:-}
+      BAL_CONFIG_VAR_NOVERACLIENTID: ${NOVERA_CLIENT_ID:-}
+      BAL_CONFIG_VAR_NOVERACLIENTSECRET: ${NOVERA_CLIENT_SECRET:-}
+      BAL_CONFIG_VAR_NOVERASCOPES: ${NOVERA_SCOPES:-}
+      # Local only: accept an http notify URL (local/novera-mock). Never set in Choreo.
+      BAL_CONFIG_VAR_NOVERAALLOWINSECUREHTTP: ${NOVERA_ALLOW_INSECURE_HTTP:-false}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9091/ready >/dev/null"]
+      interval: 5s
+      retries: 30
+    depends_on:
+      amplify-db-migrate: {condition: service_completed_successfully}
+      chat-stub: {condition: service_started}
+      mock-linkedin: {condition: service_started}
+    networks: [internal]
+
+  # akornatskyy/scheduler (ADR-026). Its API and UI have NO auth: no host port.
+  # Look at it: docker compose exec amplify-api wget -qO- http://scheduler:8080/jobs
+  scheduler:
+    build:
+      context: amplify-scheduler
+    read_only: true
+    stop_signal: SIGINT
+    environment:
+      DSN: postgres://scheduler:${SCHEDULER_DB_PASSWORD:?}@scheduler-db:5432/scheduler?sslmode=disable
+    depends_on:
+      scheduler-db: {condition: service_healthy}
+    networks: [internal]
+
+  # One-shot: installs the job_history retention trigger (amplify-scheduler/history-retention.sql) once
+  # the scheduler has created its tables. Its own database and user only.
+  scheduler-retention:
+    image: postgres:18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+    environment:
+      PGHOST: scheduler-db
+      PGUSER: scheduler
+      PGDATABASE: scheduler
+      PGPASSWORD: ${SCHEDULER_DB_PASSWORD:?}
+    volumes:
+      - ./amplify-scheduler/history-retention.sql:/retention.sql:ro
+    entrypoint:
+      - sh
+      - -c
+      - >-
+        for i in $$(seq 1 60); do
+        psql -tAc "SELECT to_regclass('job_history')" | grep -q job_history
+        && exec psql -v ON_ERROR_STOP=1 -q -f /retention.sql;
+        sleep 2; done; echo 'job_history never appeared'; exit 1
+    depends_on:
+      scheduler: {condition: service_started}
+    networks: [internal]
+    restart: "no"
+
+  # The scheduler's own database and user, never Amplify's (ADR-026).
+  scheduler-db:
+    image: postgres:18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+    environment:
+      POSTGRES_DB: scheduler
+      POSTGRES_USER: scheduler
+      POSTGRES_PASSWORD: ${SCHEDULER_DB_PASSWORD:?set SCHEDULER_DB_PASSWORD in local/.env}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scheduler -d scheduler"]
+      interval: 5s
+      retries: 10
+    volumes:
+      - scheduler-pgdata:/var/lib/postgresql
+    networks: [internal]
+
+  # Mock LinkedIn (apps/amplify/linkedin/apps/mock_linkedin): api 9090 (api.linkedin.com), www 9091
+  # (www.linkedin.com). Only the www/OAuth port is published, because the browser follows the authorization
+  # redirect to it. Every authorization signs in as the one configured mock member.
+  mock-linkedin:
+    build:
+      context: linkedin/apps/mock_linkedin
+    read_only: true
+    environment:
+      BAL_CONFIG_VAR_LISTENERHOST: 0.0.0.0
+      BAL_CONFIG_VAR_WWWBASEURL: http://localhost:19091
+      BAL_CONFIG_VAR_CLIENTID: ${LINKEDIN_CLIENT_ID:?}
+      BAL_CONFIG_VAR_CLIENTSECRET: ${LINKEDIN_CLIENT_SECRET:?}
+      BAL_CONFIG_VAR_ENABLEMOCKADMIN: "true"
+      # The admin endpoints (/mock/posts, /mock/reset) also need the key; with none the mock keeps them off (404).
+      BAL_CONFIG_VAR_MOCKADMINKEY: ${MOCK_ADMIN_KEY:?set MOCK_ADMIN_KEY in local/.env (make env)}
+      BAL_CONFIG_DATA: redirectUris = ["${LINKEDIN_REDIRECT_URI:?}"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/health >/dev/null"]
+      interval: 5s
+      retries: 30
+    ports:
+      - "127.0.0.1:19091:9091"
+    networks: [internal]
+
+  # Local Google Chat webhook stub (M6a): logs each card (docker compose logs -f chat-stub).
+  # GET /stub/messages, PUT /stub/status/{code}: docker compose exec chat-stub wget -qO- localhost:9095/stub/messages
+  chat-stub:
+    build:
+      context: local/chat-stub
+    read_only: true
+    networks: [internal]
+
+  # Local people-app directory stub (D13): GET /employees/basic-info from local/people-stub/directory.json
+  # (re-read on every call; amplify-api still caches teams for ROSTERCACHESECONDS). Published on 19092 so a
+  # local One WSO2 can show photos and names (ONE_WSO2_PEOPLE_BACKEND_URL = http://localhost:19092).
+  people-stub:
+    build:
+      context: local/people-stub
+    read_only: true
+    volumes:
+      - ./local/people-stub/directory.json:/app/directory.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9096/health >/dev/null"]
+      interval: 5s
+      retries: 30
+    ports:
+      - "127.0.0.1:19092:9096"
+    networks: [internal]
+
+  # OPTIONAL, pending the non-prod Asgardeo org (D10): `make up PROFILE=apim`. WSO2 API Manager 4.7.0 as
+  # the local stand-in for the Choreo API proxy. Import the Amplify API from amplify-api/openapi.yaml
+  # (Publisher > Create API > Import OpenAPI, endpoint http://amplify-api:9090), register the non-prod
+  # Asgardeo org as key manager, then point GATEWAY_JWKS_URL / GATEWAY_ISSUER / GATEWAY_AUDIENCES at the
+  # gateway's backend JWT and set AMPLIFY_DEV_LOCAL_JWT=false. Until then the default profile publishes
+  # amplify-api directly with the ADR-023 dev JWT.
+  apim:
+    image: wso2/wso2am:4.7.0@sha256:4de3aabbb11d16a1c00d122312503070ea8617e0829133cbcc83f35d6868b889
+    profiles: [apim]
+    ports:
+      - "127.0.0.1:9443:9443"
+      - "127.0.0.1:8243:8243"
+    networks: [internal]
+
+networks:
+  internal: {}
+
+volumes:
+  pgdata: {}
+  scheduler-pgdata: {}

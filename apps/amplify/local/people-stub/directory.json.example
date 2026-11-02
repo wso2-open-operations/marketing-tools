@@ -1,0 +1,42 @@
+[
+  {
+    "employeeId": "123",
+    "firstName": "Stan",
+    "lastName": "Demo",
+    "workEmail": "stan@example.com",
+    "employeeThumbnail": "",
+    "designation": "Engineer",
+    "jobBand": null,
+    "startDate": "2024-01-01",
+    "managerEmail": "stan@example.com",
+    "businessUnit": "PO",
+    "house": "house1",
+    "team": "PO",
+    "subTeam": "PO",
+    "unit": null,
+    "employmentType": "Permanent",
+    "company": "WSO2 - US",
+    "workLocation": "US",
+    "employeeStatus": "Active"
+  },
+  {
+    "employeeId": "234",
+    "firstName": "Stan2",
+    "lastName": "Demo",
+    "workEmail": "stan2@example.com",
+    "employeeThumbnail": "",
+    "designation": "Engineer",
+    "jobBand": null,
+    "startDate": "2024-01-01",
+    "managerEmail": "stan2@example.com",
+    "businessUnit": "PO",
+    "house": "Orion",
+    "team": "PO",
+    "subTeam": "PO",
+    "unit": null,
+    "employmentType": "Permanent",
+    "company": "WSO2 - US",
+    "workLocation": "US",
+    "employeeStatus": "Active"
+  }
+]

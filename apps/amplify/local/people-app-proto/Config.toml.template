@@ -1,0 +1,75 @@
+# Local prototype only. Generated into Config.toml by run.sh; never commit the filled file.
+isMaintenanceMode = false
+
+[people.authorization.authorizedRoles]
+EMPLOYEE_ROLE = "people-employee"
+ADMIN_ROLE = "people-admin"
+SERVICE_DESK_ROLE = "people-service-desk"
+EMPLOYEE_VIEW_ROLE = "people-employee-view"
+RESIGNATION_ROLE = "people-resignation"
+QR_EXPORT_ROLE = "people-qr-export"
+EXTERNAL_USER_ROLES = []
+
+[people.authorization.serviceClients]
+clientIdClaim = "azp"
+applicationClaim = "aut"
+applicationValue = "APPLICATION"
+
+[people.authorization.serviceClients.clientRoutes]
+__CLIENT_ROUTE__
+
+[people.database.dbConfig]
+host = "people-proto-mysql"
+user = "root"
+password = "__MYSQL_PASSWORD__"
+database = "people"
+port = 3306
+maxOpenConnections = 5
+maxConnectionLifeTime = 180.0
+minIdleConnections = 0
+connectTimeout = 10.0
+sslMode = "PREFERRED"
+
+[people.promotion.promotionDbConfig]
+host = "people-proto-mysql"
+user = "root"
+password = "__MYSQL_PASSWORD__"
+database = "promotion"
+port = 3306
+maxOpenConnections = 2
+maxConnectionLifeTime = 180.0
+minIdleConnections = 0
+connectTimeout = 10.0
+sslMode = "PREFERRED"
+
+[people.wso2_coin]
+masterWalletAddress = "0x0"
+reservationWindowStartHour = 0
+reservationWindowEndHour = 23
+pendingReservationExpiryMinutes = 10
+transactionEndpoint = "https://localhost:1"
+
+[people.wso2_coin.clientAuthConfig]
+tokenUrl = "http://people-proto-gateway:8080/token"
+clientId = "unused"
+clientSecret = "unused"
+scopes = []
+
+[people.wso2_coin.parkingSheetConfig]
+tokenUrl = "http://people-proto-gateway:8080/token"
+refreshToken = "unused"
+clientId = "unused"
+clientSecret = "unused"
+sheetId = "unused"
+sheetName = "unused"
+
+[people.qr]
+qrGenerationServiceEndpoint = "https://localhost:1"
+
+[people.qr.qrClientAuthConfig]
+tokenUrl = "http://people-proto-gateway:8080/token"
+clientId = "unused"
+clientSecret = "unused"
+
+# [people.scim] and [people.email] are left out: service.bal has those imports commented out, and the
+# runtime refuses config for modules it does not load.
