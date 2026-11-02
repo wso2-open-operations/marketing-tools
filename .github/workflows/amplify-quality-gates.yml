@@ -1,0 +1,41 @@
+name: amplify quality gates
+
+on:
+  pull_request:
+    paths:
+      - "apps/amplify/**"
+      - ".github/workflows/amplify-quality-gates.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Find the Amplify app
+        id: app
+        run: |
+          if [ -f apps/amplify/Makefile ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "apps/amplify has no Makefile yet, so there is nothing to check."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Gate scripts test themselves
+        if: steps.app.outputs.present == 'true'
+        working-directory: apps/amplify
+        run: |
+          for gate in check-descriptors check-logs-pii check-transaction-gate lint-openapi-names; do
+            echo "== $gate --self-test"
+            scripts/$gate.sh --self-test
+          done
+      - name: make check
+        if: steps.app.outputs.present == 'true'
+        working-directory: apps/amplify
+        run: make check
+      - name: OpenAPI names
+        if: steps.app.outputs.present == 'true'
+        working-directory: apps/amplify
+        run: scripts/lint-openapi-names.sh
