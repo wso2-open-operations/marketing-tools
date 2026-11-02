@@ -36,11 +36,11 @@ public type MaintenanceResult record {|
     int oauth_states_swept;
 |};
 
-# Runs partition maintenance (SQL function messaging.run_partition_maintenance, amplify_jobs only).
+# Runs partition maintenance (SQL function messaging_run_partition_maintenance, amplify_jobs only).
 #
 # + db - Client (`amplify_jobs`)
 # + return - Counts, or an error
 public isolated function runPartitionMaintenance(postgresql:Client db) returns MaintenanceResult|error {
-    string result = check db->queryRow(`SELECT messaging.run_partition_maintenance()::text`);
+    string result = check db->queryRow(`SELECT messaging_run_partition_maintenance()::text`);
     return result.fromJsonStringWithType();
 }

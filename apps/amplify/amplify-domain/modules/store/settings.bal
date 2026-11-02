@@ -15,7 +15,7 @@
 // under the License.
 
 
-// `config.app_setting` reads and the admin update (M5), and `messaging.idempotency_key` for the API's
+// `config_app_setting` reads and the admin update (M5), and `messaging_idempotency_key` for the API's
 // `Idempotency-Key` header. Infrastructure only; the API validates setting values before calling here.
 
 import amplify_common.types;
@@ -23,7 +23,7 @@ import amplify_common.types;
 import ballerina/time;
 import ballerinax/postgresql;
 
-const string SETTING_TABLE = "config.app_setting";
+const string SETTING_TABLE = "config_app_setting";
 
 # One setting row.
 public type Setting record {|
@@ -63,7 +63,7 @@ type SettingRow record {|
 # + return - Settings, or an error
 public isolated function readSettings(postgresql:Client db) returns Setting[]|error {
     stream<SettingRow, error?> rows = db->query(`
-        SELECT key, value::text AS value, updated_by, updated_at, version FROM config.app_setting ORDER BY key`);
+        SELECT key, value::text AS value, updated_by, updated_at, version FROM config_app_setting ORDER BY key`);
     return from SettingRow r in rows
         select {key: r.key, value: check r.value.fromJsonString(), updatedBy: r.updated_by, updatedAt: r.updated_at,
             version: r.version};
@@ -89,18 +89,23 @@ isolated function updateSettingsTx(postgresql:Client db, Actor actor, SettingCha
     transaction {
         foreach SettingChange c in changes {
             string value = c.value.toJsonString();
-            // PostgreSQL 18 `RETURNING old.*`: the audit row gets the value before the change.
+            // The old value is read and locked in the same statement that changes it, so the audit row gets it on every
+            // PostgreSQL version (`RETURNING old.*` needs 18).
             string|error before = db->queryRow(`
-                UPDATE config.app_setting
+                WITH prev AS (
+                    SELECT key, value::text AS old_value FROM config_app_setting
+                    WHERE key = ${c.key} AND version = ${c.expectedVersion} FOR UPDATE)
+                UPDATE config_app_setting
                 SET value = CAST(${value} AS jsonb), updated_by = ${actor.actorId},
                     updated_at = CAST(${ts(now)} AS timestamptz), version = version + 1
-                WHERE key = ${c.key} AND version = ${c.expectedVersion}
-                RETURNING old.value::text`);
+                FROM prev
+                WHERE config_app_setting.key = prev.key
+                RETURNING prev.old_value AS value`);
             if before is error {
                 if !isNoRows(before) {
                     fail before;
                 }
-                boolean exists = check db->queryRow(`SELECT EXISTS (SELECT 1 FROM config.app_setting WHERE key = ${c.key})`);
+                boolean exists = check db->queryRow(`SELECT EXISTS (SELECT 1 FROM config_app_setting WHERE key = ${c.key})`);
                 fail exists ? versionConflict(string `setting ${c.key}`)
                     : types:domainError(types:ERR_NOT_FOUND, string `Unknown setting ${c.key}`);
             }
@@ -111,7 +116,7 @@ isolated function updateSettingsTx(postgresql:Client db, Actor actor, SettingCha
     }
 }
 
-// ---- Idempotency keys (`messaging.idempotency_key`) ---------------------------------------------
+// ---- Idempotency keys (`messaging_idempotency_key`) ---------------------------------------------
 
 # A key seen before.
 public type IdempotencyRecord record {|
@@ -137,10 +142,10 @@ public isolated function claimIdempotencyKey(postgresql:Client db, types:Employe
     string nowText = time:utcToString(now);
     string expires = time:utcToString(time:utcAddSeconds(now, <decimal>ttlSeconds));
     _ = check db->execute(`
-        DELETE FROM messaging.idempotency_key
+        DELETE FROM messaging_idempotency_key
         WHERE employee_id = ${employeeId} AND key = ${key} AND expires_at <= CAST(${nowText} AS timestamptz)`);
     var inserted = check db->execute(`
-        INSERT INTO messaging.idempotency_key (employee_id, key, request_hash, created_at, expires_at)
+        INSERT INTO messaging_idempotency_key (employee_id, key, request_hash, created_at, expires_at)
         VALUES (${employeeId}, ${key}, ${requestHash}, CAST(${nowText} AS timestamptz), CAST(${expires} AS timestamptz))
         ON CONFLICT (employee_id, key) DO NOTHING`);
     if inserted.affectedRowCount == 1 {
@@ -148,7 +153,7 @@ public isolated function claimIdempotencyKey(postgresql:Client db, types:Employe
     }
     record {|string request_hash; int? response_status; string? response_body;|}|error row = db->queryRow(`
         SELECT request_hash, response_status, response_body::text AS response_body
-        FROM messaging.idempotency_key WHERE employee_id = ${employeeId} AND key = ${key}`);
+        FROM messaging_idempotency_key WHERE employee_id = ${employeeId} AND key = ${key}`);
     if row is error {
         if !isNoRows(row) {
             return row;
@@ -156,7 +161,7 @@ public isolated function claimIdempotencyKey(postgresql:Client db, types:Employe
         // The holder released the key between our insert and this read (its request failed): claim it
         // now. A second loss of the race reports the key as still running.
         var retried = check db->execute(`
-            INSERT INTO messaging.idempotency_key (employee_id, key, request_hash, created_at, expires_at)
+            INSERT INTO messaging_idempotency_key (employee_id, key, request_hash, created_at, expires_at)
             VALUES (${employeeId}, ${key}, ${requestHash}, CAST(${nowText} AS timestamptz),
                     CAST(${expires} AS timestamptz))
             ON CONFLICT (employee_id, key) DO NOTHING`);
@@ -182,7 +187,7 @@ public isolated function completeIdempotencyKey(postgresql:Client db, types:Empl
         json body) returns error? {
     string text = body.toJsonString();
     _ = check db->execute(`
-        UPDATE messaging.idempotency_key SET response_status = ${status}, response_body = CAST(${text} AS jsonb)
+        UPDATE messaging_idempotency_key SET response_status = ${status}, response_body = CAST(${text} AS jsonb)
         WHERE employee_id = ${employeeId} AND key = ${key}`);
 }
 
@@ -195,6 +200,6 @@ public isolated function completeIdempotencyKey(postgresql:Client db, types:Empl
 public isolated function releaseIdempotencyKey(postgresql:Client db, types:EmployeeId employeeId, string key)
         returns error? {
     _ = check db->execute(`
-        DELETE FROM messaging.idempotency_key
+        DELETE FROM messaging_idempotency_key
         WHERE employee_id = ${employeeId} AND key = ${key} AND response_status IS NULL`);
 }

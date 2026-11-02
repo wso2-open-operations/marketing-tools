@@ -65,7 +65,7 @@ function pageWindowNormalizesBadInput() {
 @test:Config {}
 function auditOfCarriesBeforeAndAfter() {
     Actor actor = {actorId: "po-1", roles: ["amplify_po"], correlationId: "c-1"};
-    AuditEntry e = auditOf(actor, "ExternalShareApproved", "external_sharing.external_share", "id-1",
+    AuditEntry e = auditOf(actor, "ExternalShareApproved", "external_sharing_external_share", "id-1",
             {status: "APPROVED"}, "why", {status: "PENDING"});
     test:assertEquals(e.before, {status: "PENDING"});
     test:assertEquals(e.after, {status: "APPROVED"});
@@ -73,7 +73,7 @@ function auditOfCarriesBeforeAndAfter() {
     test:assertEquals(e.correlationId, "c-1");
     test:assertEquals(e.actorRoles, ["amplify_po"]);
     test:assertEquals(e.outcome, "SUCCESS");
-    AuditEntry insert = auditOf(SYSTEM, "CampaignRegistered", "campaign.campaign", "id-2", {title: "t"});
+    AuditEntry insert = auditOf(SYSTEM, "CampaignRegistered", "campaign", "id-2", {title: "t"});
     test:assertEquals(insert.before, (), "an insert has no before");
     test:assertEquals(insert.actorId, "system");
 }
@@ -134,4 +134,25 @@ function tlsWarningOnlyForUnverifiedRemoteHosts() {
     }
     test:assertEquals(tlsWarning({host: "", database: "amplify", user: "u", password: "x",
         sslMode: postgresql:DISABLE}), (), "not configured");
+}
+
+@test:Config {}
+function databaseNameCarriesTheSchemaAsAStartupOption() {
+    test:assertEquals(databaseOf(cfg()), "amplify", "no schema: the plain database name");
+    DbConfig withSchema = {host: "db", database: "amplify", user: "amplify_stg_user", password: "x",
+        schema: "amplify_stg_user"};
+    test:assertEquals(databaseOf(withSchema), "amplify?options=-c%20search_path%3Damplify_stg_user,public"
+        + "%20-c%20idle_in_transaction_session_timeout%3D30000");
+    DbConfig padded = {host: "db", database: "amplify", user: "u", password: "x", schema: " amplify_jobs ",
+        idleInTransactionTimeoutMs: 5000};
+    test:assertEquals(databaseOf(padded), "amplify?options=-c%20search_path%3Damplify_jobs,public"
+        + "%20-c%20idle_in_transaction_session_timeout%3D5000");
+}
+
+@test:Config {}
+function databaseNameRefusesASchemaThatIsNotPlain() {
+    foreach string bad in ["amplify_api; DROP TABLE x", "Amplify", "a b", "role=x", "1abc", "a-b"] {
+        DbConfig badSchema = {host: "db", database: "amplify", user: "u", password: "x", schema: bad};
+        test:assertTrue(databaseOf(badSchema) is sql:Error, "schema " + bad);
+    }
 }

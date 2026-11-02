@@ -48,7 +48,7 @@ function keyBytes(int seed) returns byte[] {
 }
 
 function tokenRows(postgresql:Client db, string tokenId) returns int|error =>
-    count(db, `SELECT count(*)::int FROM connection.provider_token WHERE token_id = CAST(${tokenId} AS uuid)`);
+    count(db, `SELECT count(*)::int FROM connection_provider_token WHERE token_id = CAST(${tokenId} AS uuid)`);
 
 // api H3: the sealed token goes in with the connection change. A connection write that fails (a stale
 // version, as when two tabs finish the OAuth flow at once) rolls the token row back with it.
@@ -121,7 +121,7 @@ function testResealStaleTokensAgainstTheDatabase() returns error? {
         test:assertEquals(check connection:openToken(ring, row), string `bearer-rot-${i}`);
         test:assertTrue(connection:openToken(oldCipher, row) is error, "the old key alone can't read it");
     }
-    int left = check count(db, `SELECT count(*)::int FROM connection.provider_token WHERE key_id = ${oldId}`);
+    int left = check count(db, `SELECT count(*)::int FROM connection_provider_token WHERE key_id = ${oldId}`);
     test:assertEquals(left, 0, "nothing left on the old key");
     connection:ResealReport again = check connection:resealStaleTokens(ring, tokens);
     test:assertEquals(again.resealed, 0, "second pass re-seals nothing");
@@ -167,9 +167,9 @@ function testDuplicatePublishSettlesTheShare() returns error? {
     test:assertEquals(sharing:shareStatus(settled), sharing:PUBLISHED, "no longer stuck QUEUED");
     test:assertEquals(settled.engagementId, one.engagement.id, "linked to the engagement that already exists");
     string key = "EngagementRecorded:" + two.engagement.id;
-    test:assertEquals(check count(jobsDb, `SELECT count(*)::int FROM messaging.outbox WHERE idempotency_key = ${key}`), 0,
+    test:assertEquals(check count(jobsDb, `SELECT count(*)::int FROM messaging_outbox WHERE idempotency_key = ${key}`), 0,
             "no second EngagementRecorded, so nothing is scored twice");
-    int engagements = check count(jobsDb, `SELECT count(*)::int FROM sharing.engagement
+    int engagements = check count(jobsDb, `SELECT count(*)::int FROM sharing_engagement
                                             WHERE employee_id = ${emp} AND target_resource_urn = ${c.resourceUrn}`);
     test:assertEquals(engagements, 1);
     check apiDb.close();
@@ -189,30 +189,30 @@ function testIdempotencyClaimRetriesWhenTheHolderVanishes() returns error? {
     check ddl(su, "CREATE TABLE IF NOT EXISTS public.it_claim_race (employee_id text PRIMARY KEY)");
     check ddl(su, string `
         CREATE OR REPLACE FUNCTION public.it_claim_race_fire() RETURNS trigger LANGUAGE plpgsql
-        SECURITY DEFINER SET search_path = pg_catalog AS $fn$
+        SECURITY DEFINER SET search_path FROM CURRENT AS $fn$
         BEGIN
-            DELETE FROM messaging.idempotency_key k USING public.it_claim_race r WHERE k.employee_id = r.employee_id;
+            DELETE FROM messaging_idempotency_key k USING public.it_claim_race r WHERE k.employee_id = r.employee_id;
             DELETE FROM public.it_claim_race;
             RETURN NULL;
         END $fn$`);
-    check ddl(su, "DROP TRIGGER IF EXISTS it_claim_race_trg ON messaging.idempotency_key");
+    check ddl(su, "DROP TRIGGER IF EXISTS it_claim_race_trg ON messaging_idempotency_key");
     do {
         // The holder's row exists before the claim.
-        _ = check su->execute(`INSERT INTO messaging.idempotency_key (employee_id, key, request_hash, created_at, expires_at)
+        _ = check su->execute(`INSERT INTO messaging_idempotency_key (employee_id, key, request_hash, created_at, expires_at)
                                VALUES (${emp}, 'k-race', 'holder', now(), now() + interval '1 day')`);
         _ = check su->execute(`INSERT INTO public.it_claim_race (employee_id) VALUES (${emp})`);
-        check ddl(su, string `CREATE TRIGGER it_claim_race_trg AFTER INSERT ON messaging.idempotency_key
+        check ddl(su, string `CREATE TRIGGER it_claim_race_trg AFTER INSERT ON messaging_idempotency_key
                               FOR EACH STATEMENT EXECUTE FUNCTION public.it_claim_race_fire()`);
         store:IdempotencyRecord? claimed = check store:claimIdempotencyKey(db, emp, "k-race", "mine", 86400, now);
         test:assertEquals(claimed, (), "the claim retried and won the freed key");
-        string hash = check db->queryRow(`SELECT request_hash FROM messaging.idempotency_key
+        string hash = check db->queryRow(`SELECT request_hash FROM messaging_idempotency_key
                                           WHERE employee_id = ${emp} AND key = 'k-race'`);
         test:assertEquals(hash, "mine");
     } on fail error e {
-        check ddl(su, "DROP TRIGGER IF EXISTS it_claim_race_trg ON messaging.idempotency_key");
+        check ddl(su, "DROP TRIGGER IF EXISTS it_claim_race_trg ON messaging_idempotency_key");
         return e;
     }
-    check ddl(su, "DROP TRIGGER IF EXISTS it_claim_race_trg ON messaging.idempotency_key");
+    check ddl(su, "DROP TRIGGER IF EXISTS it_claim_race_trg ON messaging_idempotency_key");
     check su.close();
     check db.close();
 }
@@ -230,8 +230,8 @@ function ddl(postgresql:Client db, string text) returns error? {
 // a leaked pool connection). Without the gate this loses commits and leaks connections on 2201.13.3.
 @test:Config {groups: ["integration"], enable: itEnabled}
 function testGatedParallelWritesAllCommit() returns error? {
-    postgresql:Client db = check store:newClient({host: dbHost, port: dbPort, database: dbName, user: "amplify_api",
-        password: apiDbPassword, sslMode: dbSslMode, maxOpenConnections: 12, poolAcquireTimeoutSeconds: 10});
+    postgresql:Client db = check store:newClient({host: dbHost, port: dbPort, database: dbName, user: loginUser,
+        password: loginPassword, sslMode: dbSslMode, maxOpenConnections: 12, poolAcquireTimeoutSeconds: 10});
     string marker = "IT gate " + uniq();
     string[] emps = [];
     foreach int i in 0 ..< 8 {
@@ -261,7 +261,7 @@ function testGatedParallelWritesAllCommit() returns error? {
             }
         }
     }
-    int committed = check count(db, `SELECT count(*)::int FROM scoring.points_ledger WHERE reason = ${marker}`);
+    int committed = check count(db, `SELECT count(*)::int FROM scoring_points_ledger WHERE reason = ${marker}`);
     int idle = check count(db, `SELECT count(*)::int FROM pg_stat_activity
                                 WHERE usename = current_user AND state LIKE 'idle in transaction%'`);
     io:println(string `R-13 gate: ${successes} successes, ${committed} committed, ${failures} failed, ${idle} idle in transaction`);
@@ -287,12 +287,12 @@ function testOutboxBacklogCountsWhatIsWaiting() returns error? {
     string tag = "backlog-" + uniq();
     foreach [string, string, string] [suffix, status, age] in [["a", "PENDING", "3 hours"], ["b", "PENDING", "1 minute"],
             ["c", "IN_PROGRESS", "1 minute"], ["d", "FAILED", "1 minute"]] {
-        _ = check db->execute(`INSERT INTO messaging.outbox (aggregate_type, aggregate_id, event_type, payload,
+        _ = check db->execute(`INSERT INTO messaging_outbox (aggregate_type, aggregate_id, event_type, payload,
                 idempotency_key, status, created_at, next_attempt_at)
             VALUES ('t', ${tag}, 'T', '{}'::jsonb, ${"it:" + tag + suffix}, ${status}, now() - CAST(${age} AS interval),
                 now() + interval '1 day')`);
     }
-    _ = check db->execute(`INSERT INTO messaging.outbox (aggregate_type, aggregate_id, event_type, payload,
+    _ = check db->execute(`INSERT INTO messaging_outbox (aggregate_type, aggregate_id, event_type, payload,
             idempotency_key, status, processed_at) VALUES ('t', ${tag}, 'T', '{}'::jsonb, ${"it:" + tag + "e"},
             'DONE', now())`);
     store:OutboxBacklog after = check store:outboxBacklog(db);
@@ -316,7 +316,7 @@ function testLeaverCandidatesNeedBothAbsenceAndDormancyAndErasureRemovesThem() r
     string tag = "lv" + uniq();
     string[] ids = [tag + "-listed", tag + "-gone", tag + "-gone-recent"];
     foreach [string, string] [id, age] in [[ids[0], "90 days"], [ids[1], "90 days"], [ids[2], "2 days"]] {
-        _ = check apiDb->execute(`INSERT INTO identity.employee (employee_id, email, display_name, first_seen_at, last_seen_at)
+        _ = check apiDb->execute(`INSERT INTO identity_employee (employee_id, email, display_name, first_seen_at, last_seen_at)
             VALUES (${id}, ${id + "@example.com"}, ${"Name " + id}, now() - interval '100 days',
                     now() - CAST(${age} AS interval))`);
     }
@@ -335,7 +335,7 @@ function testLeaverCandidatesNeedBothAbsenceAndDormancyAndErasureRemovesThem() r
             erased.toJsonString());
     string[] after = check identity:leaverCandidates(jobsDb, directory, 30, 1000);
     test:assertTrue(after.indexOf(ids[1]) is (), "an erased person is not found again");
-    int audited = check count(jobsDb, `SELECT count(*)::int FROM audit.audit_log
+    int audited = check count(jobsDb, `SELECT count(*)::int FROM audit_log
         WHERE entity_id = ${ids[1]} AND action = 'EMPLOYEE_DATA_ERASED' AND reason = 'LEAVER_SWEEP'`);
     test:assertEquals(audited, 1);
     check apiDb.close();
@@ -352,10 +352,10 @@ function testTokenPartitionRunwayIsTwoWeeksAndReadable() returns error? {
     // 14 on the day the database was built; allow a day for a UTC rollover while the suite runs.
     test:assertTrue(days >= 13, string `newest token partition is ${days} days ahead`);
     // Creating more moves the runway out; creating fewer never shrinks it.
-    _ = check db->queryRow(`SELECT connection.create_token_partitions(20)`, int);
+    _ = check db->queryRow(`SELECT connection_create_token_partitions(20)`, int);
     int? longer = check store:tokenPartitionDaysAhead(db);
     test:assertTrue((longer ?: -99) >= 20, "asking for 20 days creates 20 days");
-    _ = check db->queryRow(`SELECT connection.create_token_partitions(2)`, int);
+    _ = check db->queryRow(`SELECT connection_create_token_partitions(2)`, int);
     test:assertEquals(check store:tokenPartitionDaysAhead(db), longer, "a shorter request does not drop partitions");
     check db.close();
 }

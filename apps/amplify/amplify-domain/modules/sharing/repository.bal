@@ -23,7 +23,7 @@ import amplify_domain.store;
 import ballerina/time;
 import ballerinax/postgresql;
 
-const string SHARE_TABLE = "sharing.share_request";
+const string SHARE_TABLE = "sharing_share_request";
 
 type ShareRow record {|
     string id;
@@ -63,7 +63,7 @@ public isolated class PgShareRepository {
             SELECT id::text AS id, campaign_id::text AS campaign_id, employee_id, provider, provider_api,
                    target_resource_urn, kind, commentary, requested_at, published_at, failed_at, failure_reason,
                    attempts, last_error_code, engagement_id::text AS engagement_id, version
-            FROM sharing.share_request
+            FROM sharing_share_request
             WHERE campaign_id = CAST(${campaignId} AS uuid) AND employee_id = ${employeeId}`);
         return toShare(row);
     }
@@ -108,7 +108,7 @@ public isolated class PgShareRepository {
         Engagement e = result.engagement;
         transaction {
             _ = check self.db->execute(`
-                INSERT INTO sharing.engagement (id, provider, provider_api, origin, target_resource_urn, campaign_id,
+                INSERT INTO sharing_engagement (id, provider, provider_api, origin, target_resource_urn, campaign_id,
                     actor_member_urn, employee_id, action, activity_urn, occurred_at, observed_at, last_verified_at,
                     deleted_at)
                 VALUES (CAST(${e.id} AS uuid), ${e.provider}, ${e.providerApi}, ${e.origin}, ${e.targetResourceUrn},
@@ -139,7 +139,7 @@ public isolated class PgShareRepository {
         boolean settled = false;
         transaction {
             string|error existing = self.db->queryRow(`
-                SELECT id::text FROM sharing.engagement
+                SELECT id::text FROM sharing_engagement
                 WHERE provider = ${e.provider} AND employee_id = ${e.employeeId}
                   AND ((target_resource_urn = ${e.targetResourceUrn} AND action = ${e.action})
                        OR activity_urn = ${e.activityUrn})
@@ -160,14 +160,24 @@ public isolated class PgShareRepository {
 
     private isolated transactional function updateRow(ShareRequest r, int expectedVersion, events:OutboxEvent[] outbox)
             returns error? {
+        // The row is read and locked in the same statement that changes it, so the audit row records the state before the
+        // change on every PostgreSQL version (`RETURNING old.*` needs 18).
         record {|string kind; int attempts; time:Utc? published_at; time:Utc? failed_at;|}|error old = self.db->queryRow(`
-            UPDATE sharing.share_request
+            WITH prev AS (
+                SELECT id, kind AS old_kind, attempts AS old_attempts, published_at AS old_published_at,
+                       failed_at AS old_failed_at
+                FROM sharing_share_request
+                WHERE id = CAST(${r.id} AS uuid) AND version = ${expectedVersion}
+                FOR UPDATE)
+            UPDATE sharing_share_request
             SET kind = ${r.kind}, commentary = ${r.commentary}, published_at = CAST(${store:ts(r.publishedAt)} AS timestamptz),
                 failed_at = CAST(${store:ts(r.failedAt)} AS timestamptz), failure_reason = ${r.failureReason}, attempts = ${r.attempts},
                 last_error_code = ${r.lastErrorCode}, engagement_id = CAST(${r.engagementId} AS uuid),
                 version = ${r.version}
-            WHERE id = CAST(${r.id} AS uuid) AND version = ${expectedVersion}
-            RETURNING old.kind, old.attempts, old.published_at, old.failed_at`);
+            FROM prev
+            WHERE sharing_share_request.id = prev.id
+            RETURNING prev.old_kind AS kind, prev.old_attempts AS attempts, prev.old_published_at AS published_at,
+                      prev.old_failed_at AS failed_at`);
         if old is error {
             return store:isNoRows(old) ? store:versionConflict("share") : old;
         }
@@ -181,7 +191,7 @@ public isolated class PgShareRepository {
     private isolated function insertTx(ShareRequest r, events:OutboxEvent[] outbox) returns error? {
         transaction {
             _ = check self.db->execute(`
-                INSERT INTO sharing.share_request (id, campaign_id, employee_id, provider, provider_api,
+                INSERT INTO sharing_share_request (id, campaign_id, employee_id, provider, provider_api,
                     target_resource_urn, kind, commentary, requested_at, published_at, failed_at, failure_reason,
                     attempts, last_error_code, engagement_id, version)
                 VALUES (CAST(${r.id} AS uuid), CAST(${r.campaignId} AS uuid), ${r.employeeId}, ${r.provider},
@@ -210,7 +220,7 @@ isolated function auditAction(ShareRequest request, events:OutboxEvent[] outbox)
 # + return - The domain error to report
 isolated function existingShareError(postgresql:Client db, ShareRequest request) returns types:DomainError {
     string|error status = db->queryRow(`
-        SELECT status FROM sharing.share_request_v
+        SELECT status FROM sharing_share_request_v
         WHERE campaign_id = CAST(${request.campaignId} AS uuid) AND employee_id = ${request.employeeId}`);
     if status is string && status == "PUBLISHED" {
         return types:domainError(types:ERR_SHARE_ALREADY_PUBLISHED, "You already shared this campaign");

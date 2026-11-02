@@ -55,7 +55,7 @@ function testM5RegisterListAndShare() returns error? {
     test:assertEquals(mine.length(), 1);
     test:assertEquals(mine[0].id, r.id);
     test:assertEquals(mine[0].status, sharing:QUEUED);
-    test:assertEquals(check count(db, `SELECT count(*)::int FROM messaging.outbox
+    test:assertEquals(check count(db, `SELECT count(*)::int FROM messaging_outbox
                                        WHERE idempotency_key = ${"RepostRequested:" + r.id + ":1"}`), 1);
 }
 
@@ -97,13 +97,13 @@ function testM5ApproveAndAmplifyAwardInTheSameTransaction() returns error? {
     recognition:Standing? afterAmplify = check recognition:standingOf(db, emp);
     test:assertEquals(afterAmplify is recognition:Standing ? afterAmplify.totalPoints : -1, amplifiedTier,
             "approve + top-up = the amplified tier");
-    test:assertEquals(check count(db, `SELECT count(*)::int FROM scoring.points_ledger WHERE employee_id = ${emp}`), 2);
+    test:assertEquals(check count(db, `SELECT count(*)::int FROM scoring_points_ledger WHERE employee_id = ${emp}`), 2);
     // A failed award rolls back the decision: amplifying again is refused and writes nothing.
     assertCode(external_sharing:amplifyWithPoints(repo, rules, claim.id, po, (), time:utcNow(), ledger), types:ERR_ALREADY_AMPLIFIED);
-    test:assertEquals(check count(db, `SELECT count(*)::int FROM scoring.points_ledger WHERE employee_id = ${emp}`), 2);
+    test:assertEquals(check count(db, `SELECT count(*)::int FROM scoring_points_ledger WHERE employee_id = ${emp}`), 2);
 
     external_sharing:ReviewQueue queue = check external_sharing:reviewQueue(db, 48, time:utcNow());
-    test:assertEquals(queue.pending, check count(db, `SELECT count(*)::int FROM external_sharing.external_share
+    test:assertEquals(queue.pending, check count(db, `SELECT count(*)::int FROM external_sharing_external_share
                                                       WHERE decision IS NULL`), "the queue counts the undecided claims");
     external_sharing:ReviewThroughput tp = check external_sharing:reviewThroughput(db, time:utcAddSeconds(now, -60));
     test:assertTrue(tp.approved >= 1 && tp.amplified >= 1);
@@ -174,7 +174,7 @@ function testM5AdjustReverseUpdatesStanding() returns error? {    postgresql:Cli
     // match the window-function result of a filtered page.
     recognition:TeamPage company = check recognition:teamPage(db, recognition:PERIOD_ALL, (), (),
             recognition:SORT_RANK, 0, 1000);
-    int standings = check db->queryRow(`SELECT count(*)::int FROM recognition.standing
+    int standings = check db->queryRow(`SELECT count(*)::int FROM recognition_standing
                                         WHERE period_key = 'ALL' AND total_points > 0`);
     test:assertEquals(company.total, standings, "the whole-company total counts people with points");
     int lastRank = 0;

@@ -15,7 +15,7 @@
 // under the License.
 
 
-// Settings the resources depend on (`config.app_setting`), typed with defaults, and the rules for the
+// Settings the resources depend on (`config_app_setting`), typed with defaults, and the rules for the
 // admin `PUT /admin/settings`: only known keys, values in range. Coin settings (`coin.*`) stay hidden in
 // phase 1.
 

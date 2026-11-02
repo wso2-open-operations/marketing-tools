@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Audit writer (`audit.audit_log`, append-only, monthly partitions, 5 years). Used inside the same
+// Audit writer (`audit_log`, append-only, monthly partitions, 5 years). Used inside the same
 // transaction as the change it records. `before` / `after` hold changed fields only, never tokens or
 // commentary.
 
@@ -31,7 +31,7 @@ public type AuditEntry record {|
     string[] actorRoles = [];
     # What happened, for example the event type CampaignRegistered
     string action;
-    # Table or aggregate, for example `campaign.campaign`
+    # Table or aggregate, for example `campaign`
     string entityType;
     # Aggregate id
     string? entityId = ();
@@ -57,7 +57,7 @@ public isolated transactional function writeAudit(postgresql:Client db, AuditEnt
     string? after = entry.after is () ? () : entry.after.toJsonString();
     string roles = arrayLiteral(entry.actorRoles);
     _ = check db->execute(`
-        INSERT INTO audit.audit_log (actor_id, actor_roles, action, entity_type, entity_id, outcome, before, after,
+        INSERT INTO audit_log (actor_id, actor_roles, action, entity_type, entity_id, outcome, before, after,
                                      reason, correlation_id)
         VALUES (${entry.actorId}, CAST(${roles} AS text[]), ${entry.action}, ${entry.entityType}, ${entry.entityId},
                 ${entry.outcome}, CAST(${before} AS jsonb), CAST(${after} AS jsonb), ${entry.reason},
@@ -94,7 +94,7 @@ public final Actor & readonly SYSTEM = {actorId: "system", roles: ["amplify_jobs
 #
 # + actor - Who
 # + action - What, for example CampaignRegistered or CampaignUpdated
-# + entityType - Table, for example `campaign.campaign`
+# + entityType - Table, for example `campaign`
 # + entityId - Aggregate id
 # + after - Changed fields after
 # + reason - Reason, if any

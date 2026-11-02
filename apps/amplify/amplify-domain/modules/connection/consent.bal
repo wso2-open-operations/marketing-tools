@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// The Link Me pop-up's consent decision (`connection.linkedin_consent`). "I consent" is recorded when the
+// The Link Me pop-up's consent decision (`connection_linkedin_consent`). "I consent" is recorded when the
 // LinkedIn link completes. "I don't consent" stores the LinkedIn profile URL the person typed.
 
 import amplify_common.types;
@@ -26,7 +26,7 @@ import ballerinax/postgresql;
 # Longest profile URL stored.
 public const int PROFILE_URL_MAX_LENGTH = 255;
 
-# Consent decision values stored in `connection.linkedin_consent.decision`.
+# Consent decision values stored in `connection_linkedin_consent.decision`.
 public enum ConsentDecision {
     CONSENTED,
     DECLINED
@@ -45,7 +45,7 @@ final readonly & string:RegExp PROFILE_URL_PATTERN =
 public isolated function isProfileUrl(string url) returns boolean =>
     url.length() <= PROFILE_URL_MAX_LENGTH && PROFILE_URL_PATTERN.isFullMatch(url);
 
-# Persistence port for `connection.linkedin_consent`.
+# Persistence port for `connection_linkedin_consent`.
 public type ConsentRepository isolated object {
     # Records the decision, replacing any earlier one for the employee.
     #
@@ -73,13 +73,13 @@ public isolated class PgConsentRepository {
             time:Utc now) returns error? {
         // Consenting keeps a URL given earlier; declining replaces it.
         _ = check self.db->execute(`
-            INSERT INTO connection.linkedin_consent (employee_id, decision, profile_url, decided_at)
+            INSERT INTO connection_linkedin_consent (employee_id, decision, profile_url, decided_at)
             VALUES (${employeeId}, ${decision}, ${profileUrl}, CAST(${store:ts(now)} AS timestamptz))
             ON CONFLICT (employee_id) DO UPDATE
             SET decision = EXCLUDED.decision,
                 profile_url = CASE WHEN EXCLUDED.decision = 'DECLINED' THEN EXCLUDED.profile_url
-                                   ELSE connection.linkedin_consent.profile_url END,
+                                   ELSE connection_linkedin_consent.profile_url END,
                 decided_at = EXCLUDED.decided_at,
-                version = connection.linkedin_consent.version + 1`);
+                version = connection_linkedin_consent.version + 1`);
     }
 }

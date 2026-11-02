@@ -26,7 +26,7 @@ import ballerina/uuid;
 
 # Runs before every resource: verifies the gateway's backend JWT (signature against the JWKS, then
 # `iss`/`aud`/`exp`), then enforces the activity matrix (role × method × route). Probes skip it.
-# Denials return problem details and are written to `audit.audit_log`; logs carry the code and route
+# Denials return problem details and are written to `audit_log`; logs carry the code and route
 # only, never the token or the caller's email.
 isolated service class AuthInterceptor {
     *http:RequestInterceptor;
