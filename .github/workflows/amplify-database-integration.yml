@@ -1,0 +1,40 @@
+name: amplify-database integration tests
+
+on:
+  pull_request:
+    paths:
+      - "apps/amplify/amplify-database/**"
+      - ".github/workflows/amplify-database-integration.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ballerina-platform/setup-ballerina@v1.1.3
+        with:
+          version: 2201.13.3
+      - name: Run the integration group
+        working-directory: apps/amplify/amplify-database
+        env:
+          BAL_CONFIG_VAR_ITENABLED: "true"
+          BAL_CONFIG_VAR_DBHOST: localhost
+          BAL_CONFIG_VAR_DBUSER: postgres
+          BAL_CONFIG_VAR_DBPASSWORD: postgres
+          BAL_CONFIG_VAR_DBSSLMODE: DISABLE
+        run: bal test --groups integration --code-coverage=false
