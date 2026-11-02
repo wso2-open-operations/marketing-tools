@@ -1,0 +1,3996 @@
+{
+  "info": {
+    "_postman_id": "c179cb08-b41f-442d-a150-769d9a0b5853",
+    "name": "Member Posts Management",
+    "description": "Standalone collection covering lms-external-api-frontend APIs gated by (or relevant to) the `r_member_social` (read) and `w_member_social` (write/create) permissions, based on direct code inspection.\n\n**r_member_social folder**: code-verified read/finder requests (Posts, Member Event Subscriptions) plus read requests for Comments/Reactions/Social Actions/Social Metadata/Documents/Videos/Images/Video Analytics that are NOT independently code-verified for this permission (see per-request descriptions and the note below).\n\n**w_member_social folder**: CREATE-only requests (no update/delete) to seed sample member-owned data -- Posts, Comments, Reactions, Documents (initializeUpload + publish), Videos (initializeUpload + finalizeUpload), and Images (initializeUpload). Member Event Subscriptions, Social Actions, Social Metadata, and Video Analytics have no create/write endpoint and so have no w_member_social counterpart.\n\nCORRECTION NOTE: A direct code search across CommentsService, LikesService (Reactions), SocialActionsService, SocialMetadataService, DocumentsService, VideosService, ImagesService, VideoAnalyticsService, and MemberCreatorVideoAnalyticsService found no explicit r_member_social read-permission checks -- only w_member_social appears, and only on create/actor-validation paths (Reactions/Documents/Videos/Images). Per the code comment in PartnerPushEventSubscriptionKeySchemaValidator.java, permission-to-endpoint mappings for many partner APIs are 'derived from file based configuration in externalized-api-configs MP', a separate repo not checked out locally, so gateway-level read-scope enforcement for those 8 resources can't be verified from this codebase alone.\n\nUse together with the existing **community-management-env-versioning** environment.\n\n--All requests are in the Restli 2.0 format--",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "17301545",
+    "_collection_link": "https://go.postman.co/collection/45034303-c179cb08-b41f-442d-a150-769d9a0b5853?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "r_member_social",
+      "item": [
+        {
+          "name": "Posts API (r_member_social-gated reads)",
+          "item": [
+            {
+              "name": "Get a Member-Authored Post",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "{{insert_token}}",
+                    "type": "text",
+                    "disabled": true
+                  },
+                  {
+                    "key": "LinkedIn-Version",
+                    "value": "{{insert_version}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "X-Restli-Protocol-Version",
+                    "value": "2.0.0",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/posts/{{post-urn-member-1}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "posts",
+                    "{{post-urn-member-1}}"
+                  ]
+                },
+                "description": "GET a post authored by a member (person URN). PostsClient.get() calls getPartnerAccessRestrictionsToPass(), which checks r_member_social to determine whether member-only partner access restrictions can be relaxed for the caller. See PostsClient.java / PostsService.java."
+              },
+              "response": [
+                {
+                  "name": "Get a Member-Authored Post",
+                  "originalRequest": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Authorization",
+                        "value": "{{insert_token}}",
+                        "type": "text",
+                        "disabled": true
+                      },
+                      {
+                        "key": "LinkedIn-Version",
+                        "value": "{{insert_version}}",
+                        "type": "text"
+                      },
+                      {
+                        "key": "X-Restli-Protocol-Version",
+                        "value": "2.0.0",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/posts/{{post-urn-member-1}}",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "posts",
+                        "{{post-urn-member-1}}"
+                      ]
+                    }
+                  },
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": null,
+                  "header": [
+                    {
+                      "key": ":status",
+                      "value": 200
+                    },
+                    {
+                      "key": "date",
+                      "value": "Fri, 25 Sep 2026 05:49:23 GMT"
+                    },
+                    {
+                      "key": "content-type",
+                      "value": "application/json"
+                    },
+                    {
+                      "key": "x-restli-protocol-version",
+                      "value": "2.0.0"
+                    },
+                    {
+                      "key": "x-content-type-options",
+                      "value": "nosniff"
+                    },
+                    {
+                      "key": "x-li-fabric",
+                      "value": "prod-lor1"
+                    },
+                    {
+                      "key": "x-li-pop",
+                      "value": "cf-prod-lor1-x"
+                    },
+                    {
+                      "key": "x-li-proto",
+                      "value": "http/2"
+                    },
+                    {
+                      "key": "x-li-uuid",
+                      "value": "AAZcSEc992ejBtDnWbc0QQ=="
+                    },
+                    {
+                      "key": "set-cookie",
+                      "value": "lidc=\"b=OB88:s=O:r=O:a=O:p=O:g=13:u=5:x=1:i=1790315362:t=1790358481:v=2:sig=AQEg18VAPkmDlAZQqTRjWKB5eymswgZN\""
+                    },
+                    {
+                      "key": "x-li-route-key",
+                      "value": "\"b=OB88:s=O:r=O:a=O:p=O:g=13:u=5:x=1:i=1790315362:t=1790358481:v=2:sig=AQEg18VAPkmDlAZQqTRjWKB5eymswgZN\""
+                    },
+                    {
+                      "key": "cf-cache-status",
+                      "value": "DYNAMIC"
+                    },
+                    {
+                      "key": "strict-transport-security",
+                      "value": "max-age=31536000"
+                    },
+                    {
+                      "key": "content-encoding",
+                      "value": "gzip"
+                    },
+                    {
+                      "key": "server",
+                      "value": "cloudflare"
+                    },
+                    {
+                      "key": "cf-ray",
+                      "value": "a407beca18b703c2-SJC"
+                    },
+                    {
+                      "key": "alt-svc",
+                      "value": "h3=\":443\"; ma=86400"
+                    }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"isReshareDisabledByAuthor\": false,\n    \"lifecycleState\": \"PUBLISHED\",\n    \"createdAt\": 1790313652318,\n    \"lastModifiedAt\": 1790313652347,\n    \"visibility\": \"PUBLIC\",\n    \"publishedAt\": 1790313652318,\n    \"author\": \"urn:li:person:bB4Pmsd_uL\",\n    \"id\": \"urn:li:share:7509119712832905216\",\n    \"distribution\": {\n        \"feedDistribution\": \"MAIN_FEED\",\n        \"thirdPartyDistributionChannels\": []\n    },\n    \"commentary\": \"Project-2B-Comment\",\n    \"lifecycleStateInfo\": {\n        \"isEditedByAuthor\": false\n    }\n}"
+                }
+              ]
+            },
+            {
+              "name": "Batch Get Member-Authored Posts",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "{{insert_token}}",
+                    "type": "text",
+                    "disabled": true
+                  },
+                  {
+                    "key": "LinkedIn-Version",
+                    "value": "{{insert_version}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "X-Restli-Protocol-Version",
+                    "value": "2.0.0",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/posts?ids=List(urn%3Ali%3Ashare%3A{{share_id}},urn%3Ali%3Ashare%3A{{share_id2}})",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "posts"
+                  ],
+                  "query": [
+                    {
+                      "key": "ids",
+                      "value": "List(urn%3Ali%3Ashare%3A{{share_id}},urn%3Ali%3Ashare%3A{{share_id2}})"
+                    }
+                  ]
+                },
+                "description": "BATCH_GET posts authored by members. Same r_member_social-gated partner access restriction logic as the single GET. See PostsClient.batchGet()."
+              },
+              "response": []
+            },
+            {
+              "name": "Find Posts by Author (Member/Person)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "{{insert_token}}",
+                    "type": "text",
+                    "disabled": true
+                  },
+                  {
+                    "key": "LinkedIn-Version",
+                    "value": "{{insert_version}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "X-Restli-Protocol-Version",
+                    "value": "2.0.0",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/posts?q=author&author=urn%3Ali%3Aperson%3A{{person_id}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "posts"
+                  ],
+                  "query": [
+                    {
+                      "key": "q",
+                      "value": "author"
+                    },
+                    {
+                      "key": "author",
+                      "value": "urn%3Ali%3Aperson%3A{{person_id}}"
+                    }
+                  ]
+                },
+                "description": "FINDER 'author'. PostsService.validateAuthorUrnType() explicitly requires r_member_social (read case) whenever the author URN is a person URN. Returns 400 'Member permissions must be used when using member as author' if r_member_social is missing. See PostsService.java findByAuthor()/validateAuthorUrnType()."
+              },
+              "response": [
+                {
+                  "name": "Find Posts by Author (Member/Person)",
+                  "originalRequest": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Authorization",
+                        "value": "{{insert_token}}",
+                        "type": "text",
+                        "disabled": true
+                      },
+                      {
+                        "key": "LinkedIn-Version",
+                        "value": "{{insert_version}}",
+                        "type": "text"
+                      },
+                      {
+                        "key": "X-Restli-Protocol-Version",
+                        "value": "2.0.0",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/posts?q=author&author=urn%3Ali%3Aperson%3A{{person_id}}",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "posts"
+                      ],
+                      "query": [
+                        {
+                          "key": "q",
+                          "value": "author"
+                        },
+                        {
+                          "key": "author",
+                          "value": "urn%3Ali%3Aperson%3A{{person_id}}"
+                        }
+                      ]
+                    }
+                  },
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": null,
+                  "header": [
+                    {
+                      "key": ":status",
+                      "value": 200
+                    },
+                    {
+                      "key": "date",
+                      "value": "Fri, 25 Sep 2026 05:49:31 GMT"
+                    },
+                    {
+                      "key": "content-type",
+                      "value": "application/json"
+                    },
+                    {
+                      "key": "x-restli-protocol-version",
+                      "value": "2.0.0"
+                    },
+                    {
+                      "key": "x-content-type-options",
+                      "value": "nosniff"
+                    },
+                    {
+                      "key": "x-li-fabric",
+                      "value": "prod-lor1"
+                    },
+                    {
+                      "key": "x-li-pop",
+                      "value": "cf-prod-lor1-x"
+                    },
+                    {
+                      "key": "x-li-proto",
+                      "value": "http/2"
+                    },
+                    {
+                      "key": "x-li-uuid",
+                      "value": "AAZcSEfE2ddAEBsypx1fYg=="
+                    },
+                    {
+                      "key": "set-cookie",
+                      "value": "lidc=\"b=OB88:s=O:r=O:a=O:p=O:g=13:u=5:x=1:i=1790315371:t=1790358481:v=2:sig=AQGG7BCotTVut5UtTts_nNyyVuTwya7b\""
+                    },
+                    {
+                      "key": "x-li-route-key",
+                      "value": "\"b=OB88:s=O:r=O:a=O:p=O:g=13:u=5:x=1:i=1790315371:t=1790358481:v=2:sig=AQGG7BCotTVut5UtTts_nNyyVuTwya7b\""
+                    },
+                    {
+                      "key": "cf-cache-status",
+                      "value": "DYNAMIC"
+                    },
+                    {
+                      "key": "strict-transport-security",
+                      "value": "max-age=31536000"
+                    },
+                    {
+                      "key": "content-encoding",
+                      "value": "gzip"
+                    },
+                    {
+                      "key": "server",
+                      "value": "cloudflare"
+                    },
+                    {
+                      "key": "cf-ray",
+                      "value": "a407bf015ec303c2-SJC"
+                    },
+                    {
+                      "key": "alt-svc",
+                      "value": "h3=\":443\"; ma=86400"
+                    }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"paging\": {\n        \"start\": 0,\n        \"count\": 10,\n        \"links\": [],\n        \"total\": 1\n    },\n    \"elements\": [\n        {\n            \"isReshareDisabledByAuthor\": false,\n            \"lifecycleState\": \"PUBLISHED\",\n            \"createdAt\": 1790313652318,\n            \"lastModifiedAt\": 1790313652347,\n            \"visibility\": \"PUBLIC\",\n            \"publishedAt\": 1790313652318,\n            \"author\": \"urn:li:person:bB4Pmsd_uL\",\n            \"id\": \"urn:li:share:7509119712832905216\",\n            \"distribution\": {\n                \"feedDistribution\": \"MAIN_FEED\",\n                \"thirdPartyDistributionChannels\": []\n            },\n            \"commentary\": \"Project-2B-Comment\",\n            \"lifecycleStateInfo\": {\n                \"isEditedByAuthor\": false\n            }\n        }\n    ]\n}"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Member Event Subscriptions (MEMBER_SOCIAL_ACTION_NOTIFICATION)",
+          "item": [
+            {
+              "name": "Create/Upsert a Member Social Action Subscription",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "{{insert_token}}",
+                    "type": "text",
+                    "disabled": true
+                  },
+                  {
+                    "key": "LinkedIn-Version",
+                    "value": "{{insert_version}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "X-Restli-Protocol-Version",
+                    "value": "2.0.0",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"webhook\": \"{{member_event_subscription_webhook_url}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/partnerApiMemberEventSubscriptions/(eventType:MEMBER_SOCIAL_ACTION_NOTIFICATION,entity:urn:li:person:{{person_id}},developerApplication:urn:li:developerApplication:{{developer_application_id}},user:urn:li:person:{{person_id}})",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "partnerApiMemberEventSubscriptions",
+                    "(eventType:MEMBER_SOCIAL_ACTION_NOTIFICATION,entity:urn:li:person:{{person_id}},developerApplication:urn:li:developerApplication:{{developer_application_id}},user:urn:li:person:{{person_id}})"
+                  ]
+                },
+                "description": "UPDATE (upsert, no server-generated id) a webhook subscription for MEMBER_SOCIAL_ACTION_NOTIFICATION events on a consented member. PartnerPushEventSubscriptionKeySchemaValidator requires r_member_social for this eventType and restricts entity/user to PersonUrn. See MemberEventSubscriptionResource.update()."
+              },
+              "response": []
+            },
+            {
+              "name": "Get a Member Social Action Subscription",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "{{insert_token}}",
+                    "type": "text",
+                    "disabled": true
+                  },
+                  {
+                    "key": "LinkedIn-Version",
+                    "value": "{{insert_version}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "X-Restli-Protocol-Version",
+                    "value": "2.0.0",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/partnerApiMemberEventSubscriptions/(eventType:MEMBER_SOCIAL_ACTION_NOTIFICATION,entity:urn:li:person:{{person_id}},developerApplication:urn:li:developerApplication:{{developer_application_id}},user:urn:li:person:{{person_id}})",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "partnerApiMemberEventSubscriptions",
+                    "(eventType:MEMBER_SOCIAL_ACTION_NOTIFICATION,entity:urn:li:person:{{person_id}},developerApplication:urn:li:developerApplication:{{developer_application_id}},user:urn:li:person:{{person_id}})"
+                  ]
+                },
+                "description": "GET the subscription record by its composite key. Requires r_member_social for the MEMBER_SOCIAL_ACTION_NOTIFICATION eventType. See MemberEventSubscriptionResource.get()."
+              },
+              "response": []
+            },
+            {
+              "name": "Find Subscriptions by Subscriber and Event Type",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "{{insert_token}}",
+                    "type": "text",
+                    "disabled": true
+                  },
+                  {
+                    "key": "LinkedIn-Version",
+                    "value": "{{insert_version}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "X-Restli-Protocol-Version",
+                    "value": "2.0.0",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/partnerApiMemberEventSubscriptions?q=subscriberAndEventType&eventType=MEMBER_SOCIAL_ACTION_NOTIFICATION",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "partnerApiMemberEventSubscriptions"
+                  ],
+                  "query": [
+                    {
+                      "key": "q",
+                      "value": "subscriberAndEventType"
+                    },
+                    {
+                      "key": "eventType",
+                      "value": "MEMBER_SOCIAL_ACTION_NOTIFICATION"
+                    }
+                  ]
+                },
+                "description": "FINDER 'subscriberAndEventType'. Subscriber (developer application) and user are derived from the request context, not passed explicitly. Requires r_member_social for this eventType. See MemberEventSubscriptionResource.findBySubscriberAndEventType()."
+              },
+              "response": []
+            },
+            {
+              "name": "Delete a Member Social Action Subscription",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "{{insert_token}}",
+                    "type": "text",
+                    "disabled": true
+                  },
+                  {
+                    "key": "LinkedIn-Version",
+                    "value": "{{insert_version}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "X-Restli-Protocol-Version",
+                    "value": "2.0.0",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/partnerApiMemberEventSubscriptions/(eventType:MEMBER_SOCIAL_ACTION_NOTIFICATION,entity:urn:li:person:{{person_id}},developerApplication:urn:li:developerApplication:{{developer_application_id}},user:urn:li:person:{{person_id}})",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "partnerApiMemberEventSubscriptions",
+                    "(eventType:MEMBER_SOCIAL_ACTION_NOTIFICATION,entity:urn:li:person:{{person_id}},developerApplication:urn:li:developerApplication:{{developer_application_id}},user:urn:li:person:{{person_id}})"
+                  ]
+                },
+                "description": "DELETE the subscription record by its composite key. Requires r_member_social for the MEMBER_SOCIAL_ACTION_NOTIFICATION eventType. See MemberEventSubscriptionResource.delete()."
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Comments (read) - NOT code-verified for r_member_social",
+          "item": [
+            {
+              "name": "Get a Comment",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "{{insert_token}}",
+                    "type": "text",
+                    "disabled": true
+                  },
+                  {
+                    "key": "LinkedIn-Version",
+                    "value": "{{insert_version}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "X-Restli-Protocol-Version",
+                    "value": "2.0.0",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/socialActions/{{post-urn-member-1}}/comments/7509122316551802880",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "socialActions",
+                    "{{post-urn-member-1}}",
+                    "comments",
+                    "7509122316551802880"
+                  ]
+                },
+                "description": "Get a single comment. CommentsService has no permission checks in code; see collection description."
+              },
+              "response": [
+                {
+                  "name": "Get a Comment",
+                  "originalRequest": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Authorization",
+                        "value": "{{insert_token}}",
+                        "type": "text",
+                        "disabled": true
+                      },
+                      {
+                        "key": "LinkedIn-Version",
+                        "value": "{{insert_version}}",
+                        "type": "text"
+                      },
+                      {
+                        "key": "X-Restli-Protocol-Version",
+                        "value": "2.0.0",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/socialActions/{{post-urn-member-1}}/comments/7509122316551802880",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "socialActions",
+                        "{{post-urn-member-1}}",
+                        "comments",
+                        "7509122316551802880"
+                      ]
+                    }
+                  },
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": null,
+                  "header": [
+                    {
+                      "key": ":status",
+                      "value": 200
+                    },
+                    {
+                      "key": "date",
+                      "value": "Fri, 25 Sep 2026 05:56:23 GMT"
+                    },
+                    {
+                      "key": "content-type",
+                      "value": "application/json"
+                    },
+                    {
+                      "key": "x-restli-protocol-version",
+                      "value": "2.0.0"
+                    },
+                    {
+                      "key": "set-cookie",
+                      "value": "lidc=\"b=OB88:s=O:r=O:a=O:p=O:g=13:u=5:x=1:i=1790315783:t=1790358481:v=2:sig=AQEfqjWzKLgLCWWd9yD11RYgsVLMe7wj\""
+                    },
+                    {
+                      "key": "set-cookie",
+                      "value": "__cf_bm=aH7YDyVnE0ZDiOx2tIxfhJFqX5732SjZhN9xLzmpjJU-1790315783.049453-1.0.1.1-cGMZ3fMjiIwMC08p3WKXP6THld3B4Bi8vIacjRhOTNpDvEXuTfHzVdJiXb4j8RMDHf83XWMbcQFyZ1Rp_5bGpaHW5jDJT.xO4T2Ofk9ueJf29TO7D30MdCPKZCmen7eb; HttpOnly; SameSite=None; Secure; Path=/; Domain=linkedin.com; Expires=Fri, 25 Sep 2026 06:26:23 GMT"
+                    },
+                    {
+                      "key": "x-li-fabric",
+                      "value": "prod-lor1"
+                    },
+                    {
+                      "key": "x-li-pop",
+                      "value": "cf-prod-lor1-x"
+                    },
+                    {
+                      "key": "x-li-proto",
+                      "value": "http/2"
+                    },
+                    {
+                      "key": "x-li-uuid",
+                      "value": "AAZcSGBJHnq+YcCbWhniOw=="
+                    },
+                    {
+                      "key": "x-content-type-options",
+                      "value": "nosniff"
+                    },
+                    {
+                      "key": "x-li-route-key",
+                      "value": "\"b=OB88:s=O:r=O:a=O:p=O:g=13:u=5:x=1:i=1790315783:t=1790358481:v=2:sig=AQEfqjWzKLgLCWWd9yD11RYgsVLMe7wj\""
+                    },
+                    {
+                      "key": "cf-cache-status",
+                      "value": "DYNAMIC"
+                    },
+                    {
+                      "key": "strict-transport-security",
+                      "value": "max-age=31536000"
+                    },
+                    {
+                      "key": "content-encoding",
+                      "value": "gzip"
+                    },
+                    {
+                      "key": "server",
+                      "value": "cloudflare"
+                    },
+                    {
+                      "key": "cf-ray",
+                      "value": "a407c90c09406ad3-SJC"
+                    },
+                    {
+                      "key": "alt-svc",
+                      "value": "h3=\":443\"; ma=86400"
+                    }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"actor\": \"urn:li:person:bB4Pmsd_uL\",\n    \"commentUrn\": \"urn:li:comment:(urn:li:activity:7509119713386401792,7509122316551802880)\",\n    \"created\": {\n        \"actor\": \"urn:li:person:bB4Pmsd_uL\",\n        \"time\": 1790314273013\n    },\n    \"id\": \"7509122316551802880\",\n    \"lastModified\": {\n        \"actor\": \"urn:li:person:bB4Pmsd_uL\",\n        \"time\": 1790314273013\n    },\n    \"message\": {\n        \"attributes\": [],\n        \"text\": \"Member Post Testing Comment\"\n    },\n    \"object\": \"urn:li:activity:7509119713386401792\"\n}"
+                }
+              ]
+            },
+            {
+              "name": "Get Comments on a Share",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "{{insert_token}}",
+                    "type": "text",
+                    "disabled": true
+                  },
+                  {
+                    "key": "LinkedIn-Version",
+                    "value": "{{insert_version}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "X-Restli-Protocol-Version",
+                    "value": "2.0.0",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/socialActions/{{post-urn-member-1}}/comments",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "socialActions",
+                    "{{post-urn-member-1}}",
+                    "comments"
+                  ]
+                },
+                "description": "Get all comments on a share/ugcPost thread. CommentsService has no permission checks in code."
+              },
+              "response": [
+                {
+                  "name": "Get Comments on a Share",
+                  "originalRequest": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Authorization",
+                        "value": "{{insert_token}}",
+                        "type": "text",
+                        "disabled": true
+                      },
+                      {
+                        "key": "LinkedIn-Version",
+                        "value": "{{insert_version}}",
+                        "type": "text"
+                      },
+                      {
+                        "key": "X-Restli-Protocol-Version",
+                        "value": "2.0.0",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/socialActions/{{post-urn-member-1}}/comments",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "socialActions",
+                        "{{post-urn-member-1}}",
+                        "comments"
+                      ]
+                    }
+                  },
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": null,
+                  "header": [
+                    {
+                      "key": ":status",
+                      "value": 200
+                    },
+                    {
+                      "key": "date",
+                      "value": "Fri, 25 Sep 2026 05:56:56 GMT"
+                    },
+                    {
+                      "key": "content-type",
+                      "value": "application/json"
+                    },
+                    {
+                      "key": "x-restli-protocol-version",
+                      "value": "2.0.0"
+                    },
+                    {
+                      "key": "x-content-type-options",
+                      "value": "nosniff"
+                    },
+                    {
+                      "key": "x-li-fabric",
+                      "value": "prod-lor1"
+                    },
+                    {
+                      "key": "x-li-pop",
+                      "value": "cf-prod-lor1-x"
+                    },
+                    {
+                      "key": "x-li-proto",
+                      "value": "http/2"
+                    },
+                    {
+                      "key": "x-li-uuid",
+                      "value": "AAZcSGJIPE0Z6J3OmyuC2Q=="
+                    },
+                    {
+                      "key": "set-cookie",
+                      "value": "lidc=\"b=OB88:s=O:r=O:a=O:p=O:g=13:u=5:x=1:i=1790315816:t=1790358481:v=2:sig=AQGJuY_NCBEM2hnFfYdYuDqRxYvlpgRu\""
+                    },
+                    {
+                      "key": "x-li-route-key",
+                      "value": "\"b=OB88:s=O:r=O:a=O:p=O:g=13:u=5:x=1:i=1790315816:t=1790358481:v=2:sig=AQGJuY_NCBEM2hnFfYdYuDqRxYvlpgRu\""
+                    },
+                    {
+                      "key": "cf-cache-status",
+                      "value": "DYNAMIC"
+                    },
+                    {
+                      "key": "strict-transport-security",
+                      "value": "max-age=31536000"
+                    },
+                    {
+                      "key": "content-encoding",
+                      "value": "gzip"
+                    },
+                    {
+                      "key": "server",
+                      "value": "cloudflare"
+                    },
+                    {
+                      "key": "cf-ray",
+                      "value": "a407c9dd6f236ad3-SJC"
+                    },
+                    {
+                      "key": "alt-svc",
+                      "value": "h3=\":443\"; ma=86400"
+                    }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"paging\": {\n        \"start\": 0,\n        \"count\": 10,\n        \"links\": [],\n        \"total\": 1\n    },\n    \"elements\": [\n        {\n            \"actor\": \"urn:li:person:bB4Pmsd_uL\",\n            \"commentUrn\": \"urn:li:comment:(urn:li:activity:7509119713386401792,7509122316551802880)\",\n            \"created\": {\n                \"actor\": \"urn:li:person:bB4Pmsd_uL\",\n                \"time\": 1790314273013\n            },\n            \"id\": \"7509122316551802880\",\n            \"lastModified\": {\n                \"actor\": \"urn:li:person:bB4Pmsd_uL\",\n                \"time\": 1790314273013\n            },\n            \"message\": {\n                \"attributes\": [],\n                \"text\": \"Member Post Testing Comment\"\n            },\n            \"object\": \"urn:li:activity:7509119713386401792\"\n        }\n    ]\n}"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Reactions (read) - NOT code-verified for r_member_social",
+          "item": [
+            {
+              "name": "Get a Reaction (Member Actor)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "{{insert_token}}",
+                    "type": "text",
+                    "disabled": true
+                  },
+                  {
+                    "key": "LinkedIn-Version",
+                    "value": "{{insert_version}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "X-Restli-Protocol-Version",
+                    "value": "2.0.0",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/reactions/(actor:urn%3Ali%3Aperson%3A{{person_id}},entity:{{post-urn-member-1}})",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "reactions",
+                    "(actor:urn%3Ali%3Aperson%3A{{person_id}},entity:{{post-urn-member-1}})"
+                  ]
+                },
+                "description": "Get a single reaction by a member actor. LikesService only checks W_MEMBER_SOCIAL/W_MEMBER_SOCIAL_FEED on CREATE (validateActorUrnType); no read-permission check exists in code."
+              },
+              "response": [
+                {
+                  "name": "Get a Reaction (Member Actor)",
+                  "originalRequest": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Authorization",
+                        "value": "{{insert_token}}",
+                        "type": "text",
+                        "disabled": true
+                      },
+                      {
+                        "key": "LinkedIn-Version",
+                        "value": "{{insert_version}}",
+                        "type": "text"
+                      },
+                      {
+                        "key": "X-Restli-Protocol-Version",
+                        "value": "2.0.0",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/reactions/(actor:urn%3Ali%3Aperson%3A{{person_id}},entity:{{post-urn-member-1}})",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "reactions",
+                        "(actor:urn%3Ali%3Aperson%3A{{person_id}},entity:{{post-urn-member-1}})"
+                      ]
+                    }
+                  },
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": null,
+                  "header": [
+                    {
+                      "key": ":status",
+                      "value": 200
+                    },
+                    {
+                      "key": "date",
+                      "value": "Fri, 25 Sep 2026 05:58:56 GMT"
+                    },
+                    {
+                      "key": "content-type",
+                      "value": "application/json"
+                    },
+                    {
+                      "key": "x-restli-protocol-version",
+                      "value": "2.0.0"
+                    },
+                    {
+                      "key": "x-content-type-options",
+                      "value": "nosniff"
+                    },
+                    {
+                      "key": "x-li-fabric",
+                      "value": "prod-lor1"
+                    },
+                    {
+                      "key": "x-li-pop",
+                      "value": "cf-prod-lor1-x"
+                    },
+                    {
+                      "key": "x-li-proto",
+                      "value": "http/2"
+                    },
+                    {
+                      "key": "x-li-uuid",
+                      "value": "AAZcSGlw5putyiJff7nIhw=="
+                    },
+                    {
+                      "key": "set-cookie",
+                      "value": "lidc=\"b=OB88:s=O:r=O:a=O:p=O:g=13:u=5:x=1:i=1790315936:t=1790358481:v=2:sig=AQG0OupptmXN7DD-X3_YghGwS28iWVKQ\""
+                    },
+                    {
+                      "key": "x-li-route-key",
+                      "value": "\"b=OB88:s=O:r=O:a=O:p=O:g=13:u=5:x=1:i=1790315936:t=1790358481:v=2:sig=AQG0OupptmXN7DD-X3_YghGwS28iWVKQ\""
+                    },
+                    {
+                      "key": "cf-cache-status",
+                      "value": "DYNAMIC"
+                    },
+                    {
+                      "key": "strict-transport-security",
+                      "value": "max-age=31536000"
+                    },
+                    {
+                      "key": "content-encoding",
+                      "value": "gzip"
+                    },
+                    {
+                      "key": "server",
+                      "value": "cloudflare"
+                    },
+                    {
+                      "key": "cf-ray",
+                      "value": "a407cccbde754f08-SJC"
+                    },
+                    {
+                      "key": "alt-svc",
+                      "value": "h3=\":443\"; ma=86400"
+                    }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"lastModified\": {\n        \"actor\": \"urn:li:person:bB4Pmsd_uL\",\n        \"time\": 1790314678855\n    },\n    \"id\": \"urn:li:reaction:(urn:li:person:bB4Pmsd_uL,urn:li:share:7509119712832905216)\",\n    \"reactionType\": \"LIKE\",\n    \"created\": {\n        \"actor\": \"urn:li:person:bB4Pmsd_uL\",\n        \"time\": 1790314678855\n    },\n    \"root\": \"urn:li:share:7509119712832905216\"\n}"
+                }
+              ]
+            },
+            {
+              "name": "Get Reactions on a Share",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "{{insert_token}}",
+                    "type": "text",
+                    "disabled": true
+                  },
+                  {
+                    "key": "LinkedIn-Version",
+                    "value": "{{insert_version}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "X-Restli-Protocol-Version",
+                    "value": "2.0.0",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/reactions/(entity:{{post-urn-member-1}})?q=entity&sort={{reaction_sort_order}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "reactions",
+                    "(entity:{{post-urn-member-1}})"
+                  ],
+                  "query": [
+                    {
+                      "key": "q",
+                      "value": "entity"
+                    },
+                    {
+                      "key": "sort",
+                      "value": "{{reaction_sort_order}}"
+                    }
+                  ]
+                },
+                "description": "Get all reactions on a share (LikesService.getAllLikes) - no permission check in code."
+              },
+              "response": [
+                {
+                  "name": "Get Reactions on a Share",
+                  "originalRequest": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Authorization",
+                        "value": "{{insert_token}}",
+                        "type": "text",
+                        "disabled": true
+                      },
+                      {
+                        "key": "LinkedIn-Version",
+                        "value": "{{insert_version}}",
+                        "type": "text"
+                      },
+                      {
+                        "key": "X-Restli-Protocol-Version",
+                        "value": "2.0.0",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/reactions/(entity:{{post-urn-member-1}})?q=entity&sort={{reaction_sort_order}}",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "reactions",
+                        "(entity:{{post-urn-member-1}})"
+                      ],
+                      "query": [
+                        {
+                          "key": "q",
+                          "value": "entity"
+                        },
+                        {
+                          "key": "sort",
+                          "value": "{{reaction_sort_order}}"
+                        }
+                      ]
+                    }
+                  },
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": null,
+                  "header": [
+                    {
+                      "key": ":status",
+                      "value": 200
+                    },
+                    {
+                      "key": "date",
+                      "value": "Fri, 25 Sep 2026 05:59:37 GMT"
+                    },
+                    {
+                      "key": "content-type",
+                      "value": "application/json"
+                    },
+                    {
+                      "key": "x-restli-protocol-version",
+                      "value": "2.0.0"
+                    },
+                    {
+                      "key": "x-content-type-options",
+                      "value": "nosniff"
+                    },
+                    {
+                      "key": "x-li-fabric",
+                      "value": "prod-lor1"
+                    },
+                    {
+                      "key": "x-li-pop",
+                      "value": "cf-prod-lor1-x"
+                    },
+                    {
+                      "key": "x-li-proto",
+                      "value": "http/2"
+                    },
+                    {
+                      "key": "x-li-uuid",
+                      "value": "AAZcSGvYTk9atWRcOA5qAA=="
+                    },
+                    {
+                      "key": "set-cookie",
+                      "value": "lidc=\"b=OB88:s=O:r=O:a=O:p=O:g=13:u=5:x=1:i=1790315977:t=1790358481:v=2:sig=AQGT9a9NVWeQsEaIneF6I8kDOuaOUbZP\""
+                    },
+                    {
+                      "key": "x-li-route-key",
+                      "value": "\"b=OB88:s=O:r=O:a=O:p=O:g=13:u=5:x=1:i=1790315977:t=1790358481:v=2:sig=AQGT9a9NVWeQsEaIneF6I8kDOuaOUbZP\""
+                    },
+                    {
+                      "key": "cf-cache-status",
+                      "value": "DYNAMIC"
+                    },
+                    {
+                      "key": "strict-transport-security",
+                      "value": "max-age=31536000"
+                    },
+                    {
+                      "key": "content-encoding",
+                      "value": "gzip"
+                    },
+                    {
+                      "key": "server",
+                      "value": "cloudflare"
+                    },
+                    {
+                      "key": "cf-ray",
+                      "value": "a407cdc82f924f08-SJC"
+                    },
+                    {
+                      "key": "alt-svc",
+                      "value": "h3=\":443\"; ma=86400"
+                    }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"paging\": {\n        \"start\": 0,\n        \"count\": 10,\n        \"links\": [],\n        \"total\": 1\n    },\n    \"elements\": [\n        {\n            \"lastModified\": {\n                \"actor\": \"urn:li:person:bB4Pmsd_uL\",\n                \"time\": 1790314678855\n            },\n            \"id\": \"urn:li:reaction:(urn:li:person:bB4Pmsd_uL,urn:li:share:7509119712832905216)\",\n            \"reactionType\": \"LIKE\",\n            \"created\": {\n                \"actor\": \"urn:li:person:bB4Pmsd_uL\",\n                \"time\": 1790314678855\n            },\n            \"root\": \"urn:li:share:7509119712832905216\"\n        }\n    ]\n}"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Social Actions (read) - NOT code-verified for r_member_social",
+          "item": [
+            {
+              "name": "Get Social Action Summary",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "{{insert_token}}",
+                    "type": "text",
+                    "disabled": true
+                  },
+                  {
+                    "key": "LinkedIn-Version",
+                    "value": "{{insert_version}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "X-Restli-Protocol-Version",
+                    "value": "2.0.0",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/socialActions/{{post-urn-member-1}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "socialActions",
+                    "{{post-urn-member-1}}"
+                  ]
+                },
+                "description": "Get the aggregate social action summary (likesSummary + commentsSummary) for a target object. SocialActionsResource.get()/SocialActionsService have no permission checks in code."
+              },
+              "response": [
+                {
+                  "name": "Get Social Action Summary",
+                  "originalRequest": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Authorization",
+                        "value": "{{insert_token}}",
+                        "type": "text",
+                        "disabled": true
+                      },
+                      {
+                        "key": "LinkedIn-Version",
+                        "value": "{{insert_version}}",
+                        "type": "text"
+                      },
+                      {
+                        "key": "X-Restli-Protocol-Version",
+                        "value": "2.0.0",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/socialActions/{{post-urn-member-1}}",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "socialActions",
+                        "{{post-urn-member-1}}"
+                      ]
+                    }
+                  },
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": null,
+                  "header": [
+                    {
+                      "key": ":status",
+                      "value": 200
+                    },
+                    {
+                      "key": "date",
+                      "value": "Fri, 25 Sep 2026 21:45:29 GMT"
+                    },
+                    {
+                      "key": "content-type",
+                      "value": "application/json"
+                    },
+                    {
+                      "key": "x-restli-protocol-version",
+                      "value": "2.0.0"
+                    },
+                    {
+                      "key": "x-content-type-options",
+                      "value": "nosniff"
+                    },
+                    {
+                      "key": "x-li-fabric",
+                      "value": "prod-lor1"
+                    },
+                    {
+                      "key": "x-li-pop",
+                      "value": "cf-prod-lor1-x"
+                    },
+                    {
+                      "key": "x-li-proto",
+                      "value": "http/2"
+                    },
+                    {
+                      "key": "x-li-uuid",
+                      "value": "AAZcVaKITeR5dw4AmeLWPQ=="
+                    },
+                    {
+                      "key": "set-cookie",
+                      "value": "lidc=\"b=OB88:s=O:r=O:a=O:p=O:g=13:u=5:x=1:i=1790372729:t=1790446203:v=2:sig=AQG2OnJPfu9eHOpmOfD6hO2e212Ywk9z\""
+                    },
+                    {
+                      "key": "x-li-route-key",
+                      "value": "\"b=OB88:s=O:r=O:a=O:p=O:g=13:u=5:x=1:i=1790372729:t=1790446203:v=2:sig=AQG2OnJPfu9eHOpmOfD6hO2e212Ywk9z\""
+                    },
+                    {
+                      "key": "cf-cache-status",
+                      "value": "DYNAMIC"
+                    },
+                    {
+                      "key": "strict-transport-security",
+                      "value": "max-age=31536000"
+                    },
+                    {
+                      "key": "content-encoding",
+                      "value": "gzip"
+                    },
+                    {
+                      "key": "server",
+                      "value": "cloudflare"
+                    },
+                    {
+                      "key": "cf-ray",
+                      "value": "a40d3754ab96f9d8-SJC"
+                    },
+                    {
+                      "key": "alt-svc",
+                      "value": "h3=\":443\"; ma=86400"
+                    }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"likesSummary\": {\n        \"selectedLikes\": [\n            \"urn:li:like:(urn:li:person:bB4Pmsd_uL,urn:li:activity:7509119713386401792)\"\n        ],\n        \"aggregatedTotalLikes\": 1,\n        \"likedByCurrentUser\": true,\n        \"totalLikes\": 1\n    },\n    \"commentsSummary\": {\n        \"selectedComments\": [\n            \"urn:li:comment:(urn:li:activity:7509119713386401792,7509122316551802880)\"\n        ],\n        \"totalFirstLevelComments\": 1,\n        \"commentsState\": \"OPEN\",\n        \"aggregatedTotalComments\": 1\n    },\n    \"target\": \"urn:li:activity:7509119713386401792\"\n}"
+                }
+              ]
+            },
+            {
+              "name": "Batch Get Social Action Summaries",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "{{insert_token}}",
+                    "type": "text",
+                    "disabled": true
+                  },
+                  {
+                    "key": "LinkedIn-Version",
+                    "value": "{{insert_version}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "X-Restli-Protocol-Version",
+                    "value": "2.0.0",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/socialActions?ids=List(urn%3Ali%3Aactivity%3A{{activity_id}},urn%3Ali%3Ashare%3A{{share_id}})",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "socialActions"
+                  ],
+                  "query": [
+                    {
+                      "key": "ids",
+                      "value": "List(urn%3Ali%3Aactivity%3A{{activity_id}},urn%3Ali%3Ashare%3A{{share_id}})"
+                    }
+                  ]
+                },
+                "description": "Batch get social action summaries. SocialActionsResource.batchGetSocialActions() has no permission checks in code."
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Social Metadata (read) - NOT code-verified for r_member_social",
+          "item": [
+            {
+              "name": "Get a Summary of Social Metadata",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "{{insert_token}}",
+                    "type": "text",
+                    "disabled": true
+                  },
+                  {
+                    "key": "LinkedIn-Version",
+                    "value": "{{insert_version}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "X-Restli-Protocol-Version",
+                    "value": "2.0.0",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/socialMetadata/{{social_metadata_entity_urn}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "socialMetadata",
+                    "{{social_metadata_entity_urn}}"
+                  ]
+                },
+                "description": "Get a summary of social metadata (comment/reaction permission settings) for an entity. SocialMetadataService has no permission checks in code."
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Documents (read) - NOT code-verified for r_member_social",
+          "item": [
+            {
+              "name": "Get a Single Document",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "{{insert_token}}",
+                    "type": "text",
+                    "disabled": true
+                  },
+                  {
+                    "key": "LinkedIn-Version",
+                    "value": "{{insert_version}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "X-Restli-Protocol-Version",
+                    "value": "2.0.0",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/documents/{{document_id}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "documents",
+                    "{{document_id}}"
+                  ]
+                },
+                "description": "Get a single document. DocumentsService only checks W_MEMBER_SOCIAL on write/actor validation; no read-permission check exists in code."
+              },
+              "response": []
+            },
+            {
+              "name": "Find Documents by Associated Account (Member)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "{{insert_token}}",
+                    "type": "text",
+                    "disabled": true
+                  },
+                  {
+                    "key": "LinkedIn-Version",
+                    "value": "{{insert_version}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "X-Restli-Protocol-Version",
+                    "value": "2.0.0",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/documents?q=associatedAccount&associatedAccount=urn%3Ali%3Aperson%3A{{person_id}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "documents"
+                  ],
+                  "query": [
+                    {
+                      "key": "q",
+                      "value": "associatedAccount"
+                    },
+                    {
+                      "key": "associatedAccount",
+                      "value": "urn%3Ali%3Aperson%3A{{person_id}}"
+                    }
+                  ]
+                },
+                "description": "FINDER associatedAccount for a member's documents. No read-permission check exists in code."
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Videos (read) - NOT code-verified for r_member_social",
+          "item": [
+            {
+              "name": "Get a Single Video",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "{{insert_token}}",
+                    "type": "text",
+                    "disabled": true
+                  },
+                  {
+                    "key": "LinkedIn-Version",
+                    "value": "{{insert_version}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "X-Restli-Protocol-Version",
+                    "value": "2.0.0",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/videos/{{video_id}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "videos",
+                    "{{video_id}}"
+                  ]
+                },
+                "description": "Get a single video. VideosService only checks W_MEMBER_SOCIAL on write/actor validation; no read-permission check exists in code."
+              },
+              "response": []
+            },
+            {
+              "name": "Find Videos by Associated Account (Member)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "{{insert_token}}",
+                    "type": "text",
+                    "disabled": true
+                  },
+                  {
+                    "key": "LinkedIn-Version",
+                    "value": "{{insert_version}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "X-Restli-Protocol-Version",
+                    "value": "2.0.0",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/videos?q=associatedAccount&associatedAccount=urn%3Ali%3Aperson%3A{{person_id}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "videos"
+                  ],
+                  "query": [
+                    {
+                      "key": "q",
+                      "value": "associatedAccount"
+                    },
+                    {
+                      "key": "associatedAccount",
+                      "value": "urn%3Ali%3Aperson%3A{{person_id}}"
+                    }
+                  ]
+                },
+                "description": "FINDER associatedAccount for a member's videos. No read-permission check exists in code."
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Images (read) - NOT code-verified for r_member_social",
+          "item": [
+            {
+              "name": "Get a Single Image",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "{{insert_token}}",
+                    "type": "text",
+                    "disabled": true
+                  },
+                  {
+                    "key": "LinkedIn-Version",
+                    "value": "{{insert_version}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "X-Restli-Protocol-Version",
+                    "value": "2.0.0",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/images/{{image_id}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "images",
+                    "{{image_id}}"
+                  ]
+                },
+                "description": "Get a single image. ImagesService only checks W_MEMBER_SOCIAL on write/actor validation; no read-permission check exists in code."
+              },
+              "response": []
+            },
+            {
+              "name": "Find Images by Associated Account (Member)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "{{insert_token}}",
+                    "type": "text",
+                    "disabled": true
+                  },
+                  {
+                    "key": "LinkedIn-Version",
+                    "value": "{{insert_version}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "X-Restli-Protocol-Version",
+                    "value": "2.0.0",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/images?q=associatedAccount&associatedAccount=urn%3Ali%3Aperson%3A{{person_id}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "images"
+                  ],
+                  "query": [
+                    {
+                      "key": "q",
+                      "value": "associatedAccount"
+                    },
+                    {
+                      "key": "associatedAccount",
+                      "value": "urn%3Ali%3Aperson%3A{{person_id}}"
+                    }
+                  ]
+                },
+                "description": "FINDER associatedAccount for a member's images. No read-permission check exists in code."
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Video Analytics (read) - NOT code-verified for r_member_social",
+          "item": [
+            {
+              "name": "Video Analytics - Find by Entity",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "{{insert_token}}",
+                    "type": "text",
+                    "disabled": true
+                  },
+                  {
+                    "key": "LinkedIn-Version",
+                    "value": "{{insert_version}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "X-Restli-Protocol-Version",
+                    "value": "2.0.0",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/videoAnalytics?q=entity&entity=urn%3Ali%3AugcPost%3A{{ugc_post_id}}&type={{video_analytics_type}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "videoAnalytics"
+                  ],
+                  "query": [
+                    {
+                      "key": "q",
+                      "value": "entity"
+                    },
+                    {
+                      "key": "entity",
+                      "value": "urn%3Ali%3AugcPost%3A{{ugc_post_id}}"
+                    },
+                    {
+                      "key": "type",
+                      "value": "{{video_analytics_type}}"
+                    }
+                  ]
+                },
+                "description": "FINDER entity (mirrorapi.VideoAnalyticsResource.findStatistics). VideoAnalyticsService has no permission checks in code."
+              },
+              "response": []
+            },
+            {
+              "name": "Member Creator Video Analytics - Find by Entity",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "{{insert_token}}",
+                    "type": "text",
+                    "disabled": true
+                  },
+                  {
+                    "key": "LinkedIn-Version",
+                    "value": "{{insert_version}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "X-Restli-Protocol-Version",
+                    "value": "2.0.0",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/memberCreatorVideoAnalytics?q=entity&entity=urn%3Ali%3Aperson%3A{{person_id}}&queryType={{video_analytics_type}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "memberCreatorVideoAnalytics"
+                  ],
+                  "query": [
+                    {
+                      "key": "q",
+                      "value": "entity"
+                    },
+                    {
+                      "key": "entity",
+                      "value": "urn%3Ali%3Aperson%3A{{person_id}}"
+                    },
+                    {
+                      "key": "queryType",
+                      "value": "{{video_analytics_type}}"
+                    }
+                  ]
+                },
+                "description": "FINDER entity (memberanalytics.MemberCreatorVideoAnalyticsResource.findByEntity), scoped to a member creator. MemberCreatorVideoAnalyticsService has no permission checks in code."
+              },
+              "response": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "w_member_social",
+      "item": [
+        {
+          "name": "Posts API (w_member_social create)",
+          "item": [
+            {
+              "name": "Create a Post (Member Author)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "{{insert_token}}",
+                    "type": "text",
+                    "disabled": true
+                  },
+                  {
+                    "key": "LinkedIn-Version",
+                    "value": "{{insert_version}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "X-Restli-Protocol-Version",
+                    "value": "2.0.0",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"author\": \"urn:li:person:{{person_id}}\",\n    \"commentary\": \"{{member_post_commentary}}\",\n    \"visibility\": \"PUBLIC\",\n    \"distribution\": {\n        \"feedDistribution\": \"MAIN_FEED\",\n        \"targetEntities\": [],\n        \"thirdPartyDistributionChannels\": []\n    },\n    \"lifecycleState\": \"PUBLISHED\",\n    \"isReshareDisabledByAuthor\": false\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/posts",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "posts"
+                  ]
+                },
+                "description": "Creates a text post authored by a member (person URN). PostsService.validateAuthorUrnType() requires w_member_social when the author is a person URN (writeCase=true). See PostsClient.java / PostsService.java."
+              },
+              "response": [
+                {
+                  "name": "Create a Post (Member Author)",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Authorization",
+                        "value": "{{insert_token}}",
+                        "type": "text",
+                        "disabled": true
+                      },
+                      {
+                        "key": "LinkedIn-Version",
+                        "value": "{{insert_version}}",
+                        "type": "text"
+                      },
+                      {
+                        "key": "X-Restli-Protocol-Version",
+                        "value": "2.0.0",
+                        "type": "text"
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n    \"author\": \"urn:li:person:{{person_id}}\",\n    \"commentary\": \"{{member_post_commentary}}\",\n    \"visibility\": \"PUBLIC\",\n    \"distribution\": {\n        \"feedDistribution\": \"MAIN_FEED\",\n        \"targetEntities\": [],\n        \"thirdPartyDistributionChannels\": []\n    },\n    \"lifecycleState\": \"PUBLISHED\",\n    \"isReshareDisabledByAuthor\": false\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/posts",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "posts"
+                      ]
+                    }
+                  },
+                  "status": "Created",
+                  "code": 201,
+                  "_postman_previewlanguage": null,
+                  "header": [
+                    {
+                      "key": ":status",
+                      "value": 201
+                    },
+                    {
+                      "key": "date",
+                      "value": "Fri, 25 Sep 2026 05:20:52 GMT"
+                    },
+                    {
+                      "key": "content-length",
+                      "value": "0"
+                    },
+                    {
+                      "key": "location",
+                      "value": "/posts/urn%3Ali%3Ashare%3A7509119712832905216"
+                    },
+                    {
+                      "key": "x-restli-id",
+                      "value": "urn:li:share:7509119712832905216"
+                    },
+                    {
+                      "key": "x-restli-protocol-version",
+                      "value": "2.0.0"
+                    },
+                    {
+                      "key": "x-li-fabric",
+                      "value": "prod-lor1"
+                    },
+                    {
+                      "key": "x-li-pop",
+                      "value": "cf-prod-lor1-x"
+                    },
+                    {
+                      "key": "x-li-proto",
+                      "value": "http/2"
+                    },
+                    {
+                      "key": "x-li-uuid",
+                      "value": "AAZcR+FFy1EJNcyDpyiX6g=="
+                    },
+                    {
+                      "key": "set-cookie",
+                      "value": "lidc=\"b=OB88:s=O:r=O:a=O:p=O:g=13:u=5:x=1:i=1790313652:t=1790358481:v=2:sig=AQGEArVkBeKrkhoVeialaw8tDeJvcugF\""
+                    },
+                    {
+                      "key": "x-li-route-key",
+                      "value": "\"b=OB88:s=O:r=O:a=O:p=O:g=13:u=5:x=1:i=1790313652:t=1790358481:v=2:sig=AQGEArVkBeKrkhoVeialaw8tDeJvcugF\""
+                    },
+                    {
+                      "key": "cf-cache-status",
+                      "value": "DYNAMIC"
+                    },
+                    {
+                      "key": "strict-transport-security",
+                      "value": "max-age=31536000"
+                    },
+                    {
+                      "key": "x-content-type-options",
+                      "value": "nosniff"
+                    },
+                    {
+                      "key": "server",
+                      "value": "cloudflare"
+                    },
+                    {
+                      "key": "cf-ray",
+                      "value": "a4079505cb4aeb22-SJC"
+                    },
+                    {
+                      "key": "alt-svc",
+                      "value": "h3=\":443\"; ma=86400"
+                    }
+                  ],
+                  "cookie": [],
+                  "body": null
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Comments API (w_member_social create)",
+          "item": [
+            {
+              "name": "Create a Comment (Member Actor)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "{{insert_token}}",
+                    "type": "text",
+                    "disabled": true
+                  },
+                  {
+                    "key": "LinkedIn-Version",
+                    "value": "{{insert_version}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "X-Restli-Protocol-Version",
+                    "value": "2.0.0",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"actor\": \"urn:li:person:{{person_id}}\",\n    \"object\": \"urn:li:ugcPost:{{post-member-id}}\",\n    \"message\": {\n        \"text\": \"{{comment_message_text}}\"\n    }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/socialActions/{{post-urn-member-1}}/comments",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "socialActions",
+                    "{{post-urn-member-1}}",
+                    "comments"
+                  ]
+                },
+                "description": "Creates a top-level comment as a member actor, to seed sample comment data for the Comments (read) requests. CommentsResource is CreateOnly on 'actor'; no explicit permission check found in CommentsService code, included here for parity with the w_member_social write-actions."
+              },
+              "response": [
+                {
+                  "name": "Create a Comment (Member Actor)",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Authorization",
+                        "value": "{{insert_token}}",
+                        "type": "text",
+                        "disabled": true
+                      },
+                      {
+                        "key": "LinkedIn-Version",
+                        "value": "{{insert_version}}",
+                        "type": "text"
+                      },
+                      {
+                        "key": "X-Restli-Protocol-Version",
+                        "value": "2.0.0",
+                        "type": "text"
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n    \"actor\": \"urn:li:person:{{person_id}}\",\n    \"object\": \"urn:li:ugcPost:{{post-member-id}}\",\n    \"message\": {\n        \"text\": \"{{comment_message_text}}\"\n    }\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/socialActions/{{post-urn-member-1}}/comments",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "socialActions",
+                        "{{post-urn-member-1}}",
+                        "comments"
+                      ]
+                    }
+                  },
+                  "status": "Created",
+                  "code": 201,
+                  "_postman_previewlanguage": null,
+                  "header": [
+                    {
+                      "key": ":status",
+                      "value": 201
+                    },
+                    {
+                      "key": "date",
+                      "value": "Fri, 25 Sep 2026 05:31:13 GMT"
+                    },
+                    {
+                      "key": "content-type",
+                      "value": "application/json"
+                    },
+                    {
+                      "key": "location",
+                      "value": "/socialActions/urn%3Ali%3Ashare%3A7509119712832905216/comments/7509122316551802880"
+                    },
+                    {
+                      "key": "x-restli-id",
+                      "value": "7509122316551802880"
+                    },
+                    {
+                      "key": "x-restli-protocol-version",
+                      "value": "2.0.0"
+                    },
+                    {
+                      "key": "x-content-type-options",
+                      "value": "nosniff"
+                    },
+                    {
+                      "key": "x-li-fabric",
+                      "value": "prod-lor1"
+                    },
+                    {
+                      "key": "x-li-pop",
+                      "value": "cf-prod-lor1-x"
+                    },
+                    {
+                      "key": "x-li-proto",
+                      "value": "http/2"
+                    },
+                    {
+                      "key": "x-li-uuid",
+                      "value": "AAZcSAZFxZnQGGLlWPym6g=="
+                    },
+                    {
+                      "key": "set-cookie",
+                      "value": "lidc=\"b=OB88:s=O:r=O:a=O:p=O:g=13:u=5:x=1:i=1790314272:t=1790358481:v=2:sig=AQHPHdt-BEQn7HMldld9qOFBtBbI1t7K\""
+                    },
+                    {
+                      "key": "x-li-route-key",
+                      "value": "\"b=OB88:s=O:r=O:a=O:p=O:g=13:u=5:x=1:i=1790314272:t=1790358481:v=2:sig=AQHPHdt-BEQn7HMldld9qOFBtBbI1t7K\""
+                    },
+                    {
+                      "key": "cf-cache-status",
+                      "value": "DYNAMIC"
+                    },
+                    {
+                      "key": "strict-transport-security",
+                      "value": "max-age=31536000"
+                    },
+                    {
+                      "key": "server",
+                      "value": "cloudflare"
+                    },
+                    {
+                      "key": "cf-ray",
+                      "value": "a407a42d8c3f2546-SJC"
+                    },
+                    {
+                      "key": "alt-svc",
+                      "value": "h3=\":443\"; ma=86400"
+                    }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"actor\": \"urn:li:person:bB4Pmsd_uL\",\n    \"commentUrn\": \"urn:li:comment:(urn:li:activity:7509119713386401792,7509122316551802880)\",\n    \"created\": {\n        \"actor\": \"urn:li:person:bB4Pmsd_uL\",\n        \"time\": 1790314273013\n    },\n    \"id\": \"7509122316551802880\",\n    \"lastModified\": {\n        \"actor\": \"urn:li:person:bB4Pmsd_uL\",\n        \"time\": 1790314273013\n    },\n    \"message\": {\n        \"attributes\": [],\n        \"text\": \"Member Post Testing Comment\"\n    },\n    \"likesSummary\": {\n        \"selectedLikes\": [],\n        \"aggregatedTotalLikes\": 0,\n        \"likedByCurrentUser\": false,\n        \"totalLikes\": 0\n    },\n    \"object\": \"urn:li:activity:7509119713386401792\"\n}"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Reactions API (w_member_social create)",
+          "item": [
+            {
+              "name": "Create a Reaction (Member Actor)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "{{insert_token}}",
+                    "type": "text",
+                    "disabled": true
+                  },
+                  {
+                    "key": "LinkedIn-Version",
+                    "value": "{{insert_version}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "X-Restli-Protocol-Version",
+                    "value": "2.0.0",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"root\": \"urn:li:share:{{post-member-id}}\",\n    \"reactionType\": \"{{reaction_type}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/reactions?actor=urn%3Ali%3Aperson%3A{{person_id}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "reactions"
+                  ],
+                  "query": [
+                    {
+                      "key": "actor",
+                      "value": "urn%3Ali%3Aperson%3A{{person_id}}"
+                    }
+                  ]
+                },
+                "description": "Creates a reaction (like) on a share as a member actor, to seed sample reaction data. LikesService.validateActorUrnType() requires w_member_social (or w_member_social_feed) when actor is a person URN."
+              },
+              "response": [
+                {
+                  "name": "Create a Reaction (Member Actor)",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Authorization",
+                        "value": "{{insert_token}}",
+                        "type": "text",
+                        "disabled": true
+                      },
+                      {
+                        "key": "LinkedIn-Version",
+                        "value": "{{insert_version}}",
+                        "type": "text"
+                      },
+                      {
+                        "key": "X-Restli-Protocol-Version",
+                        "value": "2.0.0",
+                        "type": "text"
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n    \"root\": \"urn:li:share:{{post-member-id}}\",\n    \"reactionType\": \"{{reaction_type}}\"\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/reactions?actor=urn%3Ali%3Aperson%3A{{person_id}}",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "reactions"
+                      ],
+                      "query": [
+                        {
+                          "key": "actor",
+                          "value": "urn%3Ali%3Aperson%3A{{person_id}}"
+                        }
+                      ]
+                    }
+                  },
+                  "status": "Created",
+                  "code": 201,
+                  "_postman_previewlanguage": null,
+                  "header": [
+                    {
+                      "key": ":status",
+                      "value": 201
+                    },
+                    {
+                      "key": "date",
+                      "value": "Fri, 25 Sep 2026 05:37:58 GMT"
+                    },
+                    {
+                      "key": "content-type",
+                      "value": "application/json"
+                    },
+                    {
+                      "key": "location",
+                      "value": "/reactions/(actor:urn%3Ali%3Aperson%3AbB4Pmsd_uL,entity:urn%3Ali%3Ashare%3A7509119712832905216)"
+                    },
+                    {
+                      "key": "x-restli-id",
+                      "value": "(actor:urn%3Ali%3Aperson%3AbB4Pmsd_uL,entity:urn%3Ali%3Ashare%3A7509119712832905216)"
+                    },
+                    {
+                      "key": "x-restli-protocol-version",
+                      "value": "2.0.0"
+                    },
+                    {
+                      "key": "x-content-type-options",
+                      "value": "nosniff"
+                    },
+                    {
+                      "key": "x-li-fabric",
+                      "value": "prod-lor1"
+                    },
+                    {
+                      "key": "x-li-pop",
+                      "value": "cf-prod-lor1-x"
+                    },
+                    {
+                      "key": "x-li-proto",
+                      "value": "http/2"
+                    },
+                    {
+                      "key": "x-li-uuid",
+                      "value": "AAZcSB52hMbfaWMBGUd9zw=="
+                    },
+                    {
+                      "key": "set-cookie",
+                      "value": "lidc=\"b=OB88:s=O:r=O:a=O:p=O:g=13:u=5:x=1:i=1790314678:t=1790358481:v=2:sig=AQFj4FJAZWnUNU2CwX5Lawa1ckQTIbuy\""
+                    },
+                    {
+                      "key": "x-li-route-key",
+                      "value": "\"b=OB88:s=O:r=O:a=O:p=O:g=13:u=5:x=1:i=1790314678:t=1790358481:v=2:sig=AQFj4FJAZWnUNU2CwX5Lawa1ckQTIbuy\""
+                    },
+                    {
+                      "key": "cf-cache-status",
+                      "value": "DYNAMIC"
+                    },
+                    {
+                      "key": "strict-transport-security",
+                      "value": "max-age=31536000"
+                    },
+                    {
+                      "key": "server",
+                      "value": "cloudflare"
+                    },
+                    {
+                      "key": "cf-ray",
+                      "value": "a407ae160aa9552b-SJC"
+                    },
+                    {
+                      "key": "alt-svc",
+                      "value": "h3=\":443\"; ma=86400"
+                    }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"lastModified\": {\n        \"actor\": \"urn:li:person:bB4Pmsd_uL\",\n        \"time\": 1790314678855\n    },\n    \"id\": \"urn:li:reaction:(urn:li:person:bB4Pmsd_uL,urn:li:share:7509119712832905216)\",\n    \"reactionType\": \"LIKE\",\n    \"created\": {\n        \"actor\": \"urn:li:person:bB4Pmsd_uL\",\n        \"time\": 1790314678855\n    },\n    \"root\": \"urn:li:share:7509119712832905216\"\n}"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Documents API (w_member_social create)",
+          "item": [
+            {
+              "name": "Initialize Document Upload (Member Owner)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "{{insert_token}}",
+                    "type": "text",
+                    "disabled": true
+                  },
+                  {
+                    "key": "LinkedIn-Version",
+                    "value": "{{insert_version}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "X-Restli-Protocol-Version",
+                    "value": "2.0.0",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"initializeUploadRequest\": {\n        \"owner\": \"urn:li:person:{{person_id}}\"\n    }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/documents?action=initializeUpload",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "documents"
+                  ],
+                  "query": [
+                    {
+                      "key": "action",
+                      "value": "initializeUpload"
+                    }
+                  ]
+                },
+                "description": "Initializes a document upload owned by a member. DocumentsService.validateOwnerTypeBasedOnPermissions() requires w_member_social when owner is a person URN. Returns an uploadUrl + document URN used to seed sample document content."
+              },
+              "response": [
+                {
+                  "name": "Initialize Document Upload (Member Owner)",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Authorization",
+                        "value": "{{insert_token}}",
+                        "type": "text",
+                        "disabled": true
+                      },
+                      {
+                        "key": "LinkedIn-Version",
+                        "value": "{{insert_version}}",
+                        "type": "text"
+                      },
+                      {
+                        "key": "X-Restli-Protocol-Version",
+                        "value": "2.0.0",
+                        "type": "text"
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n    \"initializeUploadRequest\": {\n        \"owner\": \"urn:li:person:{{person_id}}\"\n    }\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/documents?action=initializeUpload",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "documents"
+                      ],
+                      "query": [
+                        {
+                          "key": "action",
+                          "value": "initializeUpload"
+                        }
+                      ]
+                    }
+                  },
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": null,
+                  "header": [
+                    {
+                      "key": ":status",
+                      "value": 200
+                    },
+                    {
+                      "key": "date",
+                      "value": "Fri, 25 Sep 2026 22:31:01 GMT"
+                    },
+                    {
+                      "key": "content-type",
+                      "value": "application/json"
+                    },
+                    {
+                      "key": "x-restli-protocol-version",
+                      "value": "2.0.0"
+                    },
+                    {
+                      "key": "set-cookie",
+                      "value": "lidc=\"b=OB88:s=O:r=O:a=O:p=O:g=13:u=5:x=1:i=1790375461:t=1790446203:v=2:sig=AQGR2brYRWvLmKPda-JRztdfLT3mHpsO\""
+                    },
+                    {
+                      "key": "set-cookie",
+                      "value": "__cf_bm=DrcrTCgpeCJS99cqWZ_Hvs6PzhUuoIsDaDKdke11dxM-1790375461.1286223-1.0.1.1-n_OT2UN2YDd62lCD.BAFiQYj5JdBsTN_WCvuVSo42SvZ5scVUlOBGY9Qp52C15D_QlVfd6SrCGEBpu.0mZYkEEuxvnv46D9EodiynrGP8_Ly.eBtq3vi8G7PWTxQm2Sb; HttpOnly; SameSite=None; Secure; Path=/; Domain=linkedin.com; Expires=Fri, 25 Sep 2026 23:01:01 GMT"
+                    },
+                    {
+                      "key": "x-li-fabric",
+                      "value": "prod-lor1"
+                    },
+                    {
+                      "key": "x-li-pop",
+                      "value": "cf-prod-lor1-x"
+                    },
+                    {
+                      "key": "x-li-proto",
+                      "value": "http/2"
+                    },
+                    {
+                      "key": "x-li-uuid",
+                      "value": "AAZcVkVgSEekGeZ32iA/qw=="
+                    },
+                    {
+                      "key": "x-content-type-options",
+                      "value": "nosniff"
+                    },
+                    {
+                      "key": "x-li-route-key",
+                      "value": "\"b=OB88:s=O:r=O:a=O:p=O:g=13:u=5:x=1:i=1790375461:t=1790446203:v=2:sig=AQGR2brYRWvLmKPda-JRztdfLT3mHpsO\""
+                    },
+                    {
+                      "key": "cf-cache-status",
+                      "value": "DYNAMIC"
+                    },
+                    {
+                      "key": "strict-transport-security",
+                      "value": "max-age=31536000"
+                    },
+                    {
+                      "key": "content-encoding",
+                      "value": "gzip"
+                    },
+                    {
+                      "key": "server",
+                      "value": "cloudflare"
+                    },
+                    {
+                      "key": "cf-ray",
+                      "value": "a40d7a080c1fcf0a-SJC"
+                    },
+                    {
+                      "key": "alt-svc",
+                      "value": "h3=\":443\"; ma=86400"
+                    }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"value\": {\n        \"uploadUrlExpiresAt\": 1790461861276,\n        \"uploadUrl\": \"https://www.linkedin.com/dms-uploads/sp/v2/D5610AQH2s2YKg6T3Aw/ads-uploadedDocument/B56aDasYGMKwAE-/0?ca=vector_ads&cn=uploads&iri=B01-86&sync=0&v=beta&ut=3WmsXfIoXDkcs1\",\n        \"document\": \"urn:li:document:D5610AQH2s2YKg6T3Aw\"\n    }\n}"
+                }
+              ]
+            },
+            {
+              "name": "Create Document Content (Post, Member Author)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "{{insert_token}}",
+                    "type": "text",
+                    "disabled": true
+                  },
+                  {
+                    "key": "LinkedIn-Version",
+                    "value": "{{insert_version}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "X-Restli-Protocol-Version",
+                    "value": "2.0.0",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"author\": \"urn:li:person:{{person_id}}\",\n    \"commentary\": \"{{member_post_commentary}}\",\n    \"visibility\": \"PUBLIC\",\n    \"distribution\": {\n        \"feedDistribution\": \"MAIN_FEED\",\n        \"targetEntities\": [],\n        \"thirdPartyDistributionChannels\": []\n    },\n    \"content\": {\n        \"media\": {\n            \"title\":\"Example.pdf\",\n            \"id\": \"urn:li:document:D5610AQH2s2YKg6T3Aw\"\n        }\n    },\n    \"lifecycleState\": \"PUBLISHED\",\n    \"isReshareDisabledByAuthor\": false\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/posts",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "posts"
+                  ]
+                },
+                "description": "Publishes the uploaded document as a member-authored post, to seed sample document-post data. Same w_member_social author gating as the base Posts create."
+              },
+              "response": [
+                {
+                  "name": "Create Document Content (Post, Member Author)",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Authorization",
+                        "value": "{{insert_token}}",
+                        "type": "text",
+                        "disabled": true
+                      },
+                      {
+                        "key": "LinkedIn-Version",
+                        "value": "{{insert_version}}",
+                        "type": "text"
+                      },
+                      {
+                        "key": "X-Restli-Protocol-Version",
+                        "value": "2.0.0",
+                        "type": "text"
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n    \"author\": \"urn:li:person:{{person_id}}\",\n    \"commentary\": \"{{member_post_commentary}}\",\n    \"visibility\": \"PUBLIC\",\n    \"distribution\": {\n        \"feedDistribution\": \"MAIN_FEED\",\n        \"targetEntities\": [],\n        \"thirdPartyDistributionChannels\": []\n    },\n    \"content\": {\n        \"media\": {\n            \"title\":\"Example.pdf\",\n            \"id\": \"urn:li:document:D5610AQH2s2YKg6T3Aw\"\n        }\n    },\n    \"lifecycleState\": \"PUBLISHED\",\n    \"isReshareDisabledByAuthor\": false\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/posts",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "posts"
+                      ]
+                    }
+                  },
+                  "status": "Created",
+                  "code": 201,
+                  "_postman_previewlanguage": null,
+                  "header": [
+                    {
+                      "key": ":status",
+                      "value": 201
+                    },
+                    {
+                      "key": "date",
+                      "value": "Fri, 25 Sep 2026 22:50:26 GMT"
+                    },
+                    {
+                      "key": "content-length",
+                      "value": "0"
+                    },
+                    {
+                      "key": "location",
+                      "value": "/posts/urn%3Ali%3AugcPost%3A7509383842558853120"
+                    },
+                    {
+                      "key": "x-restli-id",
+                      "value": "urn:li:ugcPost:7509383842558853120"
+                    },
+                    {
+                      "key": "x-restli-protocol-version",
+                      "value": "2.0.0"
+                    },
+                    {
+                      "key": "x-li-fabric",
+                      "value": "prod-lor1"
+                    },
+                    {
+                      "key": "x-li-pop",
+                      "value": "cf-prod-lor1-x"
+                    },
+                    {
+                      "key": "x-li-proto",
+                      "value": "http/2"
+                    },
+                    {
+                      "key": "x-li-uuid",
+                      "value": "AAZcVorHqq8Qq8h0mVWxCw=="
+                    },
+                    {
+                      "key": "x-content-type-options",
+                      "value": "nosniff"
+                    },
+                    {
+                      "key": "x-li-route-key",
+                      "value": "\"b=OB88:s=O:r=O:a=O:p=O:g=13:u=5:x=1:i=1790376625:t=1790446203:v=2:sig=AQGHNuocaL99dYd1YvFAG4raY2dRu7Ad\""
+                    },
+                    {
+                      "key": "cf-cache-status",
+                      "value": "DYNAMIC"
+                    },
+                    {
+                      "key": "strict-transport-security",
+                      "value": "max-age=31536000"
+                    },
+                    {
+                      "key": "set-cookie",
+                      "value": "lidc=\"b=OB88:s=O:r=O:a=O:p=O:g=13:u=5:x=1:i=1790376625:t=1790446203:v=2:sig=AQGHNuocaL99dYd1YvFAG4raY2dRu7Ad\""
+                    },
+                    {
+                      "key": "set-cookie",
+                      "value": "__cf_bm=rKCjjO4qIByOjKv20MiB_MkGqXV1sDYnug9mKuBTzus-1790376625.5341063-1.0.1.1-ULZL8.Gz_W3Sk3HddEPNznsju_ZQpIY1kH2ky8.ukw6jSVapXqe4oCGcZ58EnXRoMV4M3f_JbLNJN96U4EA7WQ8xJqjhFOhZJRHY3_N2AnBUNNN2k9wTjXBcMyADVDl9; HttpOnly; SameSite=None; Secure; Path=/; Domain=linkedin.com; Expires=Fri, 25 Sep 2026 23:20:26 GMT"
+                    },
+                    {
+                      "key": "server",
+                      "value": "cloudflare"
+                    },
+                    {
+                      "key": "cf-ray",
+                      "value": "a40d96759a7e0c60-SJC"
+                    },
+                    {
+                      "key": "alt-svc",
+                      "value": "h3=\":443\"; ma=86400"
+                    }
+                  ],
+                  "cookie": [],
+                  "body": null
+                }
+              ]
+            },
+            {
+              "name": "Member-Upload-Doc",
+              "request": {
+                "method": "PUT",
+                "header": [],
+                "body": {
+                  "mode": "file",
+                  "file": {
+                    "src": "sample-media/TestDocument.pdf"
+                  }
+                },
+                "url": {
+                  "raw": "https://www.linkedin.com/dms-uploads/sp/v2/D5610AQH2s2YKg6T3Aw/ads-uploadedDocument/B56aDasYGMKwAE-/0?ca=vector_ads&cn=uploads&iri=B01-86&sync=0&v=beta&ut=3WmsXfIoXDkcs1",
+                  "protocol": "https",
+                  "host": [
+                    "www",
+                    "linkedin",
+                    "com"
+                  ],
+                  "path": [
+                    "dms-uploads",
+                    "sp",
+                    "v2",
+                    "D5610AQH2s2YKg6T3Aw",
+                    "ads-uploadedDocument",
+                    "B56aDasYGMKwAE-",
+                    "0"
+                  ],
+                  "query": [
+                    {
+                      "key": "ca",
+                      "value": "vector_ads"
+                    },
+                    {
+                      "key": "cn",
+                      "value": "uploads"
+                    },
+                    {
+                      "key": "iri",
+                      "value": "B01-86"
+                    },
+                    {
+                      "key": "sync",
+                      "value": "0"
+                    },
+                    {
+                      "key": "v",
+                      "value": "beta"
+                    },
+                    {
+                      "key": "ut",
+                      "value": "3WmsXfIoXDkcs1"
+                    }
+                  ]
+                }
+              },
+              "response": [
+                {
+                  "name": "Member-Upload-Doc",
+                  "originalRequest": {
+                    "method": "PUT",
+                    "header": [],
+                    "body": {
+                      "mode": "file",
+                      "file": {
+                        "src": "sample-media/TestDocument.pdf"
+                      }
+                    },
+                    "url": {
+                      "raw": "https://www.linkedin.com/dms-uploads/sp/v2/D5610AQH2s2YKg6T3Aw/ads-uploadedDocument/B56aDasYGMKwAE-/0?ca=vector_ads&cn=uploads&iri=B01-86&sync=0&v=beta&ut=3WmsXfIoXDkcs1",
+                      "protocol": "https",
+                      "host": [
+                        "www",
+                        "linkedin",
+                        "com"
+                      ],
+                      "path": [
+                        "dms-uploads",
+                        "sp",
+                        "v2",
+                        "D5610AQH2s2YKg6T3Aw",
+                        "ads-uploadedDocument",
+                        "B56aDasYGMKwAE-",
+                        "0"
+                      ],
+                      "query": [
+                        {
+                          "key": "ca",
+                          "value": "vector_ads"
+                        },
+                        {
+                          "key": "cn",
+                          "value": "uploads"
+                        },
+                        {
+                          "key": "iri",
+                          "value": "B01-86"
+                        },
+                        {
+                          "key": "sync",
+                          "value": "0"
+                        },
+                        {
+                          "key": "v",
+                          "value": "beta"
+                        },
+                        {
+                          "key": "ut",
+                          "value": "3WmsXfIoXDkcs1"
+                        }
+                      ]
+                    }
+                  },
+                  "status": "Created",
+                  "code": 201,
+                  "_postman_previewlanguage": null,
+                  "header": [
+                    {
+                      "key": ":status",
+                      "value": 201
+                    },
+                    {
+                      "key": "date",
+                      "value": "Fri Sep 25 22:32:18 UTC 2026"
+                    },
+                    {
+                      "key": "server",
+                      "value": "Play"
+                    },
+                    {
+                      "key": "x-ambry-creation-time",
+                      "value": "Fri Sep 25 22:32:18 UTC 2026"
+                    },
+                    {
+                      "key": "access-control-allow-origin",
+                      "value": "https://www.linkedin.com"
+                    },
+                    {
+                      "key": "content-length",
+                      "value": "0"
+                    },
+                    {
+                      "key": "strict-transport-security",
+                      "value": "max-age=31536000"
+                    },
+                    {
+                      "key": "x-content-type-options",
+                      "value": "nosniff"
+                    },
+                    {
+                      "key": "x-frame-options",
+                      "value": "sameorigin"
+                    },
+                    {
+                      "key": "content-security-policy",
+                      "value": "default-src 'none'; frame-ancestors 'none'; form-action 'none'; report-uri https://www.linkedin.com/security/csp?f=ers"
+                    },
+                    {
+                      "key": "x-li-fabric",
+                      "value": "prod-lor1"
+                    },
+                    {
+                      "key": "pragma",
+                      "value": "no-cache"
+                    },
+                    {
+                      "key": "expires",
+                      "value": "Thu, 01 Jan 1970 00:00:00 GMT"
+                    },
+                    {
+                      "key": "cache-control",
+                      "value": "no-cache, no-store, no-transform"
+                    },
+                    {
+                      "key": "x-li-pop",
+                      "value": "gcp-prod-lor1-x"
+                    },
+                    {
+                      "key": "x-li-proto",
+                      "value": "http/2"
+                    },
+                    {
+                      "key": "x-li-uuid",
+                      "value": "AAZcVkoCvj6sfoMdcYQ8jg=="
+                    },
+                    {
+                      "key": "content-security-policy-report-only",
+                      "value": "form-action 'none'; default-src 'none'; frame-ancestors 'none';report-uri https://www.linkedin.com/security/csp?f=ers&rt=nt_audited_header;"
+                    },
+                    {
+                      "key": "via",
+                      "value": "1.1 google"
+                    },
+                    {
+                      "key": "x-gcp-trace-id",
+                      "value": "eec974c57dd728fa7afe1ba32d415abc"
+                    },
+                    {
+                      "key": "x-colo-gcp",
+                      "value": "PROD-LAX"
+                    },
+                    {
+                      "key": "alt-svc",
+                      "value": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+                    }
+                  ],
+                  "cookie": [],
+                  "body": null
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Videos API (w_member_social create)",
+          "item": [
+            {
+              "name": "Initialize Video Upload (Member Owner)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "{{insert_token}}",
+                    "type": "text",
+                    "disabled": true
+                  },
+                  {
+                    "key": "LinkedIn-Version",
+                    "value": "{{insert_version}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "X-Restli-Protocol-Version",
+                    "value": "2.0.0",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"initializeUploadRequest\": {\n        \"owner\": \"urn:li:person:{{person_id}}\",\n        \"fileSizeBytes\": {{video_file_size_bytes}},\n        \"uploadCaptions\": false,\n        \"uploadThumbnail\": false\n    }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/videos?action=initializeUpload",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "videos"
+                  ],
+                  "query": [
+                    {
+                      "key": "action",
+                      "value": "initializeUpload"
+                    }
+                  ]
+                },
+                "description": "Initializes a video upload owned by a member. VideosService.validateOwnerTypeBasedOnPermissions() requires w_member_social when owner is a person URN."
+              },
+              "response": [
+                {
+                  "name": "Initialize Video Upload (Member Owner)",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Authorization",
+                        "value": "{{insert_token}}",
+                        "type": "text",
+                        "disabled": true
+                      },
+                      {
+                        "key": "LinkedIn-Version",
+                        "value": "{{insert_version}}",
+                        "type": "text"
+                      },
+                      {
+                        "key": "X-Restli-Protocol-Version",
+                        "value": "2.0.0",
+                        "type": "text"
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n    \"initializeUploadRequest\": {\n        \"owner\": \"urn:li:person:{{person_id}}\",\n        \"fileSizeBytes\": {{video_file_size_bytes}},\n        \"uploadCaptions\": false,\n        \"uploadThumbnail\": false\n    }\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/videos?action=initializeUpload",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "videos"
+                      ],
+                      "query": [
+                        {
+                          "key": "action",
+                          "value": "initializeUpload"
+                        }
+                      ]
+                    }
+                  },
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": null,
+                  "header": [
+                    {
+                      "key": ":status",
+                      "value": 200
+                    },
+                    {
+                      "key": "date",
+                      "value": "Fri, 25 Sep 2026 23:00:26 GMT"
+                    },
+                    {
+                      "key": "content-type",
+                      "value": "application/json"
+                    },
+                    {
+                      "key": "x-restli-protocol-version",
+                      "value": "2.0.0"
+                    },
+                    {
+                      "key": "x-content-type-options",
+                      "value": "nosniff"
+                    },
+                    {
+                      "key": "x-li-fabric",
+                      "value": "prod-lor1"
+                    },
+                    {
+                      "key": "x-li-pop",
+                      "value": "cf-prod-lor1-x"
+                    },
+                    {
+                      "key": "x-li-proto",
+                      "value": "http/2"
+                    },
+                    {
+                      "key": "x-li-uuid",
+                      "value": "AAZcVq6S/lIFJa2v8WaH2g=="
+                    },
+                    {
+                      "key": "set-cookie",
+                      "value": "lidc=\"b=OB88:s=O:r=O:a=O:p=O:g=13:u=5:x=1:i=1790377226:t=1790446203:v=2:sig=AQFRErveOfezhEZlNEKffu5CzUbpARWH\""
+                    },
+                    {
+                      "key": "x-li-route-key",
+                      "value": "\"b=OB88:s=O:r=O:a=O:p=O:g=13:u=5:x=1:i=1790377226:t=1790446203:v=2:sig=AQFRErveOfezhEZlNEKffu5CzUbpARWH\""
+                    },
+                    {
+                      "key": "cf-cache-status",
+                      "value": "DYNAMIC"
+                    },
+                    {
+                      "key": "strict-transport-security",
+                      "value": "max-age=31536000"
+                    },
+                    {
+                      "key": "content-encoding",
+                      "value": "gzip"
+                    },
+                    {
+                      "key": "server",
+                      "value": "cloudflare"
+                    },
+                    {
+                      "key": "cf-ray",
+                      "value": "a40da51edc01938c-SJC"
+                    },
+                    {
+                      "key": "alt-svc",
+                      "value": "h3=\":443\"; ma=86400"
+                    }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"value\": {\n        \"uploadUrlsExpireAt\": 1790463626200,\n        \"video\": \"urn:li:video:D5610AQFujwrFCPRFmw\",\n        \"uploadInstructions\": [\n            {\n                \"uploadUrl\": \"https://www.linkedin.com/dms-uploads/mp/v2/D5610AQFujwrFCPRFmw/uploadedVideo/B56aDazG_NKsAA-?sau=aHR0cHM6Ly93d3cubGlua2VkaW4uY29tL2FtYnJ5L2FtYnJ5LXZpZGVvLz94LWxpLWFtYnJ5LWVwPUFRSWNuek9JVTloaHBRQUFBYURhekdfWGF3Yy1xU3o3OVJVXzFtUG5pYWtNVVlHTy1Va2QwX3BPVXlvTVRCaFlFMU56OUhpOWs2Xy1VTDRNSlBQbC1yYjZhSWRfenA3RVJGOWtIck1ob1BzZzZ3UnNtb3Q0MWMteHBVZTRBOUhnWGdfU3JjWVlUZEdqVFZhR084WXRvMG9xU1RGa2dvVXZWWktmdnQ2bjdvTXJDRThXcU15ZldrdXZTZ2NBRnZVdl9lSlJEeUc0aFlEcUdNSTZVVXRDUUNXQzNfTGFYaG1Zb3lha1lqMENRVWdCQ2ZmdjVzcE9IUkFnZDlJZklXd3RCUXEzZkdDcWZOTy1FYWtVYnBydWFoZ01xX01yd1dJSDFCNEROaS1meFVVWlpRNW1EUHF0SDJkWWdjbE40RUtCSTdvb1o2bW9oSVBtRGYxYnBOeTFjZ25vWHdPT1BFOG5KLXgwQ0ZzSlJiQ3RqYXNtMDcwUy1pSUFUOTU4QVdFU0IwMnd1c3NTelY4SENwYVNZN25RMmhYdkpMZWpRenc4cHl0WXc4S3dfMlNRZDJSdWdQU3NMRzNSMGRuc1I5bnZ1czc4eS1PRnZYX3dtdTA4Y2J6UWpNcmNPZWRxZ1NidlF6UmExNEVGZGJtOFRkU0VIZTFISDFxYXdnSWNLZTFNUHhyajZCVlBNdEM2d1lXRFAzWnJ1YjRsVUpTeU1pVDRDTXZQZ3pBZWE1UnFBdjZJQ2RpQ2wwcXpqX2pab1JtN2sxbm9NTU1tYTd5N1FubTJGU0xldFBtR3UzbEFhNmJFM1FXcWgyZlpRYXZxQV8zUGZGRGtZeEZROXJDS2l1UjRQeUFLMUc5TnZwYlB3SE10SmdJNmR1amc5NjVwSUQ3VG5ydlhsdzNYMWNpVUl6ZnQxeXlmVExETWZvT2U3bFoyZXBVVUkzOTdxU1l0MVNiekF3UUxzMlREXzlmQzdGZnljTDk4c1FGUXNNaGwwWklTaGVvMFdWc0RwbHRUcUR0bHNQNlZLS3NOc0dmSFlOMFFPUEt1VjFIMGVydmZ2R251VHpWY1gzcmpqbWVwMkEtaHJncjZuZE5rODlEMHVKLTVTdGRTa1hKOE5oVHAzRXFEYlJFNVNzMHVIYzlGUWlOalpIOXhlejQ4SmtjU1BnX2J6d0JXWlRpWmtsZTY4Y3BuRjhISTRYV1lFN2xzeURhMU0zV3RaMkw0RHV1WWpVMTc1WlBrb3dFTVdiSWdPd0t3Q0l3emdQT0h3SXE3RkdtbFZPWDNHUWtnUFJxTUpMUXQ4OFhVaGEtNUVEbWRIQ0RSaE4xa3ZBdzA4Rm5YUi1SaHh2d0toQzYwMlRUaXVpbWU2dkxBMFhQWF9la1V1eGVyeXQ0eXFvWk9aQ0JvT3JTZ2FvTmxIR3JkejJuUjlwVHEwLTBwYXpHQzM4c3gtWGZ4LVYzUVVDb2l2SDFiQ09Hc3pCYWFwSDFlbnR1SmdFaFg4ZzVHaUc1ajhyeTlYYWlQejdpb2ZfLUZzMGpCSS1CZ20yUGVjbjI5OElxUkZXc0lpWTlIWjh2S2d2RWhyVFdlMjJCYS1mQVpxeDhnUThwS2NoRVF3WnBVekRvSU1GRktrV3kyRVppRWFsNWs%253D&pn=1&m=-1029112&app=204900921&sync=0&v=beta&ut=1gaxxcOaA4kss1\",\n                \"lastByte\": 1055735,\n                \"firstByte\": 0\n            }\n        ],\n        \"uploadToken\": \"\"\n    }\n}"
+                }
+              ]
+            },
+            {
+              "name": "Finalize Video Upload (Member Owner)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "{{insert_token}}",
+                    "type": "text",
+                    "disabled": true
+                  },
+                  {
+                    "key": "LinkedIn-Version",
+                    "value": "{{insert_version}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "X-Restli-Protocol-Version",
+                    "value": "2.0.0",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"finalizeUploadRequest\": {\n        \"video\": \"urn:li:video:D5610AQFujwrFCPRFmw\",\n        \"uploadToken\": \"\",\n        \"uploadedPartIds\": [\"/ambry-video/signedId/AQLrfRrk87WynQAAAaDazswJtNISk0LfBouhbo9YlPHA3UlhwyjnhZFpaogrevUyFFDqdbBqu9veEVR-tqzH5kkRYpD9xn1wBCPZPJh_59n-Xj9vkvr0pIvc82s39sMrrwwlKSLsrtLssM_Fj9GVGlWfGsrhJj9qZL_YfzWt5C_Oq9EiOGvtrpoZccg176iGReSdvvaDI2xnZhH_VCBXDTcmZrsGVBY_pZTlwDq4EBI4x2kUYErNRRDAahhDHJ3KHEkPBtZ0KJ4.bin\"]\n    }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/videos?action=finalizeUpload",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "videos"
+                  ],
+                  "query": [
+                    {
+                      "key": "action",
+                      "value": "finalizeUpload"
+                    }
+                  ]
+                },
+                "description": "Finalizes a member-owned video upload after all parts are uploaded. Same w_member_social owner gating as Initialize Video Upload."
+              },
+              "response": [
+                {
+                  "name": "Finalize Video Upload (Member Owner)",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Authorization",
+                        "value": "{{insert_token}}",
+                        "type": "text",
+                        "disabled": true
+                      },
+                      {
+                        "key": "LinkedIn-Version",
+                        "value": "{{insert_version}}",
+                        "type": "text"
+                      },
+                      {
+                        "key": "X-Restli-Protocol-Version",
+                        "value": "2.0.0",
+                        "type": "text"
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n    \"finalizeUploadRequest\": {\n        \"video\": \"urn:li:video:D5610AQFujwrFCPRFmw\",\n        \"uploadToken\": \"\",\n        \"uploadedPartIds\": [\"/ambry-video/signedId/AQLrfRrk87WynQAAAaDazswJtNISk0LfBouhbo9YlPHA3UlhwyjnhZFpaogrevUyFFDqdbBqu9veEVR-tqzH5kkRYpD9xn1wBCPZPJh_59n-Xj9vkvr0pIvc82s39sMrrwwlKSLsrtLssM_Fj9GVGlWfGsrhJj9qZL_YfzWt5C_Oq9EiOGvtrpoZccg176iGReSdvvaDI2xnZhH_VCBXDTcmZrsGVBY_pZTlwDq4EBI4x2kUYErNRRDAahhDHJ3KHEkPBtZ0KJ4.bin\"]\n    }\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/videos?action=finalizeUpload",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "videos"
+                      ],
+                      "query": [
+                        {
+                          "key": "action",
+                          "value": "finalizeUpload"
+                        }
+                      ]
+                    }
+                  },
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": null,
+                  "header": [
+                    {
+                      "key": ":status",
+                      "value": 200
+                    },
+                    {
+                      "key": "date",
+                      "value": "Fri, 25 Sep 2026 23:05:27 GMT"
+                    },
+                    {
+                      "key": "content-length",
+                      "value": "0"
+                    },
+                    {
+                      "key": "x-restli-protocol-version",
+                      "value": "2.0.0"
+                    },
+                    {
+                      "key": "x-li-fabric",
+                      "value": "prod-lor1"
+                    },
+                    {
+                      "key": "x-li-pop",
+                      "value": "cf-prod-lor1-x"
+                    },
+                    {
+                      "key": "x-li-proto",
+                      "value": "http/2"
+                    },
+                    {
+                      "key": "x-li-uuid",
+                      "value": "AAZcVsCJMcL2dhSIrKDTog=="
+                    },
+                    {
+                      "key": "x-content-type-options",
+                      "value": "nosniff"
+                    },
+                    {
+                      "key": "x-li-route-key",
+                      "value": "\"b=OB88:s=O:r=O:a=O:p=O:g=13:u=5:x=1:i=1790377527:t=1790446203:v=2:sig=AQF7m7vQemhRZiWp3nmmAdMmud_aVQA-\""
+                    },
+                    {
+                      "key": "cf-cache-status",
+                      "value": "DYNAMIC"
+                    },
+                    {
+                      "key": "strict-transport-security",
+                      "value": "max-age=31536000"
+                    },
+                    {
+                      "key": "set-cookie",
+                      "value": "lidc=\"b=OB88:s=O:r=O:a=O:p=O:g=13:u=5:x=1:i=1790377527:t=1790446203:v=2:sig=AQF7m7vQemhRZiWp3nmmAdMmud_aVQA-\""
+                    },
+                    {
+                      "key": "set-cookie",
+                      "value": "__cf_bm=oO1zWD38d_qgWMZha2eUT_nmOFDP7bgf4y3PWOBz60M-1790377527.407613-1.0.1.1-adNzwuR85VlarO3CIa11M45v.VIkYfqPcdNas6qpagzGvA3tkihU0O7U70vbYyuRWbz30k6nBanybviLSCuyfoGFkcCMRC8sY7jBwEeldIRfaaj2qXWCzKZHWdDYzag4; HttpOnly; SameSite=None; Secure; Path=/; Domain=linkedin.com; Expires=Fri, 25 Sep 2026 23:35:27 GMT"
+                    },
+                    {
+                      "key": "server",
+                      "value": "cloudflare"
+                    },
+                    {
+                      "key": "cf-ray",
+                      "value": "a40dac7a4ea6d59a-SJC"
+                    },
+                    {
+                      "key": "alt-svc",
+                      "value": "h3=\":443\"; ma=86400"
+                    }
+                  ],
+                  "cookie": [],
+                  "body": null
+                }
+              ]
+            },
+            {
+              "name": "Upload a Member Video",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/octet-stream"
+                  },
+                  {
+                    "key": "",
+                    "value": "",
+                    "type": "text",
+                    "disabled": true
+                  }
+                ],
+                "body": {
+                  "mode": "file",
+                  "file": {
+                    "src": "sample-media/2B-testing.mp4"
+                  }
+                },
+                "url": {
+                  "raw": "https://www.linkedin.com/dms-uploads/mp/v2/D5610AQFujwrFCPRFmw/uploadedVideo/B56aDazG_NKsAA-?sau=aHR0cHM6Ly93d3cubGlua2VkaW4uY29tL2FtYnJ5L2FtYnJ5LXZpZGVvLz94LWxpLWFtYnJ5LWVwPUFRSWNuek9JVTloaHBRQUFBYURhekdfWGF3Yy1xU3o3OVJVXzFtUG5pYWtNVVlHTy1Va2QwX3BPVXlvTVRCaFlFMU56OUhpOWs2Xy1VTDRNSlBQbC1yYjZhSWRfenA3RVJGOWtIck1ob1BzZzZ3UnNtb3Q0MWMteHBVZTRBOUhnWGdfU3JjWVlUZEdqVFZhR084WXRvMG9xU1RGa2dvVXZWWktmdnQ2bjdvTXJDRThXcU15ZldrdXZTZ2NBRnZVdl9lSlJEeUc0aFlEcUdNSTZVVXRDUUNXQzNfTGFYaG1Zb3lha1lqMENRVWdCQ2ZmdjVzcE9IUkFnZDlJZklXd3RCUXEzZkdDcWZOTy1FYWtVYnBydWFoZ01xX01yd1dJSDFCNEROaS1meFVVWlpRNW1EUHF0SDJkWWdjbE40RUtCSTdvb1o2bW9oSVBtRGYxYnBOeTFjZ25vWHdPT1BFOG5KLXgwQ0ZzSlJiQ3RqYXNtMDcwUy1pSUFUOTU4QVdFU0IwMnd1c3NTelY4SENwYVNZN25RMmhYdkpMZWpRenc4cHl0WXc4S3dfMlNRZDJSdWdQU3NMRzNSMGRuc1I5bnZ1czc4eS1PRnZYX3dtdTA4Y2J6UWpNcmNPZWRxZ1NidlF6UmExNEVGZGJtOFRkU0VIZTFISDFxYXdnSWNLZTFNUHhyajZCVlBNdEM2d1lXRFAzWnJ1YjRsVUpTeU1pVDRDTXZQZ3pBZWE1UnFBdjZJQ2RpQ2wwcXpqX2pab1JtN2sxbm9NTU1tYTd5N1FubTJGU0xldFBtR3UzbEFhNmJFM1FXcWgyZlpRYXZxQV8zUGZGRGtZeEZROXJDS2l1UjRQeUFLMUc5TnZwYlB3SE10SmdJNmR1amc5NjVwSUQ3VG5ydlhsdzNYMWNpVUl6ZnQxeXlmVExETWZvT2U3bFoyZXBVVUkzOTdxU1l0MVNiekF3UUxzMlREXzlmQzdGZnljTDk4c1FGUXNNaGwwWklTaGVvMFdWc0RwbHRUcUR0bHNQNlZLS3NOc0dmSFlOMFFPUEt1VjFIMGVydmZ2R251VHpWY1gzcmpqbWVwMkEtaHJncjZuZE5rODlEMHVKLTVTdGRTa1hKOE5oVHAzRXFEYlJFNVNzMHVIYzlGUWlOalpIOXhlejQ4SmtjU1BnX2J6d0JXWlRpWmtsZTY4Y3BuRjhISTRYV1lFN2xzeURhMU0zV3RaMkw0RHV1WWpVMTc1WlBrb3dFTVdiSWdPd0t3Q0l3emdQT0h3SXE3RkdtbFZPWDNHUWtnUFJxTUpMUXQ4OFhVaGEtNUVEbWRIQ0RSaE4xa3ZBdzA4Rm5YUi1SaHh2d0toQzYwMlRUaXVpbWU2dkxBMFhQWF9la1V1eGVyeXQ0eXFvWk9aQ0JvT3JTZ2FvTmxIR3JkejJuUjlwVHEwLTBwYXpHQzM4c3gtWGZ4LVYzUVVDb2l2SDFiQ09Hc3pCYWFwSDFlbnR1SmdFaFg4ZzVHaUc1ajhyeTlYYWlQejdpb2ZfLUZzMGpCSS1CZ20yUGVjbjI5OElxUkZXc0lpWTlIWjh2S2d2RWhyVFdlMjJCYS1mQVpxeDhnUThwS2NoRVF3WnBVekRvSU1GRktrV3kyRVppRWFsNWs%253D&pn=1&m=-1029112&app=204900921&sync=0&v=beta&ut=1gaxxcOaA4kss1",
+                  "protocol": "https",
+                  "host": [
+                    "www",
+                    "linkedin",
+                    "com"
+                  ],
+                  "path": [
+                    "dms-uploads",
+                    "mp",
+                    "v2",
+                    "D5610AQFujwrFCPRFmw",
+                    "uploadedVideo",
+                    "B56aDazG_NKsAA-"
+                  ],
+                  "query": [
+                    {
+                      "key": "sau",
+                      "value": "aHR0cHM6Ly93d3cubGlua2VkaW4uY29tL2FtYnJ5L2FtYnJ5LXZpZGVvLz94LWxpLWFtYnJ5LWVwPUFRSWNuek9JVTloaHBRQUFBYURhekdfWGF3Yy1xU3o3OVJVXzFtUG5pYWtNVVlHTy1Va2QwX3BPVXlvTVRCaFlFMU56OUhpOWs2Xy1VTDRNSlBQbC1yYjZhSWRfenA3RVJGOWtIck1ob1BzZzZ3UnNtb3Q0MWMteHBVZTRBOUhnWGdfU3JjWVlUZEdqVFZhR084WXRvMG9xU1RGa2dvVXZWWktmdnQ2bjdvTXJDRThXcU15ZldrdXZTZ2NBRnZVdl9lSlJEeUc0aFlEcUdNSTZVVXRDUUNXQzNfTGFYaG1Zb3lha1lqMENRVWdCQ2ZmdjVzcE9IUkFnZDlJZklXd3RCUXEzZkdDcWZOTy1FYWtVYnBydWFoZ01xX01yd1dJSDFCNEROaS1meFVVWlpRNW1EUHF0SDJkWWdjbE40RUtCSTdvb1o2bW9oSVBtRGYxYnBOeTFjZ25vWHdPT1BFOG5KLXgwQ0ZzSlJiQ3RqYXNtMDcwUy1pSUFUOTU4QVdFU0IwMnd1c3NTelY4SENwYVNZN25RMmhYdkpMZWpRenc4cHl0WXc4S3dfMlNRZDJSdWdQU3NMRzNSMGRuc1I5bnZ1czc4eS1PRnZYX3dtdTA4Y2J6UWpNcmNPZWRxZ1NidlF6UmExNEVGZGJtOFRkU0VIZTFISDFxYXdnSWNLZTFNUHhyajZCVlBNdEM2d1lXRFAzWnJ1YjRsVUpTeU1pVDRDTXZQZ3pBZWE1UnFBdjZJQ2RpQ2wwcXpqX2pab1JtN2sxbm9NTU1tYTd5N1FubTJGU0xldFBtR3UzbEFhNmJFM1FXcWgyZlpRYXZxQV8zUGZGRGtZeEZROXJDS2l1UjRQeUFLMUc5TnZwYlB3SE10SmdJNmR1amc5NjVwSUQ3VG5ydlhsdzNYMWNpVUl6ZnQxeXlmVExETWZvT2U3bFoyZXBVVUkzOTdxU1l0MVNiekF3UUxzMlREXzlmQzdGZnljTDk4c1FGUXNNaGwwWklTaGVvMFdWc0RwbHRUcUR0bHNQNlZLS3NOc0dmSFlOMFFPUEt1VjFIMGVydmZ2R251VHpWY1gzcmpqbWVwMkEtaHJncjZuZE5rODlEMHVKLTVTdGRTa1hKOE5oVHAzRXFEYlJFNVNzMHVIYzlGUWlOalpIOXhlejQ4SmtjU1BnX2J6d0JXWlRpWmtsZTY4Y3BuRjhISTRYV1lFN2xzeURhMU0zV3RaMkw0RHV1WWpVMTc1WlBrb3dFTVdiSWdPd0t3Q0l3emdQT0h3SXE3RkdtbFZPWDNHUWtnUFJxTUpMUXQ4OFhVaGEtNUVEbWRIQ0RSaE4xa3ZBdzA4Rm5YUi1SaHh2d0toQzYwMlRUaXVpbWU2dkxBMFhQWF9la1V1eGVyeXQ0eXFvWk9aQ0JvT3JTZ2FvTmxIR3JkejJuUjlwVHEwLTBwYXpHQzM4c3gtWGZ4LVYzUVVDb2l2SDFiQ09Hc3pCYWFwSDFlbnR1SmdFaFg4ZzVHaUc1ajhyeTlYYWlQejdpb2ZfLUZzMGpCSS1CZ20yUGVjbjI5OElxUkZXc0lpWTlIWjh2S2d2RWhyVFdlMjJCYS1mQVpxeDhnUThwS2NoRVF3WnBVekRvSU1GRktrV3kyRVppRWFsNWs%253D"
+                    },
+                    {
+                      "key": "pn",
+                      "value": "1"
+                    },
+                    {
+                      "key": "m",
+                      "value": "-1029112"
+                    },
+                    {
+                      "key": "app",
+                      "value": "204900921"
+                    },
+                    {
+                      "key": "sync",
+                      "value": "0"
+                    },
+                    {
+                      "key": "v",
+                      "value": "beta"
+                    },
+                    {
+                      "key": "ut",
+                      "value": "1gaxxcOaA4kss1"
+                    }
+                  ]
+                },
+                "description": "This is a generic API to upload the data."
+              },
+              "response": [
+                {
+                  "name": "Upload a Member Video",
+                  "originalRequest": {
+                    "method": "PUT",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/octet-stream"
+                      },
+                      {
+                        "key": "",
+                        "value": "",
+                        "type": "text",
+                        "disabled": true
+                      }
+                    ],
+                    "body": {
+                      "mode": "file",
+                      "file": {
+                        "src": "sample-media/2B-testing.mp4"
+                      }
+                    },
+                    "url": {
+                      "raw": "https://www.linkedin.com/dms-uploads/mp/v2/D5610AQFujwrFCPRFmw/uploadedVideo/B56aDazG_NKsAA-?sau=aHR0cHM6Ly93d3cubGlua2VkaW4uY29tL2FtYnJ5L2FtYnJ5LXZpZGVvLz94LWxpLWFtYnJ5LWVwPUFRSWNuek9JVTloaHBRQUFBYURhekdfWGF3Yy1xU3o3OVJVXzFtUG5pYWtNVVlHTy1Va2QwX3BPVXlvTVRCaFlFMU56OUhpOWs2Xy1VTDRNSlBQbC1yYjZhSWRfenA3RVJGOWtIck1ob1BzZzZ3UnNtb3Q0MWMteHBVZTRBOUhnWGdfU3JjWVlUZEdqVFZhR084WXRvMG9xU1RGa2dvVXZWWktmdnQ2bjdvTXJDRThXcU15ZldrdXZTZ2NBRnZVdl9lSlJEeUc0aFlEcUdNSTZVVXRDUUNXQzNfTGFYaG1Zb3lha1lqMENRVWdCQ2ZmdjVzcE9IUkFnZDlJZklXd3RCUXEzZkdDcWZOTy1FYWtVYnBydWFoZ01xX01yd1dJSDFCNEROaS1meFVVWlpRNW1EUHF0SDJkWWdjbE40RUtCSTdvb1o2bW9oSVBtRGYxYnBOeTFjZ25vWHdPT1BFOG5KLXgwQ0ZzSlJiQ3RqYXNtMDcwUy1pSUFUOTU4QVdFU0IwMnd1c3NTelY4SENwYVNZN25RMmhYdkpMZWpRenc4cHl0WXc4S3dfMlNRZDJSdWdQU3NMRzNSMGRuc1I5bnZ1czc4eS1PRnZYX3dtdTA4Y2J6UWpNcmNPZWRxZ1NidlF6UmExNEVGZGJtOFRkU0VIZTFISDFxYXdnSWNLZTFNUHhyajZCVlBNdEM2d1lXRFAzWnJ1YjRsVUpTeU1pVDRDTXZQZ3pBZWE1UnFBdjZJQ2RpQ2wwcXpqX2pab1JtN2sxbm9NTU1tYTd5N1FubTJGU0xldFBtR3UzbEFhNmJFM1FXcWgyZlpRYXZxQV8zUGZGRGtZeEZROXJDS2l1UjRQeUFLMUc5TnZwYlB3SE10SmdJNmR1amc5NjVwSUQ3VG5ydlhsdzNYMWNpVUl6ZnQxeXlmVExETWZvT2U3bFoyZXBVVUkzOTdxU1l0MVNiekF3UUxzMlREXzlmQzdGZnljTDk4c1FGUXNNaGwwWklTaGVvMFdWc0RwbHRUcUR0bHNQNlZLS3NOc0dmSFlOMFFPUEt1VjFIMGVydmZ2R251VHpWY1gzcmpqbWVwMkEtaHJncjZuZE5rODlEMHVKLTVTdGRTa1hKOE5oVHAzRXFEYlJFNVNzMHVIYzlGUWlOalpIOXhlejQ4SmtjU1BnX2J6d0JXWlRpWmtsZTY4Y3BuRjhISTRYV1lFN2xzeURhMU0zV3RaMkw0RHV1WWpVMTc1WlBrb3dFTVdiSWdPd0t3Q0l3emdQT0h3SXE3RkdtbFZPWDNHUWtnUFJxTUpMUXQ4OFhVaGEtNUVEbWRIQ0RSaE4xa3ZBdzA4Rm5YUi1SaHh2d0toQzYwMlRUaXVpbWU2dkxBMFhQWF9la1V1eGVyeXQ0eXFvWk9aQ0JvT3JTZ2FvTmxIR3JkejJuUjlwVHEwLTBwYXpHQzM4c3gtWGZ4LVYzUVVDb2l2SDFiQ09Hc3pCYWFwSDFlbnR1SmdFaFg4ZzVHaUc1ajhyeTlYYWlQejdpb2ZfLUZzMGpCSS1CZ20yUGVjbjI5OElxUkZXc0lpWTlIWjh2S2d2RWhyVFdlMjJCYS1mQVpxeDhnUThwS2NoRVF3WnBVekRvSU1GRktrV3kyRVppRWFsNWs%253D&pn=1&m=-1029112&app=204900921&sync=0&v=beta&ut=1gaxxcOaA4kss1",
+                      "protocol": "https",
+                      "host": [
+                        "www",
+                        "linkedin",
+                        "com"
+                      ],
+                      "path": [
+                        "dms-uploads",
+                        "mp",
+                        "v2",
+                        "D5610AQFujwrFCPRFmw",
+                        "uploadedVideo",
+                        "B56aDazG_NKsAA-"
+                      ],
+                      "query": [
+                        {
+                          "key": "sau",
+                          "value": "aHR0cHM6Ly93d3cubGlua2VkaW4uY29tL2FtYnJ5L2FtYnJ5LXZpZGVvLz94LWxpLWFtYnJ5LWVwPUFRSWNuek9JVTloaHBRQUFBYURhekdfWGF3Yy1xU3o3OVJVXzFtUG5pYWtNVVlHTy1Va2QwX3BPVXlvTVRCaFlFMU56OUhpOWs2Xy1VTDRNSlBQbC1yYjZhSWRfenA3RVJGOWtIck1ob1BzZzZ3UnNtb3Q0MWMteHBVZTRBOUhnWGdfU3JjWVlUZEdqVFZhR084WXRvMG9xU1RGa2dvVXZWWktmdnQ2bjdvTXJDRThXcU15ZldrdXZTZ2NBRnZVdl9lSlJEeUc0aFlEcUdNSTZVVXRDUUNXQzNfTGFYaG1Zb3lha1lqMENRVWdCQ2ZmdjVzcE9IUkFnZDlJZklXd3RCUXEzZkdDcWZOTy1FYWtVYnBydWFoZ01xX01yd1dJSDFCNEROaS1meFVVWlpRNW1EUHF0SDJkWWdjbE40RUtCSTdvb1o2bW9oSVBtRGYxYnBOeTFjZ25vWHdPT1BFOG5KLXgwQ0ZzSlJiQ3RqYXNtMDcwUy1pSUFUOTU4QVdFU0IwMnd1c3NTelY4SENwYVNZN25RMmhYdkpMZWpRenc4cHl0WXc4S3dfMlNRZDJSdWdQU3NMRzNSMGRuc1I5bnZ1czc4eS1PRnZYX3dtdTA4Y2J6UWpNcmNPZWRxZ1NidlF6UmExNEVGZGJtOFRkU0VIZTFISDFxYXdnSWNLZTFNUHhyajZCVlBNdEM2d1lXRFAzWnJ1YjRsVUpTeU1pVDRDTXZQZ3pBZWE1UnFBdjZJQ2RpQ2wwcXpqX2pab1JtN2sxbm9NTU1tYTd5N1FubTJGU0xldFBtR3UzbEFhNmJFM1FXcWgyZlpRYXZxQV8zUGZGRGtZeEZROXJDS2l1UjRQeUFLMUc5TnZwYlB3SE10SmdJNmR1amc5NjVwSUQ3VG5ydlhsdzNYMWNpVUl6ZnQxeXlmVExETWZvT2U3bFoyZXBVVUkzOTdxU1l0MVNiekF3UUxzMlREXzlmQzdGZnljTDk4c1FGUXNNaGwwWklTaGVvMFdWc0RwbHRUcUR0bHNQNlZLS3NOc0dmSFlOMFFPUEt1VjFIMGVydmZ2R251VHpWY1gzcmpqbWVwMkEtaHJncjZuZE5rODlEMHVKLTVTdGRTa1hKOE5oVHAzRXFEYlJFNVNzMHVIYzlGUWlOalpIOXhlejQ4SmtjU1BnX2J6d0JXWlRpWmtsZTY4Y3BuRjhISTRYV1lFN2xzeURhMU0zV3RaMkw0RHV1WWpVMTc1WlBrb3dFTVdiSWdPd0t3Q0l3emdQT0h3SXE3RkdtbFZPWDNHUWtnUFJxTUpMUXQ4OFhVaGEtNUVEbWRIQ0RSaE4xa3ZBdzA4Rm5YUi1SaHh2d0toQzYwMlRUaXVpbWU2dkxBMFhQWF9la1V1eGVyeXQ0eXFvWk9aQ0JvT3JTZ2FvTmxIR3JkejJuUjlwVHEwLTBwYXpHQzM4c3gtWGZ4LVYzUVVDb2l2SDFiQ09Hc3pCYWFwSDFlbnR1SmdFaFg4ZzVHaUc1ajhyeTlYYWlQejdpb2ZfLUZzMGpCSS1CZ20yUGVjbjI5OElxUkZXc0lpWTlIWjh2S2d2RWhyVFdlMjJCYS1mQVpxeDhnUThwS2NoRVF3WnBVekRvSU1GRktrV3kyRVppRWFsNWs%253D"
+                        },
+                        {
+                          "key": "pn",
+                          "value": "1"
+                        },
+                        {
+                          "key": "m",
+                          "value": "-1029112"
+                        },
+                        {
+                          "key": "app",
+                          "value": "204900921"
+                        },
+                        {
+                          "key": "sync",
+                          "value": "0"
+                        },
+                        {
+                          "key": "v",
+                          "value": "beta"
+                        },
+                        {
+                          "key": "ut",
+                          "value": "1gaxxcOaA4kss1"
+                        }
+                      ]
+                    }
+                  },
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": null,
+                  "header": [
+                    {
+                      "key": ":status",
+                      "value": 200
+                    },
+                    {
+                      "key": "date",
+                      "value": "Fri Sep 25 23:03:00 UTC 2026"
+                    },
+                    {
+                      "key": "etag",
+                      "value": "/ambry-video/signedId/AQLrfRrk87WynQAAAaDazswJtNISk0LfBouhbo9YlPHA3UlhwyjnhZFpaogrevUyFFDqdbBqu9veEVR-tqzH5kkRYpD9xn1wBCPZPJh_59n-Xj9vkvr0pIvc82s39sMrrwwlKSLsrtLssM_Fj9GVGlWfGsrhJj9qZL_YfzWt5C_Oq9EiOGvtrpoZccg176iGReSdvvaDI2xnZhH_VCBXDTcmZrsGVBY_pZTlwDq4EBI4x2kUYErNRRDAahhDHJ3KHEkPBtZ0KJ4.bin"
+                    },
+                    {
+                      "key": "server",
+                      "value": "Play"
+                    },
+                    {
+                      "key": "x-ambry-creation-time",
+                      "value": "Fri Sep 25 23:03:00 UTC 2026"
+                    },
+                    {
+                      "key": "access-control-allow-origin",
+                      "value": "https://www.linkedin.com"
+                    },
+                    {
+                      "key": "content-length",
+                      "value": "0"
+                    },
+                    {
+                      "key": "strict-transport-security",
+                      "value": "max-age=31536000"
+                    },
+                    {
+                      "key": "x-content-type-options",
+                      "value": "nosniff"
+                    },
+                    {
+                      "key": "x-frame-options",
+                      "value": "sameorigin"
+                    },
+                    {
+                      "key": "content-security-policy",
+                      "value": "default-src 'none'; frame-ancestors 'none'; form-action 'none'; report-uri https://www.linkedin.com/security/csp?f=ers"
+                    },
+                    {
+                      "key": "x-li-fabric",
+                      "value": "prod-lor1"
+                    },
+                    {
+                      "key": "pragma",
+                      "value": "no-cache"
+                    },
+                    {
+                      "key": "expires",
+                      "value": "Thu, 01 Jan 1970 00:00:00 GMT"
+                    },
+                    {
+                      "key": "cache-control",
+                      "value": "no-cache, no-store, no-transform"
+                    },
+                    {
+                      "key": "x-li-pop",
+                      "value": "gcp-prod-lor1-x"
+                    },
+                    {
+                      "key": "x-li-proto",
+                      "value": "http/2"
+                    },
+                    {
+                      "key": "x-li-uuid",
+                      "value": "AAZcVrfJvCbh0igBC7gXVA=="
+                    },
+                    {
+                      "key": "content-security-policy-report-only",
+                      "value": "form-action 'none'; default-src 'none'; frame-ancestors 'none';report-uri https://www.linkedin.com/security/csp?f=ers&rt=nt_audited_header;"
+                    },
+                    {
+                      "key": "via",
+                      "value": "1.1 google"
+                    },
+                    {
+                      "key": "x-gcp-trace-id",
+                      "value": "e9943659475e9934322c2d63fe569239"
+                    },
+                    {
+                      "key": "x-colo-gcp",
+                      "value": "PROD-LAX"
+                    },
+                    {
+                      "key": "alt-svc",
+                      "value": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+                    }
+                  ],
+                  "cookie": [],
+                  "body": null
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Images API (w_member_social create)",
+          "item": [
+            {
+              "name": "Initialize Image Upload (Member Owner)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "{{insert_token}}",
+                    "type": "text",
+                    "disabled": true
+                  },
+                  {
+                    "key": "LinkedIn-Version",
+                    "value": "{{insert_version}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "X-Restli-Protocol-Version",
+                    "value": "2.0.0",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"initializeUploadRequest\": {\n        \"owner\": \"urn:li:person:{{person_id}}\"\n    }\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/images?action=initializeUpload",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "images"
+                  ],
+                  "query": [
+                    {
+                      "key": "action",
+                      "value": "initializeUpload"
+                    }
+                  ]
+                },
+                "description": "Initializes an image upload owned by a member, to seed sample image data. ImagesService.validateOwnerTypeBasedOnPermissions() requires w_member_social when owner is a person URN."
+              },
+              "response": [
+                {
+                  "name": "Initialize Image Upload (Member Owner)",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Authorization",
+                        "value": "{{insert_token}}",
+                        "type": "text",
+                        "disabled": true
+                      },
+                      {
+                        "key": "LinkedIn-Version",
+                        "value": "{{insert_version}}",
+                        "type": "text"
+                      },
+                      {
+                        "key": "X-Restli-Protocol-Version",
+                        "value": "2.0.0",
+                        "type": "text"
+                      },
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n    \"initializeUploadRequest\": {\n        \"owner\": \"urn:li:person:{{person_id}}\"\n    }\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/images?action=initializeUpload",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "images"
+                      ],
+                      "query": [
+                        {
+                          "key": "action",
+                          "value": "initializeUpload"
+                        }
+                      ]
+                    }
+                  },
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": null,
+                  "header": [
+                    {
+                      "key": ":status",
+                      "value": 200
+                    },
+                    {
+                      "key": "date",
+                      "value": "Fri, 25 Sep 2026 23:40:49 GMT"
+                    },
+                    {
+                      "key": "content-type",
+                      "value": "application/json"
+                    },
+                    {
+                      "key": "x-restli-protocol-version",
+                      "value": "2.0.0"
+                    },
+                    {
+                      "key": "x-content-type-options",
+                      "value": "nosniff"
+                    },
+                    {
+                      "key": "x-li-fabric",
+                      "value": "prod-lor1"
+                    },
+                    {
+                      "key": "x-li-pop",
+                      "value": "cf-prod-lor1-x"
+                    },
+                    {
+                      "key": "x-li-proto",
+                      "value": "http/2"
+                    },
+                    {
+                      "key": "x-li-uuid",
+                      "value": "AAZcVz78Gk2KsWBiixthsQ=="
+                    },
+                    {
+                      "key": "set-cookie",
+                      "value": "lidc=\"b=OB88:s=O:r=O:a=O:p=O:g=13:u=5:x=1:i=1790379648:t=1790446203:v=2:sig=AQHWswOeNP_iK8linlwAI5Grxq4-nQK_\""
+                    },
+                    {
+                      "key": "x-li-route-key",
+                      "value": "\"b=OB88:s=O:r=O:a=O:p=O:g=13:u=5:x=1:i=1790379648:t=1790446203:v=2:sig=AQHWswOeNP_iK8linlwAI5Grxq4-nQK_\""
+                    },
+                    {
+                      "key": "cf-cache-status",
+                      "value": "DYNAMIC"
+                    },
+                    {
+                      "key": "strict-transport-security",
+                      "value": "max-age=31536000"
+                    },
+                    {
+                      "key": "content-encoding",
+                      "value": "gzip"
+                    },
+                    {
+                      "key": "server",
+                      "value": "cloudflare"
+                    },
+                    {
+                      "key": "cf-ray",
+                      "value": "a40de0456c89c132-SJC"
+                    },
+                    {
+                      "key": "alt-svc",
+                      "value": "h3=\":443\"; ma=86400"
+                    }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"value\": {\n        \"uploadUrlExpiresAt\": 1790466049008,\n        \"uploadUrl\": \"https://www.linkedin.com/dms-uploads/sp/v2/D5610AQErQVnERaQTgA/uploaded-image/B56aDa8WfjIAAE-/0?ca=vector_ads&cn=uploads&iri=B01-86&sync=0&v=beta&ut=24FIPfDl0Ikss1\",\n        \"image\": \"urn:li:image:D5610AQErQVnERaQTgA\"\n    }\n}"
+                }
+              ]
+            },
+            {
+              "name": "Upload Member Image",
+              "request": {
+                "method": "PUT",
+                "header": [],
+                "body": {
+                  "mode": "file",
+                  "file": {
+                    "src": "sample-media/app-logo.jpeg"
+                  }
+                },
+                "url": {
+                  "raw": "https://www.linkedin.com/dms-uploads/sp/v2/D5610AQErQVnERaQTgA/uploaded-image/B56aDa8WfjIAAE-/0?ca=vector_ads&cn=uploads&iri=B01-86&sync=0&v=beta&ut=24FIPfDl0Ikss1",
+                  "protocol": "https",
+                  "host": [
+                    "www",
+                    "linkedin",
+                    "com"
+                  ],
+                  "path": [
+                    "dms-uploads",
+                    "sp",
+                    "v2",
+                    "D5610AQErQVnERaQTgA",
+                    "uploaded-image",
+                    "B56aDa8WfjIAAE-",
+                    "0"
+                  ],
+                  "query": [
+                    {
+                      "key": "ca",
+                      "value": "vector_ads"
+                    },
+                    {
+                      "key": "cn",
+                      "value": "uploads"
+                    },
+                    {
+                      "key": "iri",
+                      "value": "B01-86"
+                    },
+                    {
+                      "key": "sync",
+                      "value": "0"
+                    },
+                    {
+                      "key": "v",
+                      "value": "beta"
+                    },
+                    {
+                      "key": "ut",
+                      "value": "24FIPfDl0Ikss1"
+                    }
+                  ]
+                }
+              },
+              "response": [
+                {
+                  "name": "Upload Member Image",
+                  "originalRequest": {
+                    "method": "PUT",
+                    "header": [],
+                    "body": {
+                      "mode": "file",
+                      "file": {
+                        "src": "sample-media/app-logo.jpeg"
+                      }
+                    },
+                    "url": {
+                      "raw": "https://www.linkedin.com/dms-uploads/sp/v2/D5610AQErQVnERaQTgA/uploaded-image/B56aDa8WfjIAAE-/0?ca=vector_ads&cn=uploads&iri=B01-86&sync=0&v=beta&ut=24FIPfDl0Ikss1",
+                      "protocol": "https",
+                      "host": [
+                        "www",
+                        "linkedin",
+                        "com"
+                      ],
+                      "path": [
+                        "dms-uploads",
+                        "sp",
+                        "v2",
+                        "D5610AQErQVnERaQTgA",
+                        "uploaded-image",
+                        "B56aDa8WfjIAAE-",
+                        "0"
+                      ],
+                      "query": [
+                        {
+                          "key": "ca",
+                          "value": "vector_ads"
+                        },
+                        {
+                          "key": "cn",
+                          "value": "uploads"
+                        },
+                        {
+                          "key": "iri",
+                          "value": "B01-86"
+                        },
+                        {
+                          "key": "sync",
+                          "value": "0"
+                        },
+                        {
+                          "key": "v",
+                          "value": "beta"
+                        },
+                        {
+                          "key": "ut",
+                          "value": "24FIPfDl0Ikss1"
+                        }
+                      ]
+                    }
+                  },
+                  "status": "Created",
+                  "code": 201,
+                  "_postman_previewlanguage": null,
+                  "header": [
+                    {
+                      "key": ":status",
+                      "value": 201
+                    },
+                    {
+                      "key": "date",
+                      "value": "Fri Sep 25 23:43:40 UTC 2026"
+                    },
+                    {
+                      "key": "server",
+                      "value": "Play"
+                    },
+                    {
+                      "key": "x-ambry-creation-time",
+                      "value": "Fri Sep 25 23:43:40 UTC 2026"
+                    },
+                    {
+                      "key": "access-control-allow-origin",
+                      "value": "https://www.linkedin.com"
+                    },
+                    {
+                      "key": "content-length",
+                      "value": "0"
+                    },
+                    {
+                      "key": "strict-transport-security",
+                      "value": "max-age=31536000"
+                    },
+                    {
+                      "key": "x-content-type-options",
+                      "value": "nosniff"
+                    },
+                    {
+                      "key": "x-frame-options",
+                      "value": "sameorigin"
+                    },
+                    {
+                      "key": "content-security-policy",
+                      "value": "default-src 'none'; frame-ancestors 'none'; form-action 'none'; report-uri https://www.linkedin.com/security/csp?f=ers"
+                    },
+                    {
+                      "key": "x-li-fabric",
+                      "value": "prod-lor1"
+                    },
+                    {
+                      "key": "pragma",
+                      "value": "no-cache"
+                    },
+                    {
+                      "key": "expires",
+                      "value": "Thu, 01 Jan 1970 00:00:00 GMT"
+                    },
+                    {
+                      "key": "cache-control",
+                      "value": "no-cache, no-store, no-transform"
+                    },
+                    {
+                      "key": "x-li-pop",
+                      "value": "gcp-prod-lor1-x"
+                    },
+                    {
+                      "key": "x-li-proto",
+                      "value": "http/2"
+                    },
+                    {
+                      "key": "x-li-uuid",
+                      "value": "AAZcV0k2G5M7jrsLW/F/9Q=="
+                    },
+                    {
+                      "key": "content-security-policy-report-only",
+                      "value": "form-action 'none'; default-src 'none'; frame-ancestors 'none';report-uri https://www.linkedin.com/security/csp?f=ers&rt=nt_audited_header;"
+                    },
+                    {
+                      "key": "via",
+                      "value": "1.1 google"
+                    },
+                    {
+                      "key": "x-gcp-trace-id",
+                      "value": "22058446338926365c9c7e66f801a4b2"
+                    },
+                    {
+                      "key": "x-colo-gcp",
+                      "value": "PROD-LAX"
+                    },
+                    {
+                      "key": "alt-svc",
+                      "value": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
+                    }
+                  ],
+                  "cookie": [],
+                  "body": null
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Member-Me",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "LinkedIn-Version",
+            "value": "{{insert_version}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/me",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "me"
+          ]
+        }
+      },
+      "response": []
+    }
+  ],
+  "auth": {
+    "type": "oauth2",
+    "oauth2": [
+      {
+        "key": "scope",
+        "value": "r_member_social,w_member_social",
+        "type": "string"
+      },
+      {
+        "key": "client_authentication",
+        "value": "body",
+        "type": "string"
+      },
+      {
+        "key": "clientSecret",
+        "value": "{{client_secret}}",
+        "type": "string"
+      },
+      {
+        "key": "clientId",
+        "value": "{{client_id}}",
+        "type": "string"
+      },
+      {
+        "key": "accessTokenUrl",
+        "value": "https://www.linkedin.com/oauth/v2/accessToken",
+        "type": "string"
+      },
+      {
+        "key": "authUrl",
+        "value": "https://www.linkedin.com/oauth/v2/authorization",
+        "type": "string"
+      },
+      {
+        "key": "tokenName",
+        "value": "r-member-social-token",
+        "type": "string"
+      },
+      {
+        "key": "addTokenTo",
+        "value": "header",
+        "type": "string"
+      }
+    ]
+  }
+}

@@ -1,0 +1,853 @@
+openapi: 3.0.3
+info:
+  title: LinkedIn w_member_social API (Share on LinkedIn)
+  version: '202610'
+  description: |
+    Resources a LinkedIn app can call with only the self-serve **Share on LinkedIn** product
+    (`w_member_social`) plus **Sign In with LinkedIn using OpenID Connect** (`openid profile`).
+    No partner approval and no Community Management API.
+
+    Built from Microsoft Learn (LinkedIn docs, `li-lms-2026-10`). Where the docs do not confirm
+    that `w_member_social` alone is enough, the operation carries `x-verified: false`. Test those
+    with a self-serve app before building on them.
+
+    **What this scope cannot do:** read posts (`r_member_social` is closed), react, or comment
+    (`w_member_social_feed` comes only with Community Management). Verify a share by storing the
+    URN LinkedIn returns in the `x-restli-id` header.
+
+    **Conventions**
+    - Versioned `/rest/*` calls need `LinkedIn-Version: YYYYMM` (use `202610`) and
+      `X-Restli-Protocol-Version: 2.0.0`.
+    - Legacy `/v2/*` calls need only `X-Restli-Protocol-Version: 2.0.0`.
+    - URNs in paths must be URL-encoded (`urn:li:share:123` becomes `urn%3Ali%3Ashare%3A123`).
+    - Access tokens last 60 days. Self-serve apps get no refresh tokens, so the member must
+      re-authorize.
+    - Rate limits: 150 requests per member per day, 100,000 per app per day (UTC reset).
+servers:
+- url: https://api.linkedin.com
+  description: LinkedIn API gateway
+security:
+- linkedinOAuth:
+  - w_member_social
+tags:
+- name: Identity
+  description: Get the person URN needed for `author`.
+- name: Posts
+  description: Versioned Posts API. Create, reshare, edit and delete posts as a member.
+- name: Images
+  description: Versioned Images API. Upload an image to attach to a post.
+- name: Legacy UGC
+  description: The `/v2` endpoints documented on the Share on LinkedIn page.
+paths:
+  /v2/userinfo:
+    get:
+      tags:
+      - Identity
+      operationId: getUserInfo
+      summary: Get the signed-in member (OpenID Connect)
+      description: |
+        Returns the member's `sub`. Build the author URN as `urn:li:person:{sub}`.
+        Needs the `openid` and `profile` scopes from Sign In with LinkedIn using OpenID Connect.
+      security:
+      - linkedinOAuth:
+        - openid
+        - profile
+        - email
+      responses:
+        '200':
+          description: Member profile claims.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserInfo'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /rest/posts:
+    post:
+      tags:
+      - Posts
+      operationId: createPost
+      summary: Create a post, or reshare one, as the member
+      description: |
+        Set `author` to `urn:li:person:{id}`. Returns `201` with the new URN in the
+        `x-restli-id` response header.
+
+        **Reshare:** add `reshareContext.parent` with the URN of the post to reshare. Put your own
+        text in `commentary` for a repost with thoughts. The reshare example is documented on the
+        Marketing Posts API page. LinkedIn does not state it works with `w_member_social` alone, so
+        **test it with a self-serve app first** (`x-verified: false`). The original post must have
+        `isReshareDisabledByAuthor: false`. Whether an empty `commentary` is accepted for a plain
+        repost is also untested.
+
+        Text, image, article, document, video, multi-image and poll content are all supported by
+        this endpoint. Only text, image, article and reshare are modelled here.
+      x-verified: false
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePost'
+            examples:
+              textPost:
+                summary: Text-only post
+                value:
+                  author: urn:li:person:782bbtaQ
+                  commentary: Sample text post
+                  visibility: PUBLIC
+                  distribution:
+                    feedDistribution: MAIN_FEED
+                    targetEntities: []
+                    thirdPartyDistributionChannels: []
+                  lifecycleState: PUBLISHED
+                  isReshareDisabledByAuthor: false
+              reshareWithThoughts:
+                summary: Reshare a company post with the member's own commentary
+                value:
+                  author: urn:li:person:782bbtaQ
+                  commentary: Why this matters to us
+                  visibility: PUBLIC
+                  distribution:
+                    feedDistribution: MAIN_FEED
+                    targetEntities: []
+                    thirdPartyDistributionChannels: []
+                  lifecycleState: PUBLISHED
+                  isReshareDisabledByAuthor: false
+                  reshareContext:
+                    parent: urn:li:share:6957408550713184256
+              imagePost:
+                summary: Post with an uploaded image
+                value:
+                  author: urn:li:person:782bbtaQ
+                  commentary: Image post
+                  visibility: PUBLIC
+                  distribution:
+                    feedDistribution: MAIN_FEED
+                    targetEntities: []
+                    thirdPartyDistributionChannels: []
+                  content:
+                    media:
+                      id: urn:li:image:C5610AQFj6TdYowm17w
+                      altText: Describe the image
+                  lifecycleState: PUBLISHED
+                  isReshareDisabledByAuthor: false
+              articlePost:
+                summary: Article (link) post. Set title, description and thumbnail yourself.
+                value:
+                  author: urn:li:person:782bbtaQ
+                  commentary: Worth a read
+                  visibility: PUBLIC
+                  distribution:
+                    feedDistribution: MAIN_FEED
+                    targetEntities: []
+                    thirdPartyDistributionChannels: []
+                  content:
+                    article:
+                      source: https://example.com/post
+                      title: Post title
+                      description: Short description
+                  lifecycleState: PUBLISHED
+                  isReshareDisabledByAuthor: false
+      responses:
+        '201':
+          description: Post created.
+          headers:
+            x-restli-id:
+              description: URN of the new post (`urn:li:share:{id}` or `urn:li:ugcPost:{id}`). Store it as proof.
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          description: Unprocessable. For example, the content duplicates a recent post (wait about 10 minutes or change it).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /rest/posts/{postUrn}:
+    parameters:
+    - $ref: '#/components/parameters/PostUrn'
+    - $ref: '#/components/parameters/LinkedInVersion'
+    - $ref: '#/components/parameters/RestliProtocolVersion'
+    post:
+      tags:
+      - Posts
+      operationId: updatePost
+      summary: Edit a post (PARTIAL_UPDATE)
+      description: |
+        Send `X-RestLi-Method: PARTIAL_UPDATE`. Only `commentary`, `contentCallToActionLabel`,
+        `contentLandingPage`, `lifecycleState` and `adContext` can change. Returns `204`.
+        The docs do not break this out by scope, so `w_member_social` is assumed (`x-verified: false`).
+      x-verified: false
+      parameters:
+      - name: X-RestLi-Method
+        in: header
+        required: true
+        schema:
+          type: string
+          enum:
+          - PARTIAL_UPDATE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostPatch'
+            example:
+              patch:
+                $set:
+                  commentary: Updated text
+      responses:
+        '204':
+          description: Updated.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags:
+      - Posts
+      operationId: deletePost
+      summary: Delete a post
+      description: |
+        Idempotent. A repeat delete of a deleted post also returns `204`. Batch delete is not supported.
+        Use it to undo a repost. The docs do not break this out by scope, so `w_member_social` is
+        assumed (`x-verified: false`).
+      x-verified: false
+      parameters:
+      - name: X-RestLi-Method
+        in: header
+        required: false
+        schema:
+          type: string
+          enum:
+          - DELETE
+      responses:
+        '204':
+          description: Deleted.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /rest/images:
+    post:
+      tags:
+      - Images
+      operationId: initializeImageUpload
+      summary: Register an image upload
+      description: |
+        Step 1 of 3: call this, then `PUT` the bytes to `uploadUrl`, then use the returned `image`
+        URN in `content.media.id` of a post. The `owner` must be the calling member's person URN.
+        A `w_member_social` token is write-only here and cannot GET `/rest/images`.
+        Formats: JPG, GIF (up to 250 frames), PNG. Under 36,152,320 pixels.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: action
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - initializeUpload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InitializeImageUploadRequest'
+            example:
+              initializeUploadRequest:
+                owner: urn:li:person:782bbtaQ
+      responses:
+        '200':
+          description: Upload URL and image URN.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InitializeImageUploadResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /dms-uploads/{uploadPath}:
+    servers:
+    - url: https://www.linkedin.com
+      description: Upload host. Use the full `uploadUrl` from the initializeUpload response as given.
+    put:
+      tags:
+      - Images
+      operationId: uploadImageBinary
+      summary: Upload the image bytes
+      description: |
+        Step 2 of 3. In practice, send the binary to the exact `uploadUrl` the previous call returned,
+        including its query string. It expires at `uploadUrlExpiresAt`.
+      parameters:
+      - name: uploadPath
+        in: path
+        required: true
+        description: Path segment(s) from the returned `uploadUrl`.
+        schema:
+          type: string
+        allowReserved: true
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '201':
+          description: Uploaded. Poll nothing for plain images. The asset becomes AVAILABLE shortly after.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v2/ugcPosts:
+    post:
+      tags:
+      - Legacy UGC
+      operationId: createUgcPost
+      summary: Share on LinkedIn (legacy UGC Post)
+      description: |
+        The only create endpoint on the self-serve Share on LinkedIn page. Covers text, article and
+        image shares. **It documents no reshare.** Use `/rest/posts` for that. Returns `201` with the
+        new URN in `x-restli-id`.
+      parameters:
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUgcPost'
+            examples:
+              text:
+                value:
+                  author: urn:li:person:782bbtaQ
+                  lifecycleState: PUBLISHED
+                  specificContent:
+                    com.linkedin.ugc.ShareContent:
+                      shareCommentary:
+                        text: Hello World! This is my first Share on LinkedIn!
+                      shareMediaCategory: NONE
+                  visibility:
+                    com.linkedin.ugc.MemberNetworkVisibility: PUBLIC
+              article:
+                value:
+                  author: urn:li:person:782bbtaQ
+                  lifecycleState: PUBLISHED
+                  specificContent:
+                    com.linkedin.ugc.ShareContent:
+                      shareCommentary:
+                        text: Worth a read
+                      shareMediaCategory: ARTICLE
+                      media:
+                      - status: READY
+                        originalUrl: https://example.com/post
+                        title:
+                          text: Post title
+                        description:
+                          text: Short description
+                  visibility:
+                    com.linkedin.ugc.MemberNetworkVisibility: PUBLIC
+      responses:
+        '201':
+          description: Created.
+          headers:
+            x-restli-id:
+              description: URN of the new share.
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Write conflict. Retry.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Duplicate content or validation error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /v2/ugcPosts/{ugcPostUrn}:
+    delete:
+      tags:
+      - Legacy UGC
+      operationId: deleteUgcPost
+      summary: Delete a legacy UGC post
+      description: Listed under `w_member_social` in LinkedIn's permission-to-resource mapping.
+      parameters:
+      - name: ugcPostUrn
+        in: path
+        required: true
+        description: URL-encoded UGC post URN.
+        schema:
+          type: string
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      responses:
+        '204':
+          description: Deleted.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /v2/assets:
+    post:
+      tags:
+      - Legacy UGC
+      operationId: registerAssetUpload
+      summary: Register an image or video upload (legacy Assets API)
+      description: |
+        Used by the legacy Share on LinkedIn image flow. Replaced by `/rest/images` and `/rest/videos`.
+        Use the `asset` URN as `media` in a `/v2/ugcPosts` share.
+      parameters:
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: action
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - registerUpload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterAssetUploadRequest'
+            example:
+              registerUploadRequest:
+                recipes:
+                - urn:li:digitalmediaRecipe:feedshare-image
+                owner: urn:li:person:782bbtaQ
+                serviceRelationships:
+                - relationshipType: OWNER
+                  identifier: urn:li:userGeneratedContent
+      responses:
+        '200':
+          description: Upload URL and asset URN.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterAssetUploadResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+components:
+  securitySchemes:
+    linkedinOAuth:
+      type: oauth2
+      description: |
+        3-legged OAuth 2.0 authorization code flow. Request all scopes in one authorization so the
+        member consents once. Requesting a different scope later invalidates earlier tokens.
+      flows:
+        authorizationCode:
+          authorizationUrl: https://www.linkedin.com/oauth/v2/authorization
+          tokenUrl: https://www.linkedin.com/oauth/v2/accessToken
+          scopes:
+            w_member_social: Create, and delete, posts on behalf of the authenticated member (Share on LinkedIn).
+            openid: Use OpenID Connect to authenticate the member.
+            profile: Read the member's name, headline and photo (needed for the person id).
+            email: Read the member's primary email address.
+  parameters:
+    LinkedInVersion:
+      name: LinkedIn-Version
+      in: header
+      required: true
+      description: API version as YYYYMM. Use `202610`. 202511 sunsets on 2026-11-16.
+      schema:
+        type: string
+        pattern: ^[0-9]{6}$
+        example: '202610'
+    RestliProtocolVersion:
+      name: X-Restli-Protocol-Version
+      in: header
+      required: true
+      schema:
+        type: string
+        enum:
+        - 2.0.0
+    PostUrn:
+      name: postUrn
+      in: path
+      required: true
+      description: URL-encoded `urn:li:share:{id}` or `urn:li:ugcPost:{id}`.
+      schema:
+        type: string
+        example: urn%3Ali%3Ashare%3A6957408550713184256
+  responses:
+    BadRequest:
+      description: Invalid URN, missing field or bad enum value.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Missing, empty or expired access token. Send the member back through OAuth.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: The token lacks the scope, or the member does not own the resource.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: The post URN was not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    TooManyRequests:
+      description: Member (150 per day) or app (100,000 per day) limit reached, or the daily share limit.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Error:
+      type: object
+      properties:
+        status:
+          type: integer
+        message:
+          type: string
+        serviceErrorCode:
+          type: integer
+    UserInfo:
+      type: object
+      properties:
+        sub:
+          type: string
+          description: Member id. The person URN is `urn:li:person:{sub}`.
+        name:
+          type: string
+        given_name:
+          type: string
+        family_name:
+          type: string
+        picture:
+          type: string
+        locale:
+          type: string
+        email:
+          type: string
+          description: Optional. Only with the `email` scope.
+        email_verified:
+          type: boolean
+    Distribution:
+      type: object
+      required:
+      - feedDistribution
+      properties:
+        feedDistribution:
+          type: string
+          enum:
+          - MAIN_FEED
+          - NONE
+        targetEntities:
+          type: array
+          items:
+            type: object
+        thirdPartyDistributionChannels:
+          type: array
+          items:
+            type: string
+    ReshareContext:
+      type: object
+      required:
+      - parent
+      properties:
+        parent:
+          type: string
+          description: URN of the post being reshared.
+          example: urn:li:share:6957408550713184256
+        root:
+          type: string
+          readOnly: true
+          description: Greatest ancestor of the post. Derived from `parent`.
+    PostContent:
+      type: object
+      description: Send at most one of `media` or `article`.
+      properties:
+        media:
+          type: object
+          required:
+          - id
+          properties:
+            id:
+              type: string
+              description: Image URN from the Images API.
+              example: urn:li:image:C5610AQFj6TdYowm17w
+            title:
+              type: string
+            altText:
+              type: string
+        article:
+          type: object
+          required:
+          - source
+          properties:
+            source:
+              type: string
+              description: URL of the article. LinkedIn does not scrape it.
+            title:
+              type: string
+            description:
+              type: string
+            thumbnail:
+              type: string
+              description: Image URN for the thumbnail.
+    CreatePost:
+      type: object
+      required:
+      - author
+      - commentary
+      - visibility
+      - distribution
+      - lifecycleState
+      properties:
+        author:
+          type: string
+          description: Person URN of the member.
+          example: urn:li:person:782bbtaQ
+        commentary:
+          type: string
+          description: Post text in little text format. For a reshare, the member's own comments.
+        visibility:
+          type: string
+          enum:
+          - PUBLIC
+          - CONNECTIONS
+          - LOGGED_IN
+          - CONTAINER
+        distribution:
+          $ref: '#/components/schemas/Distribution'
+        lifecycleState:
+          type: string
+          enum:
+          - PUBLISHED
+          description: Only `PUBLISHED` is accepted on create.
+        isReshareDisabledByAuthor:
+          type: boolean
+          default: false
+        content:
+          $ref: '#/components/schemas/PostContent'
+        reshareContext:
+          $ref: '#/components/schemas/ReshareContext'
+    PostPatch:
+      type: object
+      required:
+      - patch
+      properties:
+        patch:
+          type: object
+          required:
+          - $set
+          properties:
+            $set:
+              type: object
+              properties:
+                commentary:
+                  type: string
+                contentCallToActionLabel:
+                  type: string
+                  enum:
+                  - APPLY
+                  - DOWNLOAD
+                  - VIEW_QUOTE
+                  - LEARN_MORE
+                  - SIGN_UP
+                  - SUBSCRIBE
+                  - REGISTER
+                  - JOIN
+                  - ATTEND
+                  - REQUEST_DEMO
+                  - SEE_MORE
+                  - BUY_NOW
+                  - SHOP_NOW
+                contentLandingPage:
+                  type: string
+                lifecycleState:
+                  type: string
+    InitializeImageUploadRequest:
+      type: object
+      required:
+      - initializeUploadRequest
+      properties:
+        initializeUploadRequest:
+          type: object
+          required:
+          - owner
+          properties:
+            owner:
+              type: string
+              description: Person URN of the calling member.
+              example: urn:li:person:782bbtaQ
+    InitializeImageUploadResponse:
+      type: object
+      properties:
+        value:
+          type: object
+          properties:
+            uploadUrl:
+              type: string
+            uploadUrlExpiresAt:
+              type: integer
+              format: int64
+            image:
+              type: string
+              description: Image URN to use in `content.media.id`.
+              example: urn:li:image:C4E10AQFoyyAjHPMQuQ
+    CreateUgcPost:
+      type: object
+      required:
+      - author
+      - lifecycleState
+      - specificContent
+      - visibility
+      properties:
+        author:
+          type: string
+          description: Person URN of the member.
+        lifecycleState:
+          type: string
+          enum:
+          - PUBLISHED
+        specificContent:
+          type: object
+          required:
+          - com.linkedin.ugc.ShareContent
+          properties:
+            com.linkedin.ugc.ShareContent:
+              type: object
+              required:
+              - shareCommentary
+              - shareMediaCategory
+              properties:
+                shareCommentary:
+                  type: object
+                  properties:
+                    text:
+                      type: string
+                shareMediaCategory:
+                  type: string
+                  enum:
+                  - NONE
+                  - ARTICLE
+                  - IMAGE
+                media:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                    - status
+                    properties:
+                      status:
+                        type: string
+                        enum:
+                        - READY
+                      media:
+                        type: string
+                        description: Asset URN (`urn:li:digitalmediaAsset:...`) for images.
+                      originalUrl:
+                        type: string
+                      title:
+                        type: object
+                        properties:
+                          text:
+                            type: string
+                      description:
+                        type: object
+                        properties:
+                          text:
+                            type: string
+        visibility:
+          type: object
+          required:
+          - com.linkedin.ugc.MemberNetworkVisibility
+          properties:
+            com.linkedin.ugc.MemberNetworkVisibility:
+              type: string
+              enum:
+              - PUBLIC
+              - CONNECTIONS
+              description: LinkedIn announced the removal of `CONNECTIONS` for live events. Use `PUBLIC`.
+    RegisterAssetUploadRequest:
+      type: object
+      required:
+      - registerUploadRequest
+      properties:
+        registerUploadRequest:
+          type: object
+          required:
+          - recipes
+          - owner
+          - serviceRelationships
+          properties:
+            recipes:
+              type: array
+              items:
+                type: string
+                enum:
+                - urn:li:digitalmediaRecipe:feedshare-image
+                - urn:li:digitalmediaRecipe:feedshare-video
+            owner:
+              type: string
+            serviceRelationships:
+              type: array
+              items:
+                type: object
+                properties:
+                  relationshipType:
+                    type: string
+                    enum:
+                    - OWNER
+                  identifier:
+                    type: string
+                    enum:
+                    - urn:li:userGeneratedContent
+    RegisterAssetUploadResponse:
+      type: object
+      properties:
+        value:
+          type: object
+          properties:
+            uploadMechanism:
+              type: object
+              properties:
+                com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest:
+                  type: object
+                  properties:
+                    uploadUrl:
+                      type: string
+                    headers:
+                      type: object
+            mediaArtifact:
+              type: string
+            asset:
+              type: string
+              description: Asset URN to use as `media` in the share.

@@ -1,0 +1,1618 @@
+openapi: 3.0.3
+info:
+  title: Member Posts Management
+  version: 1.0.0
+  description: 'Standalone collection covering lms-external-api-frontend APIs gated by (or relevant to) the `r_member_social`
+    (read) and `w_member_social` (write/create) permissions, based on direct code inspection.
+
+
+    **r_member_social folder**: code-verified read/finder requests (Posts, Member Event Subscriptions) plus read
+    requests for Comments/Reactions/Social Actions/Social Metadata/Documents/Videos/Images/Video Analytics that
+    are NOT independently code-verified for this permission (see per-request descriptions and the note below).
+
+
+    **w_member_social folder**: CREATE-only requests (no update/delete) to seed sample member-owned data -- Posts,
+    Comments, Reactions, Documents (initializeUpload + publish), Videos (initializeUpload + finalizeUpload), and
+    Images (initializeUpload). Member Event Subscriptions, Social Actions, Social Metadata, and Video Analytics
+    have no create/write endpoint and so have no w_member_social counterpart.
+
+
+    CORRECTION NOTE: A direct code search across CommentsService, LikesService (Reactions), SocialActionsService,
+    SocialMetadataService, DocumentsService, VideosService, ImagesService, VideoAnalyticsService, and MemberCreatorVideoAnalyticsService
+    found no explicit r_member_social read-permission checks -- only w_member_social appears, and only on create/actor-validation
+    paths (Reactions/Documents/Videos/Images). Per the code comment in PartnerPushEventSubscriptionKeySchemaValidator.java,
+    permission-to-endpoint mappings for many partner APIs are ''derived from file based configuration in externalized-api-configs
+    MP'', a separate repo not checked out locally, so gateway-level read-scope enforcement for those 8 resources
+    can''t be verified from this codebase alone.
+
+
+    Use together with the existing **community-management-env-versioning** environment.
+
+
+    --All requests are in the Restli 2.0 format--
+
+
+    _Generated from the Postman collection "Member Posts Management". All calls use Rest.li 2.0 conventions: send
+    `X-Restli-Protocol-Version: 2.0.0` and a `LinkedIn-Version` header (YYYYMM). Query parameters such as `List(...)`,
+    `(a:b,c:d)` and URNs are Rest.li-encoded strings; do not re-encode the structural characters `( ) , :`. Several
+    finders/actions share one path in LinkedIn''s API, so they are modelled as one operation with a `q`/`action`
+    selector. Schemas are inferred from the example payloads saved in the collection: every field is optional and
+    field semantics are not documented here._'
+servers:
+- url: https://api.linkedin.com/rest
+  description: LinkedIn REST API (`{{baseUrl}}` in the Postman environment)
+security:
+- linkedinOAuth2:
+  - r_member_social
+  - w_member_social
+tags:
+- name: Member Posts Management
+- name: r_member_social
+- name: w_member_social
+paths:
+  /posts/{postUrn}:
+    get:
+      operationId: getAMemberAuthoredPost
+      summary: Get a Member-Authored Post
+      tags:
+      - r_member_social
+      description: GET a post authored by a member (person URN). PostsClient.get() calls getPartnerAccessRestrictionsToPass(),
+        which checks r_member_social to determine whether member-only partner access restrictions can be relaxed
+        for the caller. See PostsClient.java / PostsService.java.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: postUrn
+        in: path
+        required: true
+        description: URN of the resource (URL-encoded).
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAMemberAuthoredPostResponse'
+              examples:
+                getAMemberAuthoredPost:
+                  summary: Get a Member-Authored Post
+                  value:
+                    isReshareDisabledByAuthor: false
+                    lifecycleState: PUBLISHED
+                    createdAt: 1790313652318
+                    lastModifiedAt: 1790313652347
+                    visibility: PUBLIC
+                    publishedAt: 1790313652318
+                    author: urn:li:person:bB4Pmsd_uL
+                    id: urn:li:share:7509119712832905216
+                    distribution:
+                      feedDistribution: MAIN_FEED
+                      thirdPartyDistributionChannels: []
+                    commentary: Project-2B-Comment
+                    lifecycleStateInfo:
+                      isEditedByAuthor: false
+        default:
+          $ref: '#/components/responses/Error'
+  /posts:
+    get:
+      operationId: getPosts
+      summary: Query posts
+      tags:
+      - r_member_social
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Batch Get Member-Authored Posts**: BATCH_GET posts authored by members. Same r_member_social-gated partner
+        access restriction logic as the single GET. See PostsClient.batchGet().
+
+        - **Find Posts by Author (Member/Person)** (`q=author`): FINDER ''author''. PostsService.validateAuthorUrnType()
+        explicitly requires r_member_social (read case) whenever the author URN is a person URN. Returns 400 ''Member
+        permissions must be used when using member as author'' if r_member_social is missing. See PostsService.java
+        findByAuthor()/validateAuthorU'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: ids
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Batch ids in Rest.li 2.0 list syntax, e.g. `List(id1,id2)`.
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - author
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: author
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetPostsResponse'
+              examples:
+                findPostsByAuthorMemberPerson:
+                  summary: Find Posts by Author (Member/Person)
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                      total: 1
+                    elements:
+                    - isReshareDisabledByAuthor: false
+                      lifecycleState: PUBLISHED
+                      createdAt: 1790313652318
+                      lastModifiedAt: 1790313652347
+                      visibility: PUBLIC
+                      publishedAt: 1790313652318
+                      author: urn:li:person:bB4Pmsd_uL
+                      id: urn:li:share:7509119712832905216
+                      distribution:
+                        feedDistribution: MAIN_FEED
+                        thirdPartyDistributionChannels: []
+                      commentary: Project-2B-Comment
+                      lifecycleStateInfo:
+                        isEditedByAuthor: false
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: postPosts
+      summary: Create / update / action on posts
+      tags:
+      - w_member_social
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Create a Post (Member Author)**: Creates a text post authored by a member (person URN). PostsService.validateAuthorUrnType()
+        requires w_member_social when the author is a person URN (writeCase=true). See PostsClient.java / PostsService.java.
+
+        - **Create Document Content (Post, Member Author)**: Publishes the uploaded document as a member-authored
+        post, to seed sample document-post data. Same w_member_social author gating as the base Posts create.'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostPostsRequest'
+            examples:
+              createAPostMemberAuthor:
+                summary: Create a Post (Member Author)
+                value:
+                  author: urn:li:person:{{person_id}}
+                  commentary: '{{member_post_commentary}}'
+                  visibility: PUBLIC
+                  distribution:
+                    feedDistribution: MAIN_FEED
+                    targetEntities: []
+                    thirdPartyDistributionChannels: []
+                  lifecycleState: PUBLISHED
+                  isReshareDisabledByAuthor: false
+              createDocumentContentPostMemberAuthor:
+                summary: Create Document Content (Post, Member Author)
+                value:
+                  author: urn:li:person:{{person_id}}
+                  commentary: '{{member_post_commentary}}'
+                  visibility: PUBLIC
+                  distribution:
+                    feedDistribution: MAIN_FEED
+                    targetEntities: []
+                    thirdPartyDistributionChannels: []
+                  content:
+                    media:
+                      title: Example.pdf
+                      id: urn:li:document:D5610AQH2s2YKg6T3Aw
+                  lifecycleState: PUBLISHED
+                  isReshareDisabledByAuthor: false
+      responses:
+        '201':
+          description: Created
+          headers:
+            location:
+              schema:
+                type: string
+              description: URL of the created resource.
+            x-restli-id:
+              schema:
+                type: string
+              description: Id (or URN) of the created resource.
+        default:
+          $ref: '#/components/responses/Error'
+  /partnerApiMemberEventSubscriptions/{partnerApiMemberEventSubscriptionKey}:
+    put:
+      operationId: createUpsertAMemberSocialActionSubscription
+      summary: Create/Upsert a Member Social Action Subscription
+      tags:
+      - r_member_social
+      description: UPDATE (upsert, no server-generated id) a webhook subscription for MEMBER_SOCIAL_ACTION_NOTIFICATION
+        events on a consented member. PartnerPushEventSubscriptionKeySchemaValidator requires r_member_social for
+        this eventType and restricts entity/user to PersonUrn. See MemberEventSubscriptionResource.update().
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: partnerApiMemberEventSubscriptionKey
+        in: path
+        required: true
+        description: Composite Rest.li key, e.g. `(a:urn%3A...,b:urn%3A...)`.
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                webhook:
+                  type: string
+            examples:
+              createUpsertAMemberSocialActionSubscription:
+                summary: Create/Upsert a Member Social Action Subscription
+                value:
+                  webhook: '{{member_event_subscription_webhook_url}}'
+      responses:
+        '201':
+          description: Success (inferred — the source collection has no saved example for this call)
+          headers:
+            x-restli-id:
+              schema:
+                type: string
+              description: Id (or URN) of the created resource.
+        default:
+          $ref: '#/components/responses/Error'
+    get:
+      operationId: getAMemberSocialActionSubscription
+      summary: Get a Member Social Action Subscription
+      tags:
+      - r_member_social
+      description: GET the subscription record by its composite key. Requires r_member_social for the MEMBER_SOCIAL_ACTION_NOTIFICATION
+        eventType. See MemberEventSubscriptionResource.get().
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: partnerApiMemberEventSubscriptionKey
+        in: path
+        required: true
+        description: Composite Rest.li key, e.g. `(a:urn%3A...,b:urn%3A...)`.
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+    delete:
+      operationId: deleteAMemberSocialActionSubscription
+      summary: Delete a Member Social Action Subscription
+      tags:
+      - r_member_social
+      description: DELETE the subscription record by its composite key. Requires r_member_social for the MEMBER_SOCIAL_ACTION_NOTIFICATION
+        eventType. See MemberEventSubscriptionResource.delete().
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: partnerApiMemberEventSubscriptionKey
+        in: path
+        required: true
+        description: Composite Rest.li key, e.g. `(a:urn%3A...,b:urn%3A...)`.
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /partnerApiMemberEventSubscriptions:
+    get:
+      operationId: findSubscriptionsBySubscriberAndEventType
+      summary: Find Subscriptions by Subscriber and Event Type
+      tags:
+      - r_member_social
+      description: FINDER 'subscriberAndEventType'. Subscriber (developer application) and user are derived from
+        the request context, not passed explicitly. Requires r_member_social for this eventType. See MemberEventSubscriptionResource.findBySubscriberAndEventType().
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - subscriberAndEventType
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: eventType
+        in: query
+        required: false
+        schema:
+          type: string
+        example: MEMBER_SOCIAL_ACTION_NOTIFICATION
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /socialActions/{socialActionUrn}/comments/{commentId}:
+    get:
+      operationId: getAComment
+      summary: Get a Comment
+      tags:
+      - r_member_social
+      description: Get a single comment. CommentsService has no permission checks in code; see collection description.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: socialActionUrn
+        in: path
+        required: true
+        description: URN of the resource (URL-encoded).
+        schema:
+          type: string
+      - name: commentId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetACommentResponse'
+              examples:
+                getAComment:
+                  summary: Get a Comment
+                  value:
+                    actor: urn:li:person:bB4Pmsd_uL
+                    commentUrn: urn:li:comment:(urn:li:activity:7509119713386401792,7509122316551802880)
+                    created:
+                      actor: urn:li:person:bB4Pmsd_uL
+                      time: 1790314273013
+                    id: '7509122316551802880'
+                    lastModified:
+                      actor: urn:li:person:bB4Pmsd_uL
+                      time: 1790314273013
+                    message:
+                      attributes: []
+                      text: Member Post Testing Comment
+                    object: urn:li:activity:7509119713386401792
+        default:
+          $ref: '#/components/responses/Error'
+  /socialActions/{socialActionUrn}/comments:
+    get:
+      operationId: getCommentsOnAShare
+      summary: Get Comments on a Share
+      tags:
+      - r_member_social
+      description: Get all comments on a share/ugcPost thread. CommentsService has no permission checks in code.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: socialActionUrn
+        in: path
+        required: true
+        description: URN of the resource (URL-encoded).
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetCommentsOnAShareResponse'
+              examples:
+                getCommentsOnAShare:
+                  summary: Get Comments on a Share
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                      total: 1
+                    elements:
+                    - actor: urn:li:person:bB4Pmsd_uL
+                      commentUrn: urn:li:comment:(urn:li:activity:7509119713386401792,7509122316551802880)
+                      created:
+                        actor: urn:li:person:bB4Pmsd_uL
+                        time: 1790314273013
+                      id: '7509122316551802880'
+                      lastModified:
+                        actor: urn:li:person:bB4Pmsd_uL
+                        time: 1790314273013
+                      message:
+                        attributes: []
+                        text: Member Post Testing Comment
+                      object: urn:li:activity:7509119713386401792
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: createACommentMemberActor
+      summary: Create a Comment (Member Actor)
+      tags:
+      - w_member_social
+      description: Creates a top-level comment as a member actor, to seed sample comment data for the Comments (read)
+        requests. CommentsResource is CreateOnly on 'actor'; no explicit permission check found in CommentsService
+        code, included here for parity with the w_member_social write-actions.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: socialActionUrn
+        in: path
+        required: true
+        description: URN of the resource (URL-encoded).
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateACommentMemberActorRequest'
+            examples:
+              createACommentMemberActor:
+                summary: Create a Comment (Member Actor)
+                value:
+                  actor: urn:li:person:{{person_id}}
+                  object: urn:li:ugcPost:{{post-member-id}}
+                  message:
+                    text: '{{comment_message_text}}'
+      responses:
+        '201':
+          description: Created
+          headers:
+            location:
+              schema:
+                type: string
+              description: URL of the created resource.
+            x-restli-id:
+              schema:
+                type: string
+              description: Id (or URN) of the created resource.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateACommentMemberActorResponse'
+              examples:
+                createACommentMemberActor:
+                  summary: Create a Comment (Member Actor)
+                  value:
+                    actor: urn:li:person:bB4Pmsd_uL
+                    commentUrn: urn:li:comment:(urn:li:activity:7509119713386401792,7509122316551802880)
+                    created:
+                      actor: urn:li:person:bB4Pmsd_uL
+                      time: 1790314273013
+                    id: '7509122316551802880'
+                    lastModified:
+                      actor: urn:li:person:bB4Pmsd_uL
+                      time: 1790314273013
+                    message:
+                      attributes: []
+                      text: Member Post Testing Comment
+                    likesSummary:
+                      selectedLikes: []
+                      aggregatedTotalLikes: 0
+                      likedByCurrentUser: false
+                      totalLikes: 0
+                    object: urn:li:activity:7509119713386401792
+        default:
+          $ref: '#/components/responses/Error'
+  /reactions/{reactionKey}:
+    get:
+      operationId: getReactions
+      summary: Query reactions
+      tags:
+      - r_member_social
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Get a Reaction (Member Actor)**: Get a single reaction by a member actor. LikesService only checks W_MEMBER_SOCIAL/W_MEMBER_SOCIAL_FEED
+        on CREATE (validateActorUrnType); no read-permission check exists in code.
+
+        - **Get Reactions on a Share** (`q=entity`): Get all reactions on a share (LikesService.getAllLikes) - no
+        permission check in code.'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: reactionKey
+        in: path
+        required: true
+        description: Composite Rest.li key, e.g. `(a:urn%3A...,b:urn%3A...)`.
+        schema:
+          type: string
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - entity
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetReactionsResponse'
+              examples:
+                getAReactionMemberActor:
+                  summary: Get a Reaction (Member Actor)
+                  value:
+                    lastModified:
+                      actor: urn:li:person:bB4Pmsd_uL
+                      time: 1790314678855
+                    id: urn:li:reaction:(urn:li:person:bB4Pmsd_uL,urn:li:share:7509119712832905216)
+                    reactionType: LIKE
+                    created:
+                      actor: urn:li:person:bB4Pmsd_uL
+                      time: 1790314678855
+                    root: urn:li:share:7509119712832905216
+                getReactionsOnAShare:
+                  summary: Get Reactions on a Share
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                      total: 1
+                    elements:
+                    - lastModified:
+                        actor: urn:li:person:bB4Pmsd_uL
+                        time: 1790314678855
+                      id: urn:li:reaction:(urn:li:person:bB4Pmsd_uL,urn:li:share:7509119712832905216)
+                      reactionType: LIKE
+                      created:
+                        actor: urn:li:person:bB4Pmsd_uL
+                        time: 1790314678855
+                      root: urn:li:share:7509119712832905216
+        default:
+          $ref: '#/components/responses/Error'
+  /socialActions/{socialActionUrn}:
+    get:
+      operationId: getSocialActionSummary
+      summary: Get Social Action Summary
+      tags:
+      - r_member_social
+      description: Get the aggregate social action summary (likesSummary + commentsSummary) for a target object.
+        SocialActionsResource.get()/SocialActionsService have no permission checks in code.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: socialActionUrn
+        in: path
+        required: true
+        description: URN of the resource (URL-encoded).
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetSocialActionSummaryResponse'
+              examples:
+                getSocialActionSummary:
+                  summary: Get Social Action Summary
+                  value:
+                    likesSummary:
+                      selectedLikes:
+                      - urn:li:like:(urn:li:person:bB4Pmsd_uL,urn:li:activity:7509119713386401792)
+                      aggregatedTotalLikes: 1
+                      likedByCurrentUser: true
+                      totalLikes: 1
+                    commentsSummary:
+                      selectedComments:
+                      - urn:li:comment:(urn:li:activity:7509119713386401792,7509122316551802880)
+                      totalFirstLevelComments: 1
+                      commentsState: OPEN
+                      aggregatedTotalComments: 1
+                    target: urn:li:activity:7509119713386401792
+        default:
+          $ref: '#/components/responses/Error'
+  /socialActions:
+    get:
+      operationId: batchGetSocialActionSummaries
+      summary: Batch Get Social Action Summaries
+      tags:
+      - r_member_social
+      description: Batch get social action summaries. SocialActionsResource.batchGetSocialActions() has no permission
+        checks in code.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: ids
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Batch ids in Rest.li 2.0 list syntax, e.g. `List(id1,id2)`.
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /socialMetadata/{socialMetadataUrn}:
+    get:
+      operationId: getASummaryOfSocialMetadata
+      summary: Get a Summary of Social Metadata
+      tags:
+      - r_member_social
+      description: Get a summary of social metadata (comment/reaction permission settings) for an entity. SocialMetadataService
+        has no permission checks in code.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: socialMetadataUrn
+        in: path
+        required: true
+        description: URN of the resource (URL-encoded).
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /documents/{documentId}:
+    get:
+      operationId: getASingleDocument
+      summary: Get a Single Document
+      tags:
+      - r_member_social
+      description: Get a single document. DocumentsService only checks W_MEMBER_SOCIAL on write/actor validation;
+        no read-permission check exists in code.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: documentId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /documents:
+    get:
+      operationId: findDocumentsByAssociatedAccountMember
+      summary: Find Documents by Associated Account (Member)
+      tags:
+      - r_member_social
+      description: FINDER associatedAccount for a member's documents. No read-permission check exists in code.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - associatedAccount
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: associatedAccount
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: initializeDocumentUploadMemberOwner
+      summary: Initialize Document Upload (Member Owner)
+      tags:
+      - w_member_social
+      description: Initializes a document upload owned by a member. DocumentsService.validateOwnerTypeBasedOnPermissions()
+        requires w_member_social when owner is a person URN. Returns an uploadUrl + document URN used to seed sample
+        document content.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: action
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - initializeUpload
+        description: Rest.li action name.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InitializeDocumentUploadMemberOwnerRequest'
+            examples:
+              initializeDocumentUploadMemberOwner:
+                summary: Initialize Document Upload (Member Owner)
+                value:
+                  initializeUploadRequest:
+                    owner: urn:li:person:{{person_id}}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InitializeDocumentUploadMemberOwnerResponse'
+              examples:
+                initializeDocumentUploadMemberOwner:
+                  summary: Initialize Document Upload (Member Owner)
+                  value:
+                    value:
+                      uploadUrlExpiresAt: 1790461861276
+                      uploadUrl: https://www.linkedin.com/dms-uploads/sp/v2/D5610AQH2s2YKg6T3Aw/ads-uploadedDocument/B56aDasYGMKwAE-/0?REDACTED_SIGNED_QUERY
+                      document: urn:li:document:D5610AQH2s2YKg6T3Aw
+        default:
+          $ref: '#/components/responses/Error'
+  /videos/{videoId}:
+    get:
+      operationId: getASingleVideo
+      summary: Get a Single Video
+      tags:
+      - r_member_social
+      description: Get a single video. VideosService only checks W_MEMBER_SOCIAL on write/actor validation; no read-permission
+        check exists in code.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: videoId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /videos:
+    get:
+      operationId: findVideosByAssociatedAccountMember
+      summary: Find Videos by Associated Account (Member)
+      tags:
+      - r_member_social
+      description: FINDER associatedAccount for a member's videos. No read-permission check exists in code.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - associatedAccount
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: associatedAccount
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: postVideos
+      summary: Create / update / action on videos
+      tags:
+      - w_member_social
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Initialize Video Upload (Member Owner)** (`action=initializeUpload`): Initializes a video upload owned
+        by a member. VideosService.validateOwnerTypeBasedOnPermissions() requires w_member_social when owner is
+        a person URN.
+
+        - **Finalize Video Upload (Member Owner)** (`action=finalizeUpload`): Finalizes a member-owned video upload
+        after all parts are uploaded. Same w_member_social owner gating as Initialize Video Upload.'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: action
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - initializeUpload
+          - finalizeUpload
+        description: Rest.li action name.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostVideosRequest'
+            examples:
+              initializeVideoUploadMemberOwner:
+                summary: Initialize Video Upload (Member Owner)
+                value:
+                  initializeUploadRequest:
+                    owner: urn:li:person:{{person_id}}
+                    fileSizeBytes: '{{video_file_size_bytes}}'
+                    uploadCaptions: false
+                    uploadThumbnail: false
+              finalizeVideoUploadMemberOwner:
+                summary: Finalize Video Upload (Member Owner)
+                value:
+                  finalizeUploadRequest:
+                    video: urn:li:video:D5610AQFujwrFCPRFmw
+                    uploadToken: ''
+                    uploadedPartIds:
+                    - /ambry-video/signedId/REDACTED_TOKEN
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostVideosResponse'
+              examples:
+                initializeVideoUploadMemberOwner:
+                  summary: Initialize Video Upload (Member Owner)
+                  value:
+                    value:
+                      uploadUrlsExpireAt: 1790463626200
+                      video: urn:li:video:D5610AQFujwrFCPRFmw
+                      uploadInstructions:
+                      - uploadUrl: https://www.linkedin.com/dms-uploads/mp/v2/D5610AQFujwrFCPRFmw/uploadedVideo/B56aDazG_NKsAA-?REDACTED_SIGNED_QUERY
+                        lastByte: 1055735
+                        firstByte: 0
+                      uploadToken: ''
+        default:
+          $ref: '#/components/responses/Error'
+  /images/{imageId}:
+    get:
+      operationId: getASingleImage
+      summary: Get a Single Image
+      tags:
+      - r_member_social
+      description: Get a single image. ImagesService only checks W_MEMBER_SOCIAL on write/actor validation; no read-permission
+        check exists in code.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: imageId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /images:
+    get:
+      operationId: findImagesByAssociatedAccountMember
+      summary: Find Images by Associated Account (Member)
+      tags:
+      - r_member_social
+      description: FINDER associatedAccount for a member's images. No read-permission check exists in code.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - associatedAccount
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: associatedAccount
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: initializeImageUploadMemberOwner
+      summary: Initialize Image Upload (Member Owner)
+      tags:
+      - w_member_social
+      description: Initializes an image upload owned by a member, to seed sample image data. ImagesService.validateOwnerTypeBasedOnPermissions()
+        requires w_member_social when owner is a person URN.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: action
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - initializeUpload
+        description: Rest.li action name.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InitializeDocumentUploadMemberOwnerRequest'
+            examples:
+              initializeImageUploadMemberOwner:
+                summary: Initialize Image Upload (Member Owner)
+                value:
+                  initializeUploadRequest:
+                    owner: urn:li:person:{{person_id}}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InitializeImageUploadMemberOwnerResponse'
+              examples:
+                initializeImageUploadMemberOwner:
+                  summary: Initialize Image Upload (Member Owner)
+                  value:
+                    value:
+                      uploadUrlExpiresAt: 1790466049008
+                      uploadUrl: https://www.linkedin.com/dms-uploads/sp/v2/D5610AQErQVnERaQTgA/uploaded-image/B56aDa8WfjIAAE-/0?REDACTED_SIGNED_QUERY
+                      image: urn:li:image:D5610AQErQVnERaQTgA
+        default:
+          $ref: '#/components/responses/Error'
+  /videoAnalytics:
+    get:
+      operationId: videoAnalyticsFindByEntity
+      summary: Video Analytics - Find by Entity
+      tags:
+      - r_member_social
+      description: FINDER entity (mirrorapi.VideoAnalyticsResource.findStatistics). VideoAnalyticsService has no
+        permission checks in code.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - entity
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: entity
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: type
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /memberCreatorVideoAnalytics:
+    get:
+      operationId: memberCreatorVideoAnalyticsFindByEntity
+      summary: Member Creator Video Analytics - Find by Entity
+      tags:
+      - r_member_social
+      description: FINDER entity (memberanalytics.MemberCreatorVideoAnalyticsResource.findByEntity), scoped to a
+        member creator. MemberCreatorVideoAnalyticsService has no permission checks in code.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - entity
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: entity
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: queryType
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /reactions:
+    post:
+      operationId: createAReactionMemberActor
+      summary: Create a Reaction (Member Actor)
+      tags:
+      - w_member_social
+      description: Creates a reaction (like) on a share as a member actor, to seed sample reaction data. LikesService.validateActorUrnType()
+        requires w_member_social (or w_member_social_feed) when actor is a person URN.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: actor
+        in: query
+        required: false
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                root:
+                  type: string
+                reactionType:
+                  type: string
+            examples:
+              createAReactionMemberActor:
+                summary: Create a Reaction (Member Actor)
+                value:
+                  root: urn:li:share:{{post-member-id}}
+                  reactionType: '{{reaction_type}}'
+      responses:
+        '201':
+          description: Created
+          headers:
+            location:
+              schema:
+                type: string
+              description: URL of the created resource.
+            x-restli-id:
+              schema:
+                type: string
+              description: Id (or URN) of the created resource.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Elements'
+              examples:
+                createAReactionMemberActor:
+                  summary: Create a Reaction (Member Actor)
+                  value:
+                    lastModified:
+                      actor: urn:li:person:bB4Pmsd_uL
+                      time: 1790314678855
+                    id: urn:li:reaction:(urn:li:person:bB4Pmsd_uL,urn:li:share:7509119712832905216)
+                    reactionType: LIKE
+                    created:
+                      actor: urn:li:person:bB4Pmsd_uL
+                      time: 1790314678855
+                    root: urn:li:share:7509119712832905216
+        default:
+          $ref: '#/components/responses/Error'
+  /dms-uploads/{uploadPath}:
+    put:
+      operationId: putDmsUploads
+      summary: Upsert dms-uploads
+      tags:
+      - w_member_social
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Member-Upload-Doc**
+
+        - **Upload a Member Video**: This is a generic API to upload the data.
+
+        - **Upload Member Image**'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: uploadPath
+        in: path
+        required: true
+        description: Remainder of the upload URL returned by the corresponding initializeUpload call (use that URL
+          verbatim).
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: OK
+          headers:
+            etag:
+              schema:
+                type: string
+              description: Entity tag.
+        '201':
+          description: Created
+        default:
+          $ref: '#/components/responses/Error'
+      servers:
+      - url: https://www.linkedin.com
+  /me:
+    get:
+      operationId: memberMe
+      summary: Member-Me
+      tags:
+      - Member Posts Management
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+      servers:
+      - url: https://api.linkedin.com/v2
+        description: Legacy v2 API root
+components:
+  securitySchemes:
+    linkedinOAuth2:
+      type: oauth2
+      description: LinkedIn 3-legged OAuth 2.0 (authorization code).
+      flows:
+        authorizationCode:
+          authorizationUrl: https://www.linkedin.com/oauth/v2/authorization
+          tokenUrl: https://www.linkedin.com/oauth/v2/accessToken
+          scopes:
+            r_member_social: LinkedIn permission `r_member_social`
+            w_member_social: LinkedIn permission `w_member_social`
+  parameters:
+    LinkedInVersion:
+      name: LinkedIn-Version
+      in: header
+      required: true
+      description: API version in YYYYMM format (e.g. `202509`).
+      schema:
+        type: string
+        pattern: ^[0-9]{6}$
+    RestliProtocolVersion:
+      name: X-Restli-Protocol-Version
+      in: header
+      required: false
+      schema:
+        type: string
+        enum:
+        - 2.0.0
+        default: 2.0.0
+  responses:
+    Error:
+      description: Error response
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Error:
+      type: object
+      properties:
+        status:
+          type: integer
+        code:
+          type: string
+        serviceErrorCode:
+          type: integer
+        message:
+          type: string
+    GetAMemberAuthoredPostResponse:
+      type: object
+      properties:
+        isReshareDisabledByAuthor:
+          type: boolean
+        lifecycleState:
+          type: string
+        createdAt:
+          type: integer
+          format: int64
+        lastModifiedAt:
+          type: integer
+          format: int64
+        visibility:
+          type: string
+        publishedAt:
+          type: integer
+          format: int64
+        author:
+          type: string
+        id:
+          type: string
+        distribution:
+          type: object
+          properties:
+            feedDistribution:
+              type: string
+            thirdPartyDistributionChannels:
+              type: array
+              items: {}
+        commentary:
+          type: string
+        lifecycleStateInfo:
+          type: object
+          properties:
+            isEditedByAuthor:
+              type: boolean
+    GetACommentResponse:
+      type: object
+      properties:
+        actor:
+          type: string
+        commentUrn:
+          type: string
+        created:
+          type: object
+          properties:
+            actor:
+              type: string
+            time:
+              type: integer
+              format: int64
+        id:
+          type: string
+        lastModified:
+          type: object
+          properties:
+            actor:
+              type: string
+            time:
+              type: integer
+              format: int64
+        message:
+          type: object
+          properties:
+            attributes:
+              type: array
+              items: {}
+            text:
+              type: string
+        object:
+          type: string
+    Elements:
+      type: object
+      properties:
+        lastModified:
+          type: object
+          properties:
+            actor:
+              type: string
+            time:
+              type: integer
+              format: int64
+        id:
+          type: string
+        reactionType:
+          type: string
+        created:
+          type: object
+          properties:
+            actor:
+              type: string
+            time:
+              type: integer
+              format: int64
+        root:
+          type: string
+    GetPostsResponse:
+      type: object
+      properties:
+        paging:
+          type: object
+          properties:
+            start:
+              type: integer
+            count:
+              type: integer
+            links:
+              type: array
+              items: {}
+            total:
+              type: integer
+        elements:
+          type: array
+          items:
+            $ref: '#/components/schemas/GetAMemberAuthoredPostResponse'
+    PostPostsRequest:
+      type: object
+      properties:
+        author:
+          type: string
+        commentary:
+          type: string
+        visibility:
+          type: string
+        distribution:
+          type: object
+          properties:
+            feedDistribution:
+              type: string
+            targetEntities:
+              type: array
+              items: {}
+            thirdPartyDistributionChannels:
+              type: array
+              items: {}
+        lifecycleState:
+          type: string
+        isReshareDisabledByAuthor:
+          type: boolean
+        content:
+          type: object
+          properties:
+            media:
+              type: object
+              properties:
+                title:
+                  type: string
+                id:
+                  type: string
+    GetCommentsOnAShareResponse:
+      type: object
+      properties:
+        paging:
+          type: object
+          properties:
+            start:
+              type: integer
+            count:
+              type: integer
+            links:
+              type: array
+              items: {}
+            total:
+              type: integer
+        elements:
+          type: array
+          items:
+            $ref: '#/components/schemas/GetACommentResponse'
+    CreateACommentMemberActorRequest:
+      type: object
+      properties:
+        actor:
+          type: string
+        object:
+          type: string
+        message:
+          type: object
+          properties:
+            text:
+              type: string
+    CreateACommentMemberActorResponse:
+      type: object
+      properties:
+        actor:
+          type: string
+        commentUrn:
+          type: string
+        created:
+          type: object
+          properties:
+            actor:
+              type: string
+            time:
+              type: integer
+              format: int64
+        id:
+          type: string
+        lastModified:
+          type: object
+          properties:
+            actor:
+              type: string
+            time:
+              type: integer
+              format: int64
+        message:
+          type: object
+          properties:
+            attributes:
+              type: array
+              items: {}
+            text:
+              type: string
+        likesSummary:
+          type: object
+          properties:
+            selectedLikes:
+              type: array
+              items: {}
+            aggregatedTotalLikes:
+              type: integer
+            likedByCurrentUser:
+              type: boolean
+            totalLikes:
+              type: integer
+        object:
+          type: string
+    GetReactionsResponse:
+      type: object
+      properties:
+        lastModified:
+          type: object
+          properties:
+            actor:
+              type: string
+            time:
+              type: integer
+              format: int64
+        id:
+          type: string
+        reactionType:
+          type: string
+        created:
+          type: object
+          properties:
+            actor:
+              type: string
+            time:
+              type: integer
+              format: int64
+        root:
+          type: string
+        paging:
+          type: object
+          properties:
+            start:
+              type: integer
+            count:
+              type: integer
+            links:
+              type: array
+              items: {}
+            total:
+              type: integer
+        elements:
+          type: array
+          items:
+            $ref: '#/components/schemas/Elements'
+    GetSocialActionSummaryResponse:
+      type: object
+      properties:
+        likesSummary:
+          type: object
+          properties:
+            selectedLikes:
+              type: array
+              items:
+                type: string
+            aggregatedTotalLikes:
+              type: integer
+            likedByCurrentUser:
+              type: boolean
+            totalLikes:
+              type: integer
+        commentsSummary:
+          type: object
+          properties:
+            selectedComments:
+              type: array
+              items:
+                type: string
+            totalFirstLevelComments:
+              type: integer
+            commentsState:
+              type: string
+            aggregatedTotalComments:
+              type: integer
+        target:
+          type: string
+    InitializeDocumentUploadMemberOwnerRequest:
+      type: object
+      properties:
+        initializeUploadRequest:
+          type: object
+          properties:
+            owner:
+              type: string
+    InitializeDocumentUploadMemberOwnerResponse:
+      type: object
+      properties:
+        value:
+          type: object
+          properties:
+            uploadUrlExpiresAt:
+              type: integer
+              format: int64
+            uploadUrl:
+              type: string
+            document:
+              type: string
+    PostVideosRequest:
+      type: object
+      properties:
+        initializeUploadRequest:
+          type: object
+          properties:
+            owner:
+              type: string
+            fileSizeBytes:
+              type: string
+            uploadCaptions:
+              type: boolean
+            uploadThumbnail:
+              type: boolean
+        finalizeUploadRequest:
+          type: object
+          properties:
+            video:
+              type: string
+            uploadToken:
+              type: string
+            uploadedPartIds:
+              type: array
+              items:
+                type: string
+    PostVideosResponse:
+      type: object
+      properties:
+        value:
+          type: object
+          properties:
+            uploadUrlsExpireAt:
+              type: integer
+              format: int64
+            video:
+              type: string
+            uploadInstructions:
+              type: array
+              items:
+                type: object
+                properties:
+                  uploadUrl:
+                    type: string
+                  lastByte:
+                    type: integer
+                  firstByte:
+                    type: integer
+            uploadToken:
+              type: string
+    InitializeImageUploadMemberOwnerResponse:
+      type: object
+      properties:
+        value:
+          type: object
+          properties:
+            uploadUrlExpiresAt:
+              type: integer
+              format: int64
+            uploadUrl:
+              type: string
+            image:
+              type: string
