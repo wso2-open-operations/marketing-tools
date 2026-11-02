@@ -1,0 +1,1 @@
+These are exported using the [POSTMAN link](https://www.postman.com/linkedin-developer-apis/linkedin-marketing-solutions-versioned-apis/example/45034303-41dd37ec-cc86-4a5f-8879-1fff792264b6) on this page on 2026-10-15. 

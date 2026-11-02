@@ -1,0 +1,20 @@
+# OpenChoreo workload descriptor (M8c), read by `occ workload create --descriptor`. Type: deployment/service.
+# Same endpoints, ports and env names as apps/amplify/amplify-scheduler/.choreo/component.yaml (scripts/check-descriptors.sh).
+# Choreo Project visibility -> `project`; Public -> `external`. Secrets: valueFrom.secretRef (SecretReference /
+# External Secrets); plain values come from the environment's ReleaseBinding/overrides.
+apiVersion: openchoreo.dev/v1alpha1
+metadata:
+  name: amplify-scheduler
+endpoints:
+  - name: amplify-scheduler
+    type: HTTP
+    port: 8080
+    visibility:
+      - project
+configurations:
+  env:
+    - name: DSN
+      valueFrom:
+        secretRef:
+          name: amplify-scheduler-secrets
+          key: DSN

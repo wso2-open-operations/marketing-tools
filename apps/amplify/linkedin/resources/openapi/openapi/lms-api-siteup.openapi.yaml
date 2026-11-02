@@ -1,0 +1,126 @@
+openapi: 3.0.3
+info:
+  title: LMS API – SiteUp
+  version: 1.0.0
+  description: '_Generated from the Postman collection "LMS API  SiteUp". All calls use Rest.li 2.0 conventions:
+    send `X-Restli-Protocol-Version: 2.0.0` and a `LinkedIn-Version` header (YYYYMM). Query parameters such as `List(...)`,
+    `(a:b,c:d)` and URNs are Rest.li-encoded strings; do not re-encode the structural characters `( ) , :`. Several
+    finders/actions share one path in LinkedIn''s API, so they are modelled as one operation with a `q`/`action`
+    selector. Schemas are inferred from the example payloads saved in the collection: every field is optional and
+    field semantics are not documented here._'
+servers:
+- url: https://api.linkedin.com/rest
+  description: LinkedIn REST API (`{{baseUrl}}` in the Postman environment)
+security:
+- bearerAuth: []
+tags:
+- name: Ad Account and core Campaign Entities
+- name: Auth and Basics
+paths:
+  /adAccountUsers:
+    get:
+      operationId: fetchTheAuthenticatedUserSAdAccounts
+      summary: Fetch the Authenticated User's Ad Accounts
+      tags:
+      - Auth and Basics
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - authenticatedUser
+        description: Rest.li finder name. Selects which query this call performs.
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /organizationAcls:
+    get:
+      operationId: fetchTheAuthenticatedUserSOrganizationRoles
+      summary: Fetch the Authenticated User's Organization Roles
+      tags:
+      - Auth and Basics
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - roleAssignee
+        description: Rest.li finder name. Selects which query this call performs.
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /adAccounts/{adAccountId}:
+    get:
+      operationId: fetchTheAdAccountByID
+      summary: Fetch the Ad Account by ID
+      tags:
+      - Ad Account and core Campaign Entities
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: adAccountId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: LinkedIn OAuth 2.0 access token.
+  parameters:
+    LinkedInVersion:
+      name: LinkedIn-Version
+      in: header
+      required: true
+      description: API version in YYYYMM format (e.g. `202509`).
+      schema:
+        type: string
+        pattern: ^[0-9]{6}$
+    RestliProtocolVersion:
+      name: X-Restli-Protocol-Version
+      in: header
+      required: false
+      schema:
+        type: string
+        enum:
+        - 2.0.0
+        default: 2.0.0
+  responses:
+    Error:
+      description: Error response
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Error:
+      type: object
+      properties:
+        status:
+          type: integer
+        code:
+          type: string
+        serviceErrorCode:
+          type: integer
+        message:
+          type: string

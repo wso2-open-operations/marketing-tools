@@ -1,0 +1,2190 @@
+openapi: 3.0.3
+info:
+  title: Content APIs
+  version: 1.0.0
+  description: 'Please note that these are versioned set of APIs and they are different than the earlier one.
+
+
+    These must be used with the **content-api-env-versioning** environment.
+
+
+    Content APIs are the APIs that are published with the versioned release. These APIs bring capabilities to partners/developers
+    to create rich content via LinkedIn Ads with minimal operational and technical overhead.
+
+
+    **You must apply for access to the Marketing Developer Platform in order to use these APIs. See the** [**Developer
+    Portal**](https://developer.linkedin.com/product-catalog/marketing/campaign-management) **on how to apply.**
+
+
+    _Generated from the Postman collection "Content APIs". All calls use Rest.li 2.0 conventions: send `X-Restli-Protocol-Version:
+    2.0.0` and a `LinkedIn-Version` header (YYYYMM). Query parameters such as `List(...)`, `(a:b,c:d)` and URNs
+    are Rest.li-encoded strings; do not re-encode the structural characters `( ) , :`. Several finders/actions share
+    one path in LinkedIn''s API, so they are modelled as one operation with a `q`/`action` selector. Schemas are
+    inferred from the example payloads saved in the collection: every field is optional and field semantics are
+    not documented here._'
+servers:
+- url: https://api.linkedin.com/rest
+  description: LinkedIn REST API (`{{baseUrl}}` in the Postman environment)
+security:
+- linkedinOAuth2:
+  - r_organization_social
+  - rw_organization_admin
+  - w_organization_social
+  - rw_ads
+  - r_ads
+tags:
+- name: Use Cases
+paths:
+  /inMailContents:
+    post:
+      operationId: postInMailContents
+      summary: Create / update / action on inMailContents
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Create InMail Content**: API to create an inMail Content.
+
+        - **Send Test InMail** (`action=sendTestInMail`): API to send/share an inMail Content.'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: action
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - sendTestInMail
+        description: Rest.li action name.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostInMailContentsRequest'
+            examples:
+              createInMailContent:
+                summary: Create InMail Content
+                value:
+                  account: '{{sponsoredaccount_id}}'
+                  name: This is Inmail Ad for 2B Testing 09-22-2026
+                  subject: Inmail Ad for 2B Testing
+                  sender: '{{person_id}}'
+                  customFooter: terms and conditions
+                  htmlBody: sample body
+                  subContent:
+                    regular:
+                      callToActionText: sample string
+                      callToActionLandingPageUrl: http://www.linkedin.com
+                      rightRailAdPicture: '{{image_id}}'
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  status:
+                    type: integer
+              examples:
+                createInMailContent:
+                  summary: Create InMail Content
+                  value:
+                    message: Validation failed because [{reason=SINMAIL_SENDER_NOT_APPROVED, field=sender, type=INVALID_VALUE,
+                      message=Sponsored InMail sender is not approved for Account, parameters={urn=member, account=urn:li:sp
+                    status: 400
+        default:
+          $ref: '#/components/responses/Error'
+    get:
+      operationId: batchGetInMailContent
+      summary: Batch Get InMail Content
+      tags:
+      - Use Cases
+      description: API to retrieve an inMail Content in Batches.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: X-RestLi-Method
+        in: header
+        required: false
+        description: Rest.li method override used for batch / partial-update style calls.
+        schema:
+          type: string
+          enum:
+          - BATCH_CREATE
+      - name: ids
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Batch ids in Rest.li 2.0 list syntax, e.g. `List(id1,id2)`.
+        example: '{encoded adInMailContentId}'
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /inMailContents/{inMailContentId}:
+    get:
+      operationId: getInMailContent
+      summary: Get InMail Content
+      tags:
+      - Use Cases
+      description: API to retrieve an inMail Content.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: inMailContentId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: updateInMailContent
+      summary: Update InMail Content
+      tags:
+      - Use Cases
+      description: API to update an inMail Content.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: inMailContentId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateInMailContentRequest'
+            examples:
+              updateInMailContent:
+                summary: Update InMail Content
+                value:
+                  patch:
+                    $set:
+                      name: test strings new
+      responses:
+        '204':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /dms-uploads/{uploadPath}:
+    put:
+      operationId: putDmsUploads
+      summary: Upsert dms-uploads
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Upload an Image**: This is a generic Upload URL call without init.
+
+        - **Upload a Video**: This is a generic API to upload the data.
+
+        - **Upload the Document file (select a document file in the Body for postman to use)**'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: uploadPath
+        in: path
+        required: true
+        description: Remainder of the upload URL returned by the corresponding initializeUpload call (use that URL
+          verbatim).
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: OK
+          headers:
+            etag:
+              schema:
+                type: string
+              description: Entity tag.
+        '201':
+          description: Created
+        default:
+          $ref: '#/components/responses/Error'
+      servers:
+      - url: https://www.linkedin.com
+  /images:
+    post:
+      operationId: initializeImageUpload
+      summary: Initialize Image Upload
+      tags:
+      - Use Cases
+      description: Use the `initializeUpload` action to register the upload. When you initialize, you declare the
+        upcoming upload. Use the upload URL to upload the image.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: action
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - initializeUpload
+        description: Rest.li action name.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InitializeImageUploadRequest'
+            examples:
+              initializeImageUpload:
+                summary: Initialize Image Upload
+                value:
+                  initializeUploadRequest:
+                    owner: urn:li:organization:{{organization_id}}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InitializeImageUploadResponse'
+              examples:
+                initializeImageUpload:
+                  summary: Initialize Image Upload
+                  value:
+                    value:
+                      uploadUrlExpiresAt: 1790211678812
+                      uploadUrl: https://www.linkedin.com/dms-uploads/sp/v2/D4D10AQFkoCM3CIiVkw/uploaded-image/B4DaDLyAZPGkAA-/0?REDACTED_SIGNED_QUERY
+                      image: urn:li:image:D4D10AQFkoCM3CIiVkw
+        default:
+          $ref: '#/components/responses/Error'
+    get:
+      operationId: getImages
+      summary: Query images
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Get Multiple Images**: This API rerieve multiple images.
+
+        - **Get Multiple Videos**: This API retrieves multiple videos.
+
+        - **Get multiple documents**'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: ids
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Batch ids in Rest.li 2.0 list syntax, e.g. `List(id1,id2)`.
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /images/{imageUrn}:
+    get:
+      operationId: getASingleImage
+      summary: Get a single Image
+      tags:
+      - Use Cases
+      description: This API rerieve a single image.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: imageUrn
+        in: path
+        required: true
+        description: URN of the resource (URL-encoded).
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetASingleImageResponse'
+              examples:
+                getASingleImage:
+                  summary: Get a single Image
+                  value:
+                    downloadUrl: https://media.licdn.com/dms/image/v2/D4D10AQFkoCM3CIiVkw/image-shrink_480/B4DaDL16IcHMAQ-/0/1790126301956?e=1790733600&v=beta&t=eO13xMmNAUZto1K3EZDmD5mqCDcRtk1RANIwHJ887gg
+                    owner: urn:li:organization:2414183
+                    id: urn:li:image:D4D10AQFkoCM3CIiVkw
+                    downloadUrlExpiresAt: 1790733600000
+                    status: AVAILABLE
+        default:
+          $ref: '#/components/responses/Error'
+  /posts:
+    post:
+      operationId: postPosts
+      summary: Create / update / action on posts
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Create Image Content**: This API creates an image content.
+
+        - **Image Ad Account**
+
+        - **Video Ad Post**
+
+        - **Create Organic Post**: Simplest form of post creation where an organic post is made ith a sample text
+        at a page.
+
+        - **Create document content**'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostPostsRequest'
+            examples:
+              createImageContent:
+                summary: Create Image Content
+                value:
+                  author: urn:li:organization:{{org_id}}
+                  commentary: This is Image Ad for 2B Testing 09-22-2026
+                  visibility: PUBLIC
+                  distribution:
+                    feedDistribution: MAIN_FEED
+                    targetEntities: []
+                    thirdPartyDistributionChannels: []
+                  content:
+                    media:
+                      id: '{{image_id}}'
+                  lifecycleState: PUBLISHED
+                  isReshareDisabledByAuthor: false
+              imageAdAccount:
+                summary: Image Ad Account
+                value:
+                  adContext:
+                    dscAdAccount: urn:li:sponsoredAccount:508915158
+                    dscStatus: ACTIVE
+                  author: urn:li:organization:2414183
+                  commentary: Sample Image Post
+                  visibility: PUBLIC
+                  distribution:
+                    feedDistribution: NONE
+                  content:
+                    media:
+                      title: title of the image
+                      id: urn:li:image:D4D10AQFkoCM3CIiVkw
+                  lifecycleState: PUBLISHED
+                  isReshareDisabledByAuthor: true
+              videoAdPost:
+                summary: Video Ad Post
+                value:
+                  adContext:
+                    dscAdAccount: '{{sponsoredaccount_id}}'
+                    dscStatus: ACTIVE
+                  author: urn:li:organization:{{org_id}}
+                  commentary: Sample Video Post
+                  visibility: PUBLIC
+                  distribution:
+                    feedDistribution: NONE
+                  content:
+                    media:
+                      title: title of the video
+                      id: urn:li:video:D4D10AQEramjQvYp0Hg
+                  lifecycleState: PUBLISHED
+                  isReshareDisabledByAuthor: true
+              createOrganicPost:
+                summary: Create Organic Post
+                value:
+                  author: '{{organization_urn}}'
+                  commentary: Sample Video Post
+                  visibility: PUBLIC
+                  distribution:
+                    feedDistribution: NONE
+                    targetEntities:
+                    - geoLocations:
+                      - '{{urn_geo}}'
+                      seniorities:
+                      - urn:li:seniority:3
+                    thirdPartyDistributionChannels: []
+                  content:
+                    media:
+                      title: title of the video
+                      id: '{[urn_video}}'
+                  lifecycleState: PUBLISHED
+                  isReshareDisabledByAuthor: true
+              createDocumentContent:
+                summary: Create document content
+                value:
+                  author: urn:li:organization:{{organization_id}}
+                  commentary: test strings!
+                  visibility: PUBLIC
+                  distribution:
+                    feedDistribution: MAIN_FEED
+                    targetEntities: []
+                    thirdPartyDistributionChannels: []
+                  content:
+                    media:
+                      title: Example.pdf
+                      id: urn:li:document:{{document_asset_id}}
+                  lifecycleState: PUBLISHED
+                  isReshareDisabledByAuthor: false
+      responses:
+        '201':
+          description: Created
+          headers:
+            location:
+              schema:
+                type: string
+              description: URL of the created resource.
+            x-restli-id:
+              schema:
+                type: string
+              description: Id (or URN) of the created resource.
+        default:
+          $ref: '#/components/responses/Error'
+    get:
+      operationId: getPosts2
+      summary: Query posts
+      tags:
+      - Use Cases
+      description: "This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`\
+        \ / body shape). Variants seen in the source collection:\n- **Fetch multiple Image Content**: This API rerieve\
+        \ content from multiple images.\n- **Get Multiple Post by URN**: Multiple posts can be retrieved and viewed\
+        \ in a single API call by passing in multiple UGC Posts or share URNs into the `ids` parameter. The UGC\
+        \ Post URNs should be passed in `List` format and should be encoded as shown in the examples below. Note\
+        \ that the `,` in the `List` separating each URN does \n- **Find post by Account** (`q=dscAdAccount`): You\
+        \ can retrieve all posts with the specific Sponsored Account and the content types with the following parameters:\n\
+        - **Fetch multiple document content**"
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: X-RestLi-Method
+        in: header
+        required: false
+        description: Rest.li method override used for batch / partial-update style calls.
+        schema:
+          type: string
+          enum:
+          - BATCH_CREATE
+      - name: ids
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Batch ids in Rest.li 2.0 list syntax, e.g. `List(id1,id2)`.
+        example: List({encoded postId},{encoded postId})
+        allowReserved: true
+      - name: dscAdAccount
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - dscAdAccount
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: dscAdTypes
+        in: query
+        required: false
+        schema:
+          type: string
+        example: List(STANDARD,VIDEO)
+        allowReserved: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetPosts2Response'
+              examples:
+                findPostByAccount:
+                  summary: Find post by Account
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links:
+                      - type: application/json
+                        rel: next
+                        href: /rest/posts?q=dscAdAccount&dscAdTypes=List(STANDARD,VIDEO)&start=10&count=10&dscAdAccount=urn%3Ali%3AsponsoredAccount%3A508915158
+                      total: 0
+                    elements:
+                    - lifecycleState: PUBLISHED
+                      lastModifiedAt: 1790192653029
+                      visibility: PUBLIC
+                      publishedAt: 1790192623027
+                      author: urn:li:organization:2414183
+                      distribution:
+                        feedDistribution: NONE
+                        thirdPartyDistributionChannels: []
+                      content:
+                        media:
+                          title: Title of the video
+                          id: urn:li:video:D4D10AQEramjQvYp0Hg
+                      lifecycleStateInfo:
+                        isEditedByAuthor: false
+                      isReshareDisabledByAuthor: false
+                      createdAt: 1790192623027
+                      id: urn:li:ugcPost:7508612078690021376
+                      commentary: commentary about the post
+                      adContext:
+                        dscStatus: ACTIVE
+                        dscAdType: VIDEO
+                        isDsc: true
+                        dscAdAccount: urn:li:sponsoredAccount:508915158
+                    - lifecycleState: PUBLISHED
+                      lastModifiedAt: 1790188714629
+                      visibility: PUBLIC
+                      publishedAt: 1790188688915
+                      author: urn:li:organization:2414183
+                      distribution:
+                        feedDistribution: NONE
+                        thirdPartyDistributionChannels: []
+                      content:
+                        media:
+                          title: title of the video
+                          id: urn:li:video:D4D10AQEramjQvYp0Hg
+                      lifecycleStateInfo:
+                        isEditedByAuthor: false
+                      isReshareDisabledByAuthor: true
+                      createdAt: 1790188688915
+                      id: urn:li:ugcPost:7508595577971105792
+                      commentary: Sample Video Post
+                      adContext:
+                        dscStatus: ACTIVE
+                        dscAdType: VIDEO
+                        isDsc: true
+                        dscAdAccount: urn:li:sponsoredAccount:508915158
+        default:
+          $ref: '#/components/responses/Error'
+  /posts/{postId}:
+    get:
+      operationId: getPosts
+      summary: Query posts
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Get Image Content**: This API rerieve the content associated with a single image.
+
+        - **Get Posts by URN**: Creating posts with image requires uploading an image asset to obtain a Image URN
+        (urn:li:image:{id}) for creating the post. See the [Images API](https://docs.microsoft.com/en-us/linkedin/marketing/integrations/community-management/shares/images-api?view=li-lms-2022-08) for
+        instructions on how to do'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: postId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetPostsResponse'
+              examples:
+                getImageContent:
+                  summary: Get Image Content
+                  value:
+                    isReshareDisabledByAuthor: false
+                    createdAt: 1790126842720
+                    lifecycleState: PUBLISHED
+                    lastModifiedAt: 1790126866524
+                    visibility: PUBLIC
+                    publishedAt: 1790126842720
+                    author: urn:li:organization:2414183
+                    id: urn:li:share:7508336175921934336
+                    distribution:
+                      feedDistribution: MAIN_FEED
+                      thirdPartyDistributionChannels: []
+                    content:
+                      media:
+                        id: urn:li:image:D4D10AQFkoCM3CIiVkw
+                    commentary: This is Image Ad for 2B Testing 09-22-2026
+                    lifecycleStateInfo:
+                      isEditedByAuthor: false
+                getPostsByURN:
+                  summary: Get Posts by URN
+                  value:
+                    lifecycleState: PUBLISHED
+                    lastModifiedAt: 1790188714629
+                    visibility: PUBLIC
+                    publishedAt: 1790188688915
+                    author: urn:li:organization:2414183
+                    distribution:
+                      feedDistribution: NONE
+                      thirdPartyDistributionChannels: []
+                    content:
+                      media:
+                        title: title of the video
+                        id: urn:li:video:D4D10AQEramjQvYp0Hg
+                    lifecycleStateInfo:
+                      isEditedByAuthor: false
+                    isReshareDisabledByAuthor: true
+                    createdAt: 1790188688915
+                    id: urn:li:ugcPost:7508595577971105792
+                    commentary: Sample Video Post
+                    adContext:
+                      dscStatus: ACTIVE
+                      dscAdType: VIDEO
+                      isDsc: true
+                      dscAdAccount: urn:li:sponsoredAccount:508915158
+        default:
+          $ref: '#/components/responses/Error'
+    delete:
+      operationId: deleteAPost
+      summary: Delete a Post
+      tags:
+      - Use Cases
+      description: 'Post deletions are idempotent. Deletion requests for a previously deleted UGC Post will return
+        a `204` code - No Content.
+
+
+        ####'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: postId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /videos:
+    post:
+      operationId: postVideos
+      summary: Create / update / action on videos
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Initialize Video Upload** (`action=initializeUpload`): Use the `initializeUpload` action to register
+        the upload. When you initialize, you declare the upcoming upload. Use the upload URL from the `uploadInstructions` to
+        upload the video.
+
+        - **Finalize Video** (`action=finalizeUpload`)'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: action
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - initializeUpload
+          - finalizeUpload
+        description: Rest.li action name.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostVideosRequest'
+            examples:
+              initializeVideoUpload:
+                summary: Initialize Video Upload
+                value:
+                  initializeUploadRequest:
+                    owner: urn:li:organization:{{organization_id}}
+                    fileSizeBytes: 1055736
+                    uploadCaptions: false
+                    uploadThumbnail: false
+              finalizeVideo:
+                summary: Finalize Video
+                value:
+                  finalizeUploadRequest:
+                    video: urn:li:video:D4D10AQEramjQvYp0Hg
+                    uploadToken: ''
+                    uploadedPartIds:
+                    - /ambry-video/signedId/REDACTED_TOKEN
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostVideosResponse'
+              examples:
+                initializeVideoUpload:
+                  summary: Initialize Video Upload
+                  value:
+                    value:
+                      uploadUrlsExpireAt: 1790214636386
+                      video: urn:li:video:D4D10AQEramjQvYp0Hg
+                      uploadInstructions:
+                      - uploadUrl: https://www.linkedin.com/dms-uploads/mp/v2/D4D10AQEramjQvYp0Hg/uploadedVideo/B4DaDL9SdTHMAA-?REDACTED_SIGNED_QUERY
+                        lastByte: 1055735
+                        firstByte: 0
+                      uploadToken: ''
+        default:
+          $ref: '#/components/responses/Error'
+  /videos/{videoId}:
+    get:
+      operationId: getASingleVideo
+      summary: Get a single video
+      tags:
+      - Use Cases
+      description: This API retrieves a single video.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: videoId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  owner:
+                    type: string
+                  status:
+                    type: string
+                  id:
+                    type: string
+              examples:
+                getASingleVideo:
+                  summary: Get a single video
+                  value:
+                    owner: urn:li:organization:2414183
+                    status: WAITING_UPLOAD
+                    id: urn:li:video:D4D10AQEramjQvYp0Hg
+        default:
+          $ref: '#/components/responses/Error'
+  /adAccounts/{adAccountId}/creatives:
+    post:
+      operationId: postAdAccountsCreatives
+      summary: Create / update / action on creatives
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Create an Organic Creative**: You can sponsor an existing organic post that has been serving your company
+        page followers and gone viral.
+
+        - **Create an Sponsored Creative** (`action=createInline`): This API creates a sponsored content by adding
+        the action as createInline.'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: adAccountId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      - name: action
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - createInline
+        description: Rest.li action name.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostAdAccountsCreativesRequest'
+            examples:
+              createAnOrganicCreative:
+                summary: Create an Organic Creative
+                value:
+                  content:
+                    reference: urn:li:share:7508591389547507714
+                  campaign: urn:li:sponsoredCampaign:195528414
+                  intendedStatus: ACTIVE
+              createAnSponsoredCreative:
+                summary: Create an Sponsored Creative
+                value:
+                  creative:
+                    inlineContent:
+                      post:
+                        adContext:
+                          dscAdAccount: urn:li:sponsoredAccount:{{adaccount_id}}
+                          dscStatus: ACTIVE
+                        author: urn:li:organization:{{org_id}}
+                        commentary: commentary about the post
+                        visibility: PUBLIC
+                        lifecycleState: PUBLISHED
+                        isReshareDisabledByAuthor: false
+                        content:
+                          media:
+                            title: Title of the video
+                            id: urn:li:video:D4D10AQEramjQvYp0Hg
+                    campaign: urn:li:sponsoredCampaign:195528414
+                    intendedStatus: ACTIVE
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostAdAccountsCreativesResponse'
+              examples:
+                createACreative:
+                  summary: Create a Creative
+                  value:
+                    initializeUploadRequest:
+                      owner: '{{URN of your organization}}'
+                      fileSizeBytes: 1055736
+                      uploadCaptions: false
+                      uploadThumbnail: false
+        default:
+          $ref: '#/components/responses/Error'
+    get:
+      operationId: searchForCreative
+      summary: Search for Creative
+      tags:
+      - Use Cases
+      description: You can search for creative content in order to get a collection of creatives matching your search
+        parameters. The Creative API currently supports search by `creative id`, `campaign`, `account`, `content
+        reference`, `intendedStatus`, `leadgenCreativeCallToActionDestinations` and test fields. The API supports
+        finding creatives from multiple accounts. The values within each field are displayed with 'or' (ORed) and
+        values across fields are displayed with 'and' (ANDed).
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: adAccountId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      - name: creatives
+        in: query
+        required: false
+        schema:
+          type: string
+        example: List(urn:li:sponsoredCreative:119962155)
+        allowReserved: true
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - criteria
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: sortOrder
+        in: query
+        required: false
+        schema:
+          type: string
+        example: ASCENDING
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchForCreativeResponse'
+              examples:
+                searchForCreative:
+                  summary: Search for Creative
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                    metadata: {}
+                    elements: []
+        default:
+          $ref: '#/components/responses/Error'
+  /creatives/{creativeUrn}:
+    get:
+      operationId: getCreatives
+      summary: Query creatives
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Get a  Sponsored Creative**
+
+        - **Get a Dynamic Follower Ad**: Retrieves a dynamic follower ad after passing an urn.
+
+        - **Get a Dynamic Spotlight Ad**: Retrives a Dynamic Spotlight Ad.'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: creativeUrn
+        in: path
+        required: true
+        description: URN of the resource (URL-encoded).
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: postCreatives
+      summary: Create / update / action on creatives
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Update a Creative**: You can change the details of following Creatives fields:
+
+        - **Update a Dynamic Follower Ad**: Updates a dynamic follower ad after passing an urn.
+
+        - **Update a Dynamic Spotlight Ad**: ## Update a Dynamic Spotlight Ad Creative'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: creativeUrn
+        in: path
+        required: true
+        description: URN of the resource (URL-encoded).
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostCreativesRequest'
+            examples:
+              updateADynamicFollowerAd:
+                summary: Update a Dynamic Follower Ad
+                value:
+                  patch:
+                    $set:
+                      content:
+                        follow:
+                          organizationName: Test Company Name
+                          logo: '{{urn_image}}'
+                          headline:
+                            preApproved: MEMBER_KEEP_UP_WITH_LATEST_INSIGHTS
+                          description:
+                            custom: custom_description
+                          callToAction: VISIT_ORGANIZATION_COMPANY_PAGE
+                          showMemberProfilePhoto: true
+              updateADynamicSpotlightAd:
+                summary: Update a Dynamic Spotlight Ad
+                value:
+                  patch:
+                    $set:
+                      content:
+                        spotlight:
+                          callToAction: New Action
+                          description: New Description
+                          headline: New Headline
+                          landingPage: http://example.com
+                          organizationName: New Organization Name
+                          logo: urn:li:image:def
+                          showMemberProfilePhoto: false
+      responses:
+        '204':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+    delete:
+      operationId: deleteCreatives
+      summary: Delete creatives
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Delete a Creative**: A Creative can be deleted. Use DELETE method to delete a creative that meets one
+        of the following conditions. To start the process of deleting other creative, update the status to `PENDING_DELETION`.
+
+        - **Delete a Dynamic Follower Ad**: Updates a dynamic follower ad after passing an urn.
+
+        - **Delete a Dynamic Spotlight Ad**: ## Delete a Dynamic Spotlight Ad Creative'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: creativeUrn
+        in: path
+        required: true
+        description: URN of the resource (URL-encoded).
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /posts/{postId}/{postId2}:
+    post:
+      operationId: updateAPost
+      summary: Update a Post
+      tags:
+      - Use Cases
+      description: 'The following `posts` field are available to update. Refer to [Schema](https://docs.microsoft.com/en-us/linkedin/marketing/integrations/community-management/shares/posts-api?view=li-lms-2022-08&tabs=http#post-schema) for
+        complete field details.
+
+
+        | Field | Description |
+
+        | --- | --- |
+
+        | commentary | String |
+
+        | contentCallToActionLabel | contentCallToActionLabel text |
+
+        | contentLandingPage | URL of the landing page |
+
+        | reshareContext |  |
+
+        | lifecycleState |  |
+
+        | adContext | \*   dscName: Update the name of the sponsored content<br>\*   dscStatus: Update the status
+        of the sponsored content |'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: postId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      - name: postId2
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAPostRequest'
+            examples:
+              updateAPost:
+                summary: Update a Post
+                value:
+                  patch:
+                    $set:
+                      commentary: Update to the post
+                      contentCallToActionLabel: LEARN_MORE
+      responses:
+        '204':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /conversationAds:
+    post:
+      operationId: createASponsoredConversation
+      summary: Create a Sponsored Conversation
+      tags:
+      - Use Cases
+      description: Successful response will have Status `201 Created` and the ID in the `x-linkedin-id` response
+        header. For example,`urn:li:sponsoredConversation:164380864`
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                parentAccount:
+                  type: string
+            examples:
+              createASponsoredConversation:
+                summary: Create a Sponsored Conversation
+                value:
+                  parentAccount: urn:li:sponsoredAccount:{{adaccount_id}}
+      responses:
+        '201':
+          description: Created
+          headers:
+            location:
+              schema:
+                type: string
+              description: URL of the created resource.
+            x-restli-id:
+              schema:
+                type: string
+              description: Id (or URN) of the created resource.
+        default:
+          $ref: '#/components/responses/Error'
+    get:
+      operationId: getMultipleSponsoredConversations
+      summary: Get Multiple Sponsored Conversations
+      tags:
+      - Use Cases
+      description: "Makes a BATCH_GET request to let a list of conversations that are created.\n\n#### Sample Response\n\
+        \nJSONCopy\n\n```\n{\n    \"statuses\": {\n        \"urn:li:sponsoredConversation:704255\": 200,\n     \
+        \   \"urn:li:sponsoredConversation:703695\": 200\n    },\n    \"results\": {\n        \"urn:li:sponsoredConversation:704255\"\
+        : \n         {\n            \"id\": \"urn:li:sponsoredConversation:704255\",\n            \"parentAccount\"\
+        : \"urn:li:sponsoredAccount:520866471\"\n            \n        },\n        \"urn:li:sponsoredConversation:703695\"\
+        : \n        {\n            \"id\": \"urn:li:sponsoredConversation:703695\",\n            \"parentAccount\"\
+        : \"urn:li:sponsoredAccount:520866471\",\n        }\n    },\n    \"errors\": {}\n}\n```"
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: X-RestLi-Method
+        in: header
+        required: false
+        description: Rest.li method override used for batch / partial-update style calls.
+        schema:
+          type: string
+          enum:
+          - BATCH_GET
+      - name: ids
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Batch ids in Rest.li 2.0 list syntax, e.g. `List(id1,id2)`.
+        example: List({conversation-urn1},{conversation-urn2})'
+        allowReserved: true
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /conversationAds/{conversationAdUrn}:
+    get:
+      operationId: getASponsoredConversation
+      summary: Get a Sponsored Conversation
+      tags:
+      - Use Cases
+      description: "#### Sample Response\n\nJSONCopy\n\n```\n{\n  \"id\": \"urn:li:sponsoredConversation:185204\"\
+        ,\n  \"parentAccount\": \"urn:li:sponsoredAccount:520866471\"\n}\n\n```"
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: conversationAdUrn
+        in: path
+        required: true
+        description: URN of the resource (URL-encoded).
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  parentAccount:
+                    type: string
+                  id:
+                    type: string
+              examples:
+                getASponsoredConversation:
+                  summary: Get a Sponsored Conversation
+                  value:
+                    parentAccount: urn:li:sponsoredAccount:508915158
+                    id: urn:li:sponsoredConversation:11064738
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: updateASponsoredConversation
+      summary: Update a Sponsored Conversation
+      tags:
+      - Use Cases
+      description: In the following example, the `firstMessageContent` field is changed to point to the first message
+        of the conversation.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: conversationAdUrn
+        in: path
+        required: true
+        description: URN of the resource (URL-encoded).
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '204':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /conversationAds/{conversationAdUrn}/sponsoredMessageContents:
+    post:
+      operationId: postConversationAdsSponsoredMessageContents
+      summary: Create / update / action on sponsoredMessageContents
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Create Sponsored Message Content**: A successful response returns a `201 Created` HTTP status code and
+        the ID in the `x-linkedin-id response` header, e.g. `"urn:li:sponsoredMessageContent:(urn:li:sponsoredConversation:186604,14277)"`.
+
+        - **Batch create Sponsored Message Content**: Creates Sponsored Message Content in Batches.
+
+        - **Batch update Sponsored Message Content**: Updates Sponsored Message Content in Batches.'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: conversationAdUrn
+        in: path
+        required: true
+        description: URN of the resource (URL-encoded).
+        schema:
+          type: string
+      - name: X-RestLi-Method
+        in: header
+        required: false
+        description: Rest.li method override used for batch / partial-update style calls.
+        schema:
+          type: string
+          enum:
+          - BATCH_CREATE
+          - BATCH_UPDATE
+      - name: ids
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Batch ids in Rest.li 2.0 list syntax, e.g. `List(id1,id2)`.
+        example: List({message-urn1},{message-urn2})
+        allowReserved: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostConversationAdsSponsoredMessageContentsRequest'
+            examples:
+              createSponsoredMessageContent:
+                summary: Create Sponsored Message Content
+                value:
+                  bodySource:
+                    text: test message project 2B- 09 23 2026
+              batchCreateSponsoredMessageContent:
+                summary: Batch create Sponsored Message Content
+                value:
+                  elements:
+                  - bodySource:
+                      leadGenerationForm: urn:li:adForm:434835
+                    nextAction:
+                      options:
+                      - replyType: LEAD_GENERATION_THANK_YOU
+                        optionText: Visit website
+                      - replyType: SIMPLE_REPLY
+                        nextContent: urn:li:sponsoredMessageContent:(urn:li:sponsoredConversation:186604,14253)
+                        optionText: Simple reply
+                      - replyType: EXTERNAL_WEBSITE
+                        optionText: Visit website
+                        landingPage: http://www.linkedin.com
+                  - bodySource:
+                      text: Sample text
+                    nextAction:
+                      options:
+                      - replyType: EXTERNAL_WEBSITE
+                        optionText: Other website
+                        landingPage: http://www.microsoft.com
+      responses:
+        '201':
+          description: Success (inferred — the source collection has no saved example for this call)
+          headers:
+            x-restli-id:
+              schema:
+                type: string
+              description: Id (or URN) of the created resource.
+        default:
+          $ref: '#/components/responses/Error'
+    get:
+      operationId: getConversationAdsSponsoredMessageContents
+      summary: Query sponsoredMessageContents
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Get All Sponsored Message Content**: Retrieves just all the message contents from all the conversations
+        in a conversation Ad.
+
+        - **Batch get Sponsored Message Content**: Retrieves Sponsored Message Content in Batches.'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: conversationAdUrn
+        in: path
+        required: true
+        description: URN of the resource (URL-encoded).
+        schema:
+          type: string
+      - name: X-RestLi-Method
+        in: header
+        required: false
+        description: Rest.li method override used for batch / partial-update style calls.
+        schema:
+          type: string
+          enum:
+          - BATCH_GET
+      - name: ids
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Batch ids in Rest.li 2.0 list syntax, e.g. `List(id1,id2)`.
+        example: List({message-urn1},{message-urn2})
+        allowReserved: true
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+    delete:
+      operationId: batchDeleteSponsoredMessageContent
+      summary: Batch delete Sponsored Message Content
+      tags:
+      - Use Cases
+      description: Deletes Sponsored Message Content in Batches.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: conversationAdUrn
+        in: path
+        required: true
+        description: URN of the resource (URL-encoded).
+        schema:
+          type: string
+      - name: X-RestLi-Method
+        in: header
+        required: false
+        description: Rest.li method override used for batch / partial-update style calls.
+        schema:
+          type: string
+          enum:
+          - BATCH_DELETE
+      - name: ids
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Batch ids in Rest.li 2.0 list syntax, e.g. `List(id1,id2)`.
+        example: List({message-urn1},{message-urn2})'
+        allowReserved: true
+      responses:
+        '204':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /conversationAds/{conversationAdUrn}/sponsoredMessageContents/{sponsoredMessageContentUrn}:
+    get:
+      operationId: getSponsoredMessageContent
+      summary: Get Sponsored Message Content
+      tags:
+      - Use Cases
+      description: Retrieves just a single message content from all the conversations in a conversation Ad.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: conversationAdUrn
+        in: path
+        required: true
+        description: URN of the resource (URL-encoded).
+        schema:
+          type: string
+      - name: sponsoredMessageContentUrn
+        in: path
+        required: true
+        description: URN of the resource (URL-encoded).
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: updateSponsoredMessageContent
+      summary: Update Sponsored Message Content
+      tags:
+      - Use Cases
+      description: Updates the message contents from all the conversations in a conversation Ad.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: conversationAdUrn
+        in: path
+        required: true
+        description: URN of the resource (URL-encoded).
+        schema:
+          type: string
+      - name: sponsoredMessageContentUrn
+        in: path
+        required: true
+        description: URN of the resource (URL-encoded).
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '204':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /creatives:
+    post:
+      operationId: postCreatives2
+      summary: Create / update / action on creatives
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Create a Dynamic Follower Ad**: A successful response returns a `201 Created HTTP` status code and the
+        ID in the `x-linkedin-id` response header. For example, `urn:li:sponsoredCreative:164380864`
+
+        - **Create a Dynamic Spotlight Ad**: Creates a Dynamic Spotlight Ad Creative.'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostCreatives2Request'
+            examples:
+              createADynamicFollowerAd:
+                summary: Create a Dynamic Follower Ad
+                value:
+                  content:
+                    follow:
+                      organizationName: Test Company Name
+                      logo: '{{image_id}}'
+                      headline:
+                        preApproved: GROW_YOUR_BUSINESS_INSIGHTS
+                      description:
+                        preApproved: GET_LATEST_JOBS_AND_INDUSTRY_NEWS
+                      callToAction: VISIT_ORGANIZATION_COMPANY_PAGE
+                      showMemberProfilePhoto: true
+                  campaign: urn:li:sponsoredCampaign:{{campaign_id}}
+                  intendedStatus: DRAFT
+              createADynamicSpotlightAd:
+                summary: Create a Dynamic Spotlight Ad
+                value:
+                  content:
+                    spotlight:
+                      callToAction: Join Us Now
+                      description: Check out this demo
+                      headline: Spotlight Ad Demo
+                      landingPage: http://www.linkedin.com
+                      logo: urn:li:image:abc
+                      organizationName: LinkedIn Demo
+                      showMemberProfilePhoto: true
+                  campaign: urn:li:sponsoredCampaign:123
+                  intendedStatus: ACTIVE
+      responses:
+        '201':
+          description: Success (inferred — the source collection has no saved example for this call)
+          headers:
+            x-restli-id:
+              schema:
+                type: string
+              description: Id (or URN) of the created resource.
+        default:
+          $ref: '#/components/responses/Error'
+  /documents:
+    post:
+      operationId: initializeDocumentUpload
+      summary: Initialize Document Upload
+      tags:
+      - Use Cases
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: action
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - initializeUpload
+        description: Rest.li action name.
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /documents/{documentId}:
+    get:
+      operationId: getASingleDocument
+      summary: Get a single document
+      tags:
+      - Use Cases
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: documentId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+components:
+  securitySchemes:
+    linkedinOAuth2:
+      type: oauth2
+      description: LinkedIn 3-legged OAuth 2.0 (authorization code).
+      flows:
+        authorizationCode:
+          authorizationUrl: https://www.linkedin.com/oauth/v2/authorization
+          tokenUrl: https://www.linkedin.com/oauth/v2/accessToken
+          scopes:
+            r_organization_social: LinkedIn permission `r_organization_social`
+            rw_organization_admin: LinkedIn permission `rw_organization_admin`
+            w_organization_social: LinkedIn permission `w_organization_social`
+            rw_ads: LinkedIn permission `rw_ads`
+            r_ads: LinkedIn permission `r_ads`
+  parameters:
+    LinkedInVersion:
+      name: LinkedIn-Version
+      in: header
+      required: true
+      description: API version in YYYYMM format (e.g. `202509`).
+      schema:
+        type: string
+        pattern: ^[0-9]{6}$
+    RestliProtocolVersion:
+      name: X-Restli-Protocol-Version
+      in: header
+      required: false
+      schema:
+        type: string
+        enum:
+        - 2.0.0
+        default: 2.0.0
+  responses:
+    Error:
+      description: Error response
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Error:
+      type: object
+      properties:
+        status:
+          type: integer
+        code:
+          type: string
+        serviceErrorCode:
+          type: integer
+        message:
+          type: string
+    Spotlight:
+      type: object
+      properties:
+        callToAction:
+          type: string
+        description:
+          type: string
+        headline:
+          type: string
+        landingPage:
+          type: string
+        organizationName:
+          type: string
+        logo:
+          type: string
+        showMemberProfilePhoto:
+          type: boolean
+    PostInMailContentsRequest:
+      type: object
+      properties:
+        account:
+          type: string
+        name:
+          type: string
+        subject:
+          type: string
+        sender:
+          type: string
+        customFooter:
+          type: string
+        htmlBody:
+          type: string
+        subContent:
+          type: object
+          properties:
+            regular:
+              type: object
+              properties:
+                callToActionText:
+                  type: string
+                callToActionLandingPageUrl:
+                  type: string
+                rightRailAdPicture:
+                  type: string
+    UpdateInMailContentRequest:
+      type: object
+      properties:
+        patch:
+          type: object
+          properties:
+            $set:
+              type: object
+              properties:
+                name:
+                  type: string
+    InitializeImageUploadRequest:
+      type: object
+      properties:
+        initializeUploadRequest:
+          type: object
+          properties:
+            owner:
+              type: string
+    InitializeImageUploadResponse:
+      type: object
+      properties:
+        value:
+          type: object
+          properties:
+            uploadUrlExpiresAt:
+              type: integer
+              format: int64
+            uploadUrl:
+              type: string
+            image:
+              type: string
+    GetASingleImageResponse:
+      type: object
+      properties:
+        downloadUrl:
+          type: string
+        owner:
+          type: string
+        id:
+          type: string
+        downloadUrlExpiresAt:
+          type: integer
+          format: int64
+        status:
+          type: string
+    PostPostsRequest:
+      type: object
+      properties:
+        author:
+          type: string
+        commentary:
+          type: string
+        visibility:
+          type: string
+        distribution:
+          type: object
+          properties:
+            feedDistribution:
+              type: string
+            targetEntities:
+              type: array
+              items:
+                type: object
+                properties:
+                  geoLocations:
+                    type: array
+                    items:
+                      type: string
+                  seniorities:
+                    type: array
+                    items:
+                      type: string
+            thirdPartyDistributionChannels:
+              type: array
+              items: {}
+        content:
+          type: object
+          properties:
+            media:
+              type: object
+              properties:
+                id:
+                  type: string
+                title:
+                  type: string
+        lifecycleState:
+          type: string
+        isReshareDisabledByAuthor:
+          type: boolean
+        adContext:
+          type: object
+          properties:
+            dscAdAccount:
+              type: string
+            dscStatus:
+              type: string
+    GetPosts2Response:
+      type: object
+      properties:
+        paging:
+          type: object
+          properties:
+            start:
+              type: integer
+            count:
+              type: integer
+            links:
+              type: array
+              items:
+                type: object
+                properties:
+                  type:
+                    type: string
+                  rel:
+                    type: string
+                  href:
+                    type: string
+            total:
+              type: integer
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              lifecycleState:
+                type: string
+              lastModifiedAt:
+                type: integer
+                format: int64
+              visibility:
+                type: string
+              publishedAt:
+                type: integer
+                format: int64
+              author:
+                type: string
+              distribution:
+                type: object
+                properties:
+                  feedDistribution:
+                    type: string
+                  thirdPartyDistributionChannels:
+                    type: array
+                    items: {}
+              content:
+                type: object
+                properties:
+                  media:
+                    type: object
+                    properties:
+                      title:
+                        type: string
+                      id:
+                        type: string
+                  article:
+                    type: object
+                    properties:
+                      title:
+                        type: string
+                      thumbnail:
+                        type: string
+                      source:
+                        type: string
+                      description:
+                        type: string
+              lifecycleStateInfo:
+                type: object
+                properties:
+                  isEditedByAuthor:
+                    type: boolean
+              isReshareDisabledByAuthor:
+                type: boolean
+              createdAt:
+                type: integer
+                format: int64
+              id:
+                type: string
+              commentary:
+                type: string
+              adContext:
+                type: object
+                properties:
+                  dscStatus:
+                    type: string
+                  dscAdType:
+                    type: string
+                  isDsc:
+                    type: boolean
+                  dscAdAccount:
+                    type: string
+                  dscName:
+                    type: string
+              contentCallToActionLabel:
+                type: string
+              contentLandingPage:
+                type: string
+    GetPostsResponse:
+      type: object
+      properties:
+        isReshareDisabledByAuthor:
+          type: boolean
+        createdAt:
+          type: integer
+          format: int64
+        lifecycleState:
+          type: string
+        lastModifiedAt:
+          type: integer
+          format: int64
+        visibility:
+          type: string
+        publishedAt:
+          type: integer
+          format: int64
+        author:
+          type: string
+        id:
+          type: string
+        distribution:
+          type: object
+          properties:
+            feedDistribution:
+              type: string
+            thirdPartyDistributionChannels:
+              type: array
+              items: {}
+        content:
+          type: object
+          properties:
+            media:
+              type: object
+              properties:
+                id:
+                  type: string
+                title:
+                  type: string
+        commentary:
+          type: string
+        lifecycleStateInfo:
+          type: object
+          properties:
+            isEditedByAuthor:
+              type: boolean
+        adContext:
+          type: object
+          properties:
+            dscStatus:
+              type: string
+            dscAdType:
+              type: string
+            isDsc:
+              type: boolean
+            dscAdAccount:
+              type: string
+    PostVideosRequest:
+      type: object
+      properties:
+        initializeUploadRequest:
+          type: object
+          properties:
+            owner:
+              type: string
+            fileSizeBytes:
+              type: integer
+            uploadCaptions:
+              type: boolean
+            uploadThumbnail:
+              type: boolean
+        finalizeUploadRequest:
+          type: object
+          properties:
+            video:
+              type: string
+            uploadToken:
+              type: string
+            uploadedPartIds:
+              type: array
+              items:
+                type: string
+    PostVideosResponse:
+      type: object
+      properties:
+        value:
+          type: object
+          properties:
+            uploadUrlsExpireAt:
+              type: integer
+              format: int64
+            video:
+              type: string
+            uploadInstructions:
+              type: array
+              items:
+                type: object
+                properties:
+                  uploadUrl:
+                    type: string
+                  lastByte:
+                    type: integer
+                  firstByte:
+                    type: integer
+            uploadToken:
+              type: string
+    PostAdAccountsCreativesRequest:
+      type: object
+      properties:
+        content:
+          type: object
+          properties:
+            reference:
+              type: string
+        campaign:
+          type: string
+        intendedStatus:
+          type: string
+        creative:
+          type: object
+          properties:
+            inlineContent:
+              type: object
+              properties:
+                post:
+                  type: object
+                  properties:
+                    adContext:
+                      type: object
+                      properties:
+                        dscAdAccount:
+                          type: string
+                        dscStatus:
+                          type: string
+                    author:
+                      type: string
+                    commentary:
+                      type: string
+                    visibility:
+                      type: string
+                    lifecycleState:
+                      type: string
+                    isReshareDisabledByAuthor:
+                      type: boolean
+                    content:
+                      type: object
+                      properties:
+                        media:
+                          type: object
+                          properties:
+                            title:
+                              type: string
+                            id:
+                              type: string
+            campaign:
+              type: string
+            intendedStatus:
+              type: string
+    PostAdAccountsCreativesResponse:
+      type: object
+      properties:
+        initializeUploadRequest:
+          type: object
+          properties:
+            owner:
+              type: string
+            fileSizeBytes:
+              type: integer
+            uploadCaptions:
+              type: boolean
+            uploadThumbnail:
+              type: boolean
+    SearchForCreativeResponse:
+      type: object
+      properties:
+        paging:
+          type: object
+          properties:
+            start:
+              type: integer
+            count:
+              type: integer
+            links:
+              type: array
+              items: {}
+        metadata:
+          type: object
+          properties: {}
+        elements:
+          type: array
+          items: {}
+    PostCreativesRequest:
+      type: object
+      properties:
+        patch:
+          type: object
+          properties:
+            $set:
+              type: object
+              properties:
+                content:
+                  type: object
+                  properties:
+                    follow:
+                      type: object
+                      properties:
+                        organizationName:
+                          type: string
+                        logo:
+                          type: string
+                        headline:
+                          type: object
+                          properties:
+                            preApproved:
+                              type: string
+                        description:
+                          type: object
+                          properties:
+                            custom:
+                              type: string
+                        callToAction:
+                          type: string
+                        showMemberProfilePhoto:
+                          type: boolean
+                    spotlight:
+                      $ref: '#/components/schemas/Spotlight'
+    UpdateAPostRequest:
+      type: object
+      properties:
+        patch:
+          type: object
+          properties:
+            $set:
+              type: object
+              properties:
+                commentary:
+                  type: string
+                contentCallToActionLabel:
+                  type: string
+    PostConversationAdsSponsoredMessageContentsRequest:
+      type: object
+      properties:
+        bodySource:
+          type: object
+          properties:
+            text:
+              type: string
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              bodySource:
+                type: object
+                properties:
+                  leadGenerationForm:
+                    type: string
+                  text:
+                    type: string
+              nextAction:
+                type: object
+                properties:
+                  options:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        replyType:
+                          type: string
+                        optionText:
+                          type: string
+                        nextContent:
+                          type: string
+                        landingPage:
+                          type: string
+    PostCreatives2Request:
+      type: object
+      properties:
+        content:
+          type: object
+          properties:
+            follow:
+              type: object
+              properties:
+                organizationName:
+                  type: string
+                logo:
+                  type: string
+                headline:
+                  type: object
+                  properties:
+                    preApproved:
+                      type: string
+                description:
+                  type: object
+                  properties:
+                    preApproved:
+                      type: string
+                callToAction:
+                  type: string
+                showMemberProfilePhoto:
+                  type: boolean
+            spotlight:
+              $ref: '#/components/schemas/Spotlight'
+        campaign:
+          type: string
+        intendedStatus:
+          type: string

@@ -1,0 +1,38 @@
+# Test-only configuration. No secrets: the gateway JWKS is served by tests/jwt_support.bal.
+[wso2.amplify_api]
+environment = "local"  # the test stack is a local stack: plain-http localhost JWKS is allowed only here
+gatewayJwksUrl = "http://localhost:9591/jwks"
+gatewayIssuer = "https://gateway.test/amplify"
+gatewayAudiences = "amplify-test-client, another-client"
+jwksRefreshSeconds = 1.0
+jwksMinRefreshIntervalSeconds = 0.0
+jwksBreakerResetSeconds = 1.0
+# Scheduler sync (ADR-026): the fake scheduler in scheduler_sync_test.bal; @every 10s for the IT.
+schedulerJobsUrl = "http://amplify-jobs:9598"
+minRunIntervalSeconds = 10
+# DB breaker (M9): small numbers so the open / half-open test is quick.
+dbBreakerFailureThreshold = 3
+dbBreakerResetSeconds = 1.0
+dbReadRetries = 0
+# Settings cache off: tests change settings through fakes and expect the next call to see them.
+settingsCacheSeconds = 0.0
+# Denial audit throttle off: the existing tests assert one row per denial; the throttle is exercised directly.
+denialAuditWindowSeconds = 0.0
+# People directory (D13): the fake directory in tests/read_fakes.bal, on the test JWKS listener.
+peopleDirectoryUrl = "http://localhost:9591/people/employees/basic-info"
+# Off 9090, so `bal test` never talks to a local Compose amplify-api that already holds it.
+port = 19590
+# Secrets for amplify-jobs: full access, and the scheduler-only key (the fake scheduler and jobs in tests never check it).
+internalApiKey = "test-internal-key-0123456789abcdef0123456789"
+schedulerApiKey = "test-scheduler-key-0123456789abcdef012345"
+# Access (modules/auth/access.bal): the defaults, plus a second campaign group so a test can prove
+# a capability is shared by configuration alone.
+canCampaignGroups = "amplify_po, amplify_marketing, amplify_campaign_extra"
+canDashboardGroups = "amplify_po,amplify_marketing,amplify_slt,amplify_admin"
+canExportGroups = "amplify_po,amplify_marketing,amplify_slt,amplify_admin"
+canReviewSharesGroups = "amplify_po"
+canPointRulesGroups = "amplify_po"
+canAdjustPointsGroups = "amplify_po"
+canPoDashboardGroups = "amplify_po"
+canReportsGroups = "amplify_slt,amplify_po"
+canAdminGroups = "amplify_admin"

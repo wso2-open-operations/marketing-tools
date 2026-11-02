@@ -1,0 +1,283 @@
+{
+  "info": {
+    "_postman_id": "8e6b554e-a4ce-4d09-bc42-190ea03205f3",
+    "name": "People Typeahead (@Mention Search) API",
+    "description": "Standalone collection for the LinkedIn People Typeahead API (@mention search), used to discover organization page followers who can be @mentioned in UGC/organization posts. Restricted endpoint — permission is granted to select developers only. See https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/posts-atmention-search-api\n\nUse together with the existing **community-management-env-versioning** environment (shared with the Community Management collection).\n\n--All requests are in the Restli 2.0 format--",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "17301545",
+    "_collection_link": "https://go.postman.co/collection/45034303-8e6b554e-a4ce-4d09-bc42-190ea03205f3?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "Search by Keyword for Organization Pages",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "{{insert_token}}",
+            "type": "text",
+            "disabled": true
+          },
+          {
+            "key": "LinkedIn-Version",
+            "value": "{{insert_version}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Restli-Protocol-Version",
+            "value": "2.0.0",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/peopleTypeahead?q=organizationFollowers&keywords=surendra&organization=urn%3Ali%3Aorganization%3A{{organization_id}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "peopleTypeahead"
+          ],
+          "query": [
+            {
+              "key": "q",
+              "value": "organizationFollowers"
+            },
+            {
+              "key": "keywords",
+              "value": "surendra"
+            },
+            {
+              "key": "organization",
+              "value": "urn%3Ali%3Aorganization%3A{{organization_id}}"
+            }
+          ]
+        },
+        "description": "Search followers of an organization page by keyword (matches first few characters of first/last name) so they can be @mentioned in a post. Returns up to 10 profiles: member urn, firstName, lastName, headline, optional photo."
+      },
+      "response": []
+    },
+    {
+      "name": "Search by Vanity URL for Organization Page",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "{{insert_token}}",
+            "type": "text",
+            "disabled": true
+          },
+          {
+            "key": "LinkedIn-Version",
+            "value": "{{insert_version}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Restli-Protocol-Version",
+            "value": "2.0.0",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/vanityUrl?q=vanityUrlAsOrganization&vanityUrl= https%3A%2F%2Fwww.linkedin.com%2Fin%2Fsurendra-jambe%2F&organization=urn%3Ali%3Aorganization%3A2414183",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "vanityUrl"
+          ],
+          "query": [
+            {
+              "key": "q",
+              "value": "vanityUrlAsOrganization"
+            },
+            {
+              "key": "vanityUrl",
+              "value": " https%3A%2F%2Fwww.linkedin.com%2Fin%2Fsurendra-jambe%2F"
+            },
+            {
+              "key": "organization",
+              "value": "urn%3Ali%3Aorganization%3A2414183"
+            }
+          ]
+        },
+        "description": "Exact-match search by a member's profile vanity URL to resolve their person URN for @mentioning in an organization page post."
+      },
+      "response": [
+        {
+          "name": "Search by Vanity URL for Organization Page",
+          "originalRequest": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{insert_token}}",
+                "type": "text",
+                "disabled": true
+              },
+              {
+                "key": "LinkedIn-Version",
+                "value": "{{insert_version}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Restli-Protocol-Version",
+                "value": "2.0.0",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/rest/vanityUrl?q=vanityUrlAsOrganization&vanityUrl= https%3A%2F%2Fwww.linkedin.com%2Fin%2Fsurendra-jambe%2F&organization=urn%3Ali%3Aorganization%3A2414183",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "rest",
+                "vanityUrl"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "vanityUrlAsOrganization"
+                },
+                {
+                  "key": "vanityUrl",
+                  "value": " https%3A%2F%2Fwww.linkedin.com%2Fin%2Fsurendra-jambe%2F"
+                },
+                {
+                  "key": "organization",
+                  "value": "urn%3Ali%3Aorganization%3A2414183"
+                }
+              ]
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": null,
+          "header": [
+            {
+              "key": ":status",
+              "value": 200
+            },
+            {
+              "key": "date",
+              "value": "Fri, 25 Sep 2026 01:19:41 GMT"
+            },
+            {
+              "key": "content-type",
+              "value": "application/json"
+            },
+            {
+              "key": "x-restli-protocol-version",
+              "value": "2.0.0"
+            },
+            {
+              "key": "set-cookie",
+              "value": "lidc=\"b=OB88:s=O:r=O:a=O:p=O:g=13:u=5:x=1:i=1790299180:t=1790358481:v=2:sig=AQExoS5_7eyPHo4LkMsnMzkM4gsrmZZu\""
+            },
+            {
+              "key": "set-cookie",
+              "value": "__cf_bm=59wOK8YYwDRteqxrOKDiAyCp3deCdIhdqE3kdE6y0uw-1790299180.846799-1.0.1.1-wbBs8I7bnnY_V33i4fS0Z7awZF2keXCOHAY27UTN5gmGTRvrPWaiI_LD_2ovCjHU.yA02RSXibdPo3u7yN_9rWQ3gLD8mEDoS_zMYTAhn7QMjRHwPewXV1pP2OZBzUt0; HttpOnly; SameSite=None; Secure; Path=/; Domain=linkedin.com; Expires=Fri, 25 Sep 2026 01:49:41 GMT"
+            },
+            {
+              "key": "x-li-fabric",
+              "value": "prod-lor1"
+            },
+            {
+              "key": "x-li-pop",
+              "value": "cf-prod-lor1-x"
+            },
+            {
+              "key": "x-li-proto",
+              "value": "http/2"
+            },
+            {
+              "key": "x-li-uuid",
+              "value": "AAZcRIK3loh22SJk09HAMQ=="
+            },
+            {
+              "key": "x-content-type-options",
+              "value": "nosniff"
+            },
+            {
+              "key": "x-li-route-key",
+              "value": "\"b=OB88:s=O:r=O:a=O:p=O:g=13:u=5:x=1:i=1790299180:t=1790358481:v=2:sig=AQExoS5_7eyPHo4LkMsnMzkM4gsrmZZu\""
+            },
+            {
+              "key": "cf-cache-status",
+              "value": "DYNAMIC"
+            },
+            {
+              "key": "strict-transport-security",
+              "value": "max-age=31536000"
+            },
+            {
+              "key": "content-encoding",
+              "value": "gzip"
+            },
+            {
+              "key": "server",
+              "value": "cloudflare"
+            },
+            {
+              "key": "cf-ray",
+              "value": "a40633b84e0f8f42-SJC"
+            },
+            {
+              "key": "alt-svc",
+              "value": "h3=\":443\"; ma=86400"
+            }
+          ],
+          "cookie": [],
+          "body": "{\n    \"paging\": {\n        \"start\": 0,\n        \"count\": 10,\n        \"links\": []\n    },\n    \"elements\": [\n        {\n            \"member\": \"urn:li:person:yLNJIP4VFH\"\n        }\n    ]\n}"
+        }
+      ]
+    }
+  ],
+  "auth": {
+    "type": "oauth2",
+    "oauth2": [
+      {
+        "key": "scope",
+        "value": "r_organization_followers,w_organization_social,r_basicprofile",
+        "type": "string"
+      },
+      {
+        "key": "client_authentication",
+        "value": "body",
+        "type": "string"
+      },
+      {
+        "key": "clientSecret",
+        "value": "{{client_secret}}",
+        "type": "string"
+      },
+      {
+        "key": "clientId",
+        "value": "{{client_id}}",
+        "type": "string"
+      },
+      {
+        "key": "accessTokenUrl",
+        "value": "https://www.linkedin.com/oauth/v2/accessToken",
+        "type": "string"
+      },
+      {
+        "key": "authUrl",
+        "value": "https://www.linkedin.com/oauth/v2/authorization",
+        "type": "string"
+      },
+      {
+        "key": "tokenName",
+        "value": "people-typeahead-token",
+        "type": "string"
+      },
+      {
+        "key": "addTokenTo",
+        "value": "header",
+        "type": "string"
+      }
+    ]
+  }
+}

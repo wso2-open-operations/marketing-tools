@@ -1,0 +1,699 @@
+openapi: 3.0.3
+info:
+  title: Company Intelligence API
+  version: 1.0.0
+  description: '_Generated from the Postman collection "Company Intelligence API". All calls use Rest.li 2.0 conventions:
+    send `X-Restli-Protocol-Version: 2.0.0` and a `LinkedIn-Version` header (YYYYMM). Query parameters such as `List(...)`,
+    `(a:b,c:d)` and URNs are Rest.li-encoded strings; do not re-encode the structural characters `( ) , :`. Several
+    finders/actions share one path in LinkedIn''s API, so they are modelled as one operation with a `q`/`action`
+    selector. Schemas are inferred from the example payloads saved in the collection: every field is optional and
+    field semantics are not documented here._'
+servers:
+- url: https://api.linkedin.com/rest
+  description: LinkedIn REST API (`{{baseUrl}}` in the Postman environment)
+security:
+- bearerAuth: []
+tags:
+- name: Company Intelligence API
+paths:
+  /adAccountUsers:
+    get:
+      operationId: fetchAllAdAccountsOfTheAuthenticatedUser
+      summary: Fetch all ad accounts of the authenticated user
+      tags:
+      - Company Intelligence API
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - authenticatedUser
+        description: Rest.li finder name. Selects which query this call performs.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FetchAllAdAccountsOfTheAuthenticatedUserResponse'
+              examples:
+                fetchAllAdAccountsOfTheAuthenticatedUser:
+                  summary: Fetch all ad accounts of the authenticated user
+                  value:
+                    elements:
+                    - account: urn:li:sponsoredAccount:516413367
+                      changeAuditStamps:
+                        created:
+                          actor: urn:li:unknown:0
+                          time: 1500331577000
+                        lastModified:
+                          actor: urn:li:unknown:0
+                          time: 1505328748000
+                      role: ACCOUNT_BILLING_ADMIN
+                      user: urn:li:person:K1RwyVNukt
+                      version:
+                        versionTag: '89'
+                    - account: urn:li:sponsoredAccount:516880883
+                      changeAuditStamps:
+                        created:
+                          actor: urn:li:unknown:0
+                          time: 1505326590000
+                        lastModified:
+                          actor: urn:li:unknown:0
+                          time: 1505326615000
+                      role: ACCOUNT_BILLING_ADMIN
+                      user: urn:li:person:K1RwyVNukt
+                      version:
+                        versionTag: '3'
+                    paging:
+                      count: 2
+                      links: []
+                      start: 0
+                      total: 2
+        default:
+          $ref: '#/components/responses/Error'
+  /adAccounts/{adAccountId}/adCampaigns:
+    get:
+      operationId: searchForCampaignsUsingSearchCriteria
+      summary: Search for campaigns using search criteria
+      tags:
+      - Company Intelligence API
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: adAccountId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - search
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: search.campaignGroup.values[0]
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchForCampaignsUsingSearchCriteriaResponse'
+              examples:
+                searchForCampaignsUsingSearchCriteria:
+                  summary: Search for campaigns using search criteria
+                  value:
+                    elements:
+                    - targetingCriteria:
+                        include:
+                          and:
+                          - or:
+                              urn:li:adTargetingFacet:employers:
+                              - urn:li:company:1035
+                          - or:
+                              urn:li:adTargetingFacet:locations:
+                              - urn:li:geo:103644278
+                      servingStatuses:
+                      - ACCOUNT_SERVING_HOLD
+                      type: SPONSORED_UPDATES
+                      locale:
+                        country: US
+                        language: en
+                      version:
+                        versionTag: '1'
+                      associatedEntity: urn:li:organization:2414183
+                      test: false
+                      runSchedule:
+                        end: 9876543210123
+                        start: 1234567890987
+                      targeting:
+                        includedTargetingFacets:
+                          employers:
+                          - urn:li:organization:1035
+                          locations:
+                          - urn:li:geo:103644278
+                          interfaceLocales:
+                          - country: US
+                            language: en
+                      optimizationPreference:
+                        frequencyOptimizationPreference:
+                          timeSpan:
+                            duration: 7
+                            unit: DAY
+                          optimizationType: MAX_FREQUENCY
+                          frequency: 10
+                      optimizationTargetType: NONE
+                      changeAuditStamps:
+                        created:
+                          time: 1543365082000
+                        lastModified:
+                          time: 1543365082000
+                      campaignGroup: urn:li:sponsoredCampaignGroup:603030884
+                      dailyBudget:
+                        amount: '18'
+                        currencyCode: USD
+                      unitCost:
+                        amount: '15'
+                        currencyCode: USD
+                      creativeSelection: OPTIMIZED
+                      costType: CPC
+                      name: Campaign Sponsored update B
+                      offsiteDeliveryEnabled: false
+                      id: 145282384
+                      audienceExpansionEnabled: false
+                      account: urn:li:sponsoredAccount:506333826
+                      status: ACTIVE
+                    metadata:
+                      nextPageToken: DgGerr1iVQreCJVjZDOW_grcp63nueBDipsS4DJpvJo
+        default:
+          $ref: '#/components/responses/Error'
+  /adSegments:
+    get:
+      operationId: fetchExistingAdSegmentsBasedOnAdAccount
+      summary: Fetch existing ad segments based on ad account
+      tags:
+      - Company Intelligence API
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - account
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: accounts
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FetchExistingAdSegmentsBasedOnAdAccountResponse'
+              examples:
+                fetchExistingAdSegmentsBasedOnAdAccount:
+                  summary: Fetch existing ad segments based on ad account
+                  value:
+                    elements:
+                    - approximateMemberCount: 230000
+                      created:
+                        actor: urn:li:unknown:0
+                        time: 1651129031000
+                      name: DMP Segment 1
+                      versionTag: '81433811311'
+                      id: 11422166
+                      lastModified:
+                        actor: urn:li:unknown:0
+                        time: 1654271097000
+                      type: MARKET_AUTOMATION
+                      account: urn:li:sponsoredAccount:509090297
+                      status: ARCHIVED
+                    - approximateMemberCount: 0
+                      created:
+                        actor: urn:li:unknown:0
+                        time: 1651486505000
+                      name: DMP segment for CSV uploads
+                      versionTag: '78913777069'
+                      id: 11462646
+                      lastModified:
+                        actor: urn:li:unknown:0
+                        time: 1651972148000
+                      type: BULK
+                      account: urn:li:sponsoredAccount:509090297
+                      status: READY
+        default:
+          $ref: '#/components/responses/Error'
+  /accountIntelligence:
+    get:
+      operationId: getAccountIntelligence
+      summary: Query accountIntelligence
+      tags:
+      - Company Intelligence API
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Fetch account intelligence data using lookback window filter** (`q=account`)
+
+        - **Fetch account intelligence data using ad segment filter** (`q=account`)
+
+        - **Fetch account intelligence data using campaign filter** (`q=account`)'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - account
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: start
+        in: query
+        required: false
+        schema:
+          type: integer
+        example: 0
+      - name: count
+        in: query
+        required: false
+        schema:
+          type: integer
+        example: 10
+      - name: account
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: filterCriteria
+        in: query
+        required: false
+        schema:
+          type: string
+        example: (lookbackWindow:LAST_7_DAYS)
+        allowReserved: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAccountIntelligenceResponse'
+              examples:
+                fetchAccountIntelligenceDataUsingLookbackWindowFilter:
+                  summary: Fetch account intelligence data using lookback window filter
+                  value:
+                    elements:
+                    - companyPageUrl: https://www.linkedin.com/company/microsoft
+                      companyWebsite: http://www.microsoft.com
+                      paidClicks: 20
+                      organicEngagements: 50
+                      companyName: Microsoft
+                      paidLeads: 40
+                      paidEngagements: 300
+                      paidImpressions: 133
+                      organicImpressions: 50
+                      engagementLevel: VERY_LOW
+                    paging:
+                      count: 10
+                      start: 0
+                      total: 30
+                      links:
+                      - rel: next
+                        type: application/json
+                        href: /partnerApiAccountIntelligence?q=account&filterCriteria=(lookbackWindow:LAST_7_DAYS,adSegments:List())&start=10&count=10&account=urn%3Ali%3AsponsoredAccount%3A123456789
+                fetchAccountIntelligenceDataUsingAdSegmentFilter:
+                  summary: Fetch account intelligence data using ad segment filter
+                  value:
+                    elements:
+                    - companyPageUrl: https://www.linkedin.com/company/microsoft
+                      companyWebsite: http://www.microsoft.com
+                      paidClicks: 20
+                      organicEngagements: 50
+                      companyName: Microsoft
+                      paidLeads: 40
+                      paidEngagements: 300
+                      paidImpressions: 133
+                      organicImpressions: 50
+                      engagementLevel: VERY_LOW
+                    paging:
+                      count: 10
+                      start: 0
+                      total: 30
+                      links:
+                      - rel: next
+                        type: application/json
+                        href: /partnerApiAccountIntelligence?q=account&filterCriteria=(lookbackWindow:LAST_7_DAYS,adSegments:List())&start=10&count=10&account=urn%3Ali%3AsponsoredAccount%3A123456789
+                fetchAccountIntelligenceDataUsingCampaignFilter:
+                  summary: Fetch account intelligence data using campaign filter
+                  value:
+                    elements:
+                    - companyPageUrl: https://www.linkedin.com/company/microsoft
+                      companyWebsite: http://www.microsoft.com
+                      paidClicks: 20
+                      organicEngagements: 50
+                      companyName: Microsoft
+                      paidLeads: 40
+                      paidEngagements: 300
+                      paidImpressions: 133
+                      organicImpressions: 50
+                      engagementLevel: VERY_LOW
+                    paging:
+                      count: 10
+                      start: 0
+                      total: 30
+                      links:
+                      - rel: next
+                        type: application/json
+                        href: /partnerApiAccountIntelligence?q=account&filterCriteria=(lookbackWindow:LAST_7_DAYS,adSegments:List())&start=10&count=10&account=urn%3Ali%3AsponsoredAccount%3A123456789
+        default:
+          $ref: '#/components/responses/Error'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: LinkedIn OAuth 2.0 access token.
+  parameters:
+    LinkedInVersion:
+      name: LinkedIn-Version
+      in: header
+      required: true
+      description: API version in YYYYMM format (e.g. `202509`).
+      schema:
+        type: string
+        pattern: ^[0-9]{6}$
+    RestliProtocolVersion:
+      name: X-Restli-Protocol-Version
+      in: header
+      required: false
+      schema:
+        type: string
+        enum:
+        - 2.0.0
+        default: 2.0.0
+  responses:
+    Error:
+      description: Error response
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Error:
+      type: object
+      properties:
+        status:
+          type: integer
+        code:
+          type: string
+        serviceErrorCode:
+          type: integer
+        message:
+          type: string
+    FetchAllAdAccountsOfTheAuthenticatedUserResponse:
+      type: object
+      properties:
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              account:
+                type: string
+              changeAuditStamps:
+                type: object
+                properties:
+                  created:
+                    type: object
+                    properties:
+                      actor:
+                        type: string
+                      time:
+                        type: integer
+                        format: int64
+                  lastModified:
+                    type: object
+                    properties:
+                      actor:
+                        type: string
+                      time:
+                        type: integer
+                        format: int64
+              role:
+                type: string
+              user:
+                type: string
+              version:
+                type: object
+                properties:
+                  versionTag:
+                    type: string
+        paging:
+          type: object
+          properties:
+            count:
+              type: integer
+            links:
+              type: array
+              items: {}
+            start:
+              type: integer
+            total:
+              type: integer
+    SearchForCampaignsUsingSearchCriteriaResponse:
+      type: object
+      properties:
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              targetingCriteria:
+                type: object
+                properties:
+                  include:
+                    type: object
+                    properties:
+                      and:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            or:
+                              type: object
+                              additionalProperties:
+                                type: array
+                                items:
+                                  type: string
+              servingStatuses:
+                type: array
+                items:
+                  type: string
+              type:
+                type: string
+              locale:
+                type: object
+                properties:
+                  country:
+                    type: string
+                  language:
+                    type: string
+              version:
+                type: object
+                properties:
+                  versionTag:
+                    type: string
+              associatedEntity:
+                type: string
+              test:
+                type: boolean
+              runSchedule:
+                type: object
+                properties:
+                  end:
+                    type: integer
+                    format: int64
+                  start:
+                    type: integer
+                    format: int64
+              targeting:
+                type: object
+                properties:
+                  includedTargetingFacets:
+                    type: object
+                    properties:
+                      employers:
+                        type: array
+                        items:
+                          type: string
+                      locations:
+                        type: array
+                        items:
+                          type: string
+                      interfaceLocales:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            country:
+                              type: string
+                            language:
+                              type: string
+              optimizationPreference:
+                type: object
+                properties:
+                  frequencyOptimizationPreference:
+                    type: object
+                    properties:
+                      timeSpan:
+                        type: object
+                        properties:
+                          duration:
+                            type: integer
+                          unit:
+                            type: string
+                      optimizationType:
+                        type: string
+                      frequency:
+                        type: integer
+              optimizationTargetType:
+                type: string
+              changeAuditStamps:
+                type: object
+                properties:
+                  created:
+                    type: object
+                    properties:
+                      time:
+                        type: integer
+                        format: int64
+                  lastModified:
+                    type: object
+                    properties:
+                      time:
+                        type: integer
+                        format: int64
+              campaignGroup:
+                type: string
+              dailyBudget:
+                type: object
+                properties:
+                  amount:
+                    type: string
+                  currencyCode:
+                    type: string
+              unitCost:
+                type: object
+                properties:
+                  amount:
+                    type: string
+                  currencyCode:
+                    type: string
+              creativeSelection:
+                type: string
+              costType:
+                type: string
+              name:
+                type: string
+              offsiteDeliveryEnabled:
+                type: boolean
+              id:
+                type: integer
+              audienceExpansionEnabled:
+                type: boolean
+              account:
+                type: string
+              status:
+                type: string
+        metadata:
+          type: object
+          properties:
+            nextPageToken:
+              type: string
+    FetchExistingAdSegmentsBasedOnAdAccountResponse:
+      type: object
+      properties:
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              approximateMemberCount:
+                type: integer
+              created:
+                type: object
+                properties:
+                  actor:
+                    type: string
+                  time:
+                    type: integer
+                    format: int64
+              name:
+                type: string
+              versionTag:
+                type: string
+              id:
+                type: integer
+              lastModified:
+                type: object
+                properties:
+                  actor:
+                    type: string
+                  time:
+                    type: integer
+                    format: int64
+              type:
+                type: string
+              account:
+                type: string
+              status:
+                type: string
+              description:
+                type: string
+    GetAccountIntelligenceResponse:
+      type: object
+      properties:
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              companyPageUrl:
+                type: string
+              companyWebsite:
+                type: string
+              paidClicks:
+                type: integer
+              organicEngagements:
+                type: integer
+              companyName:
+                type: string
+              paidLeads:
+                type: integer
+              paidEngagements:
+                type: integer
+              paidImpressions:
+                type: integer
+              organicImpressions:
+                type: integer
+              engagementLevel:
+                type: string
+        paging:
+          type: object
+          properties:
+            count:
+              type: integer
+            start:
+              type: integer
+            total:
+              type: integer
+            links:
+              type: array
+              items:
+                type: object
+                properties:
+                  rel:
+                    type: string
+                  type:
+                    type: string
+                  href:
+                    type: string

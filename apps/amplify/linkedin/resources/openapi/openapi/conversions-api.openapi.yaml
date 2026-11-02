@@ -1,0 +1,866 @@
+openapi: 3.0.3
+info:
+  title: Conversions API
+  version: 1.0.0
+  description: "**See the** [Getting Access](https://learn.microsoft.com/en-us/linkedin/marketing/integrations/conversions/getting-access-conversions)\
+    \ guide **on how to apply.**\n\n[LinkedIn's Conversion API](https://learn.microsoft.com/en-us/linkedin/marketing/integrations/ads-reporting/conversions-api)\
+    \ is a conversion tracking tool that creates a direct connection between marketing data from an advertiser’s\
+    \ server and LinkedIn. This API enables advertisers to measure the performance of their LinkedIn marketing campaigns\
+    \ no matter where the conversion happens and use this data to power campaign optimization.\n\nThis collection\
+    \ aims to focus on the new Conversions API and should be used with the **conversions-env-versioning** environment.\n\
+    \nThere are two conditions for successful calls:\n\n(1) Scope permissions for [3-legged Oauth](https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow)\n\
+    \n- `rw_conversions` (Read/Write)\n    \n- `r_ads` (Read)\n    \n\nand\n\n(2) the user assigning permission\
+    \ holding one of the following roles in the Ad Account.\n\nAd Account Roles:\n\n- `ACCOUNT_BILLING_ADMIN`\n\
+    \    \n- `ACCOUNT_MANAGER`\n    \n- `CAMPAIGN_MANAGER`\n    \n- `CREATIVE_MANAGER`\n    \n\n\\--All requests\
+    \ for the Conversions collection are in the Restli 2.0 format--\n\n_Generated from the Postman collection \"\
+    Conversions API\". All calls use Rest.li 2.0 conventions: send `X-Restli-Protocol-Version: 2.0.0` and a `LinkedIn-Version`\
+    \ header (YYYYMM). Query parameters such as `List(...)`, `(a:b,c:d)` and URNs are Rest.li-encoded strings; do\
+    \ not re-encode the structural characters `( ) , :`. Several finders/actions share one path in LinkedIn's API,\
+    \ so they are modelled as one operation with a `q`/`action` selector. Schemas are inferred from the example\
+    \ payloads saved in the collection: every field is optional and field semantics are not documented here._"
+servers:
+- url: https://api.linkedin.com/rest
+  description: LinkedIn REST API (`{{baseUrl}}` in the Postman environment)
+security:
+- linkedinOAuth2:
+  - r_ads
+  - r_liteprofile
+  - rw_conversions
+tags:
+- name: Conversion Events Streaming Workflow
+paths:
+  /adAccountUsers:
+    get:
+      operationId: 2RetrieveAuthenticatedUserSSponsoredAdAccounts
+      summary: 2. Retrieve authenticated user's Sponsored Ad Accounts
+      tags:
+      - Conversion Events Streaming Workflow
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - authenticatedUser
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: fields
+        in: query
+        required: false
+        schema:
+          type: string
+        example: role,account,user
+        allowReserved: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/2RetrieveAuthenticatedUserSSponsoredAdAccountsResponse'
+              examples:
+                2RetrieveAuthenticatedUserSSponsoredAdAccounts:
+                  summary: 2. Retrieve authenticated user's Sponsored Ad Accounts
+                  value:
+                    paging:
+                      start: 0
+                      count: 2147483647
+                      links: []
+                      total: 3
+                    elements:
+                    - user: urn:li:person:abcd
+                      account: urn:li:sponsoredAccount:5000123
+                      role: VIEWER
+                    - user: urn:li:person:abcd
+                      account: urn:li:sponsoredAccount:5000234
+                      role: ACCOUNT_BILLING_ADMIN
+        default:
+          $ref: '#/components/responses/Error'
+  /conversions:
+    get:
+      operationId: 4FetchExistingConversionRulesForCAPIInTheSelectedAdAccount
+      summary: 4. Fetch existing Conversion Rules for CAPI in the selected ad account
+      tags:
+      - Conversion Events Streaming Workflow
+      description: Fetch existing conversion rules in the selected ad account with this endpoint and parse the response
+        to filter elements with `conversionMethod` to `CONVERSIONS_API` for streaming conversions through API.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - account
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: account
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: fields
+        in: query
+        required: false
+        schema:
+          type: string
+        example: conversionMethod,enabled,type,name,id,attributionType
+        allowReserved: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/4FetchExistingConversionRulesForCAPIInTheSelectedAdAccountResponse'
+              examples:
+                4FetchExistingConversionRulesForCAPIInTheSelectedAdAccount:
+                  summary: 4. Fetch existing Conversion Rules for CAPI in the selected ad account
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                      total: -1
+                    elements:
+                    - name: Conversion API Segment 1
+                      conversionMethod: CONVERSIONS_API
+                      id: 1403456
+                      type: LEAD
+                      enabled: true
+                    - name: Conversion API Segment 4
+                      conversionMethod: CONVERSIONS_API
+                      id: 1103890
+                      type: LEAD
+                      enabled: true
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: postConversions
+      summary: Create / update / action on conversions
+      tags:
+      - Conversion Events Streaming Workflow
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **6a. Create a new Conversion Rule with auto association to all campaigns**: Create one or more conversion
+        rules with this endpoint and set `conversionMethod` to `CONVERSIONS_API` for streaming conversions through
+        API.
+
+        - **6b. Create a new Conversion Rule with auto association to campaigns based on conversion type**: Create
+        one or more conversion rules with this endpoint and set `conversionMethod` to `CONVERSIONS_API` for streaming
+        conversions through API.
+
+        - **6c. Create a new Conversion Rule with no campaigns association**: Create one or more conversion rules
+        with this endpoint and set `conversionMethod` to `CONVERSIONS_API` for streaming conversions through API.'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: autoAssociationType
+        in: query
+        required: false
+        schema:
+          type: string
+        example: ALL_CAMPAIGNS
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostConversionsRequest'
+            examples:
+              6aCreateANewConversionRuleWithAutoAssociationToAllCampaigns:
+                summary: 6a. Create a new Conversion Rule with auto association to all campaigns
+                value:
+                  name: Conversions API Segment
+                  account: urn:li:sponsoredAccount:{{sponsoredaccount_id}}
+                  conversionMethod: CONVERSIONS_API
+                  postClickAttributionWindowSize: 90
+                  viewThroughAttributionWindowSize: 30
+                  attributionType: LAST_TOUCH_BY_CAMPAIGN
+                  type: LEAD
+              6bCreateANewConversionRuleWithAutoAssociationToCampaignsBase:
+                summary: 6b. Create a new Conversion Rule with auto association to campaigns based on conversion
+                  type
+                value:
+                  name: Conversions API Segment
+                  account: urn:li:sponsoredAccount:{{sponsoredaccount_id}}
+                  conversionMethod: CONVERSIONS_API
+                  postClickAttributionWindowSize: 90
+                  viewThroughAttributionWindowSize: 30
+                  attributionType: LAST_TOUCH_BY_CAMPAIGN
+                  type: LEAD
+              6cCreateANewConversionRuleWithNoCampaignsAssociation:
+                summary: 6c. Create a new Conversion Rule with no campaigns association
+                value:
+                  name: Conversions API Segment
+                  account: urn:li:sponsoredAccount:{{sponsoredaccount_id}}
+                  conversionMethod: CONVERSIONS_API
+                  postClickAttributionWindowSize: 90
+                  viewThroughAttributionWindowSize: 30
+                  attributionType: LAST_TOUCH_BY_CAMPAIGN
+                  type: LEAD
+      responses:
+        '201':
+          description: Created
+          headers:
+            Location:
+              schema:
+                type: string
+              description: URL of the created resource.
+            x-restli-id:
+              schema:
+                type: string
+              description: Id (or URN) of the created resource.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostConversionsResponse'
+              examples:
+                6CreateANewConversionRule:
+                  summary: 6. Create a new Conversion Rule
+                  value:
+                    postClickAttributionWindowSize: 90
+                    conversionMethod: CONVERSIONS_API
+                    viewThroughAttributionWindowSize: 30
+                    created: 1747961796996
+                    type: LEAD
+                    enabled: true
+                    associatedCampaigns: []
+                    campaigns: []
+                    name: Conversions API Segment
+                    id: 14488340
+                    lastModified: 1747961796996
+                    attributionType: LAST_TOUCH_BY_CAMPAIGN
+                    urlRules: []
+                    account: urn:li:sponsoredAccount:5012345
+                6CreateANewConversionRule2:
+                  summary: 6. Create a new Conversion Rule
+                  value:
+                    postClickAttributionWindowSize: 90
+                    conversionMethod: CONVERSIONS_API
+                    viewThroughAttributionWindowSize: 30
+                    created: 1747961796996
+                    type: LEAD
+                    enabled: true
+                    associatedCampaigns: []
+                    campaigns: []
+                    name: Conversions API Segment
+                    id: 14488340
+                    lastModified: 1747961796996
+                    attributionType: LAST_TOUCH_BY_CAMPAIGN
+                    urlRules: []
+                    account: urn:li:sponsoredAccount:5012345
+                6CreateANewConversionRule23:
+                  summary: 6. Create a new Conversion Rule
+                  value:
+                    postClickAttributionWindowSize: 90
+                    conversionMethod: CONVERSIONS_API
+                    viewThroughAttributionWindowSize: 30
+                    created: 1747961796996
+                    type: LEAD
+                    enabled: true
+                    associatedCampaigns: []
+                    campaigns: []
+                    name: Conversions API Segment
+                    id: 14488340
+                    lastModified: 1747961796996
+                    attributionType: LAST_TOUCH_BY_CAMPAIGN
+                    urlRules: []
+                    account: urn:li:sponsoredAccount:5012345
+        default:
+          $ref: '#/components/responses/Error'
+  /adAccounts/{adAccountId}/adCampaigns:
+    get:
+      operationId: 7aFetchActiveCampaigns
+      summary: 7a. Fetch active campaigns
+      tags:
+      - Conversion Events Streaming Workflow
+      description: Fetch existing conversion rules in the selected ad account with this endpoint and parse the response
+        to filter elements with `conversionMethod` to `CONVERSIONS_API` for streaming conversions through API.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: adAccountId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - search
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: search
+        in: query
+        required: false
+        schema:
+          type: string
+        example: (status:(values:List(ACTIVE,DRAFT)))
+        allowReserved: true
+      - name: fields
+        in: query
+        required: false
+        schema:
+          type: string
+        example: id,name
+        allowReserved: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/7aFetchActiveCampaignsResponse'
+              examples:
+                7aFetchActiveCampaigns:
+                  summary: 7a. Fetch active campaigns
+                  value:
+                    metadata:
+                      nextPageToken: abcdxyz123
+                    elements:
+                    - name: Website visits - May 4, 2025
+                      id: 12345
+                    - name: Brand awareness - Jul 14, 2024
+                      id: 14567
+        default:
+          $ref: '#/components/responses/Error'
+  /campaignConversions/{campaignConversionKey}:
+    put:
+      operationId: 7cAssociateCampaignsToConversionRule
+      summary: 7c. Associate campaigns to conversion rule
+      tags:
+      - Conversion Events Streaming Workflow
+      description: Create one or more conversion rules with this endpoint and set `conversionMethod` to `CONVERSIONS_API` for
+        streaming conversions through API.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: campaignConversionKey
+        in: path
+        required: true
+        description: Composite Rest.li key, e.g. `(a:urn%3A...,b:urn%3A...)`.
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                campaign:
+                  type: string
+                conversion:
+                  type: string
+            examples:
+              7cAssociateCampaignsToConversionRule:
+                summary: 7c. Associate campaigns to conversion rule
+                value:
+                  campaign: urn:li:sponsoredCampaign:{{campaign_id}}
+                  conversion: urn:lla:llaPartnerConversion:{{conversion_id}}
+      responses:
+        '204':
+          description: No Content
+        default:
+          $ref: '#/components/responses/Error'
+  /campaignConversions:
+    put:
+      operationId: 7dBatchAssociateMultipleCampaignsToConversionRule
+      summary: 7d. Batch Associate Multiple Campaigns to Conversion Rule
+      tags:
+      - Conversion Events Streaming Workflow
+      description: Create one or more conversion rules with this endpoint and set `conversionMethod` to `CONVERSIONS_API` for
+        streaming conversions through API.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: ids
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Batch ids in Rest.li 2.0 list syntax, e.g. `List(id1,id2)`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/7dBatchAssociateMultipleCampaignsToConversionRuleRequest'
+            examples:
+              7dBatchAssociateMultipleCampaignsToConversionRule:
+                summary: 7d. Batch Associate Multiple Campaigns to Conversion Rule
+                value:
+                  entities:
+                    (campaign:urn%3Ali%3AsponsoredCampaign%3A{{campaign_id}},conversion:urn%3Alla%3AllaPartnerConversion%3A{{conversion_id}}):
+                      campaign: urn:li:sponsoredCampaign:{{campaign_id}}
+                      conversion: urn:lla:llaPartnerConversion:{{conversion_id}}
+                    ? (campaign:urn%3Ali%3AsponsoredCampaign%3A{{campaign_id_2}},conversion:urn%3Alla%3AllaPartnerConversion%3A{{conversion_id}})
+                    : campaign: urn:li:sponsoredCampaign:{{campaign_id_2}}
+                      conversion: urn:lla:llaPartnerConversion:{{conversion_id}}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/7dBatchAssociateMultipleCampaignsToConversionRuleResponse'
+              examples:
+                7dBatchAssociateMultipleCampaignsToConversionRule:
+                  summary: 7d. Batch Associate Multiple Campaigns to Conversion Rule
+                  value:
+                    results:
+                      (campaign:urn%3Ali%3AsponsoredCampaign%3A1234,conversion:urn%3Alla%3AllaPartnerConversion%3A135):
+                        status: 204
+                      (campaign:urn%3Ali%3AsponsoredCampaign%3A5678,conversion:urn%3Alla%3AllaPartnerConversion%3A246):
+                        status: 204
+                    errors: {}
+        default:
+          $ref: '#/components/responses/Error'
+  /conversionEvents:
+    post:
+      operationId: postConversionEvents
+      summary: Create / update / action on conversionEvents
+      tags:
+      - Conversion Events Streaming Workflow
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **8a. Stream conversion event to the conversion rule**: Create one or more conversion rules with this
+        endpoint and set `conversionMethod` to `CONVERSIONS_API` for streaming conversions through API.
+
+        - **8b. Stream multiple conversion events to the conversion rule**: Create one or more conversion rules
+        with this endpoint and set `conversionMethod` to `CONVERSIONS_API` for streaming conversions through API.'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: X-RestLi-Method
+        in: header
+        required: false
+        description: Rest.li method override used for batch / partial-update style calls.
+        schema:
+          type: string
+          enum:
+          - BATCH_CREATE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostConversionEventsRequest'
+            examples:
+              8aStreamConversionEventToTheConversionRule:
+                summary: 8a. Stream conversion event to the conversion rule
+                value:
+                  conversion: urn:lla:llaPartnerConversion:{{conversion_id}}
+                  conversionHappenedAt: 1747964771000
+                  conversionValue:
+                    currencyCode: USD
+                    amount: '500.0'
+                  user:
+                    userIds:
+                    - idType: SHA256_EMAIL
+                      idValue: bad8677b6c86f5d308ee82786c183482a5995f066694246c58c4df37b0cc41f1
+                    - idType: LINKEDIN_FIRST_PARTY_ADS_TRACKING_UUID
+                      idValue: df5gf5-gh6t7-ph4j7h-fgf6n1
+                    userInfo:
+                      firstName: mike
+                      lastName: smith
+                      title: software engineer
+                      companyName: microsoft
+                      countryCode: US
+                    lead: urn:li:leadGenFormResponse:123
+                    externalIds:
+                    - abcxyz123
+                  eventId: abc12345
+              8bStreamMultipleConversionEventsToTheConversionRule:
+                summary: 8b. Stream multiple conversion events to the conversion rule
+                value:
+                  elements:
+                  - conversion: urn:lla:llaPartnerConversion:{{conversion_id}}
+                    conversionHappenedAt: 1747964772000
+                    conversionValue:
+                      currencyCode: USD
+                      amount: '1500.0'
+                    user:
+                      userIds:
+                      - idType: SHA256_EMAIL
+                        idValue: bad8677b6c86f5d308ee82786c183482a5995f066694246c58c4df37b0cc41f1
+                      - idType: LINKEDIN_FIRST_PARTY_ADS_TRACKING_UUID
+                        idValue: df5gf5-gh6t7-ph4j7h-fgf6n1
+                      userInfo:
+                        firstName: mike
+                        lastName: smith
+                        title: software engineer
+                        companyName: microsoft
+                        countryCode: US
+                    eventId: abc12345
+                  - conversion: urn:lla:llaPartnerConversion:{{conversion_id}}
+                    conversionHappenedAt: 1747964775000
+                    conversionValue:
+                      currencyCode: USD
+                      amount: '2000.0'
+                    user:
+                      userIds:
+                      - idType: SHA256_EMAIL
+                        idValue: dsfgrtg56u767ujy982fgnbmcsdocl46c58c56b650cik230bb9
+                      - idType: LINKEDIN_FIRST_PARTY_ADS_TRACKING_UUID
+                        idValue: ufh8h5-gh6t7-ph4j7h-mkl86n1
+                      userInfo:
+                        firstName: jason
+                        lastName: bourne
+                        title: tech lead
+                        companyName: linkedin
+                        countryCode: US
+                    eventId: xyz345
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostConversionEventsResponse'
+              examples:
+                8bStreamMultipleConversionEventsToTheConversionRule:
+                  summary: 8b. Stream multiple conversion events to the conversion rule
+                  value:
+                    elements:
+                    - status: 201
+                    - status: 201
+        '201':
+          description: Created
+          headers:
+            Location:
+              schema:
+                type: string
+              description: URL of the created resource.
+            x-restli-id:
+              schema:
+                type: string
+              description: Id (or URN) of the created resource.
+        default:
+          $ref: '#/components/responses/Error'
+components:
+  securitySchemes:
+    linkedinOAuth2:
+      type: oauth2
+      description: LinkedIn 3-legged OAuth 2.0 (authorization code).
+      flows:
+        authorizationCode:
+          authorizationUrl: https://www.linkedin.com/oauth/v2/authorization
+          tokenUrl: https://www.linkedin.com/oauth/v2/accessToken
+          scopes:
+            r_ads: LinkedIn permission `r_ads`
+            r_liteprofile: LinkedIn permission `r_liteprofile`
+            rw_conversions: LinkedIn permission `rw_conversions`
+  parameters:
+    LinkedInVersion:
+      name: LinkedIn-Version
+      in: header
+      required: true
+      description: API version in YYYYMM format (e.g. `202509`).
+      schema:
+        type: string
+        pattern: ^[0-9]{6}$
+    RestliProtocolVersion:
+      name: X-Restli-Protocol-Version
+      in: header
+      required: false
+      schema:
+        type: string
+        enum:
+        - 2.0.0
+        default: 2.0.0
+  responses:
+    Error:
+      description: Error response
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Error:
+      type: object
+      properties:
+        status:
+          type: integer
+        code:
+          type: string
+        serviceErrorCode:
+          type: integer
+        message:
+          type: string
+    2RetrieveAuthenticatedUserSSponsoredAdAccountsResponse:
+      type: object
+      properties:
+        paging:
+          type: object
+          properties:
+            start:
+              type: integer
+            count:
+              type: integer
+            links:
+              type: array
+              items: {}
+            total:
+              type: integer
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              user:
+                type: string
+              account:
+                type: string
+              role:
+                type: string
+    4FetchExistingConversionRulesForCAPIInTheSelectedAdAccountResponse:
+      type: object
+      properties:
+        paging:
+          type: object
+          properties:
+            start:
+              type: integer
+            count:
+              type: integer
+            links:
+              type: array
+              items: {}
+            total:
+              type: integer
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              conversionMethod:
+                type: string
+              id:
+                type: integer
+              type:
+                type: string
+              enabled:
+                type: boolean
+    PostConversionsRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        account:
+          type: string
+        conversionMethod:
+          type: string
+        postClickAttributionWindowSize:
+          type: integer
+        viewThroughAttributionWindowSize:
+          type: integer
+        attributionType:
+          type: string
+        type:
+          type: string
+    PostConversionsResponse:
+      type: object
+      properties:
+        postClickAttributionWindowSize:
+          type: integer
+        conversionMethod:
+          type: string
+        viewThroughAttributionWindowSize:
+          type: integer
+        created:
+          type: integer
+          format: int64
+        type:
+          type: string
+        enabled:
+          type: boolean
+        associatedCampaigns:
+          type: array
+          items: {}
+        campaigns:
+          type: array
+          items: {}
+        name:
+          type: string
+        id:
+          type: integer
+        lastModified:
+          type: integer
+          format: int64
+        attributionType:
+          type: string
+        urlRules:
+          type: array
+          items: {}
+        account:
+          type: string
+    7aFetchActiveCampaignsResponse:
+      type: object
+      properties:
+        metadata:
+          type: object
+          properties:
+            nextPageToken:
+              type: string
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              id:
+                type: integer
+    7dBatchAssociateMultipleCampaignsToConversionRuleRequest:
+      type: object
+      properties:
+        entities:
+          type: object
+          properties:
+            (campaign:urn%3Ali%3AsponsoredCampaign%3A{{campaign_id}},conversion:urn%3Alla%3AllaPartnerConversion%3A{{conversion_id}}):
+              type: object
+              properties:
+                campaign:
+                  type: string
+                conversion:
+                  type: string
+            ? (campaign:urn%3Ali%3AsponsoredCampaign%3A{{campaign_id_2}},conversion:urn%3Alla%3AllaPartnerConversion%3A{{conversion_id}})
+            : type: object
+              properties:
+                campaign:
+                  type: string
+                conversion:
+                  type: string
+    7dBatchAssociateMultipleCampaignsToConversionRuleResponse:
+      type: object
+      properties:
+        results:
+          type: object
+          properties:
+            (campaign:urn%3Ali%3AsponsoredCampaign%3A1234,conversion:urn%3Alla%3AllaPartnerConversion%3A135):
+              type: object
+              properties:
+                status:
+                  type: integer
+            (campaign:urn%3Ali%3AsponsoredCampaign%3A5678,conversion:urn%3Alla%3AllaPartnerConversion%3A246):
+              type: object
+              properties:
+                status:
+                  type: integer
+        errors:
+          type: object
+          properties: {}
+    PostConversionEventsRequest:
+      type: object
+      properties:
+        conversion:
+          type: string
+        conversionHappenedAt:
+          type: integer
+          format: int64
+        conversionValue:
+          type: object
+          properties:
+            currencyCode:
+              type: string
+            amount:
+              type: string
+        user:
+          type: object
+          properties:
+            userIds:
+              type: array
+              items:
+                type: object
+                properties:
+                  idType:
+                    type: string
+                  idValue:
+                    type: string
+            userInfo:
+              type: object
+              properties:
+                firstName:
+                  type: string
+                lastName:
+                  type: string
+                title:
+                  type: string
+                companyName:
+                  type: string
+                countryCode:
+                  type: string
+            lead:
+              type: string
+            externalIds:
+              type: array
+              items:
+                type: string
+        eventId:
+          type: string
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              conversion:
+                type: string
+              conversionHappenedAt:
+                type: integer
+                format: int64
+              conversionValue:
+                type: object
+                properties:
+                  currencyCode:
+                    type: string
+                  amount:
+                    type: string
+              user:
+                type: object
+                properties:
+                  userIds:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        idType:
+                          type: string
+                        idValue:
+                          type: string
+                  userInfo:
+                    type: object
+                    properties:
+                      firstName:
+                        type: string
+                      lastName:
+                        type: string
+                      title:
+                        type: string
+                      companyName:
+                        type: string
+                      countryCode:
+                        type: string
+              eventId:
+                type: string
+    PostConversionEventsResponse:
+      type: object
+      properties:
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              status:
+                type: integer

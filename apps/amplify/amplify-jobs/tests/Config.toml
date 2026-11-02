@@ -1,0 +1,4 @@
+# Test-only configuration. The keys are not secrets; they only have to match TEST_INTERNAL_KEY and TEST_SCHEDULER_KEY in service_test.bal.
+[wso2.amplify_jobs]
+internalApiKey = "test-internal-key-0123456789abcdef0123456789"
+schedulerApiKey = "test-scheduler-key-0123456789abcdef012345"

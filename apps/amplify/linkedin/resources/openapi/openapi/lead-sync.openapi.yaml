@@ -1,0 +1,2051 @@
+openapi: 3.0.3
+info:
+  title: Lead Sync
+  version: 1.0.0
+  description: 'This collection aims to focus on different lead syncing use cases and should be used with the **lead-sync-env-versioning**
+    environment.
+
+
+    _All requests for the Lead Sync collection are in the Restli 2.0 format and uses OAuth 2.0_
+
+
+    _Generated from the Postman collection "Lead Sync". All calls use Rest.li 2.0 conventions: send `X-Restli-Protocol-Version:
+    2.0.0` and a `LinkedIn-Version` header (YYYYMM). Query parameters such as `List(...)`, `(a:b,c:d)` and URNs
+    are Rest.li-encoded strings; do not re-encode the structural characters `( ) , :`. Several finders/actions share
+    one path in LinkedIn''s API, so they are modelled as one operation with a `q`/`action` selector. Schemas are
+    inferred from the example payloads saved in the collection: every field is optional and field semantics are
+    not documented here._'
+servers:
+- url: https://api.linkedin.com/rest
+  description: LinkedIn REST API (`{{baseUrl}}` in the Postman environment)
+security:
+- linkedinOAuth2:
+  - r_ads
+  - r_organization_admin
+  - r_liteprofile
+  - r_marketing_leadgen_automation
+  - r_events
+tags:
+- name: Use Cases
+paths:
+  /organizationAcls:
+    get:
+      operationId: getOrganizationAcls
+      summary: Query organizationAcls
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **3. Get the user''s organization(s) (company pages)** (`q=roleAssignee`): In this step, you''ll retrieve
+        a list of all the organizations that the logged in user has an approved role for. The authenticated user
+        must have one of the roles mentioned in our [permissions](https://learn.microsoft.com/en-us/linkedin/marketing/integrations/lead-sync/leadsync?tabs=http#permissions)
+
+        - **4. Validate the user''s organization role** (`q=roleAssignee`): View the [Organization Access Control](https://docs.microsoft.com/linkedin/marketing/integrations/community-management/organizations/organization-access-control-by-role?tabs=http#organization-roles)
+        documentation.'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - roleAssignee
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: state
+        in: query
+        required: false
+        schema:
+          type: string
+        example: APPROVED
+      - name: count
+        in: query
+        required: false
+        schema:
+          type: integer
+        example: 10
+      - name: start
+        in: query
+        required: false
+        schema:
+          type: integer
+        example: 0
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetOrganizationAclsResponse'
+              examples:
+                3GetTheUserSOrganizationSCompanyPages:
+                  summary: 3. Get the user's organization(s) (company pages)
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                    elements:
+                    - roleAssignee: urn:li:person:BcLKbjuipL
+                      state: APPROVED
+                      lastModified:
+                        actor: urn:li:person:BcLKbjuipL
+                        impersonator: urn:li:servicePrincipal:organization
+                        time: 1683063892716
+                      role: LEAD_GEN_FORMS_MANAGER
+                      created:
+                        actor: urn:li:person:BcLKbjuipL
+                        impersonator: urn:li:servicePrincipal:organization
+                        time: 1655913677098
+                      organization: urn:li:organization:11223344
+                4ValidateTheUserSOrganizationRole:
+                  summary: 4. Validate the user's organization role
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                    elements:
+                    - roleAssignee: urn:li:person:BcLKbjuipL
+                      state: APPROVED
+                      lastModified:
+                        actor: urn:li:person:BcLKbjuipL
+                        impersonator: urn:li:servicePrincipal:organization
+                        time: 1683063892716
+                      role: LEAD_GEN_FORMS_MANAGER
+                      created:
+                        actor: urn:li:person:BcLKbjuipL
+                        impersonator: urn:li:servicePrincipal:organization
+                        time: 1655913677098
+                      organization: urn:li:organization:11223344
+        default:
+          $ref: '#/components/responses/Error'
+  /leadForms:
+    get:
+      operationId: getLeadForms
+      summary: Query leadForms
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **5. Get forms for the user''s Organization** (`q=owner`): At this point, the user has picked the organization
+        (compnay page) they are trying to collect leads for and you''ve validated they have the proper company page
+        role. This step will retrieve the form(s) associated with the selected organization.
+
+        - **5. Get forms for the chosen Sponsored Account** (`q=owner`): At this point, the user has picked the
+        sponsored account they are trying to collect leads for and you have validated they have proper access to
+        the ad account and associated company page. This step will retrieve the form(s) associated with the selected
+        sponsored account.'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: owner
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - owner
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: count
+        in: query
+        required: false
+        schema:
+          type: integer
+        example: 10
+      - name: start
+        in: query
+        required: false
+        schema:
+          type: integer
+        example: 0
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetLeadFormsResponse'
+              examples:
+                5GetLeadFormTiedToTheUserSOrganization:
+                  summary: 5. Get Lead Form tied to the user's Organization
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                      total: 3
+                    elements:
+                    - owner:
+                        organization: urn:li:organization:11223344
+                      hiddenFields:
+                      - name: Entity name
+                        value: Product Page Name
+                      versionId: 1
+                      created: 1683076873761
+                      creationLocale:
+                        country: US
+                        language: en
+                      name: LeadGen form for Product Page Name
+                      id: 7059336063927910400
+                      lastModified: 1683076873761
+                      state: PUBLISHED
+                      content:
+                        questions:
+                        - questionId: 2933156
+                          question:
+                            localized:
+                              en_US: First Name
+                          responseEditable: true
+                          name: firstName
+                          questionDetails:
+                            textQuestionDetails:
+                              maxResponseLength: 300
+                          predefinedField: FIRST_NAME
+                          responseRequired: true
+                        - questionId: 2935052
+                          question:
+                            localized:
+                              en_US: Last Name
+                          responseEditable: true
+                          name: lastName
+                          questionDetails:
+                            textQuestionDetails:
+                              maxResponseLength: 300
+                          predefinedField: LAST_NAME
+                          responseRequired: true
+                        description:
+                          localized:
+                            en_US: Share your information below with Highlander Cranberries LLC to be contacted
+                              with more information about Product Page Name
+                        legalInfo:
+                          consents:
+                          - consent:
+                              localized:
+                                en_US: Highlander Cranberries LLC may contact me via email
+                            checkRequired: true
+                            id: 1
+                          legalInfoId: 1447492
+                          privacyPolicyUrl: http://www.example.com/privacy-policy
+                          legalDisclaimer:
+                            localized:
+                              en_US: Highlander Cranberries LLC may use your name and email address to send you
+                                communications about the company's products.
+                        headline:
+                          localized:
+                            en_US: Contact Highlander Cranberries LLC about Product Page Name
+                    - owner:
+                        organization: urn:li:organization:11223344
+                      hiddenFields:
+                      - name: Event name
+                        value: test event July 17 2023
+                      versionId: 1
+                      created: 1689635415948
+                      creationLocale:
+                        country: US
+                        language: en
+                      name: Registration form for test event July 17 2023
+                      id: 7086844583656980481
+                      lastModified: 1689635415948
+                      state: PUBLISHED
+                      content:
+                        questions:
+                        - questionId: 415148
+                          question:
+                            localized:
+                              en_US: First Name
+                          responseEditable: true
+                          name: firstName
+                          questionDetails:
+                            textQuestionDetails:
+                              maxResponseLength: 300
+                          predefinedField: FIRST_NAME
+                          responseRequired: true
+                        - questionId: 413300
+                          question:
+                            localized:
+                              en_US: Last Name
+                          responseEditable: true
+                          name: lastName
+                          questionDetails:
+                            textQuestionDetails:
+                              maxResponseLength: 300
+                          predefinedField: LAST_NAME
+                          responseRequired: true
+                        description:
+                          localized:
+                            en_US: Register for this event with your profile information
+                        legalInfo:
+                          consents:
+                          - consent:
+                              localized:
+                                en_US: The event organizer may use the above information to send communications
+                                  about their offerings.
+                            checkRequired: false
+                            id: 1
+                          privacyPolicyUrl: https://www.company.com/privacy
+                          legalInfoId: 509724
+                        headline:
+                          localized:
+                            en_US: Registration Form
+                5GetFormsForTheChosenSponsoredAccount:
+                  summary: 5. Get forms for the chosen Sponsored Account
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                      total: 4
+                    elements:
+                    - reviewInfo:
+                        rejectionReasons: []
+                        lastUpdated: 1690422364241
+                        reviewStatus: NEEDS_REVIEW
+                      owner:
+                        sponsoredAccount: urn:li:sponsoredAccount:1234567
+                      hiddenFields: []
+                      versionId: 1
+                      created: 1691014589690
+                      creationLocale:
+                        country: SE
+                        language: sv
+                      name: swedish - Jul 26, 2023
+                      id: 7992706
+                      lastModified: 1691014589690
+                      state: PUBLISHED
+                      content:
+                        questions:
+                        - questionId: 10107992706
+                          question:
+                            localized:
+                              sv_SE: Förnamn
+                          responseEditable: true
+                          name: First name
+                          questionDetails:
+                            textQuestionDetails:
+                              maxResponseLength: 300
+                          predefinedField: FIRST_NAME
+                          responseRequired: true
+                        - questionId: 10207992706
+                          question:
+                            localized:
+                              sv_SE: Efternamn
+                          responseEditable: true
+                          name: Last name
+                          questionDetails:
+                            textQuestionDetails:
+                              maxResponseLength: 300
+                          predefinedField: LAST_NAME
+                          responseRequired: true
+                        description:
+                          localized:
+                            sv_SE: testing swedish
+                        postSubmissionInfo:
+                          message:
+                            localized:
+                              sv_SE: testing swedish
+                          callToAction:
+                            callToActionTarget:
+                              landingPageUrl: https://www.linkedin.com
+                            callToActionLabel: VISIT_COMPANY_WEBSITE
+                        legalInfo:
+                          consents: []
+                          legalInfoId: 1007992706
+                          privacyPolicyUrl: http://example.com/privacy
+                          legalDisclaimer:
+                            localized:
+                              sv_SE: testing swedish
+                        headline:
+                          localized:
+                            sv_SE: testing swedish
+                    - reviewInfo:
+                        rejectionReasons: []
+                        lastUpdated: 1677209409563
+                        reviewStatus: NEEDS_REVIEW
+                      owner:
+                        sponsoredAccount: urn:li:sponsoredAccount:1234567
+                      hiddenFields:
+                      - name: hidden_field
+                        value: abc678
+                      - name: campo_escondido
+                        value: def789
+                      versionId: 1
+                      created: 1677209077832
+                      creationLocale:
+                        country: ES
+                        language: es
+                      name: Form with written spanish
+                      id: 7234246
+                      lastModified: 1677209424470
+                      state: PUBLISHED
+                      content:
+                        questions:
+                        - questionId: 107234246
+                          question:
+                            localized:
+                              es_ES: Nombre
+                          responseEditable: true
+                          name: First name
+                          questionDetails:
+                            textQuestionDetails:
+                              maxResponseLength: 300
+                          predefinedField: FIRST_NAME
+                          responseRequired: true
+                        - questionId: 207234246
+                          question:
+                            localized:
+                              es_ES: Apellidos
+                          responseEditable: true
+                          name: Last name
+                          questionDetails:
+                            textQuestionDetails:
+                              maxResponseLength: 300
+                          predefinedField: LAST_NAME
+                          responseRequired: true
+                        description:
+                          localized:
+                            es_ES: Mis detalles de súper gran oferta!
+                        postSubmissionInfo:
+                          message:
+                            localized:
+                              es_ES: muchas gracias!
+                          callToAction:
+                            callToActionTarget:
+                              landingPageUrl: https://www.linkedin.com
+                            callToActionLabel: VISIT_COMPANY_WEBSITE
+                        legalInfo:
+                          consents:
+                          - consent:
+                              localized:
+                                es_ES: ' marque mi casilla de verificación personalizada!'
+                            checkRequired: true
+                            id: 0
+                          legalInfoId: 107234246
+                          privacyPolicyUrl: http://example.com/privacy
+                          legalDisclaimer:
+                            localized:
+                              es_ES: tanto texto de política
+                        headline:
+                          localized:
+                            es_ES: mi super gran titular
+        default:
+          $ref: '#/components/responses/Error'
+  /leadFormResponses:
+    get:
+      operationId: getLeadFormResponses
+      summary: Query leadFormResponses
+      tags:
+      - Use Cases
+      description: "This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`\
+        \ / body shape). Variants seen in the source collection:\n- **7. Allow the user to pull back past leads\
+        \ one time to get any missed leads** (`q=owner`): This example pulls back all form responses (leads) for\
+        \ the chosen organization for a given lead type. It also uses [field projection](https://learn.microsoft.com/en-us/linkedin/shared/api-guide/concepts/projections?context=linkedin/marketing/context)\
+        \ to pull back specific fields in the response and \n- **8. [PULL] Schedule periodic form response (lead)\
+        \ pulls** (`q=owner`): This example pulls back all form responses (leads) for the chosen organization for\
+        \ a given lead type. It also uses [field projection](https://learn.microsoft.com/en-us/linkedin/shared/api-guide/concepts/projections?context=linkedin/marketing/context)\
+        \ to pull back specific fields in the response and \n- **7. Allow the user to pull back past leads one time\
+        \ to get any missed leads** (`q=owner`): This example pulls back all form responses (leads) for the chosen\
+        \ sponsored account. It also uses [field projection](https://learn.microsoft.com/en-us/linkedin/shared/api-guide/concepts/projections?context=linkedin/marketing/context)\
+        \ to pull back specific fields in the response and the `submittedAtT\n- **8. [PULL] Schedule periodic form\
+        \ response (lead) pulls** (`q=owner`): This example pulls back all form responses (leads) for the chosen\
+        \ sponsored account. It also uses [field projection](https://learn.microsoft.com/en-us/linkedin/shared/api-guide/concepts/projections?context=linkedin/marketing/context)\
+        \ to pull back specific fields in the response and the `submittedAtT"
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - owner
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: owner
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: leadType
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: limitedToTestLeads
+        in: query
+        required: false
+        schema:
+          type: boolean
+        example: false
+      - name: submittedAtTimeRange
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: fields
+        in: query
+        required: false
+        schema:
+          type: string
+        example: ownerInfo,associatedEntityInfo,leadMetadataInfo,leadType,versionedLeadGenFormUrn,id,submittedAt,testLead,formResponse,form:(hiddenFields,creationLocale,name,id,content)
+        allowReserved: true
+      - name: count
+        in: query
+        required: false
+        schema:
+          type: integer
+        example: 10
+      - name: start
+        in: query
+        required: false
+        schema:
+          type: integer
+        example: 0
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetLeadFormResponsesResponse'
+              examples:
+                7AllowTheUserToPullBackPastLeadsOneTimeToGetAnyMissedLeads:
+                  summary: 7. Allow the user to pull back past leads one time to get any missed leads
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                      total: 2
+                    elements:
+                    - form:
+                        name: LeadGen form for Highlander Cranberries LLC
+                        hiddenFields:
+                        - name: Entity name
+                          value: Highlander Cranberries LLC
+                        id: 6955637458260688897
+                        content:
+                          questions:
+                          - questionId: 415148
+                            question:
+                              localized:
+                                en_US: First Name
+                            responseEditable: true
+                            name: firstName
+                            questionDetails:
+                              textQuestionDetails:
+                                maxResponseLength: 300
+                            predefinedField: FIRST_NAME
+                            responseRequired: true
+                          - questionId: 413300
+                            question:
+                              localized:
+                                en_US: Last Name
+                            responseEditable: true
+                            name: lastName
+                            questionDetails:
+                              textQuestionDetails:
+                                maxResponseLength: 300
+                            predefinedField: LAST_NAME
+                            responseRequired: true
+                          description:
+                            localized:
+                              en_US: Share your information below with Highlander Cranberries LLC to be contacted
+                                with more information
+                          legalInfo:
+                            consents:
+                            - consent:
+                                localized:
+                                  en_US: Highlander Cranberries LLC may contact me via email
+                              checkRequired: true
+                              id: 1
+                            legalInfoId: 1237956
+                            privacyPolicyUrl: http://www.example.com/privacy
+                            legalDisclaimer:
+                              localized:
+                                en_US: Highlander Cranberries LLC may use your name and email address to send you
+                                  communications about the company's products.
+                          headline:
+                            localized:
+                              en_US: Contact Highlander Cranberries LLC
+                        creationLocale:
+                          country: US
+                          language: en
+                      leadType: COMPANY
+                      leadMetadataInfo: {}
+                      associatedEntityInfo:
+                        associatedCompany:
+                          organizationUrn: urn:li:organization:11223344
+                      versionedLeadGenFormUrn: urn:li:versionedLeadGenForm:(urn:li:leadGenForm:6955637458260688897,1)
+                      ownerInfo:
+                        organizationInfo:
+                          organizationUrn: urn:li:organization:11223344
+                      id: a9a29e52-c0a3-42e3-8af1-2fc83b697003-4
+                      submittedAt: 1690908974184
+                      testLead: false
+                      formResponse:
+                        consentResponses:
+                        - accepted: true
+                          consentId: 1
+                        answers:
+                        - answerDetails:
+                            textQuestionAnswer:
+                              answer: user@example.com
+                          questionId: 413956
+                        - answerDetails:
+                            textQuestionAnswer:
+                              answer: Shelly
+                          questionId: 415148
+                    - form:
+                        name: LeadGen form for Highlander Cranberries LLC
+                        hiddenFields:
+                        - name: Entity name
+                          value: Highlander Cranberries LLC
+                        id: 6955637458260688897
+                        content:
+                          questions:
+                          - questionId: 415148
+                            question:
+                              localized:
+                                en_US: First Name
+                            responseEditable: true
+                            name: firstName
+                            questionDetails:
+                              textQuestionDetails:
+                                maxResponseLength: 300
+                            predefinedField: FIRST_NAME
+                            responseRequired: true
+                          - questionId: 413300
+                            question:
+                              localized:
+                                en_US: Last Name
+                            responseEditable: true
+                            name: lastName
+                            questionDetails:
+                              textQuestionDetails:
+                                maxResponseLength: 300
+                            predefinedField: LAST_NAME
+                            responseRequired: true
+                          description:
+                            localized:
+                              en_US: Share your information below with Highlander Cranberries LLC to be contacted
+                                with more information
+                          legalInfo:
+                            consents:
+                            - consent:
+                                localized:
+                                  en_US: Highlander Cranberries LLC may contact me via email
+                              checkRequired: true
+                              id: 1
+                            legalInfoId: 1237956
+                            privacyPolicyUrl: http://www.example.com/privacy
+                            legalDisclaimer:
+                              localized:
+                                en_US: Highlander Cranberries LLC may use your name and email address to send you
+                                  communications about the company's products.
+                          headline:
+                            localized:
+                              en_US: Contact Highlander Cranberries LLC
+                        creationLocale:
+                          country: US
+                          language: en
+                      leadType: COMPANY
+                      leadMetadataInfo: {}
+                      associatedEntityInfo:
+                        associatedCompany:
+                          organizationUrn: urn:li:organization:11223344
+                      versionedLeadGenFormUrn: urn:li:versionedLeadGenForm:(urn:li:leadGenForm:6955637458260688897,1)
+                      ownerInfo:
+                        organizationInfo:
+                          organizationUrn: urn:li:organization:11223344
+                      id: 55386bd2-6b88-45e5-9529-985af6cf30a7-3
+                      submittedAt: 1690909024749
+                      testLead: false
+                      formResponse:
+                        consentResponses:
+                        - accepted: true
+                          consentId: 1
+                        answers:
+                        - answerDetails:
+                            textQuestionAnswer:
+                              answer: user@example.com
+                          questionId: 413956
+                        - answerDetails:
+                            textQuestionAnswer:
+                              answer: Tina
+                          questionId: 415148
+                7AllowTheUserToPullBackPastLeadsOneTimeToGetAnyMissedLeads2:
+                  summary: 7. Allow the user to pull back past leads one time to get any missed leads
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                      total: 3
+                    elements:
+                    - owner:
+                        sponsoredAccount: urn:li:sponsoredAccount:11223344
+                      form:
+                        name: Form with written spanish
+                        hiddenFields:
+                        - name: hidden_field
+                          value: abc678
+                        - name: campo_escondido
+                          value: def789
+                        id: 7234246
+                        content:
+                          questions:
+                          - questionId: 107234246
+                            question:
+                              localized:
+                                es_ES: Nombre
+                            responseEditable: true
+                            name: First name
+                            questionDetails:
+                              textQuestionDetails:
+                                maxResponseLength: 300
+                            predefinedField: FIRST_NAME
+                            responseRequired: true
+                          - questionId: 207234246
+                            question:
+                              localized:
+                                es_ES: Apellidos
+                            responseEditable: true
+                            name: Last name
+                            questionDetails:
+                              textQuestionDetails:
+                                maxResponseLength: 300
+                            predefinedField: LAST_NAME
+                            responseRequired: true
+                          description:
+                            localized:
+                              es_ES: Mis detalles de súper gran oferta!
+                          postSubmissionInfo:
+                            message:
+                              localized:
+                                es_ES: muchas gracias!
+                            callToAction:
+                              callToActionTarget:
+                                landingPageUrl: https://www.linkedin.com
+                              callToActionLabel: VISIT_COMPANY_WEBSITE
+                          legalInfo:
+                            consents:
+                            - consent:
+                                localized:
+                                  es_ES: ' marque mi casilla de verificación personalizada!'
+                              checkRequired: true
+                              id: 0
+                            legalInfoId: 107234246
+                            privacyPolicyUrl: http://example.com/privacy
+                            legalDisclaimer:
+                              localized:
+                                es_ES: tanto texto de política
+                          headline:
+                            localized:
+                              es_ES: mi super gran titular
+                        creationLocale:
+                          country: ES
+                          language: es
+                      leadType: SPONSORED
+                      leadMetadataInfo:
+                        sponsoredLeadMetadataInfo:
+                          campaign:
+                            type: SPONSORED_UPDATES
+                            name: Spain campaign
+                            id: urn:li:sponsoredCampaign:198356826
+                      associatedEntityInfo:
+                        associatedCreative:
+                          intendedStatus: DRAFT
+                          content:
+                            reference: urn:li:share:6904869836015464450
+                          id: urn:li:sponsoredCreative:241257736
+                      versionedLeadGenFormUrn: urn:li:versionedLeadGenForm:(urn:li:leadGenForm:7234246,1)
+                      ownerInfo:
+                        sponsoredAccountInfo:
+                          name: Christa's Updated Ad Acount
+                      id: 249592fc-d272-44ba-a7db-c2bdce579507-6
+                      submittedAt: 1689894599288
+                      testLead: true
+                      formResponse:
+                        consentResponses:
+                        - accepted: true
+                          consentId: 0
+                        answers:
+                        - answerDetails:
+                            textQuestionAnswer:
+                              answer: user@example.com
+                          questionId: 307234246
+                        - answerDetails:
+                            textQuestionAnswer:
+                              answer: user@example.com
+                          questionId: 607234246
+                    - owner:
+                        sponsoredAccount: urn:li:sponsoredAccount:11223344
+                      form:
+                        name: christascranberryform
+                        hiddenFields:
+                        - name: ad_cranberries
+                          value: 'yes'
+                        id: 4679966
+                        content:
+                          questions:
+                          - questionId: 104679966
+                            question:
+                              localized:
+                                en_US: First name
+                            responseEditable: true
+                            name: First name
+                            questionDetails:
+                              textQuestionDetails:
+                                maxResponseLength: 300
+                            predefinedField: FIRST_NAME
+                            responseRequired: true
+                          - questionId: 204679966
+                            question:
+                              localized:
+                                en_US: Last name
+                            responseEditable: true
+                            name: Last name
+                            questionDetails:
+                              textQuestionDetails:
+                                maxResponseLength: 300
+                            predefinedField: LAST_NAME
+                            responseRequired: true
+                          postSubmissionInfo:
+                            message:
+                              localized:
+                                en_US: thank you!
+                            callToAction:
+                              callToActionTarget:
+                                landingPageUrl: https://www.oceanspray.com/
+                              callToActionLabel: VISIT_COMPANY_WEBSITE
+                          legalInfo:
+                            consents:
+                            - consent:
+                                localized:
+                                  en_US: by checking this box you agree to loving cranberries!
+                              checkRequired: true
+                              id: 0
+                            privacyPolicyUrl: http://example.com/privacy
+                            legalInfoId: 104679966
+                          headline:
+                            localized:
+                              en_US: cranberries are healthy!
+                        creationLocale:
+                          country: US
+                          language: en
+                      leadType: SPONSORED
+                      leadMetadataInfo:
+                        sponsoredLeadMetadataInfo:
+                          campaign:
+                            type: SPONSORED_UPDATES
+                            name: new leads
+                            id: urn:li:sponsoredCampaign:168056916
+                      associatedEntityInfo:
+                        associatedCreative:
+                          intendedStatus: ACTIVE
+                          content:
+                            reference: urn:li:share:6826590508119404544
+                          id: urn:li:sponsoredCreative:132987526
+                      versionedLeadGenFormUrn: urn:li:versionedLeadGenForm:(urn:li:leadGenForm:4679966,1)
+                      ownerInfo:
+                        sponsoredAccountInfo:
+                          name: Christa's Updated Ad Acount
+                      id: 0db37541-8c0c-49a7-b9f4-833c10b5a1d5-6
+                      submittedAt: 1689894505048
+                      testLead: true
+                      formResponse:
+                        consentResponses:
+                        - accepted: true
+                          consentId: 0
+                        answers:
+                        - answerDetails:
+                            textQuestionAnswer:
+                              answer: user@example.com
+                          questionId: 304679966
+                        - answerDetails:
+                            textQuestionAnswer:
+                              answer: raw
+                          questionId: 504679966
+        default:
+          $ref: '#/components/responses/Error'
+  /leadNotifications:
+    post:
+      operationId: postLeadNotifications
+      summary: Create / update / action on leadNotifications
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **8. [PUSH] Subscribe for lead notification webhooks**: This is our recommended back practice (with a
+        pull backup). [Register a lead notification webhook](https://learn.microsoft.com/en-us/linkedin/marketing/integrations/lead-sync/leadsync?tabs=http#lead-notification-subscriptions)
+        to receive notifications for new leads. Lead notifications can also be su
+
+        - **8. [PUSH] Subscribe for lead notification webhooks**: [Register a lead notification webhook](https://learn.microsoft.com/en-us/linkedin/marketing/integrations/lead-sync/leadsync?tabs=http#lead-notification-subscriptions)
+        to receive notifications for new leads. Lead notifications can also be subscribed at a more granular level
+        - see the linked documenta'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostLeadNotificationsRequest'
+            examples:
+              8PUSHSubscribeForLeadNotificationWebhooks:
+                summary: 8. [PUSH] Subscribe for lead notification webhooks
+                value:
+                  webhook: https://www.example.com
+                  owner:
+                    organization: urn:li:organization:{{organization_id}}
+                  leadType: '{{leadtype_organic}}'
+              8PUSHSubscribeForLeadNotificationWebhooks2:
+                summary: 8. [PUSH] Subscribe for lead notification webhooks
+                value:
+                  webhook: https://www.example.com
+                  owner:
+                    sponsoredAccount: urn:li:sponsoredAccount:{{sponsoredaccount_id}}
+                  leadType: '{{leadtype_sponsored}}'
+      responses:
+        '201':
+          description: Success (inferred — the source collection has no saved example for this call)
+          headers:
+            x-restli-id:
+              schema:
+                type: string
+              description: Id (or URN) of the created resource.
+        default:
+          $ref: '#/components/responses/Error'
+  /leadFormResponses/{leadFormResponseId}:
+    get:
+      operationId: getLeadFormResponses2
+      summary: Query leadFormResponses
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **9. [PUSH] Fetch full lead data after a lead notification is received**: [Responses can be fetched](https://learn.microsoft.com/en-us/linkedin/marketing/integrations/lead-sync/leadsync?tabs=http#get-lead-sync-form-responses)
+        for a single form response, multiple form responses, or at the Organization level.
+
+        - **9. [PUSH] Fetch full lead data after a lead notification is received**: [Responses can be fetched](https://learn.microsoft.com/en-us/linkedin/marketing/integrations/lead-sync/leadsync?tabs=http#get-lead-sync-form-responses)
+        for a single form response, multiple form responses, or at the form or Ad Account level.'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: leadFormResponseId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      - name: fields
+        in: query
+        required: false
+        schema:
+          type: string
+        example: ownerInfo,associatedEntityInfo,leadMetadataInfo,leadType,versionedLeadGenFormUrn,id,submittedAt,testLead,formResponse,form:(hiddenFields,creationLocale,name,id,content)
+        allowReserved: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetLeadFormResponses2Response'
+              examples:
+                9FetchFullLeadDataAfterALeadNotificationIsReceivedCopy:
+                  summary: 9. Fetch full lead data after a lead notification is received Copy
+                  value:
+                    form:
+                      name: LeadGen form for Highlander Cranberries LLC
+                      hiddenFields:
+                      - name: Entity name
+                        value: Highlander Cranberries LLC
+                      id: 6955637458260688897
+                      content:
+                        questions:
+                        - questionId: 415148
+                          question:
+                            localized:
+                              en_US: First Name
+                          responseEditable: true
+                          name: firstName
+                          questionDetails:
+                            textQuestionDetails:
+                              maxResponseLength: 300
+                          predefinedField: FIRST_NAME
+                          responseRequired: true
+                        - questionId: 413300
+                          question:
+                            localized:
+                              en_US: Last Name
+                          responseEditable: true
+                          name: lastName
+                          questionDetails:
+                            textQuestionDetails:
+                              maxResponseLength: 300
+                          predefinedField: LAST_NAME
+                          responseRequired: true
+                        description:
+                          localized:
+                            en_US: Share your information below with Highlander Cranberries LLC to be contacted
+                              with more information
+                        legalInfo:
+                          consents:
+                          - consent:
+                              localized:
+                                en_US: Highlander Cranberries LLC may contact me via email
+                            checkRequired: true
+                            id: 1
+                          legalInfoId: 1237956
+                          privacyPolicyUrl: http://www.example.com/privacy
+                          legalDisclaimer:
+                            localized:
+                              en_US: Highlander Cranberries LLC may use your name and email address to send you
+                                communications about the company's products.
+                        headline:
+                          localized:
+                            en_US: Contact Highlander Cranberries LLC
+                      creationLocale:
+                        country: US
+                        language: en
+                    leadType: COMPANY
+                    leadMetadataInfo: {}
+                    associatedEntityInfo:
+                      associatedCompany:
+                        organizationUrn: urn:li:organization:11223344
+                    versionedLeadGenFormUrn: urn:li:versionedLeadGenForm:(urn:li:leadGenForm:6955637458260688897,1)
+                    ownerInfo:
+                      organizationInfo:
+                        organizationUrn: urn:li:organization:11223344
+                    id: a9a29e52-c0a3-42e3-8af1-2fc83b697003-4
+                    submittedAt: 1690908974184
+                    testLead: false
+                    formResponse:
+                      consentResponses:
+                      - accepted: true
+                        consentId: 1
+                      answers:
+                      - answerDetails:
+                          textQuestionAnswer:
+                            answer: user@example.com
+                        questionId: 413956
+                      - answerDetails:
+                          textQuestionAnswer:
+                            answer: Shelly
+                        questionId: 415148
+                9FetchFullLeadDataAfterANotificationIsReceived:
+                  summary: 9. Fetch full lead data after a notification is received
+                  value:
+                    owner:
+                      sponsoredAccount: urn:li:sponsoredAccount:1234567
+                    submitter: urn:li:person:BcLKblgopR
+                    leadType: SPONSORED
+                    leadMetadata:
+                      sponsoredLeadMetadata:
+                        campaign: urn:li:sponsoredCampaign:198356826
+                    versionedLeadGenFormUrn: urn:li:versionedLeadGenForm:(urn:li:leadGenForm:7234246,1)
+                    id: 249592fc-d272-44ba-a7db-c2bdce579507-6
+                    submittedAt: 1689894599288
+                    testLead: true
+                    associatedEntity:
+                      associatedCreative: urn:li:sponsoredCreative:241257736
+                    formResponse:
+                      consentResponses:
+                      - accepted: true
+                        consentId: 0
+                      answers:
+                      - answerDetails:
+                          textQuestionAnswer:
+                            answer: user@example.com
+                        questionId: 307234246
+                      - answerDetails:
+                          textQuestionAnswer:
+                            answer: user@example.com
+                        questionId: 607234246
+        default:
+          $ref: '#/components/responses/Error'
+  /leadnotifications/{leadnotificationId}:
+    delete:
+      operationId: deleteLeadnotifications
+      summary: Delete leadnotifications
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **[PUSH] Delete a registered webhook by id**: [Delete a lead notification subsription](https://learn.microsoft.com/en-us/linkedin/marketing/integrations/lead-sync/leadsync?tabs=http#delete-lead-notification-url)
+
+        - **[PUSH] Delete a registered webhook by id**: [Delete a lead notification subsription](https://learn.microsoft.com/en-us/linkedin/marketing/integrations/lead-sync/leadsync?tabs=http#delete-lead-notification-url)'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: leadnotificationId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /adAccounts:
+    get:
+      operationId: 2GetTheUserSSponsoredAccountsAdAccounts
+      summary: 2. Get the user's sponsored accounts (ad accounts)
+      tags:
+      - Use Cases
+      description: 'View [Search for Accounts](https://docs.microsoft.com/en-us/linkedin/marketing/integrations/ads/account-structure/create-and-manage-accounts?tabs=http#search-for-accounts)
+        documentation for more information.
+
+
+        This API call pulls back Ad Accounts that the member has access to where the status = ACTIVE and test =
+        false (NOT a test Ad Account).
+
+
+        Learn more about Test Ad Accounts [here](https://docs.microsoft.com/en-us/linkedin/marketing/integrations/ads/account-structure/create-and-manage-accounts?tabs=http#working-with-test-ad-accounts).
+
+
+        For testing purposes, if you wish to use this example api to pull back a Test Ad Account, simply remove
+        `test:false` from the search parameter.
+
+
+        ---
+
+
+        **3\. Allow the user to select an Ad Account**'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - search
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: search
+        in: query
+        required: false
+        schema:
+          type: string
+        example: (status:(values:List(ACTIVE)),test:false)
+        allowReserved: true
+      - name: fields
+        in: query
+        required: false
+        schema:
+          type: string
+        example: id,name,test,referenceInfo
+        allowReserved: true
+      - name: count
+        in: query
+        required: false
+        schema:
+          type: integer
+        example: 10
+      - name: start
+        in: query
+        required: false
+        schema:
+          type: integer
+        example: 0
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/2GetTheUserSSponsoredAccountsAdAccountsResponse'
+              examples:
+                2GetTheUserSSponsoredAccountsAdAccounts:
+                  summary: 2. Get the user's sponsored accounts (ad accounts)
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                      total: 2
+                    elements:
+                    - name: Ad Account A
+                      id: 1234567
+                      test: false
+                      referenceInfo:
+                        organization:
+                          name:
+                            localized:
+                              en_US: Highlander Cranberries LLC
+                            preferredLocale:
+                              country: US
+                              language: en
+                          vanityName: highlander-cranberries-llc
+                          localizedName: Highlander Cranberries LLC
+                          id: 11223344
+                    - name: New Ad Account B
+                      id: 5678910
+                      test: false
+                      referenceInfo:
+                        organization:
+                          name:
+                            localized:
+                              en_US: Highlander Cranberries LLC
+                            preferredLocale:
+                              country: US
+                              language: en
+                          vanityName: highlander-cranberries-llc
+                          localizedName: Highlander Cranberries LLC
+                          id: 11223344
+        default:
+          $ref: '#/components/responses/Error'
+components:
+  securitySchemes:
+    linkedinOAuth2:
+      type: oauth2
+      description: LinkedIn 3-legged OAuth 2.0 (authorization code).
+      flows:
+        authorizationCode:
+          authorizationUrl: https://www.linkedin.com/oauth/v2/authorization
+          tokenUrl: https://www.linkedin.com/oauth/v2/accessToken
+          scopes:
+            r_ads: LinkedIn permission `r_ads`
+            r_organization_admin: LinkedIn permission `r_organization_admin`
+            r_liteprofile: LinkedIn permission `r_liteprofile`
+            r_marketing_leadgen_automation: LinkedIn permission `r_marketing_leadgen_automation`
+            r_events: LinkedIn permission `r_events`
+  parameters:
+    LinkedInVersion:
+      name: LinkedIn-Version
+      in: header
+      required: true
+      description: API version in YYYYMM format (e.g. `202509`).
+      schema:
+        type: string
+        pattern: ^[0-9]{6}$
+    RestliProtocolVersion:
+      name: X-Restli-Protocol-Version
+      in: header
+      required: false
+      schema:
+        type: string
+        enum:
+        - 2.0.0
+        default: 2.0.0
+  responses:
+    Error:
+      description: Error response
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Error:
+      type: object
+      properties:
+        status:
+          type: integer
+        code:
+          type: string
+        serviceErrorCode:
+          type: integer
+        message:
+          type: string
+    Consents:
+      type: object
+      properties:
+        consent:
+          type: object
+          properties:
+            localized:
+              type: object
+              properties:
+                en_US:
+                  type: string
+                es_ES:
+                  type: string
+        checkRequired:
+          type: boolean
+        id:
+          type: integer
+    GetOrganizationAclsResponse:
+      type: object
+      properties:
+        paging:
+          type: object
+          properties:
+            start:
+              type: integer
+            count:
+              type: integer
+            links:
+              type: array
+              items: {}
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              roleAssignee:
+                type: string
+              state:
+                type: string
+              lastModified:
+                type: object
+                properties:
+                  actor:
+                    type: string
+                  impersonator:
+                    type: string
+                  time:
+                    type: integer
+                    format: int64
+              role:
+                type: string
+              created:
+                type: object
+                properties:
+                  actor:
+                    type: string
+                  impersonator:
+                    type: string
+                  time:
+                    type: integer
+                    format: int64
+              organization:
+                type: string
+    GetLeadFormsResponse:
+      type: object
+      properties:
+        paging:
+          type: object
+          properties:
+            start:
+              type: integer
+            count:
+              type: integer
+            links:
+              type: array
+              items: {}
+            total:
+              type: integer
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              owner:
+                type: object
+                properties:
+                  organization:
+                    type: string
+                  sponsoredAccount:
+                    type: string
+              hiddenFields:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                    value:
+                      type: string
+              versionId:
+                type: integer
+              created:
+                type: integer
+                format: int64
+              creationLocale:
+                type: object
+                properties:
+                  country:
+                    type: string
+                  language:
+                    type: string
+              name:
+                type: string
+              id:
+                type: integer
+                format: int64
+              lastModified:
+                type: integer
+                format: int64
+              state:
+                type: string
+              content:
+                type: object
+                properties:
+                  questions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        questionId:
+                          type: integer
+                          format: int64
+                        question:
+                          type: object
+                          properties:
+                            localized:
+                              type: object
+                              properties:
+                                en_US:
+                                  type: string
+                                sv_SE:
+                                  type: string
+                                es_ES:
+                                  type: string
+                        responseEditable:
+                          type: boolean
+                        name:
+                          type: string
+                        questionDetails:
+                          type: object
+                          properties:
+                            textQuestionDetails:
+                              type: object
+                              properties:
+                                maxResponseLength:
+                                  type: integer
+                            multipleChoiceQuestionDetails:
+                              type: object
+                              properties:
+                                options:
+                                  type: array
+                                  items:
+                                    type: object
+                                    properties:
+                                      text:
+                                        type: object
+                                        properties:
+                                          localized:
+                                            type: object
+                                            properties:
+                                              es_ES:
+                                                type: string
+                                              en_US:
+                                                type: string
+                                      id:
+                                        type: integer
+                        predefinedField:
+                          type: string
+                        responseRequired:
+                          type: boolean
+                  description:
+                    type: object
+                    properties:
+                      localized:
+                        type: object
+                        properties:
+                          en_US:
+                            type: string
+                          sv_SE:
+                            type: string
+                          es_ES:
+                            type: string
+                  legalInfo:
+                    type: object
+                    properties:
+                      consents:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Consents'
+                      legalInfoId:
+                        type: integer
+                      privacyPolicyUrl:
+                        type: string
+                      legalDisclaimer:
+                        type: object
+                        properties:
+                          localized:
+                            type: object
+                            properties:
+                              en_US:
+                                type: string
+                              sv_SE:
+                                type: string
+                              es_ES:
+                                type: string
+                  headline:
+                    type: object
+                    properties:
+                      localized:
+                        type: object
+                        properties:
+                          en_US:
+                            type: string
+                          sv_SE:
+                            type: string
+                          es_ES:
+                            type: string
+                  postSubmissionInfo:
+                    type: object
+                    properties:
+                      message:
+                        type: object
+                        properties:
+                          localized:
+                            type: object
+                            properties:
+                              sv_SE:
+                                type: string
+                              es_ES:
+                                type: string
+                              en_US:
+                                type: string
+                      callToAction:
+                        type: object
+                        properties:
+                          callToActionTarget:
+                            type: object
+                            properties:
+                              landingPageUrl:
+                                type: string
+                          callToActionLabel:
+                            type: string
+              reviewInfo:
+                type: object
+                properties:
+                  rejectionReasons:
+                    type: array
+                    items: {}
+                  lastUpdated:
+                    type: integer
+                    format: int64
+                  reviewStatus:
+                    type: string
+    GetLeadFormResponsesResponse:
+      type: object
+      properties:
+        paging:
+          type: object
+          properties:
+            start:
+              type: integer
+            count:
+              type: integer
+            links:
+              type: array
+              items: {}
+            total:
+              type: integer
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              form:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  hiddenFields:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        value:
+                          type: string
+                  id:
+                    type: integer
+                    format: int64
+                  content:
+                    type: object
+                    properties:
+                      questions:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            questionId:
+                              type: integer
+                            question:
+                              type: object
+                              properties:
+                                localized:
+                                  type: object
+                                  properties:
+                                    en_US:
+                                      type: string
+                                    es_ES:
+                                      type: string
+                            responseEditable:
+                              type: boolean
+                            name:
+                              type: string
+                            questionDetails:
+                              type: object
+                              properties:
+                                textQuestionDetails:
+                                  type: object
+                                  properties:
+                                    maxResponseLength:
+                                      type: integer
+                                multipleChoiceQuestionDetails:
+                                  type: object
+                                  properties:
+                                    options:
+                                      type: array
+                                      items:
+                                        type: object
+                                        properties:
+                                          text:
+                                            type: object
+                                            properties:
+                                              localized:
+                                                type: object
+                                                properties:
+                                                  es_ES:
+                                                    type: string
+                                                  en_US:
+                                                    type: string
+                                          id:
+                                            type: integer
+                            predefinedField:
+                              type: string
+                            responseRequired:
+                              type: boolean
+                      description:
+                        type: object
+                        properties:
+                          localized:
+                            type: object
+                            properties:
+                              en_US:
+                                type: string
+                              es_ES:
+                                type: string
+                      legalInfo:
+                        type: object
+                        properties:
+                          consents:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/Consents'
+                          legalInfoId:
+                            type: integer
+                          privacyPolicyUrl:
+                            type: string
+                          legalDisclaimer:
+                            type: object
+                            properties:
+                              localized:
+                                type: object
+                                properties:
+                                  en_US:
+                                    type: string
+                                  es_ES:
+                                    type: string
+                      headline:
+                        type: object
+                        properties:
+                          localized:
+                            type: object
+                            properties:
+                              en_US:
+                                type: string
+                              es_ES:
+                                type: string
+                      postSubmissionInfo:
+                        type: object
+                        properties:
+                          message:
+                            type: object
+                            properties:
+                              localized:
+                                type: object
+                                properties:
+                                  es_ES:
+                                    type: string
+                                  en_US:
+                                    type: string
+                          callToAction:
+                            type: object
+                            properties:
+                              callToActionTarget:
+                                type: object
+                                properties:
+                                  landingPageUrl:
+                                    type: string
+                              callToActionLabel:
+                                type: string
+                  creationLocale:
+                    type: object
+                    properties:
+                      country:
+                        type: string
+                      language:
+                        type: string
+              leadType:
+                type: string
+              leadMetadataInfo:
+                type: object
+                properties:
+                  sponsoredLeadMetadataInfo:
+                    type: object
+                    properties:
+                      campaign:
+                        type: object
+                        properties:
+                          type:
+                            type: string
+                          name:
+                            type: string
+                          id:
+                            type: string
+              associatedEntityInfo:
+                type: object
+                properties:
+                  associatedCompany:
+                    type: object
+                    properties:
+                      organizationUrn:
+                        type: string
+                  associatedCreative:
+                    type: object
+                    properties:
+                      intendedStatus:
+                        type: string
+                      content:
+                        type: object
+                        properties:
+                          reference:
+                            type: string
+                      id:
+                        type: string
+              versionedLeadGenFormUrn:
+                type: string
+              ownerInfo:
+                type: object
+                properties:
+                  organizationInfo:
+                    type: object
+                    properties:
+                      organizationUrn:
+                        type: string
+                  sponsoredAccountInfo:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+              id:
+                type: string
+              submittedAt:
+                type: integer
+                format: int64
+              testLead:
+                type: boolean
+              formResponse:
+                type: object
+                properties:
+                  consentResponses:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        accepted:
+                          type: boolean
+                        consentId:
+                          type: integer
+                  answers:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        answerDetails:
+                          type: object
+                          properties:
+                            textQuestionAnswer:
+                              type: object
+                              properties:
+                                answer:
+                                  type: string
+                            multipleChoiceAnswer:
+                              type: object
+                              properties:
+                                options:
+                                  type: array
+                                  items:
+                                    type: integer
+                        questionId:
+                          type: integer
+              owner:
+                type: object
+                properties:
+                  sponsoredAccount:
+                    type: string
+    PostLeadNotificationsRequest:
+      type: object
+      properties:
+        webhook:
+          type: string
+        owner:
+          type: object
+          properties:
+            organization:
+              type: string
+            sponsoredAccount:
+              type: string
+        leadType:
+          type: string
+    GetLeadFormResponses2Response:
+      type: object
+      properties:
+        form:
+          type: object
+          properties:
+            name:
+              type: string
+            hiddenFields:
+              type: array
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  value:
+                    type: string
+            id:
+              type: integer
+              format: int64
+            content:
+              type: object
+              properties:
+                questions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      questionId:
+                        type: integer
+                      question:
+                        type: object
+                        properties:
+                          localized:
+                            type: object
+                            properties:
+                              en_US:
+                                type: string
+                      responseEditable:
+                        type: boolean
+                      name:
+                        type: string
+                      questionDetails:
+                        type: object
+                        properties:
+                          textQuestionDetails:
+                            type: object
+                            properties:
+                              maxResponseLength:
+                                type: integer
+                      predefinedField:
+                        type: string
+                      responseRequired:
+                        type: boolean
+                description:
+                  type: object
+                  properties:
+                    localized:
+                      type: object
+                      properties:
+                        en_US:
+                          type: string
+                legalInfo:
+                  type: object
+                  properties:
+                    consents:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          consent:
+                            type: object
+                            properties:
+                              localized:
+                                type: object
+                                properties:
+                                  en_US:
+                                    type: string
+                          checkRequired:
+                            type: boolean
+                          id:
+                            type: integer
+                    legalInfoId:
+                      type: integer
+                    privacyPolicyUrl:
+                      type: string
+                    legalDisclaimer:
+                      type: object
+                      properties:
+                        localized:
+                          type: object
+                          properties:
+                            en_US:
+                              type: string
+                headline:
+                  type: object
+                  properties:
+                    localized:
+                      type: object
+                      properties:
+                        en_US:
+                          type: string
+            creationLocale:
+              type: object
+              properties:
+                country:
+                  type: string
+                language:
+                  type: string
+        leadType:
+          type: string
+        leadMetadataInfo:
+          type: object
+          properties: {}
+        associatedEntityInfo:
+          type: object
+          properties:
+            associatedCompany:
+              type: object
+              properties:
+                organizationUrn:
+                  type: string
+        versionedLeadGenFormUrn:
+          type: string
+        ownerInfo:
+          type: object
+          properties:
+            organizationInfo:
+              type: object
+              properties:
+                organizationUrn:
+                  type: string
+        id:
+          type: string
+        submittedAt:
+          type: integer
+          format: int64
+        testLead:
+          type: boolean
+        formResponse:
+          type: object
+          properties:
+            consentResponses:
+              type: array
+              items:
+                type: object
+                properties:
+                  accepted:
+                    type: boolean
+                  consentId:
+                    type: integer
+            answers:
+              type: array
+              items:
+                type: object
+                properties:
+                  answerDetails:
+                    type: object
+                    properties:
+                      textQuestionAnswer:
+                        type: object
+                        properties:
+                          answer:
+                            type: string
+                      multipleChoiceAnswer:
+                        type: object
+                        properties:
+                          options:
+                            type: array
+                            items:
+                              type: integer
+                  questionId:
+                    type: integer
+        owner:
+          type: object
+          properties:
+            sponsoredAccount:
+              type: string
+        submitter:
+          type: string
+        leadMetadata:
+          type: object
+          properties:
+            sponsoredLeadMetadata:
+              type: object
+              properties:
+                campaign:
+                  type: string
+        associatedEntity:
+          type: object
+          properties:
+            associatedCreative:
+              type: string
+    2GetTheUserSSponsoredAccountsAdAccountsResponse:
+      type: object
+      properties:
+        paging:
+          type: object
+          properties:
+            start:
+              type: integer
+            count:
+              type: integer
+            links:
+              type: array
+              items: {}
+            total:
+              type: integer
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              id:
+                type: integer
+              test:
+                type: boolean
+              referenceInfo:
+                type: object
+                properties:
+                  organization:
+                    type: object
+                    properties:
+                      name:
+                        type: object
+                        properties:
+                          localized:
+                            type: object
+                            properties:
+                              en_US:
+                                type: string
+                          preferredLocale:
+                            type: object
+                            properties:
+                              country:
+                                type: string
+                              language:
+                                type: string
+                      vanityName:
+                        type: string
+                      localizedName:
+                        type: string
+                      id:
+                        type: integer

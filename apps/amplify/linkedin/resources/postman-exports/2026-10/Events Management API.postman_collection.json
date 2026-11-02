@@ -1,0 +1,261 @@
+{
+  "info": {
+    "_postman_id": "6251ed29-f202-417a-9c83-196e49aa5739",
+    "name": "Events Management API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "17301545",
+    "_collection_link": "https://go.postman.co/collection/1914235-6251ed29-f202-417a-9c83-196e49aa5739?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "Use Cases",
+      "item": [
+        {
+          "name": "Find a Member's Organization Access Control",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Restli-Protocol-Version",
+                "value": "2.0.0"
+              },
+              {
+                "key": "Linkedin-Version",
+                "value": "{{insert_version}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/organizationAcls?q=roleAssignee",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "organizationAcls"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "roleAssignee"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Event by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Restli-Protocol-Version",
+                "value": "2.0.0"
+              },
+              {
+                "key": "Linkedin-Version",
+                "value": "{{insert_version}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/events/{id}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events",
+                "{id}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Find Events by Organizer",
+          "request": {
+            "auth": {
+              "type": "bearer"
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Restli-Protocol-Version",
+                "value": "2.0.0"
+              },
+              {
+                "key": "Linkedin-Version",
+                "value": "{{insert_version}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/events?q=eventsByOrganizer&organizer=urn%3Ali%3Aorganization%3A7185861&start=0&count=10&excludeCancelled=true&timeBasedFilter=(lifeCycleState%3APAST)&entryCriteria=PUBLIC&sortOrder=END_TIME_DESC\n",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "eventsByOrganizer"
+                },
+                {
+                  "key": "organizer",
+                  "value": "urn%3Ali%3Aorganization%3A7185861"
+                },
+                {
+                  "key": "start",
+                  "value": "0"
+                },
+                {
+                  "key": "count",
+                  "value": "10"
+                },
+                {
+                  "key": "excludeCancelled",
+                  "value": "true"
+                },
+                {
+                  "key": "timeBasedFilter",
+                  "value": "(lifeCycleState%3APAST)"
+                },
+                {
+                  "key": "entryCriteria",
+                  "value": "PUBLIC"
+                },
+                {
+                  "key": "sortOrder",
+                  "value": "END_TIME_DESC\n"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Find Events with Lead Gen Form by Organizer",
+          "request": {
+            "auth": {
+              "type": "bearer"
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Restli-Protocol-Version",
+                "value": "2.0.0"
+              },
+              {
+                "key": "Linkedin-Version",
+                "value": "{{insert_version}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/events?organizer=urn%3Ali%3Aorganization%3A7185861&start=0&count=2&q=organizerLeadGenFormEnabledEvents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events"
+              ],
+              "query": [
+                {
+                  "key": "organizer",
+                  "value": "urn%3Ali%3Aorganization%3A7185861"
+                },
+                {
+                  "key": "start",
+                  "value": "0"
+                },
+                {
+                  "key": "count",
+                  "value": "2"
+                },
+                {
+                  "key": "q",
+                  "value": "organizerLeadGenFormEnabledEvents"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Organization Owned Event",
+          "request": {
+            "auth": {
+              "type": "bearer"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Restli-Protocol-Version",
+                "value": "2.0.0"
+              },
+              {
+                "key": "Linkedin-Version",
+                "value": "{{insert_version}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": {\n        \"localized\": {\n            \"en_US\": \"My First Online Event\"\n        }\n    },\n    \"type\": {\n        \"online\": {\n            \"format\": {\n                \"liveVideo\": {\n                    \"endsAt\": 9091536065000\n                }\n            }\n        }\n    },\n    \"organizer\": \"urn:li:organization:2414183\",\n    \"leadGenFormSpec\": {\n        \"privacyPolicyUrl\": \"https://www.example.com/privacyPolicy\"\n    },\n    \"startsAt\": 9091536064111\n    \"backgroundImage\": \"urn:li:digitalmediaAsset:D5522AQEFM6ArFzip2Q\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/events",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Person Owned Event",
+          "request": {
+            "auth": {
+              "type": "bearer"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Restli-Protocol-Version",
+                "value": "2.0.0"
+              },
+              {
+                "key": "Linkedin-Version",
+                "value": "{{insert_version}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": {\n        \"localized\": {\n            \"en_US\": \"My First Online Event\"\n        }\n    },\n    \"type\": {\n        \"online\": {\n            \"format\": {\n                \"liveVideo\": {\n                    \"endsAt\": 9091536065000\n                }\n            }\n        }\n    },\n    \"organizer\": \"urn:li:person:ABC123\",\n    \"leadGenFormSpec\": {\n        \"privacyPolicyUrl\": \"https://www.example.com/privacyPolicy\"\n    },\n    \"startsAt\": 9091536064111\n    \"backgroundImage\": \"urn:li:digitalmediaAsset:D5522AQEFM6ArFzip2Q\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/events",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+[package]
+org = "wso2"
+name = "amplify_domain"
+version = "0.4.2"
+distribution = "2201.13.3"
+
+[build-options]
+observabilityIncluded = true
+
+[[dependency]]
+org = "wso2"
+name = "amplify_common"
+version = "0.7.0"
+repository = "local"
+
+[[package.modules]]
+name = "amplify_domain.store"
+export = true
+
+[[package.modules]]
+name = "amplify_domain.identity"
+export = true
+
+[[package.modules]]
+name = "amplify_domain.campaign"
+export = true
+
+[[package.modules]]
+name = "amplify_domain.connection"
+export = true
+
+[[package.modules]]
+name = "amplify_domain.sharing"
+export = true
+
+[[package.modules]]
+name = "amplify_domain.external_sharing"
+export = true
+
+[[package.modules]]
+name = "amplify_domain.scoring"
+export = true
+
+[[package.modules]]
+name = "amplify_domain.recognition"
+export = true
+
+[[package.modules]]
+name = "amplify_domain.reporting"
+export = true
+
+[[package.modules]]
+name = "amplify_domain.announcements"
+export = true

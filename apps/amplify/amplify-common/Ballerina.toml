@@ -1,0 +1,32 @@
+[package]
+org = "wso2"
+name = "amplify_common"
+version = "0.7.0"
+distribution = "2201.13.3"
+
+[build-options]
+observabilityIncluded = true
+
+[[package.modules]]
+name = "amplify_common.types"
+export = true
+
+[[package.modules]]
+name = "amplify_common.events"
+export = true
+
+[[package.modules]]
+name = "amplify_common.linkedin"
+export = true
+
+[[package.modules]]
+name = "amplify_common.googlechat"
+export = true
+
+[[package.modules]]
+name = "amplify_common.crypto"
+export = true
+
+[[package.modules]]
+name = "amplify_common.resilience"
+export = true

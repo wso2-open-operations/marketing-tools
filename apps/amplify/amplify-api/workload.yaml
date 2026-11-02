@@ -1,0 +1,132 @@
+# OpenChoreo workload descriptor (M8c), read by `occ workload create --descriptor`. Type: deployment/service.
+# Same endpoints, ports and env names as apps/amplify/.choreo/component.yaml (scripts/check-descriptors.sh).
+# Choreo Project visibility -> `project`; Public -> `external`. Secrets: valueFrom.secretRef (SecretReference /
+# External Secrets); plain values come from the environment's ReleaseBinding/overrides.
+apiVersion: openchoreo.dev/v1alpha1
+metadata:
+  name: amplify-api
+endpoints:
+  - name: amplify-api
+    type: HTTP
+    port: 9090
+    schemaFile: openapi.yaml
+    visibility:
+      - project
+configurations:
+  env:
+    - name: BAL_CONFIG_VAR_ENVIRONMENT
+      value: ""
+    - name: BAL_CONFIG_VAR_GATEWAYJWKSURL
+      value: ""
+    - name: BAL_CONFIG_VAR_GATEWAYISSUER
+      value: ""
+    - name: BAL_CONFIG_VAR_GATEWAYAUDIENCES
+      value: ""
+    - name: BAL_CONFIG_VAR_INTERNALAPIKEY
+      valueFrom:
+        secretRef:
+          name: amplify-api-secrets
+          key: BAL_CONFIG_VAR_INTERNALAPIKEY
+    - name: BAL_CONFIG_VAR_SCHEDULERAPIKEY
+      valueFrom:
+        secretRef:
+          name: amplify-api-secrets
+          key: BAL_CONFIG_VAR_SCHEDULERAPIKEY
+    - name: BAL_CONFIG_VAR_DBHOST
+      value: ""
+    - name: BAL_CONFIG_VAR_DBPORT
+      value: ""
+    - name: BAL_CONFIG_VAR_DBNAME
+      value: ""
+    - name: BAL_CONFIG_VAR_DBUSER
+      value: ""
+    - name: BAL_CONFIG_VAR_DBPASSWORD
+      valueFrom:
+        secretRef:
+          name: amplify-api-secrets
+          key: BAL_CONFIG_VAR_DBPASSWORD
+    # Path of the managed Postgres CA PEM, mounted from a ConfigMap/Secret volume (domain review H-1).
+    - name: BAL_CONFIG_VAR_DBSSLROOTCERT
+      value: ""
+    - name: BAL_CONFIG_VAR_JOBSURL
+      value: ""
+    - name: BAL_CONFIG_VAR_SCHEDULERURL
+      value: ""
+    - name: BAL_CONFIG_VAR_SCHEDULERJOBSURL
+      value: ""
+    - name: BAL_CONFIG_VAR_CAMPAIGNLINKORIGINS
+      value: ""
+    - name: BAL_CONFIG_VAR_ROSTERCACHESECONDS
+      value: "86400"
+    - name: BAL_CONFIG_VAR_HEADCOUNTCACHESECONDS
+      value: "86400"
+    # Access (modules/auth/access.bal): Asgardeo groups per capability, comma separated.
+    - name: BAL_CONFIG_VAR_CANCAMPAIGNGROUPS
+      value: "amplify_po,amplify_marketing"
+    - name: BAL_CONFIG_VAR_CANDASHBOARDGROUPS
+      value: "amplify_po,amplify_marketing,amplify_slt,amplify_admin"
+    - name: BAL_CONFIG_VAR_CANEXPORTGROUPS
+      value: "amplify_po,amplify_marketing,amplify_slt,amplify_admin"
+    - name: BAL_CONFIG_VAR_CANREVIEWSHARESGROUPS
+      value: "amplify_po"
+    - name: BAL_CONFIG_VAR_CANPOINTRULESGROUPS
+      value: "amplify_po"
+    - name: BAL_CONFIG_VAR_CANADJUSTPOINTSGROUPS
+      value: "amplify_po"
+    - name: BAL_CONFIG_VAR_CANPODASHBOARDGROUPS
+      value: "amplify_po"
+    - name: BAL_CONFIG_VAR_CANREPORTSGROUPS
+      value: "amplify_slt,amplify_po"
+    - name: BAL_CONFIG_VAR_CANADMINGROUPS
+      value: "amplify_admin"
+    - name: BAL_CONFIG_VAR_TOPBOARDCACHESECONDS
+      value: "7200"
+    - name: BAL_CONFIG_VAR_SCORECARDTARGETCONNECTEDPCT
+      value: "25"
+    - name: BAL_CONFIG_VAR_SCORECARDMAXEXPIREDPCT
+      value: "5"
+    - name: BAL_CONFIG_VAR_SCORECARDTARGETSHARESUCCESSPCT
+      value: "98"
+    - name: BAL_CONFIG_VAR_SCORECARDTARGETPRIORITYREACHPCT
+      value: "25"
+    - name: BAL_CONFIG_VAR_SCORECARDTARGETACTIVE30D
+      value: "100"
+    - name: BAL_CONFIG_VAR_SCORECARDTARGETREPOSTSPERMONTH
+      value: "600"
+    - name: BAL_CONFIG_VAR_PEOPLEDIRECTORYURL
+      value: ""
+    - name: BAL_CONFIG_VAR_PEOPLEDIRECTORYTOKENURL
+      value: ""
+    - name: BAL_CONFIG_VAR_PEOPLEDIRECTORYCLIENTID
+      value: ""
+    - name: BAL_CONFIG_VAR_PEOPLEDIRECTORYCLIENTSECRET
+      valueFrom:
+        secretRef:
+          name: amplify-api-secrets
+          key: BAL_CONFIG_VAR_PEOPLEDIRECTORYCLIENTSECRET
+    - name: BAL_CONFIG_VAR_LINKEDINCLIENTID
+      value: ""
+    - name: BAL_CONFIG_VAR_LINKEDINCLIENTSECRET
+      valueFrom:
+        secretRef:
+          name: amplify-api-secrets
+          key: BAL_CONFIG_VAR_LINKEDINCLIENTSECRET
+    - name: BAL_CONFIG_VAR_LINKEDINREDIRECTURI
+      value: ""
+    - name: BAL_CONFIG_VAR_LINKEDINAPIBASEURL
+      value: ""
+    - name: BAL_CONFIG_VAR_LINKEDINAUTHBASEURL
+      value: ""
+    - name: BAL_CONFIG_VAR_LINKEDINIDTOKENVALIDATION
+      value: "false"
+    - name: BAL_CONFIG_VAR_LINKEDINNONCEMODE
+      value: "OFF"
+    - name: BAL_CONFIG_VAR_WSO2ORGANIZATIONURN
+      value: "urn:li:organization:1477"
+    - name: BAL_CONFIG_VAR_TOKENKEYS
+      valueFrom:
+        secretRef:
+          name: amplify-api-secrets
+          key: BAL_CONFIG_VAR_TOKENKEYS
+    - name: BAL_CONFIG_VAR_TOKENCURRENTKEYID
+      value: ""

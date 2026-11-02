@@ -1,0 +1,4313 @@
+openapi: 3.0.3
+info:
+  title: Campaign Management
+  version: 1.0.0
+  description: '**You must apply for access to the Marketing Developer Platform in order to use these APIs. See
+    the** [<b>Developer Portal</b>](https://developer.linkedin.com/product-catalog/marketing/campaign-management)
+    **on how to apply.**
+
+
+    This collection aims to focus on different Campaign Management use cases and should be used with the **campaign-management-env-versioning**
+    environment.
+
+
+    \--All requests for the Campaign Management API collection are in the Restli 2.0 format--
+
+
+    **Prerequisite:** Perform steps 1 & 2 from the [Generate An Access Token using Postman](https://docs.microsoft.com/linkedin/shared/authentication/generate-an-access-token?context=linkedin/marketing/context)
+    of our online documentation for this request to work.
+
+
+    This is an example for generating an access token with the necessary scope to test the Campaign Management collection
+    apis.
+
+
+    The full process your application will need to implement for 3-legged tokens is described in [Authorization
+    Code Flow](https://docs.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow?context=linkedin/marketing/context&tabs=HTTPS)
+
+
+    AuthorizationOAuth 2.0
+
+
+    _Generated from the Postman collection "Campaign Management". All calls use Rest.li 2.0 conventions: send `X-Restli-Protocol-Version:
+    2.0.0` and a `LinkedIn-Version` header (YYYYMM). Query parameters such as `List(...)`, `(a:b,c:d)` and URNs
+    are Rest.li-encoded strings; do not re-encode the structural characters `( ) , :`. Several finders/actions share
+    one path in LinkedIn''s API, so they are modelled as one operation with a `q`/`action` selector. Schemas are
+    inferred from the example payloads saved in the collection: every field is optional and field semantics are
+    not documented here._'
+servers:
+- url: https://api.linkedin.com/rest
+  description: LinkedIn REST API (`{{baseUrl}}` in the Postman environment)
+security:
+- linkedinOAuth2:
+  - rw_ads
+  - r_basicprofile
+  - w_organization_social
+  - w_member_social
+  - rw_organization_admin
+tags:
+- name: Use Cases
+paths:
+  /adAccountUsers/{adAccountUserKey}:
+    put:
+      operationId: createAdAccountUser
+      summary: Create Ad Account User
+      tags:
+      - Use Cases
+      description: This API example [creates an Ad Account User](https://docs.microsoft.com/linkedin/marketing/integrations/ads/account-structure/create-and-manage-account-users?tabs=http#create-ad-account-user).
+        Creating Ad Account Users grants a member access to an Ad Account.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: adAccountUserKey
+        in: path
+        required: true
+        description: Composite Rest.li key, e.g. `(a:urn%3A...,b:urn%3A...)`.
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAdAccountUserRequest'
+            examples:
+              createAdAccountUser:
+                summary: Create Ad Account User
+                value:
+                  account: urn:li:sponsoredAccount:{{sponsoredaccount_id}}
+                  role: VIEWER
+                  user: urn:li:person:{{person_id}}
+      responses:
+        '204':
+          description: No Content
+        default:
+          $ref: '#/components/responses/Error'
+    get:
+      operationId: fetchAnAdAccountUser
+      summary: Fetch an Ad Account User
+      tags:
+      - Use Cases
+      description: 'This API example [fetches an Ad Account User](https://docs.microsoft.com/linkedin/marketing/integrations/ads/account-structure/create-and-manage-account-users?tabs=http#get-ad-account-user).
+        Fetching an existing Ad Account User requires both account and user parameters.
+
+
+        The person id can also be retrieved from the [/me](https://docs.microsoft.com/linkedin/shared/integrations/people/profile-api#retrieve-current-members-profile) endpoint.'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: adAccountUserKey
+        in: path
+        required: true
+        description: Composite Rest.li key, e.g. `(a:urn%3A...,b:urn%3A...)`.
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FetchAnAdAccountUserResponse'
+              examples:
+                fetchAnAdAccountUser:
+                  summary: Fetch an Ad Account User
+                  value:
+                    role: ACCOUNT_MANAGER
+                    changeAuditStamps:
+                      created:
+                        actor: urn:li:person:Iw_TtbEfex
+                        impersonator: urn:li:servicePrincipal:core-authz-mt
+                        time: 1790098793476
+                      lastModified:
+                        actor: urn:li:person:Iw_TtbEfex
+                        impersonator: urn:li:servicePrincipal:core-authz-mt
+                        time: 1790098793476
+                    user: urn:li:person:qrOweYM47u
+                    account: urn:li:sponsoredAccount:508915158
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: updateExistingAdAccountUser
+      summary: Update Existing Ad Account User
+      tags:
+      - Use Cases
+      description: This API example [updates an Ad Account User](https://docs.microsoft.com/linkedin/marketing/integrations/ads/account-structure/create-and-manage-account-users?tabs=http#update-existing-ad-account-user).
+        An Ad Account User's role can be updated by using this endpoint.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: adAccountUserKey
+        in: path
+        required: true
+        description: Composite Rest.li key, e.g. `(a:urn%3A...,b:urn%3A...)`.
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateExistingAdAccountUserRequest'
+            examples:
+              updateExistingAdAccountUser:
+                summary: Update Existing Ad Account User
+                value:
+                  patch:
+                    $set:
+                      account: urn:li:sponsoredAccount:{{sponsoredaccount_id}}
+                      role: VIEWER
+                      user: urn:li:person:{{person_id}}
+      responses:
+        '204':
+          description: No Content
+        default:
+          $ref: '#/components/responses/Error'
+    delete:
+      operationId: deleteAnAdAccountUser
+      summary: Delete an Ad Account User
+      tags:
+      - Use Cases
+      description: This API example [deletes an Ad Account User](https://docs.microsoft.com/linkedin/marketing/integrations/ads/account-structure/create-and-manage-account-users?tabs=http#delete-an-ad-account-user).
+        Members can be removed from Ad Account access by using the delete Ad Account User endpoint. Deletion requires
+        both account and user parameters to look up the appropriate Ad Account User.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: adAccountUserKey
+        in: path
+        required: true
+        description: Composite Rest.li key, e.g. `(a:urn%3A...,b:urn%3A...)`.
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /adAccountUsers:
+    get:
+      operationId: getAdAccountUsers
+      summary: Query adAccountUsers
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Find Ad Account Users by Accounts** (`q=accounts`): This API example searches for all Ad Account Users
+        by sponsored ad account or multiple sponsored ad accounts. Learn more in our public documentation [here](https://docs.microsoft.com/linkedin/marketing/integrations/ads/account-structure/create-and-manage-account-users?tabs=http#find-ad-account-users
+
+        - **Fetch the Authenticated User''s Ad Accounts** (`q=authenticatedUser`): This API example retrieves all
+        Ad Accounts that an authenticated user has access to. Specifically, this api call will return the Ad Accounts
+        associated with the member whose access token is being used! The only required parameter is q=authenticatedUser.'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - accounts
+          - authenticatedUser
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: accounts
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAdAccountUsersResponse'
+              examples:
+                findAdAccountUsersByAccounts:
+                  summary: Find Ad Account Users by Accounts
+                  value:
+                    paging:
+                      start: 0
+                      count: 2147483647
+                      links: []
+                      total: 8
+                    elements:
+                    - role: ACCOUNT_MANAGER
+                      changeAuditStamps:
+                        created:
+                          actor: urn:li:person:Iw_TtbEfex
+                          impersonator: urn:li:servicePrincipal:core-authz-mt
+                          time: 1790098793476
+                        lastModified:
+                          actor: urn:li:person:Iw_TtbEfex
+                          impersonator: urn:li:servicePrincipal:core-authz-mt
+                          time: 1790098793476
+                      user: urn:li:person:qrOweYM47u
+                      account: urn:li:sponsoredAccount:508915158
+                    - role: ACCOUNT_MANAGER
+                      changeAuditStamps:
+                        created:
+                          actor: urn:li:person:Iw_TtbEfex
+                          impersonator: urn:li:servicePrincipal:core-authz-mt
+                          time: 1790031427114
+                        lastModified:
+                          actor: urn:li:person:Iw_TtbEfex
+                          impersonator: urn:li:servicePrincipal:core-authz-mt
+                          time: 1790031427114
+                      user: urn:li:person:w_nU6B7E6P
+                      account: urn:li:sponsoredAccount:508915158
+                fetchTheAuthenticatedUserSAdAccounts:
+                  summary: Fetch the Authenticated User's Ad Accounts
+                  value:
+                    paging:
+                      start: 0
+                      count: 2147483647
+                      links:
+                      - type: application/json
+                        rel: next
+                        href: /rest/adAccountUsers?q=authenticatedUser&start=4&count=2147483647
+                      total: 5
+                    elements:
+                    - role: ACCOUNT_MANAGER
+                      changeAuditStamps:
+                        created:
+                          actor: urn:li:person:Iw_TtbEfex
+                          impersonator: urn:li:servicePrincipal:core-authz-mt
+                          time: 1790098793476
+                        lastModified:
+                          actor: urn:li:person:Iw_TtbEfex
+                          impersonator: urn:li:servicePrincipal:core-authz-mt
+                          time: 1790098793476
+                      user: urn:li:person:qrOweYM47u
+                      account: urn:li:sponsoredAccount:508915158
+                    - role: VIEWER
+                      changeAuditStamps:
+                        created:
+                          actor: urn:li:person:5_rbt-doDI
+                          impersonator: urn:li:servicePrincipal:core-authz-mt
+                          time: 1787723783021
+                        lastModified:
+                          actor: urn:li:person:5_rbt-doDI
+                          impersonator: urn:li:servicePrincipal:core-authz-mt
+                          time: 1787723783021
+                      user: urn:li:person:qrOweYM47u
+                      account: urn:li:sponsoredAccount:504457411
+        default:
+          $ref: '#/components/responses/Error'
+  /organizationAcls:
+    get:
+      operationId: fetchTheAuthenticatedUserSOrganizationRoles
+      summary: Fetch the Authenticated User's Organization Roles
+      tags:
+      - Use Cases
+      description: 'To understand more about verifying Company Page Access visit our public documentation [here](https://docs.microsoft.com/linkedin/marketing/integrations/community-management/organizations/organization-access-control-by-role?tabs=http#find-a-members-organization-access-control-information).
+
+
+        A role defines the privileges that a member has within the organization. You must be an authenticated member
+        with role type **ADMINISTRATOR** of an organization to use many of the Organization APIs.'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - roleAssignee
+        description: Rest.li finder name. Selects which query this call performs.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FetchTheAuthenticatedUserSOrganizationRolesResponse'
+              examples:
+                fetchTheAuthenticatedUserSOrganizationRoles:
+                  summary: Fetch the Authenticated User's Organization Roles
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                    elements:
+                    - roleAssignee: urn:li:person:qrOweYM47u
+                      state: APPROVED
+                      lastModified:
+                        actor: urn:li:person:qrOweYM47u
+                        impersonator: urn:li:servicePrincipal:organization
+                        time: 1787044307420
+                      role: ADMINISTRATOR
+                      created:
+                        actor: urn:li:person:qrOweYM47u
+                        impersonator: urn:li:servicePrincipal:organization
+                        time: 1787044307420
+                      organization: urn:li:organization:141733942
+                    - roleAssignee: urn:li:person:qrOweYM47u
+                      state: REVOKED
+                      lastModified:
+                        actor: urn:li:person:_gTYsjAuhf
+                        impersonator: urn:li:servicePrincipal:organization
+                        time: 1790102443994
+                      role: ADMINISTRATOR
+                      created:
+                        actor: urn:li:person:Iw_TtbEfex
+                        impersonator: urn:li:servicePrincipal:organization
+                        time: 1790098332463
+                      organization: urn:li:organization:2414183
+        default:
+          $ref: '#/components/responses/Error'
+  /me:
+    get:
+      operationId: getMe
+      summary: Query me
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Me-Person**
+
+        - **Me-Person V2 Full Profile**'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetMeResponse'
+              examples:
+                mePerson:
+                  summary: Me-Person
+                  value:
+                    localizedLastName: Deon
+                    profilePicture:
+                      displayImage: urn:li:digitalmediaAsset:D5603AQHLnj9nsEZ3-g
+                    vanityName: ring-deon-n8ba409
+                    lastName:
+                      localized:
+                        en_US: Deon
+                      preferredLocale:
+                        country: US
+                        language: en
+                    firstName:
+                      localized:
+                        en_US: Ring
+                      preferredLocale:
+                        country: US
+                        language: en
+                    localizedHeadline: Professional Tester
+                    id: qrOweYM47u
+                    headline:
+                      localized:
+                        en_US: Professional Tester
+                      preferredLocale:
+                        country: US
+                        language: en
+                    localizedFirstName: Ring
+                mePerson2:
+                  summary: Me-Person
+                  value:
+                    localizedLastName: Deon
+                    profilePicture:
+                      displayImage: urn:li:digitalmediaAsset:D5603AQHLnj9nsEZ3-g
+                    vanityName: ring-deon-n8ba409
+                    lastName:
+                      localized:
+                        en_US: Deon
+                      preferredLocale:
+                        country: US
+                        language: en
+                    firstName:
+                      localized:
+                        en_US: Ring
+                      preferredLocale:
+                        country: US
+                        language: en
+                    localizedHeadline: Professional Tester
+                    id: qrOweYM47u
+                    headline:
+                      localized:
+                        en_US: Professional Tester
+                      preferredLocale:
+                        country: US
+                        language: en
+                    localizedFirstName: Ring
+        default:
+          $ref: '#/components/responses/Error'
+      servers:
+      - url: https://api.linkedin.com/v2
+        description: Legacy v2 API root
+  /adAccounts:
+    post:
+      operationId: postAdAccounts
+      summary: Create / update / action on adAccounts
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Create an Ad Account**: This example API [creates an Ad Account](https://docs.microsoft.com/linkedin/marketing/integrations/ads/account-structure/create-and-manage-accounts?tabs=http#create-ad-account)
+
+        - **Create a Test Ad Account**: This API example [creates a "test" ad account](https://docs.microsoft.com/linkedin/marketing/integrations/ads/account-structure/create-and-manage-accounts?tabs=http#creating-a-test-ad-account) by
+        including an additional boolean `test` flag to `true` on the payload.'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostAdAccountsRequest'
+            examples:
+              createAnAdAccount:
+                summary: Create an Ad Account
+                value:
+                  currency: USD
+                  name: Ad account 2B Testing-09-22-2026
+                  notifiedOnCampaignOptimization: true
+                  notifiedOnCreativeApproval: true
+                  notifiedOnCreativeRejection: true
+                  notifiedOnEndOfCampaign: true
+                  reference: urn:li:organization:{{organization_id}}
+                  type: BUSINESS
+              createATestAdAccount:
+                summary: Create a Test Ad Account
+                value:
+                  currency: USD
+                  name: XYZ Company
+                  notifiedOnCampaignOptimization: true
+                  notifiedOnCreativeApproval: true
+                  notifiedOnCreativeRejection: true
+                  notifiedOnEndOfCampaign: true
+                  reference: urn:li:organization:{{organization_id}}
+                  type: BUSINESS
+                  test: true
+      responses:
+        '201':
+          description: Created
+          headers:
+            location:
+              schema:
+                type: string
+              description: URL of the created resource.
+            x-restli-id:
+              schema:
+                type: string
+              description: Id (or URN) of the created resource.
+        default:
+          $ref: '#/components/responses/Error'
+    get:
+      operationId: getAdAccounts
+      summary: Query adAccounts
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Search Accounts by Status** (`q=search`): Use the `q=search` parameter with the adAccountsV2 API to [search
+        for ad accounts](https://docs.microsoft.com/linkedin/marketing/integrations/ads/account-structure/create-and-manage-accounts?tabs=http#search-for-accounts) by
+        ID, name, reference, type, and status fields. Search criteria can be chaine
+
+        - **Search Account by Type** (`q=search`): Use the `q=search` parameter with the adAccountsV2 API to [search
+        for accounts](https://docs.microsoft.com/linkedin/marketing/integrations/ads/account-structure/create-and-manage-accounts?tabs=http#search-for-accounts) by
+        ID, name, reference, type, and status fields. Search criteria can be chained t'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - search
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: search
+        in: query
+        required: false
+        schema:
+          type: string
+        example: (status:(values:List(ACTIVE)))
+        allowReserved: true
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /adAccounts/{adAccountId}:
+    get:
+      operationId: fetchTheAdAccountByID
+      summary: Fetch the Ad Account by ID
+      tags:
+      - Use Cases
+      description: '[Fetch an ad Account](https://docs.microsoft.com/linkedin/marketing/integrations/ads/account-structure/create-and-manage-accounts?tabs=http#fetch-ad-account) by
+        sponsored account ID.'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: adAccountId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FetchTheAdAccountByIDResponse'
+              examples:
+                fetchTheAdAccountByID:
+                  summary: Fetch the Ad Account by ID
+                  value:
+                    test: false
+                    notifiedOnCreativeRejection: true
+                    notifiedOnNewFeaturesEnabled: false
+                    notifiedOnEndOfCampaign: true
+                    servingStatuses:
+                    - BILLING_HOLD
+                    notifiedOnCampaignOptimization: true
+                    type: BUSINESS
+                    version:
+                      versionTag: '3'
+                    reference: urn:li:organization:2414183
+                    notifiedOnCreativeApproval: true
+                    changeAuditStamps:
+                      created:
+                        actor: urn:li:unknown:0
+                        time: 1790103609056
+                      lastModified:
+                        actor: urn:li:unknown:0
+                        time: 1790103609292
+                    name: Ad account 2B Testing-09-22-2026
+                    currency: USD
+                    id: 559754708
+                    status: ACTIVE
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: updateAdAccountName
+      summary: Update Ad Account Name
+      tags:
+      - Use Cases
+      description: 'Ad Accounts can be updated through a partial update by patching the fields you want to change.
+        The following example changes the name field only.
+
+
+        See our public documentation [here](https://docs.microsoft.com/linkedin/marketing/integrations/ads/account-structure/create-and-manage-accounts?tabs=http#update-ad-account) for
+        more information.'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: adAccountId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAdAccountNameRequest'
+            examples:
+              updateAdAccountName:
+                summary: Update Ad Account Name
+                value:
+                  patch:
+                    $set:
+                      name: Updated Ad Acount name
+      responses:
+        '204':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /adAccounts/{adAccountId}/adCampaignGroups:
+    post:
+      operationId: postAdAccountsAdCampaignGroups
+      summary: Create / update / action on adCampaignGroups
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Create a Campaign Group**: Campaign groups can be created in ACTIVE or DRAFT state. You can change ACTIVE
+        to ARCHIVED or PAUSED. This example [creates a Campaign Group](https://docs.microsoft.com/linkedin/marketing/integrations/ads/account-structure/create-and-manage-campaign-groups?tabs=http#create-a-campaign-group) in
+        the s
+
+        - **Create Multiple Campaign Groups**: Campaign groups can be created in ACTIVE or DRAFT state. You can
+        change ACTIVE to ARCHIVED or PAUSED. This example [creates multiple Campaign Groups](https://docs.microsoft.com/linkedin/marketing/integrations/ads/account-structure/create-and-manage-campaign-groups?tabs=http#batch-create-campaign-gro
+
+        - **Update Multiple Campaign Groups**: Multiple campaign groups can be updated with a partial update. This
+        example updates the amount and currencyCode for one Campaign Group and status for another Campaign Group
+        using the RestLi method BATCH_PARTIAL_UPDATE.'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: adAccountId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      - name: X-RestLi-Method
+        in: header
+        required: false
+        description: Rest.li method override used for batch / partial-update style calls.
+        schema:
+          type: string
+          enum:
+          - BATCH_CREATE
+          - BATCH_PARTIAL_UPDATE
+      - name: ids
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Batch ids in Rest.li 2.0 list syntax, e.g. `List(id1,id2)`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostAdAccountsAdCampaignGroupsRequest'
+            examples:
+              createACampaignGroup:
+                summary: Create a Campaign Group
+                value:
+                  account: urn:li:sponsoredAccount:{{sponsoredaccount_id}}
+                  name: CampaignGroup1
+                  runSchedule:
+                    end: 1790985600000
+                    start: 1790121600000
+                  status: ACTIVE
+                  totalBudget:
+                    amount: '1000.00'
+                    currencyCode: USD
+              createMultipleCampaignGroups:
+                summary: Create Multiple Campaign Groups
+                value:
+                  elements:
+                  - account: urn:li:sponsoredAccount:{{sponsoredaccount_id}}
+                    name: CampaignGroup2
+                    runSchedule:
+                      end: 1635493862000
+                      start: 1635321062000
+                    status: ACTIVE
+                    totalBudget:
+                      amount: '60000.00'
+                      currencyCode: USD
+                  - account: urn:li:sponsoredAccount:{{sponsoredaccount_id}}
+                    name: CampaignGroup3
+                    runSchedule:
+                      end: 1635493862000
+                      start: 1635321062000
+                    status: ACTIVE
+                    totalBudget:
+                      amount: '30000.00'
+                      currencyCode: USD
+              updateMultipleCampaignGroups:
+                summary: Update Multiple Campaign Groups
+                value:
+                  entities:
+                    '{{campaigngroup_id1}}':
+                      patch:
+                        $set:
+                          totalBudget:
+                            amount: '1000'
+                            currencyCode: USD
+                    '{{campaigngroup_id2}}':
+                      patch:
+                        $set:
+                          status: PAUSED
+      responses:
+        '201':
+          description: Created
+          headers:
+            location:
+              schema:
+                type: string
+              description: URL of the created resource.
+            x-restli-id:
+              schema:
+                type: string
+              description: Id (or URN) of the created resource.
+        default:
+          $ref: '#/components/responses/Error'
+    get:
+      operationId: getAdAccountsAdCampaignGroups
+      summary: Query adCampaignGroups
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Fetch multiple Campaign Groups by ID**: Multiple Campaign Groups can be fetched by the campaign group
+        ids a shown in this example call. View our public documentation [here](https://docs.microsoft.com/linkedin/marketing/integrations/ads/account-structure/create-and-manage-campaign-groups?tabs=http#batch-get-campaign-groups) for
+        more inform
+
+        - **Search for Campaign Groups** (`q=search`): Use the `q=search` parameter to [search for campaign groups](https://docs.microsoft.com/linkedin/marketing/integrations/ads/account-structure/create-and-manage-campaign-groups?tabs=http#search-for-campaign-groups) by
+        ID, account, name, and status fields. Search criteria can be chained together for i'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: adAccountId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      - name: ids
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Batch ids in Rest.li 2.0 list syntax, e.g. `List(id1,id2)`.
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - search
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: search
+        in: query
+        required: false
+        schema:
+          type: string
+        example: (status:(values:List(ACTIVE,DRAFT)))
+        allowReserved: true
+      - name: sortOrder
+        in: query
+        required: false
+        schema:
+          type: string
+        example: DESCENDING
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAdAccountsAdCampaignGroupsResponse'
+              examples:
+                searchForCampaignGroups:
+                  summary: Search for Campaign Groups
+                  value:
+                    metadata:
+                      nextPageToken: DgFkbPDSN2lwjU4XB_F_gN_CHf_KJNiFWZ5WK6pJCjw
+                    elements:
+                    - runSchedule:
+                        start: 1946851200000
+                      test: false
+                      changeAuditStamps:
+                        created:
+                          actor: urn:li:unknown:0
+                          time: 1789137287619
+                        lastModified:
+                          actor: urn:li:unknown:0
+                          time: 1789137287619
+                      name: partner-api-investigation
+                      servingStatuses:
+                      - CAMPAIGN_GROUP_START_DATE_HOLD
+                      - BILLING_HOLD
+                      backfilled: false
+                      id: 1211897294
+                      account: urn:li:sponsoredAccount:508915158
+                      objectiveType: LEAD_GENERATION
+                      status: ACTIVE
+                      buyingType: AUCTION
+                    - runSchedule:
+                        start: 1778094544143
+                      test: false
+                      changeAuditStamps:
+                        created:
+                          actor: urn:li:unknown:0
+                          time: 1778094544153
+                        lastModified:
+                          actor: urn:li:unknown:0
+                          time: 1778094544153
+                      name: test1
+                      servingStatuses:
+                      - BILLING_HOLD
+                      backfilled: false
+                      id: 1056002564
+                      account: urn:li:sponsoredAccount:508915158
+                      objectiveType: WEBSITE_VISIT
+                      status: ACTIVE
+                      buyingType: AUCTION
+        default:
+          $ref: '#/components/responses/Error'
+    delete:
+      operationId: deleteMultipleCampaignGroups
+      summary: Delete Multiple Campaign Groups
+      tags:
+      - Use Cases
+      description: 'Multiple Campaign Group can be deleted as shown in this example call. View our online documentation [here](https://docs.microsoft.com/linkedin/marketing/integrations/ads/account-structure/create-and-manage-campaign-groups?tabs=http#batch-delete-campaign-groups) to
+        learn more.
+
+
+        Only campaign groups which are in DRAFT status are allowed to be deleted. Once deleted, a campaign group
+        can''t be retrieved or recovered.'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: adAccountId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      - name: ids
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Batch ids in Rest.li 2.0 list syntax, e.g. `List(id1,id2)`.
+      responses:
+        '204':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /adAccounts/{adAccountId}/adCampaignGroups/{adCampaignGroupId}:
+    get:
+      operationId: fetchACampaignGroupByID
+      summary: Fetch a Campaign Group by ID
+      tags:
+      - Use Cases
+      description: A Campaign Group can be fetched by the campaign group id as shown in this example call. See our
+        public documentation [here](https://docs.microsoft.com/linkedin/marketing/integrations/ads/account-structure/create-and-manage-campaign-groups?tabs=http#get-a-campaign-group) for
+        more information.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: adAccountId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      - name: adCampaignGroupId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FetchACampaignGroupByIDResponse'
+              examples:
+                fetchACampaignGroupByID:
+                  summary: Fetch a Campaign Group by ID
+                  value:
+                    runSchedule:
+                      start: 1946851200000
+                    test: false
+                    changeAuditStamps:
+                      created:
+                        actor: urn:li:unknown:0
+                        time: 1789137287619
+                      lastModified:
+                        actor: urn:li:unknown:0
+                        time: 1789137287619
+                    name: partner-api-investigation
+                    servingStatuses:
+                    - CAMPAIGN_GROUP_START_DATE_HOLD
+                    - BILLING_HOLD
+                    backfilled: false
+                    id: 1211897294
+                    account: urn:li:sponsoredAccount:508915158
+                    objectiveType: LEAD_GENERATION
+                    status: ACTIVE
+                    buyingType: AUCTION
+                fetchACampaignGroupByID2:
+                  summary: Fetch a Campaign Group by ID
+                  value:
+                    runSchedule:
+                      start: 1790121600000
+                      end: 1790985600000
+                    test: false
+                    changeAuditStamps:
+                      created:
+                        actor: urn:li:unknown:0
+                        time: 1790106646768
+                      lastModified:
+                        actor: urn:li:unknown:0
+                        time: 1790106646768
+                    totalBudget:
+                      currencyCode: USD
+                      amount: '1000'
+                    name: CampaignGroup1
+                    servingStatuses:
+                    - CAMPAIGN_GROUP_START_DATE_HOLD
+                    - BILLING_HOLD
+                    backfilled: false
+                    id: 1214067204
+                    account: urn:li:sponsoredAccount:508915158
+                    status: ACTIVE
+                    buyingType: AUCTION
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: updateCampaignGroup
+      summary: Update Campaign Group
+      tags:
+      - Use Cases
+      description: Campaign groups can be updated with a partial update. This example updates the amount and currencyCode
+        for a Campaign Group. View our public documentation [here](https://docs.microsoft.com/linkedin/marketing/integrations/ads/account-structure/create-and-manage-campaign-groups?tabs=http#update-a-campaign-group) to
+        learn more.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: adAccountId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      - name: adCampaignGroupId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCampaignGroupRequest'
+            examples:
+              updateCampaignGroup:
+                summary: Update Campaign Group
+                value:
+                  patch:
+                    $set:
+                      runSchedule:
+                        end: 1791158399999
+                        start: 1790121600000
+                      totalBudget:
+                        amount: '4000'
+                        currencyCode: USD
+      responses:
+        '204':
+          description: No Content
+        default:
+          $ref: '#/components/responses/Error'
+    delete:
+      operationId: deleteACampaignGroup
+      summary: Delete a Campaign Group
+      tags:
+      - Use Cases
+      description: 'This example call [deletes a Campaign Group](https://docs.microsoft.com/linkedin/marketing/integrations/ads/account-structure/create-and-manage-campaign-groups?tabs=http#delete-a-campaign-group).
+
+
+        Only campaign groups which are in DRAFT status are allowed to be deleted. Once deleted, a campaign group
+        can''t be retrieved or recovered.'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: adAccountId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      - name: adCampaignGroupId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /adAccounts/{adAccountId}/adCampaigns/{adCampaignId}:
+    get:
+      operationId: fetchACampaignUsingCampaignID
+      summary: Fetch a Campaign using Campaign ID
+      tags:
+      - Use Cases
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: adAccountId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      - name: adCampaignId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FetchACampaignUsingCampaignIDResponse'
+              examples:
+                fetchACampaignUsingCampaignID:
+                  summary: Fetch a Campaign using Campaign ID
+                  value:
+                    storyDeliveryEnabled: false
+                    targetingCriteria:
+                      include:
+                        and:
+                        - or:
+                            urn:li:adTargetingFacet:locations:
+                            - urn:li:geo:103644278
+                        - or:
+                            urn:li:adTargetingFacet:interfaceLocales:
+                            - urn:li:locale:en_US
+                    connectedTelevisionOnly: false
+                    pacingStrategy: LIFETIME
+                    locale:
+                      country: US
+                      language: en
+                    type: SPONSORED_UPDATES
+                    runSchedule:
+                      start: 1651708800000
+                    optimizationTargetType: MAX_REACH
+                    changeAuditStamps:
+                      created:
+                        actor: urn:li:unknown:0
+                        time: 1651773759000
+                      lastModified:
+                        actor: urn:li:unknown:0
+                        time: 1754932088684
+                    costType: CPM
+                    creativeSelection: OPTIMIZED
+                    offsiteDeliveryEnabled: true
+                    id: 195528414
+                    audienceExpansionEnabled: true
+                    test: false
+                    format: CAROUSEL
+                    servingStatuses:
+                    - STOPPED
+                    - ACCOUNT_SERVING_HOLD
+                    version:
+                      versionTag: '12'
+                    objectiveType: BRAND_AWARENESS
+                    associatedEntity: urn:li:organization:2414183
+                    offsitePreferences:
+                      publisherRestrictionFiles:
+                        include: []
+                        exclude:
+                        - urn:li:adPublisherFile:262234
+                    campaignGroup: urn:li:sponsoredCampaignGroup:619393574
+                    dailyBudget:
+                      currencyCode: USD
+                      amount: '100'
+                    politicalIntent: NOT_POLITICAL
+                    unitCost:
+                      currencyCode: USD
+                      amount: '38.67'
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: postAdAccountsAdCampaigns2
+      summary: Create / update / action on adCampaigns
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Update Campaign Using campaignId**
+
+        - **Reactivate a Campaign**
+
+        - **Archive a Campaign**'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: adAccountId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      - name: adCampaignId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostAdAccountsAdCampaigns2Request'
+            examples:
+              updateCampaignUsingCampaignId:
+                summary: Update Campaign Using campaignId
+                value:
+                  patch:
+                    $set:
+                      runSchedule:
+                        start: 1790121600000
+                        end: 1791158399999
+              reactivateACampaign:
+                summary: Reactivate a Campaign
+                value:
+                  patch:
+                    $set:
+                      runSchedule:
+                        end: 9876543210123
+                        start: 1637911456034
+                      status: ACTIVE
+              archiveACampaign:
+                summary: Archive a Campaign
+                value:
+                  patch:
+                    $set:
+                      status: ARCHIVED
+      responses:
+        '204':
+          description: No Content
+        default:
+          $ref: '#/components/responses/Error'
+    delete:
+      operationId: deleteCampaignUsingCampaignId
+      summary: Delete campaign Using campaign Id
+      tags:
+      - Use Cases
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: adAccountId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      - name: adCampaignId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /adAccounts/{adAccountId}/adCampaigns:
+    post:
+      operationId: postAdAccountsAdCampaigns
+      summary: Create / update / action on adCampaigns
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Create Campaign (SPONSORED_UPDATES)**
+
+        - **Create multiple campaign using BATCH**
+
+        - **Update multiple campaigns using BATCH**'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: adAccountId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      - name: X-RestLi-Method
+        in: header
+        required: false
+        description: Rest.li method override used for batch / partial-update style calls.
+        schema:
+          type: string
+          enum:
+          - BATCH_CREATE
+          - BATCH_PARTIAL_UPDATE
+      - name: ids[0]
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Batch ids in Rest.li 2.0 list syntax, e.g. `List(id1,id2)`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostAdAccountsAdCampaignsRequest'
+            examples:
+              createCampaignSPONSOREDUPDATES:
+                summary: Create Campaign (SPONSORED_UPDATES)
+                value:
+                  account: urn:li:sponsoredAccount:{{sponsoredaccount_id}}
+                  campaignGroup: urn:li:sponsoredCampaignGroup:{{campaign_group_id}}
+                  audienceExpansionEnabled: false
+                  costType: CPC
+                  creativeSelection: OPTIMIZED
+                  dailyBudget:
+                    amount: '18'
+                    currencyCode: USD
+                  locale:
+                    country: US
+                    language: en
+                  name: Campaign 1
+                  offsiteDeliveryEnabled: false
+                  runSchedule:
+                    end: 1791158399999
+                    start: 1790121600000
+                  targetingCriteria:
+                    include:
+                      and:
+                      - or:
+                          urn:li:adTargetingFacet:locations:
+                          - urn:li:geo:103644278
+                  type: SPONSORED_UPDATES
+                  politicalIntent: NOT_DECLARED
+                  unitCost:
+                    amount: '15'
+                    currencyCode: USD
+                  status: DRAFT
+              createMultipleCampaignUsingBATCH:
+                summary: Create multiple campaign using BATCH
+                value:
+                  elements:
+                  - account: urn:li:sponsoredAccount:{{sponsoredaccount_id}}
+                    campaignGroup: urn:li:sponsoredCampaignGroup:{{campaigngroup_id1}}
+                    audienceExpansionEnabled: false
+                    costType: CPC
+                    creativeSelection: OPTIMIZED
+                    dailyBudget:
+                      amount: '18'
+                      currencyCode: USD
+                    locale:
+                      country: US
+                      language: en
+                    name: Campaign 2
+                    offsiteDeliveryEnabled: false
+                    runSchedule:
+                      end: 1648186989000
+                      start: 1647927789000
+                    targetingCriteria:
+                      include:
+                        and:
+                        - or:
+                            urn:li:adTargetingFacet:locations:
+                            - urn:li:geo:103644278
+                    type: SPONSORED_UPDATES
+                    unitCost:
+                      amount: '15'
+                      currencyCode: USD
+                    status: DRAFT
+      responses:
+        '201':
+          description: Created
+          headers:
+            location:
+              schema:
+                type: string
+              description: URL of the created resource.
+            x-restli-id:
+              schema:
+                type: string
+              description: Id (or URN) of the created resource.
+        default:
+          $ref: '#/components/responses/Error'
+    get:
+      operationId: searchForCampaignUsingCriteria
+      summary: Search for Campaign using criteria
+      tags:
+      - Use Cases
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: adAccountId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - search
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: search.campaignGroup.values[0]
+        in: query
+        required: false
+        schema:
+          type: string
+        example: urn:li:sponsoredCampaignGroup:1214067204
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchForCampaignUsingCriteriaResponse'
+              examples:
+                searchForCampaignUsingCriteria:
+                  summary: Search for Campaign using criteria
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                    metadata: {}
+                    elements:
+                    - storyDeliveryEnabled: false
+                      targetingCriteria:
+                        include:
+                          and:
+                          - or:
+                              urn:li:adTargetingFacet:profileLocations:
+                              - urn:li:geo:103644278
+                          - or:
+                              urn:li:adTargetingFacet:interfaceLocales:
+                              - urn:li:locale:en_US
+                      connectedTelevisionOnly: false
+                      pacingStrategy: LIFETIME
+                      locale:
+                        country: US
+                        language: en
+                      type: SPONSORED_INMAILS
+                      runSchedule:
+                        start: 1652313600000
+                      optimizationTargetType: NONE
+                      changeAuditStamps:
+                        created:
+                          actor: urn:li:unknown:0
+                          time: 1652388376000
+                        lastModified:
+                          actor: urn:li:unknown:0
+                          time: 1652389733485
+                      costType: CPM
+                      creativeSelection: ROUND_ROBIN
+                      offsiteDeliveryEnabled: false
+                      id: 183667376
+                      audienceExpansionEnabled: false
+                      test: false
+                      format: SPONSORED_INMAIL
+                      servingStatuses:
+                      - STOPPED
+                      - ACCOUNT_SERVING_HOLD
+                      version:
+                        versionTag: '4'
+                      objectiveType: LEAD_GENERATION
+                      associatedEntity: urn:li:organization:2414183
+                      offsitePreferences:
+                        iabCategories:
+                          exclude: []
+                        publisherRestrictionFiles:
+                          include: []
+                          exclude: []
+                      campaignGroup: urn:li:sponsoredCampaignGroup:619393574
+                      dailyBudget:
+                        currencyCode: USD
+                        amount: '100'
+                      politicalIntent: NOT_POLITICAL
+                      unitCost:
+                        currencyCode: USD
+                        amount: '0.4'
+                    - storyDeliveryEnabled: false
+                      targetingCriteria:
+                        include:
+                          and:
+                          - or:
+                              urn:li:adTargetingFacet:interfaceLocales:
+                              - urn:li:locale:en_US
+                          - or:
+                              urn:li:adTargetingFacet:locations:
+                              - urn:li:geo:103644278
+                      connectedTelevisionOnly: false
+                      pacingStrategy: LIFETIME
+                      locale:
+                        country: US
+                        language: en
+                      type: SPONSORED_INMAILS
+                      runSchedule:
+                        start: 1650326400000
+                      optimizationTargetType: NONE
+                      changeAuditStamps:
+                        created:
+                          actor: urn:li:unknown:0
+                          time: 1650388819000
+                        lastModified:
+                          actor: urn:li:unknown:0
+                          time: 1707179669000
+                      costType: CPM
+                      creativeSelection: ROUND_ROBIN
+                      offsiteDeliveryEnabled: false
+                      id: 194467334
+                      audienceExpansionEnabled: false
+                      test: false
+                      format: SPONSORED_MESSAGE
+                      servingStatuses:
+                      - STOPPED
+                      - ACCOUNT_SERVING_HOLD
+                      version:
+                        versionTag: '7'
+                      objectiveType: BRAND_AWARENESS
+                      associatedEntity: urn:li:organization:2414183
+                      offsitePreferences:
+                        iabCategories:
+                          exclude: []
+                        publisherRestrictionFiles:
+                          include: []
+                          exclude: []
+                      campaignGroup: urn:li:sponsoredCampaignGroup:619393574
+                      dailyBudget:
+                        currencyCode: USD
+                        amount: '100'
+                      politicalIntent: NOT_POLITICAL
+                      unitCost:
+                        currencyCode: USD
+                        amount: '0.4'
+                searchForCampaignUsingCriteria2:
+                  summary: Search for Campaign using criteria
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                    metadata: {}
+                    elements: []
+        default:
+          $ref: '#/components/responses/Error'
+    delete:
+      operationId: deleteMultipleCampaignsUsingBATCH
+      summary: Delete multiple campaigns using BATCH
+      tags:
+      - Use Cases
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: adAccountId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      - name: ids
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Batch ids in Rest.li 2.0 list syntax, e.g. `List(id1,id2)`.
+      responses:
+        '204':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /adAccounts/{adAccountId}/creatives/{creativeUrn}:
+    get:
+      operationId: fetchACreativeUsingCreativeID
+      summary: Fetch a Creative using Creative ID
+      tags:
+      - Use Cases
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: adAccountId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      - name: creativeUrn
+        in: path
+        required: true
+        description: URN of the resource (URL-encoded).
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FetchACreativeUsingCreativeIDResponse'
+              examples:
+                fetchACreativeUsingCreativeID:
+                  summary: Fetch a Creative using Creative ID
+                  value:
+                    servingHoldReasons:
+                    - UNDER_REVIEW
+                    - CAMPAIGN_END_DATE_HOLD
+                    lastModifiedAt: 1788467999699
+                    lastModifiedBy: urn:li:person:SxmZ_oygU7
+                    content:
+                      eventAd:
+                        post: urn:li:ugcPost:7425151848153546752
+                        event: urn:li:event:7425149376345448448
+                        hidePreviewVideo: false
+                        directSponsoredContent: true
+                    createdAt: 1770294431254
+                    isTest: false
+                    createdBy: urn:li:person:B1U4S2MZ-C
+                    review:
+                      status: PENDING
+                    isServing: false
+                    campaign: urn:li:sponsoredCampaign:481911404
+                    id: urn:li:sponsoredCreative:1138847954
+                    intendedStatus: ACTIVE
+                    account: urn:li:sponsoredAccount:508915158
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: updateCreativeUsingCreativeId
+      summary: Update Creative Using Creative Id
+      tags:
+      - Use Cases
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: adAccountId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      - name: creativeUrn
+        in: path
+        required: true
+        description: URN of the resource (URL-encoded).
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCreativeUsingCreativeIdRequest'
+            examples:
+              updateCreativeUsingCreativeId:
+                summary: Update Creative Using Creative Id
+                value:
+                  patch:
+                    $set:
+                      intendedStatus: ACTIVE
+      responses:
+        '204':
+          description: No Content
+        default:
+          $ref: '#/components/responses/Error'
+    delete:
+      operationId: deleteCreativeUsingCreativeId
+      summary: Delete Creative Using Creative Id
+      tags:
+      - Use Cases
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: adAccountId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      - name: creativeUrn
+        in: path
+        required: true
+        description: URN of the resource (URL-encoded).
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /adAccounts/{adAccountId}/creatives:
+    get:
+      operationId: getAdAccountsCreatives
+      summary: Query creatives
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Fetch multiple Creatives using BATCH**
+
+        - **Search Creative using Criteria** (`q=criteria`)'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: adAccountId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      - name: ids
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Batch ids in Rest.li 2.0 list syntax, e.g. `List(id1,id2)`.
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - criteria
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: campaigns
+        in: query
+        required: false
+        schema:
+          type: string
+        example: List(urn:li:sponsoredCampaign:481911404)
+        allowReserved: true
+      - name: pageSize
+        in: query
+        required: false
+        schema:
+          type: integer
+        example: 100
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAdAccountsCreativesResponse'
+              examples:
+                searchCreativeUsingCriteria:
+                  summary: Search Creative using Criteria
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                    metadata: {}
+                    elements:
+                    - servingHoldReasons:
+                      - UNDER_REVIEW
+                      - CAMPAIGN_END_DATE_HOLD
+                      lastModifiedAt: 1788467999699
+                      lastModifiedBy: urn:li:person:SxmZ_oygU7
+                      content:
+                        eventAd:
+                          post: urn:li:ugcPost:7425151848153546752
+                          event: urn:li:event:7425149376345448448
+                          hidePreviewVideo: false
+                          directSponsoredContent: true
+                      createdAt: 1770294431254
+                      isTest: false
+                      createdBy: urn:li:person:B1U4S2MZ-C
+                      review:
+                        status: PENDING
+                      isServing: false
+                      campaign: urn:li:sponsoredCampaign:481911404
+                      id: urn:li:sponsoredCreative:1138847954
+                      intendedStatus: ACTIVE
+                      account: urn:li:sponsoredAccount:508915158
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: postAdAccountsCreatives
+      summary: Create / update / action on creatives
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Create a Creative**
+
+        - **Update multiple Creative using BATCH**
+
+        - **Create multiple Creatives using BATCH**'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: adAccountId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      - name: X-RestLi-Method
+        in: header
+        required: false
+        description: Rest.li method override used for batch / partial-update style calls.
+        schema:
+          type: string
+          enum:
+          - BATCH_CREATE
+      - name: ids
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Batch ids in Rest.li 2.0 list syntax, e.g. `List(id1,id2)`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostAdAccountsCreativesRequest'
+            examples:
+              createACreative:
+                summary: Create a Creative
+                value:
+                  campaign: urn:li:sponsoredCampaign:{{campaignId1}}
+                  reference: urn:li:share:{{share_id}}
+                  status: ACTIVE
+                  type: SPONSORED_STATUS_UPDATE
+                  variables:
+                    data:
+                      com.linkedin.ads.SponsoredUpdateCreativeVariables: {}
+              updateMultipleCreativeUsingBATCH:
+                summary: Update multiple Creative using BATCH
+                value:
+                  entities:
+                    '{{creative_Id1}}':
+                      patch:
+                        $set:
+                          status: ACTIVE
+                    '{{creative_Id2}}':
+                      patch:
+                        $set:
+                          status: ACTIVE
+              createMultipleCreativesUsingBATCH:
+                summary: Create multiple Creatives using BATCH
+                value:
+                  elements:
+                  - campaign: urn:li:sponsoredCampaign:{{campaign_id1}}
+                    status: ACTIVE
+                    type: TEXT_AD
+                    variables:
+                      clickUri: https://www.linkedin.com
+                      data:
+                        com.linkedin.ads.TextAdCreativeVariables:
+                          text: 'This is a test ad description that links to LinkedIn 1 Batch 1 '
+                          title: This is Test Ad!
+                  - campaign: urn:li:sponsoredCampaign:{{campaign_id1}}
+                    status: ACTIVE
+                    type: TEXT_AD
+                    variables:
+                      clickUri: https://www.linkedin.com
+                      data:
+                        com.linkedin.ads.TextAdCreativeVariables:
+                          text: This is a test ad description that links to LinkedIn 2 Batch 1
+                          title: This is Test Ad!
+      responses:
+        '201':
+          description: Success (inferred — the source collection has no saved example for this call)
+          headers:
+            x-restli-id:
+              schema:
+                type: string
+              description: Id (or URN) of the created resource.
+        default:
+          $ref: '#/components/responses/Error'
+    delete:
+      operationId: deleteMultipleCreativesUsingBATCH
+      summary: Delete multiple Creatives using BATCH
+      tags:
+      - Use Cases
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: adAccountId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      - name: X-RestLi-Method
+        in: header
+        required: false
+        description: Rest.li method override used for batch / partial-update style calls.
+        schema:
+          type: string
+          enum:
+          - BATCH_DELETE
+      - name: ids
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Batch ids in Rest.li 2.0 list syntax, e.g. `List(id1,id2)`.
+      responses:
+        '204':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /adTargetingFacets:
+    get:
+      operationId: fetchTheAdTargetingFacets
+      summary: Fetch the Ad Targeting Facets
+      tags:
+      - Use Cases
+      description: 'View our [Public Documentation](https://docs.microsoft.com/linkedin/marketing/integrations/ads/advertising-targeting/ads-targeting?tabs=http&view=li-lms-unversioned) to
+        understand more on Ads Targeting APIs.
+
+
+        Facets are high-level categories of the types of targeting available to you. Use facets to narrow down your
+        intended audience. The adTargetingFacets API returns available targeting facets.'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FetchTheAdTargetingFacetsResponse'
+              examples:
+                fetchTheAdTargetingFacets:
+                  summary: Fetch the Ad Targeting Facets
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                    elements:
+                    - entityTypes:
+                      - FIRMOGRAPHIC
+                      facetName: companyCategory
+                      adTargetingFacetUrn: urn:li:adTargetingFacet:companyCategory
+                      availableEntityFinders:
+                      - AD_TARGETING_FACET
+                      - TYPEAHEAD
+                    - entityTypes:
+                      - AGE
+                      facetName: ageRanges
+                      adTargetingFacetUrn: urn:li:adTargetingFacet:ageRanges
+                      availableEntityFinders:
+                      - AD_TARGETING_FACET
+        default:
+          $ref: '#/components/responses/Error'
+  /adTargetingEntities:
+    get:
+      operationId: getAdTargetingEntities
+      summary: Query adTargetingEntities
+      tags:
+      - Use Cases
+      description: "This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`\
+        \ / body shape). Variants seen in the source collection:\n- **Find Entities by Facet Seniorities** (`q=adTargetingFacet`):\
+        \ To understand more about the Ad Targeting Entities refer to our public documentation [here](https://docs.microsoft.com/linkedin/shared/references/v2/ads/adtargetingentities?context=linkedin/marketing/contex&view=li-lms-unversioned).\
+        \  \n- **Find Entities by Similar Entities** (`q=similarEntities`): To understand more about the Ad Targeting\
+        \ Entities refer to our public documentation [here](https://docs.microsoft.com/linkedin/shared/references/v2/ads/adtargetingentities?context=linkedin/marketing/contex&view=li-lms-unversioned).\
+        \  \n- **Find Entities by Typeahead Suggestions** (`q=TYPEAHEAD`): To understand more about the Ad Targeting\
+        \ Entities refer to our public documentation [here](https://docs.microsoft.com/linkedin/shared/references/v2/ads/adtargetingentities?context=linkedin/marketing/contex&view=li-lms-unversioned).\
+        \  \n- **Find Entities by URNs** (`q=urns`): To understand more about the Ad Targeting Entities refer to\
+        \ our public documentation [here](https://docs.microsoft.com/linkedin/shared/references/v2/ads/adtargetingentities?context=linkedin/marketing/contex&view=li-lms-unversioned).\
+        \  "
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - adTargetingFacet
+          - similarEntities
+          - TYPEAHEAD
+          - urns
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: queryVersion
+        in: query
+        required: false
+        schema:
+          type: string
+        example: QUERY_USES_URNS
+      - name: facet
+        in: query
+        required: false
+        schema:
+          type: string
+        example: List(urn:li:adTargetingFacet:seniorities)
+        allowReserved: true
+      - name: locale
+        in: query
+        required: false
+        schema:
+          type: string
+        example: (language:en,country:US)
+        allowReserved: true
+      - name: entities
+        in: query
+        required: false
+        schema:
+          type: string
+        example: List(urn:li:organization:1003)
+        allowReserved: true
+      - name: query
+        in: query
+        required: false
+        schema:
+          type: string
+        example: afric
+      - name: urns
+        in: query
+        required: false
+        schema:
+          type: string
+        example: List(urn:li:geo:102095887)
+        allowReserved: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAdTargetingEntitiesResponse'
+              examples:
+                findEntitiesByFacetSeniorities:
+                  summary: Find Entities by Facet Seniorities
+                  value:
+                    paging:
+                      start: 0
+                      count: 2147483647
+                      links: []
+                      total: 10
+                    elements:
+                    - name: Unpaid
+                      urn: urn:li:seniority:1
+                      facetUrn: urn:li:adTargetingFacet:seniorities
+                    - name: Training
+                      urn: urn:li:seniority:2
+                      facetUrn: urn:li:adTargetingFacet:seniorities
+                findEntitiesBySimilarEntities:
+                  summary: Find Entities by Similar Entities
+                  value:
+                    paging:
+                      start: 0
+                      count: 2147483647
+                      links: []
+                      total: 4
+                    elements:
+                    - name: RATIONAL AG
+                      urn: urn:li:organization:610934
+                      facetUrn: urn:li:adTargetingFacet:employers
+                    - name: IBM
+                      urn: urn:li:organization:1009
+                      facetUrn: urn:li:adTargetingFacet:employers
+                findEntitiesByTypeaheadSuggestions:
+                  summary: Find Entities by Typeahead Suggestions
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links:
+                      - type: application/json
+                        rel: next
+                        href: /rest/adTargetingEntities?q=TYPEAHEAD&query=afric&start=10&count=10&facet=List(urn%3Ali%3AadTargetingFacet%3Alocations)
+                      total: 0
+                    elements:
+                    - name: Africa
+                      urn: urn:li:geo:103537801
+                      facetUrn: urn:li:adTargetingFacet:locations
+                      value:
+                        segmentUrn: urn:li:geo:103537801
+                    - name: EMEA
+                      urn: urn:li:geo:91000007
+                      facetUrn: urn:li:adTargetingFacet:locations
+                      value:
+                        segmentUrn: urn:li:geo:91000007
+        default:
+          $ref: '#/components/responses/Error'
+  /adSupplyForecasts:
+    get:
+      operationId: adSupplyForecastAPI
+      summary: Ad Supply Forecast API
+      tags:
+      - Use Cases
+      description: 'The Ad Supply Forecasts API enables you to forecast impressions, spending, and other metrics
+        based on:
+
+
+        \*   Targeting criteria
+
+        \*   Campaign settings such as campaign type and objective type
+
+        \*   Bid and spending settings
+
+        \*   Time period'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - criteriaV2
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: account
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: timeRange
+        in: query
+        required: false
+        schema:
+          type: string
+        example: (start:1790208000000,end:1790553600000)
+        allowReserved: true
+      - name: campaignType
+        in: query
+        required: false
+        schema:
+          type: string
+        example: SPONSORED_UPDATES
+      - name: objectiveType
+        in: query
+        required: false
+        schema:
+          type: string
+        example: BRAND_AWARENESS
+      - name: totalBudget
+        in: query
+        required: false
+        schema:
+          type: string
+        example: (amount:100.00,currencyCode:USD)
+        allowReserved: true
+      - name: competingBid
+        in: query
+        required: false
+        schema:
+          type: string
+        example: (bidType:CPM,bidPrice:(currencyCode:USD,amount:10))
+        allowReserved: true
+      - name: targetingCriteria
+        in: query
+        required: false
+        schema:
+          type: string
+        example: (include:(and:List((or:(urn:li:adTargetingFacet:locations:List(urn:li:geo:101165590))))),exclude:(or:(urn:li:adTargetingFacet:staffCountRanges:List(urn:li:staffCountRange:(10001,2147483647)))))
+        allowReserved: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdSupplyForecastAPIResponse'
+              examples:
+                adSupplyForecastAPI:
+                  summary: Ad Supply Forecast API
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                      total: 0
+                    elements:
+                    - metricType: IMPRESSION
+                      timeSeries:
+                      - adForecastRange:
+                          highEnd: 3695
+                          lowEnd: 1847
+                        value: 3695
+                        timestamp: 1790208000000
+                      granularity: DAILY
+                    - metricType: IMPRESSION
+                      timeSeries:
+                      - adForecastRange:
+                          highEnd: 11397
+                          lowEnd: 5698
+                        value: 11397
+                        timestamp: 1790208000000
+                      granularity: SEVEN_DAY
+        default:
+          $ref: '#/components/responses/Error'
+  /assets:
+    post:
+      operationId: postAssets
+      summary: Create / update / action on assets
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **2. Register Upload** (`action=registerUpload`): View our [Public Documentation](https://docs.microsoft.com/linkedin/marketing/integrations/community-management/shares/vector-asset-api?tabs=http&view=li-lms-unversioned#register-an-upload-for-images) to
+        understand more on this API.
+
+        - **2. Register Upload** (`action=registerUpload`): View our [Public Documentation](https://docs.microsoft.com/linkedin/marketing/integrations/community-management/shares/vector-asset-api?tabs=http&view=li-lms-unversioned#register-an-upload-for-images) to
+        understand more on this API.
+
+        - **2. Register Video Upload** (`action=registerUpload`)'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: action
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - registerUpload
+        description: Rest.li action name.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostAssetsRequest'
+            examples:
+              2RegisterUpload:
+                summary: 2. Register Upload
+                value:
+                  registerUploadRequest:
+                    owner: urn:li:organization:{{organization_id}}
+                    recipes:
+                    - urn:li:digitalmediaRecipe:feedshare-image
+                    serviceRelationships:
+                    - identifier: urn:li:userGeneratedContent
+                      relationshipType: OWNER
+                    supportedUploadMechanism:
+                    - SYNCHRONOUS_UPLOAD
+              2RegisterVideoUpload:
+                summary: 2. Register Video Upload
+                value:
+                  registerUploadRequest:
+                    owner: urn:li:organization:{{organization_id}}
+                    recipes:
+                    - urn:li:digitalmediaRecipe:feedshare-video
+                    serviceRelationships:
+                    - identifier: urn:li:userGeneratedContent
+                      relationshipType: OWNER
+                    supportedUploadMechanism:
+                    - SYNCHRONOUS_UPLOAD
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /dms-uploads/{uploadPath}:
+    put:
+      operationId: putDmsUploads
+      summary: Upsert dms-uploads
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **3. Upload the image file (select an image file in the Body for postman to use)**: #### Select an image
+        file on your local machine in the Body for postman to use in this example call.
+
+        - **3. Upload the image file Copy (select an image file in the Body for postman to use)**: View our [Public
+        Documentation](https://docs.microsoft.com/linkedin/marketing/integrations/community-management/shares/vector-asset-api?tabs=http&view=li-lms-unversioned#upload-the-image) to
+        understand more on this API.
+
+        - **3. Upload the video file (select a video file in the Body for postman to use)**
+
+        - **3. Upload the Document file (select a document file in the Body for postman to use)**'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: uploadPath
+        in: path
+        required: true
+        description: Remainder of the upload URL returned by the corresponding initializeUpload call (use that URL
+          verbatim).
+        schema:
+          type: string
+      responses:
+        '201':
+          description: Success (inferred — the source collection has no saved example for this call)
+          headers:
+            x-restli-id:
+              schema:
+                type: string
+              description: Id (or URN) of the created resource.
+        default:
+          $ref: '#/components/responses/Error'
+      servers:
+      - url: https://www.linkedin.com
+  /assets/{assetId}:
+    get:
+      operationId: getAssets
+      summary: Query assets
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **4. Check the status of the upload**: View our [Public Documentation](https://docs.microsoft.com/linkedin/marketing/integrations/community-management/shares/vector-asset-api?tabs=http&view=li-lms-unversioned#check-status-of-upload) to
+        understand more on this API.
+
+        - **4. Check the status of the upload**: View our [Public Documentation](https://docs.microsoft.com/linkedin/marketing/integrations/community-management/shares/vector-asset-api?tabs=http&view=li-lms-unversioned#check-status-of-upload) to
+        understand more on this API.
+
+        - **4. Check the status of the upload**
+
+        - **4. Check the status of the upload**'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: assetId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /shares:
+    post:
+      operationId: postShares
+      summary: Create / update / action on shares
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **5. Create a share**: View our [Public Documentation](https://docs.microsoft.com/en-us/linkedin/marketing/integrations/community-management/shares/share-api?tabs=http&view=li-lms-unversioned#post-shares) to
+        understand more on creating shares.
+
+        - **5. Create a dark share**: View our [Public Documentation](https://docs.microsoft.com/linkedin/marketing/integrations/community-management/shares/share-api?tabs=http&view=li-lms-unversioned#direct-sponsored-content-share) to
+        understand more on creating a direct sponsored content share (dark share).'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostSharesRequest'
+            examples:
+              5CreateAShare:
+                summary: 5. Create a share
+                value:
+                  owner: urn:li:organization:6446331
+                  text:
+                    text: Test Share text
+                  subject: Test Share Subject
+                  distribution:
+                    linkedInDistributionTarget: {}
+                  content:
+                    contentEntities:
+                    - entity: urn:li:digitalmediaAsset:{{asset_id}}
+                    title: Test Share with Content title
+                    shareMediaCategory: IMAGE
+              5CreateADarkShare:
+                summary: 5. Create a dark share
+                value:
+                  agent: urn:li:sponsoredAccount:{{sponsoredaccount_id}}
+                  content:
+                    contentEntities:
+                    - entity: urn:li:digitalmediaAsset:{{asset_id}}
+                    title: Test Share with Content title
+                    shareMediaCategory: IMAGE
+                  distribution:
+                    linkedInDistributionTarget: {}
+                  owner: urn:li:organization:{{organization_id}}
+                  subject: Test Share Subject
+                  text:
+                    text: Test Share!
+      responses:
+        '201':
+          description: Success (inferred — the source collection has no saved example for this call)
+          headers:
+            x-restli-id:
+              schema:
+                type: string
+              description: Id (or URN) of the created resource.
+        default:
+          $ref: '#/components/responses/Error'
+  /adCampaigns:
+    post:
+      operationId: postAdCampaigns
+      summary: Create / update / action on adCampaigns
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **6. Create a Campaign for the Image Ad**: View our [Public Documentation](https://docs.microsoft.com/linkedin/marketing/integrations/ads/account-structure/create-and-manage-campaigns?tabs=http&view=li-lms-unversioned#create-a-campaign) to
+        understand more on creating a Single Image Sponsored Content Campaign.
+
+        - **6. Create a Campaign for the Image Ad**: View our [Public Documentation](https://docs.microsoft.com/linkedin/marketing/integrations/ads/account-structure/create-and-manage-campaigns?tabs=http&view=li-lms-unversioned#create-a-campaign) to
+        understand more on creating a Single Image Sponsored Content Campaign.
+
+        - **7. Create a Creative for the Image Ad**: View our [Public Documentation](https://docs.microsoft.com/linkedin/marketing/integrations/ads/account-structure/create-and-manage-creatives?tabs=http&view=li-lms-unversioned#create-a-direct-sponsored-content-share) to
+        understand more on creating a Sponsored Content Ad Creative.
+
+        - **6. Create a Campaign for the Video Ad**
+
+        - **6. Create a Campaign for the Document Ad**'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostAdCampaignsRequest'
+            examples:
+              6CreateACampaignForTheImageAd:
+                summary: 6. Create a Campaign for the Image Ad
+                value:
+                  account: urn:li:sponsoredAccount:{{sponsoredaccount_id}}
+                  campaignGroup: urn:li:sponsoredCampaignGroup:{{campaigngroup_id1}}
+                  associatedEntity: urn:li:organization:{{organization_id}}
+                  audienceExpansionEnabled: false
+                  costType: CPC
+                  creativeSelection: OPTIMIZED
+                  dailyBudget:
+                    amount: '18'
+                    currencyCode: USD
+                  locale:
+                    country: US
+                    language: en
+                  name: Campaign Sponsored update B
+                  offsiteDeliveryEnabled: false
+                  runSchedule:
+                    end: 1635332789000
+                    start: 1631790775000
+                  targetingCriteria:
+                    include:
+                      and:
+                      - or:
+                          urn:li:adTargetingFacet:locations:
+                          - urn:li:geo:103644278
+                  type: SPONSORED_UPDATES
+                  unitCost:
+                    amount: '15'
+                    currencyCode: USD
+                  status: DRAFT
+              6CreateACampaignForTheImageAd2:
+                summary: 6. Create a Campaign for the Image Ad
+                value:
+                  account: urn:li:sponsoredAccount:{{sponsoredaccount_id}}
+                  campaignGroup: urn:li:sponsoredCampaignGroup:{{campaigngroup_id}}
+                  audienceExpansionEnabled: false
+                  costType: CPC
+                  creativeSelection: OPTIMIZED
+                  dailyBudget:
+                    amount: '18'
+                    currencyCode: USD
+                  locale:
+                    country: US
+                    language: en
+                  name: Campaign Sponsored update B
+                  offsiteDeliveryEnabled: false
+                  runSchedule:
+                    end: 1529778043445
+                    start: 1528914043445
+                  targetingCriteria:
+                    include:
+                      and:
+                      - or:
+                          urn:li:adTargetingFacet:locations:
+                          - urn:li:geo:103644278
+                  type: SPONSORED_UPDATES
+                  unitCost:
+                    amount: '15'
+                    currencyCode: USD
+                  status: ACTIVE
+              7CreateACreativeForTheImageAd:
+                summary: 7. Create a Creative for the Image Ad
+                value:
+                  campaign: urn:li:sponsoredCampaign:{{campaign_id}}
+                  reference: urn:li:share:{{share_id}}
+                  status: ACTIVE
+                  type: SPONSORED_STATUS_UPDATE
+                  variables:
+                    data:
+                      com.linkedin.ads.SponsoredUpdateCreativeVariables: {}
+              6CreateACampaignForTheVideoAd:
+                summary: 6. Create a Campaign for the Video Ad
+                value:
+                  account: urn:li:sponsoredAccount:{{sponsoredaccount_id}}
+                  campaignGroup: urn:li:sponsoredCampaignGroup:{{campaigngroup_id1}}
+                  audienceExpansionEnabled: false
+                  costType: CPV
+                  objectiveType: VIDEO_VIEW
+                  creativeSelection: OPTIMIZED
+                  locale:
+                    language: en
+                    country: US
+                  name: Video campaign Sponsored Update
+                  format: SINGLE_VIDEO
+                  offsiteDeliveryEnabled: false
+                  runSchedule:
+                    start: 1520890990333
+                    end: 1637971200000
+                  targetingCriteria:
+                    include:
+                      and:
+                      - or:
+                          urn:li:adTargetingFacet:interfaceLocales:
+                          - urn:li:locale:en_US
+                      - or:
+                          urn:li:adTargetingFacet:locations:
+                          - urn:li:geo:103644278
+                  type: SPONSORED_UPDATES
+                  dailyBudget:
+                    currencyCode: USD
+                    amount: '18'
+                  unitCost:
+                    amount: '15'
+                    currencyCode: USD
+                  status: ACTIVE
+              6CreateACampaignForTheDocumentAd:
+                summary: 6. Create a Campaign for the Document Ad
+                value:
+                  account: urn:li:sponsoredAccount:{{sponsoredaccount_id}}
+                  campaignGroup: urn:li:sponsoredCampaignGroup:{{campaigngroup_id1}}
+                  audienceExpansionEnabled: false
+                  costType: CPV
+                  objectiveType: SPONSORED_UPDATE_NATIVE_DOCUMENT
+                  creativeSelection: OPTIMIZED
+                  locale:
+                    language: en
+                    country: US
+                  name: Video campaign Sponsored Update
+                  format: SINGLE_VIDEO
+                  offsiteDeliveryEnabled: false
+                  runSchedule:
+                    start: 1520890990333
+                    end: 1637971200000
+                  targetingCriteria:
+                    include:
+                      and:
+                      - or:
+                          urn:li:adTargetingFacet:interfaceLocales:
+                          - urn:li:locale:en_US
+                      - or:
+                          urn:li:adTargetingFacet:locations:
+                          - urn:li:geo:103644278
+                  type: SPONSORED_UPDATES
+                  dailyBudget:
+                    currencyCode: USD
+                    amount: '18'
+                  unitCost:
+                    amount: '15'
+                    currencyCode: USD
+                  status: ACTIVE
+      responses:
+        '201':
+          description: Success (inferred — the source collection has no saved example for this call)
+          headers:
+            x-restli-id:
+              schema:
+                type: string
+              description: Id (or URN) of the created resource.
+        default:
+          $ref: '#/components/responses/Error'
+  /adCreatives:
+    post:
+      operationId: 7CreateACreativeForTheImageAd
+      summary: 7. Create a Creative for the Image Ad
+      tags:
+      - Use Cases
+      description: 'View our [Public Documentation](https://docs.microsoft.com/linkedin/marketing/integrations/ads/account-structure/create-and-manage-creatives?tabs=http&view=li-lms-unversioned#create-a-sponsored-content-share) to
+        understand more on creating a Sponsored Content Ad Creative.
+
+
+        This API example creates a Sponsored Content Ad Creative referencing the previously created image share
+        in step 5. This Creative will be created under the Campaign created in the previous step.'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/7CreateACreativeForTheImageAdRequest'
+            examples:
+              7CreateACreativeForTheImageAd:
+                summary: 7. Create a Creative for the Image Ad
+                value:
+                  campaign: urn:li:sponsoredCampaign:{{campaign_id1}}
+                  reference: urn:li:share:{{share_id}}
+                  status: ACTIVE
+                  type: SPONSORED_STATUS_UPDATE
+                  variables:
+                    data:
+                      com.linkedin.ads.SponsoredUpdateCreativeVariables: {}
+      responses:
+        '201':
+          description: Success (inferred — the source collection has no saved example for this call)
+          headers:
+            x-restli-id:
+              schema:
+                type: string
+              description: Id (or URN) of the created resource.
+        default:
+          $ref: '#/components/responses/Error'
+  /posts:
+    post:
+      operationId: postPosts
+      summary: Create / update / action on posts
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **5. Create Post**
+
+        - **5. Create Post**'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostPostsRequest'
+            examples:
+              5CreatePost:
+                summary: 5. Create Post
+                value:
+                  author: urn:li:organization:{{organization_id}}
+                  lifecycleState: PUBLISHED
+                  specificContent:
+                    com.linkedin.ugc.ShareContent:
+                      media:
+                      - title:
+                          attributes: []
+                          text: Sample Video Create
+                        description:
+                          attributes: []
+                          text: Sample Description
+                        media: urn:li:digitalmediaAsset:{{video_asset_id}}
+                        thumbnails: []
+                        status: READY
+                      shareCommentary:
+                        attributes: []
+                        text: Some share text
+                      shareMediaCategory: VIDEO
+                  visibility:
+                    com.linkedin.ugc.MemberNetworkVisibility: PUBLIC
+              5CreatePost2:
+                summary: 5. Create Post
+                value:
+                  author: urn:li:organization:{{organization_id}}
+                  lifecycleState: PUBLISHED
+                  specificContent:
+                    com.linkedin.ugc.ShareContent:
+                      media:
+                      - title:
+                          attributes: []
+                          text: Sample Video Create
+                        description:
+                          attributes: []
+                          text: Sample Description
+                        media: urn:li:digitalmediaAsset:{{document_asset_id}}
+                        thumbnails: []
+                        status: READY
+                      shareCommentary:
+                        attributes: []
+                        text: Some share text
+                      shareMediaCategory: VIDEO
+                  visibility:
+                    com.linkedin.ugc.MemberNetworkVisibility: PUBLIC
+      responses:
+        '201':
+          description: Success (inferred — the source collection has no saved example for this call)
+          headers:
+            x-restli-id:
+              schema:
+                type: string
+              description: Id (or URN) of the created resource.
+        default:
+          $ref: '#/components/responses/Error'
+  /creatives:
+    post:
+      operationId: postCreatives
+      summary: Create / update / action on creatives
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **7. Create a Creative for the Video Ad**
+
+        - **7. Create a Creative for the Document Ad**'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostCreativesRequest'
+            examples:
+              7CreateACreativeForTheVideoAd:
+                summary: 7. Create a Creative for the Video Ad
+                value:
+                  campaign: urn:li:sponsoredCampaign:{{campaign_id1}}
+                  reference: urn:li:ugcPost:{{post_id1}}
+                  status: ACTIVE
+                  type: SPONSORED_VIDEO
+                  variables:
+                    data:
+                      com.linkedin.ads.SponsoredVideoCreativeVariables: {}
+              7CreateACreativeForTheDocumentAd:
+                summary: 7. Create a Creative for the Document Ad
+                value:
+                  campaign: urn:li:sponsoredCampaign:{{campaign_id1}}
+                  reference: urn:li:ugcPost:{{post_id1}}
+                  status: ACTIVE
+                  type: SPONSORED_VIDEO
+                  variables:
+                    data:
+                      com.linkedin.ads.SponsoredVideoCreativeVariables: {}
+      responses:
+        '201':
+          description: Success (inferred — the source collection has no saved example for this call)
+          headers:
+            x-restli-id:
+              schema:
+                type: string
+              description: Id (or URN) of the created resource.
+        default:
+          $ref: '#/components/responses/Error'
+  /documents:
+    post:
+      operationId: 2RegisterDocumentUpload
+      summary: 2. Register Document Upload
+      tags:
+      - Use Cases
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: action
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - initializeUpload
+        description: Rest.li action name.
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /audienceCounts:
+    get:
+      operationId: findAudienceCountByTargetingCriteria
+      summary: Find audience count by targeting criteria
+      tags:
+      - Use Cases
+      description: 'View our [Public Documentation](https://docs.microsoft.com/linkedin/marketing/integrations/ads/advertising-targeting/ads-targeting?tabs=http&view=li-lms-unversioned) to
+        understand more on Ads Targeting APIs.
+
+
+        Facets are high-level categories of the types of targeting available to you. Use facets to narrow down your
+        intended audience. The adTargetingFacets API returns available targeting facets.'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - targetingCriteriaV2
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: targetingCriteria
+        in: query
+        required: false
+        schema:
+          type: string
+        example: (include:(and:List((or:(urn:li:adTargetingFacet:locations:List(urn:li:geo:102221843))),(or:(urn:li:adTargetingFacet:skills:List(urn:li:skill:17))))))
+        allowReserved: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FindAudienceCountByTargetingCriteriaResponse'
+              examples:
+                findAudienceCountByTargetingCriteria:
+                  summary: Find audience count by targeting criteria
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                      total: 0
+                    elements:
+                    - active: 0
+                      total: 3300
+        default:
+          $ref: '#/components/responses/Error'
+components:
+  securitySchemes:
+    linkedinOAuth2:
+      type: oauth2
+      description: LinkedIn 3-legged OAuth 2.0 (authorization code).
+      flows:
+        authorizationCode:
+          authorizationUrl: https://www.linkedin.com/oauth/v2/authorization
+          tokenUrl: https://www.linkedin.com/oauth/v2/accessToken
+          scopes:
+            rw_ads: LinkedIn permission `rw_ads`
+            r_basicprofile: LinkedIn permission `r_basicprofile`
+            w_organization_social: LinkedIn permission `w_organization_social`
+            w_member_social: LinkedIn permission `w_member_social`
+            rw_organization_admin: LinkedIn permission `rw_organization_admin`
+  parameters:
+    LinkedInVersion:
+      name: LinkedIn-Version
+      in: header
+      required: true
+      description: API version in YYYYMM format (e.g. `202509`).
+      schema:
+        type: string
+        pattern: ^[0-9]{6}$
+    RestliProtocolVersion:
+      name: X-Restli-Protocol-Version
+      in: header
+      required: false
+      schema:
+        type: string
+        enum:
+        - 2.0.0
+        default: 2.0.0
+  responses:
+    Error:
+      description: Error response
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Error:
+      type: object
+      properties:
+        status:
+          type: integer
+        code:
+          type: string
+        serviceErrorCode:
+          type: integer
+        message:
+          type: string
+    FetchAnAdAccountUserResponse:
+      type: object
+      properties:
+        role:
+          type: string
+        changeAuditStamps:
+          type: object
+          properties:
+            created:
+              type: object
+              properties:
+                actor:
+                  type: string
+                impersonator:
+                  type: string
+                time:
+                  type: integer
+                  format: int64
+            lastModified:
+              type: object
+              properties:
+                actor:
+                  type: string
+                impersonator:
+                  type: string
+                time:
+                  type: integer
+                  format: int64
+        user:
+          type: string
+        account:
+          type: string
+    Paging:
+      type: object
+      properties:
+        start:
+          type: integer
+        count:
+          type: integer
+        links:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+              rel:
+                type: string
+              href:
+                type: string
+        total:
+          type: integer
+    FetchACreativeUsingCreativeIDResponse:
+      type: object
+      properties:
+        servingHoldReasons:
+          type: array
+          items:
+            type: string
+        lastModifiedAt:
+          type: integer
+          format: int64
+        lastModifiedBy:
+          type: string
+        content:
+          type: object
+          properties:
+            eventAd:
+              type: object
+              properties:
+                post:
+                  type: string
+                event:
+                  type: string
+                hidePreviewVideo:
+                  type: boolean
+                directSponsoredContent:
+                  type: boolean
+        createdAt:
+          type: integer
+          format: int64
+        isTest:
+          type: boolean
+        createdBy:
+          type: string
+        review:
+          type: object
+          properties:
+            status:
+              type: string
+        isServing:
+          type: boolean
+        campaign:
+          type: string
+        id:
+          type: string
+        intendedStatus:
+          type: string
+        account:
+          type: string
+    CreateAdAccountUserRequest:
+      type: object
+      properties:
+        account:
+          type: string
+        role:
+          type: string
+        user:
+          type: string
+    UpdateExistingAdAccountUserRequest:
+      type: object
+      properties:
+        patch:
+          type: object
+          properties:
+            $set:
+              type: object
+              properties:
+                account:
+                  type: string
+                role:
+                  type: string
+                user:
+                  type: string
+    GetAdAccountUsersResponse:
+      type: object
+      properties:
+        paging:
+          $ref: '#/components/schemas/Paging'
+        elements:
+          type: array
+          items:
+            $ref: '#/components/schemas/FetchAnAdAccountUserResponse'
+    FetchTheAuthenticatedUserSOrganizationRolesResponse:
+      type: object
+      properties:
+        paging:
+          type: object
+          properties:
+            start:
+              type: integer
+            count:
+              type: integer
+            links:
+              type: array
+              items: {}
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              roleAssignee:
+                type: string
+              state:
+                type: string
+              lastModified:
+                type: object
+                properties:
+                  actor:
+                    type: string
+                  impersonator:
+                    type: string
+                  time:
+                    type: integer
+                    format: int64
+              role:
+                type: string
+              created:
+                type: object
+                properties:
+                  actor:
+                    type: string
+                  impersonator:
+                    type: string
+                  time:
+                    type: integer
+                    format: int64
+              organization:
+                type: string
+    GetMeResponse:
+      type: object
+      properties:
+        localizedLastName:
+          type: string
+        profilePicture:
+          type: object
+          properties:
+            displayImage:
+              type: string
+        vanityName:
+          type: string
+        lastName:
+          type: object
+          properties:
+            localized:
+              type: object
+              properties:
+                en_US:
+                  type: string
+            preferredLocale:
+              type: object
+              properties:
+                country:
+                  type: string
+                language:
+                  type: string
+        firstName:
+          type: object
+          properties:
+            localized:
+              type: object
+              properties:
+                en_US:
+                  type: string
+            preferredLocale:
+              type: object
+              properties:
+                country:
+                  type: string
+                language:
+                  type: string
+        localizedHeadline:
+          type: string
+        id:
+          type: string
+        headline:
+          type: object
+          properties:
+            localized:
+              type: object
+              properties:
+                en_US:
+                  type: string
+            preferredLocale:
+              type: object
+              properties:
+                country:
+                  type: string
+                language:
+                  type: string
+        localizedFirstName:
+          type: string
+    PostAdAccountsRequest:
+      type: object
+      properties:
+        currency:
+          type: string
+        name:
+          type: string
+        notifiedOnCampaignOptimization:
+          type: boolean
+        notifiedOnCreativeApproval:
+          type: boolean
+        notifiedOnCreativeRejection:
+          type: boolean
+        notifiedOnEndOfCampaign:
+          type: boolean
+        reference:
+          type: string
+        type:
+          type: string
+        test:
+          type: boolean
+    FetchTheAdAccountByIDResponse:
+      type: object
+      properties:
+        test:
+          type: boolean
+        notifiedOnCreativeRejection:
+          type: boolean
+        notifiedOnNewFeaturesEnabled:
+          type: boolean
+        notifiedOnEndOfCampaign:
+          type: boolean
+        servingStatuses:
+          type: array
+          items:
+            type: string
+        notifiedOnCampaignOptimization:
+          type: boolean
+        type:
+          type: string
+        version:
+          type: object
+          properties:
+            versionTag:
+              type: string
+        reference:
+          type: string
+        notifiedOnCreativeApproval:
+          type: boolean
+        changeAuditStamps:
+          type: object
+          properties:
+            created:
+              type: object
+              properties:
+                actor:
+                  type: string
+                time:
+                  type: integer
+                  format: int64
+            lastModified:
+              type: object
+              properties:
+                actor:
+                  type: string
+                time:
+                  type: integer
+                  format: int64
+        name:
+          type: string
+        currency:
+          type: string
+        id:
+          type: integer
+        status:
+          type: string
+    UpdateAdAccountNameRequest:
+      type: object
+      properties:
+        patch:
+          type: object
+          properties:
+            $set:
+              type: object
+              properties:
+                name:
+                  type: string
+    PostAdAccountsAdCampaignGroupsRequest:
+      type: object
+      properties:
+        account:
+          type: string
+        name:
+          type: string
+        runSchedule:
+          type: object
+          properties:
+            end:
+              type: integer
+              format: int64
+            start:
+              type: integer
+              format: int64
+        status:
+          type: string
+        totalBudget:
+          type: object
+          properties:
+            amount:
+              type: string
+            currencyCode:
+              type: string
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              account:
+                type: string
+              name:
+                type: string
+              runSchedule:
+                type: object
+                properties:
+                  end:
+                    type: integer
+                    format: int64
+                  start:
+                    type: integer
+                    format: int64
+              status:
+                type: string
+              totalBudget:
+                type: object
+                properties:
+                  amount:
+                    type: string
+                  currencyCode:
+                    type: string
+        entities:
+          type: object
+          properties:
+            '{{campaigngroup_id1}}':
+              type: object
+              properties:
+                patch:
+                  type: object
+                  properties:
+                    $set:
+                      type: object
+                      properties:
+                        totalBudget:
+                          type: object
+                          properties:
+                            amount:
+                              type: string
+                            currencyCode:
+                              type: string
+            '{{campaigngroup_id2}}':
+              type: object
+              properties:
+                patch:
+                  type: object
+                  properties:
+                    $set:
+                      type: object
+                      properties:
+                        status:
+                          type: string
+    GetAdAccountsAdCampaignGroupsResponse:
+      type: object
+      properties:
+        metadata:
+          type: object
+          properties:
+            nextPageToken:
+              type: string
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              runSchedule:
+                type: object
+                properties:
+                  start:
+                    type: integer
+                    format: int64
+                  end:
+                    type: integer
+                    format: int64
+              test:
+                type: boolean
+              changeAuditStamps:
+                type: object
+                properties:
+                  created:
+                    type: object
+                    properties:
+                      actor:
+                        type: string
+                      time:
+                        type: integer
+                        format: int64
+                  lastModified:
+                    type: object
+                    properties:
+                      actor:
+                        type: string
+                      time:
+                        type: integer
+                        format: int64
+              name:
+                type: string
+              servingStatuses:
+                type: array
+                items:
+                  type: string
+              backfilled:
+                type: boolean
+              id:
+                type: integer
+              account:
+                type: string
+              objectiveType:
+                type: string
+              status:
+                type: string
+              buyingType:
+                type: string
+              budgetOptimization:
+                type: object
+                properties:
+                  budgetOptimizationStrategy:
+                    type: string
+                  bidStrategy:
+                    type: string
+              dailyBudget:
+                type: string
+              totalBudget:
+                type: object
+                properties:
+                  currencyCode:
+                    type: string
+                  amount:
+                    type: string
+    FetchACampaignGroupByIDResponse:
+      type: object
+      properties:
+        runSchedule:
+          type: object
+          properties:
+            start:
+              type: integer
+              format: int64
+            end:
+              type: integer
+              format: int64
+        test:
+          type: boolean
+        changeAuditStamps:
+          type: object
+          properties:
+            created:
+              type: object
+              properties:
+                actor:
+                  type: string
+                time:
+                  type: integer
+                  format: int64
+            lastModified:
+              type: object
+              properties:
+                actor:
+                  type: string
+                time:
+                  type: integer
+                  format: int64
+        name:
+          type: string
+        servingStatuses:
+          type: array
+          items:
+            type: string
+        backfilled:
+          type: boolean
+        id:
+          type: integer
+        account:
+          type: string
+        objectiveType:
+          type: string
+        status:
+          type: string
+        buyingType:
+          type: string
+        totalBudget:
+          type: object
+          properties:
+            currencyCode:
+              type: string
+            amount:
+              type: string
+    UpdateCampaignGroupRequest:
+      type: object
+      properties:
+        patch:
+          type: object
+          properties:
+            $set:
+              type: object
+              properties:
+                runSchedule:
+                  type: object
+                  properties:
+                    end:
+                      type: integer
+                      format: int64
+                    start:
+                      type: integer
+                      format: int64
+                totalBudget:
+                  type: object
+                  properties:
+                    amount:
+                      type: string
+                    currencyCode:
+                      type: string
+    FetchACampaignUsingCampaignIDResponse:
+      type: object
+      properties:
+        storyDeliveryEnabled:
+          type: boolean
+        targetingCriteria:
+          type: object
+          properties:
+            include:
+              type: object
+              properties:
+                and:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      or:
+                        type: object
+                        additionalProperties:
+                          type: array
+                          items:
+                            type: string
+        connectedTelevisionOnly:
+          type: boolean
+        pacingStrategy:
+          type: string
+        locale:
+          type: object
+          properties:
+            country:
+              type: string
+            language:
+              type: string
+        type:
+          type: string
+        runSchedule:
+          type: object
+          properties:
+            start:
+              type: integer
+              format: int64
+        optimizationTargetType:
+          type: string
+        changeAuditStamps:
+          type: object
+          properties:
+            created:
+              type: object
+              properties:
+                actor:
+                  type: string
+                time:
+                  type: integer
+                  format: int64
+            lastModified:
+              type: object
+              properties:
+                actor:
+                  type: string
+                time:
+                  type: integer
+                  format: int64
+        costType:
+          type: string
+        creativeSelection:
+          type: string
+        offsiteDeliveryEnabled:
+          type: boolean
+        id:
+          type: integer
+        audienceExpansionEnabled:
+          type: boolean
+        test:
+          type: boolean
+        format:
+          type: string
+        servingStatuses:
+          type: array
+          items:
+            type: string
+        version:
+          type: object
+          properties:
+            versionTag:
+              type: string
+        objectiveType:
+          type: string
+        associatedEntity:
+          type: string
+        offsitePreferences:
+          type: object
+          properties:
+            publisherRestrictionFiles:
+              type: object
+              properties:
+                include:
+                  type: array
+                  items: {}
+                exclude:
+                  type: array
+                  items:
+                    type: string
+        campaignGroup:
+          type: string
+        dailyBudget:
+          type: object
+          properties:
+            currencyCode:
+              type: string
+            amount:
+              type: string
+        politicalIntent:
+          type: string
+        unitCost:
+          type: object
+          properties:
+            currencyCode:
+              type: string
+            amount:
+              type: string
+        name:
+          type: string
+        account:
+          type: string
+        status:
+          type: string
+    PostAdAccountsAdCampaigns2Request:
+      type: object
+      properties:
+        patch:
+          type: object
+          properties:
+            $set:
+              type: object
+              properties:
+                runSchedule:
+                  type: object
+                  properties:
+                    start:
+                      type: integer
+                      format: int64
+                    end:
+                      type: integer
+                      format: int64
+                status:
+                  type: string
+    PostAdAccountsAdCampaignsRequest:
+      type: object
+      properties:
+        account:
+          type: string
+        campaignGroup:
+          type: string
+        audienceExpansionEnabled:
+          type: boolean
+        costType:
+          type: string
+        creativeSelection:
+          type: string
+        dailyBudget:
+          type: object
+          properties:
+            amount:
+              type: string
+            currencyCode:
+              type: string
+        locale:
+          type: object
+          properties:
+            country:
+              type: string
+            language:
+              type: string
+        name:
+          type: string
+        offsiteDeliveryEnabled:
+          type: boolean
+        runSchedule:
+          type: object
+          properties:
+            end:
+              type: integer
+              format: int64
+            start:
+              type: integer
+              format: int64
+        targetingCriteria:
+          type: object
+          properties:
+            include:
+              type: object
+              properties:
+                and:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      or:
+                        type: object
+                        additionalProperties:
+                          type: array
+                          items:
+                            type: string
+        type:
+          type: string
+        politicalIntent:
+          type: string
+        unitCost:
+          type: object
+          properties:
+            amount:
+              type: string
+            currencyCode:
+              type: string
+        status:
+          type: string
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              account:
+                type: string
+              campaignGroup:
+                type: string
+              audienceExpansionEnabled:
+                type: boolean
+              costType:
+                type: string
+              creativeSelection:
+                type: string
+              dailyBudget:
+                type: object
+                properties:
+                  amount:
+                    type: string
+                  currencyCode:
+                    type: string
+              locale:
+                type: object
+                properties:
+                  country:
+                    type: string
+                  language:
+                    type: string
+              name:
+                type: string
+              offsiteDeliveryEnabled:
+                type: boolean
+              runSchedule:
+                type: object
+                properties:
+                  end:
+                    type: integer
+                    format: int64
+                  start:
+                    type: integer
+                    format: int64
+              targetingCriteria:
+                type: object
+                properties:
+                  include:
+                    type: object
+                    properties:
+                      and:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            or:
+                              type: object
+                              additionalProperties:
+                                type: array
+                                items:
+                                  type: string
+              type:
+                type: string
+              unitCost:
+                type: object
+                properties:
+                  amount:
+                    type: string
+                  currencyCode:
+                    type: string
+              status:
+                type: string
+    SearchForCampaignUsingCriteriaResponse:
+      type: object
+      properties:
+        paging:
+          type: object
+          properties:
+            start:
+              type: integer
+            count:
+              type: integer
+            links:
+              type: array
+              items: {}
+        metadata:
+          type: object
+          properties: {}
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              storyDeliveryEnabled:
+                type: boolean
+              targetingCriteria:
+                type: object
+                properties:
+                  include:
+                    type: object
+                    properties:
+                      and:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            or:
+                              type: object
+                              additionalProperties:
+                                type: array
+                                items:
+                                  type: string
+                  exclude:
+                    type: object
+                    properties:
+                      or:
+                        type: object
+                        additionalProperties:
+                          type: array
+                          items:
+                            type: string
+              connectedTelevisionOnly:
+                type: boolean
+              pacingStrategy:
+                type: string
+              locale:
+                type: object
+                properties:
+                  country:
+                    type: string
+                  language:
+                    type: string
+              type:
+                type: string
+              runSchedule:
+                type: object
+                properties:
+                  start:
+                    type: integer
+                    format: int64
+                  end:
+                    type: integer
+                    format: int64
+              optimizationTargetType:
+                type: string
+              changeAuditStamps:
+                type: object
+                properties:
+                  created:
+                    type: object
+                    properties:
+                      actor:
+                        type: string
+                      time:
+                        type: integer
+                        format: int64
+                  lastModified:
+                    type: object
+                    properties:
+                      actor:
+                        type: string
+                      time:
+                        type: integer
+                        format: int64
+              costType:
+                type: string
+              creativeSelection:
+                type: string
+              offsiteDeliveryEnabled:
+                type: boolean
+              id:
+                type: integer
+              audienceExpansionEnabled:
+                type: boolean
+              test:
+                type: boolean
+              format:
+                type: string
+              servingStatuses:
+                type: array
+                items:
+                  type: string
+              version:
+                type: object
+                properties:
+                  versionTag:
+                    type: string
+              objectiveType:
+                type: string
+              associatedEntity:
+                type: string
+              offsitePreferences:
+                type: object
+                properties:
+                  iabCategories:
+                    type: object
+                    properties:
+                      exclude:
+                        type: array
+                        items: {}
+                  publisherRestrictionFiles:
+                    type: object
+                    properties:
+                      include:
+                        type: array
+                        items: {}
+                      exclude:
+                        type: array
+                        items:
+                          type: string
+              campaignGroup:
+                type: string
+              dailyBudget:
+                type: object
+                properties:
+                  currencyCode:
+                    type: string
+                  amount:
+                    type: string
+              politicalIntent:
+                type: string
+              unitCost:
+                type: object
+                properties:
+                  currencyCode:
+                    type: string
+                  amount:
+                    type: string
+              name:
+                type: string
+              account:
+                type: string
+              status:
+                type: string
+              totalBudget:
+                type: object
+                properties:
+                  currencyCode:
+                    type: string
+                  amount:
+                    type: string
+    UpdateCreativeUsingCreativeIdRequest:
+      type: object
+      properties:
+        patch:
+          type: object
+          properties:
+            $set:
+              type: object
+              properties:
+                intendedStatus:
+                  type: string
+    GetAdAccountsCreativesResponse:
+      type: object
+      properties:
+        paging:
+          type: object
+          properties:
+            start:
+              type: integer
+            count:
+              type: integer
+            links:
+              type: array
+              items: {}
+        metadata:
+          type: object
+          properties: {}
+        elements:
+          type: array
+          items:
+            $ref: '#/components/schemas/FetchACreativeUsingCreativeIDResponse'
+    PostAdAccountsCreativesRequest:
+      type: object
+      properties:
+        campaign:
+          type: string
+        reference:
+          type: string
+        status:
+          type: string
+        type:
+          type: string
+        variables:
+          type: object
+          properties:
+            data:
+              type: object
+              properties:
+                com.linkedin.ads.SponsoredUpdateCreativeVariables:
+                  type: object
+                  properties: {}
+        entities:
+          type: object
+          properties:
+            '{{creative_Id1}}':
+              type: object
+              properties:
+                patch:
+                  type: object
+                  properties:
+                    $set:
+                      type: object
+                      properties:
+                        status:
+                          type: string
+            '{{creative_Id2}}':
+              type: object
+              properties:
+                patch:
+                  type: object
+                  properties:
+                    $set:
+                      type: object
+                      properties:
+                        status:
+                          type: string
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              campaign:
+                type: string
+              status:
+                type: string
+              type:
+                type: string
+              variables:
+                type: object
+                properties:
+                  clickUri:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      com.linkedin.ads.TextAdCreativeVariables:
+                        type: object
+                        properties:
+                          text:
+                            type: string
+                          title:
+                            type: string
+    FetchTheAdTargetingFacetsResponse:
+      type: object
+      properties:
+        paging:
+          type: object
+          properties:
+            start:
+              type: integer
+            count:
+              type: integer
+            links:
+              type: array
+              items: {}
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              entityTypes:
+                type: array
+                items:
+                  type: string
+              facetName:
+                type: string
+              adTargetingFacetUrn:
+                type: string
+              availableEntityFinders:
+                type: array
+                items:
+                  type: string
+    GetAdTargetingEntitiesResponse:
+      type: object
+      properties:
+        paging:
+          $ref: '#/components/schemas/Paging'
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              urn:
+                type: string
+              facetUrn:
+                type: string
+              value:
+                type: object
+                properties:
+                  segmentUrn:
+                    type: string
+    AdSupplyForecastAPIResponse:
+      type: object
+      properties:
+        paging:
+          type: object
+          properties:
+            start:
+              type: integer
+            count:
+              type: integer
+            links:
+              type: array
+              items: {}
+            total:
+              type: integer
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              metricType:
+                type: string
+              timeSeries:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    adForecastRange:
+                      type: object
+                      properties:
+                        highEnd:
+                          type: integer
+                        lowEnd:
+                          type: integer
+                    value:
+                      type: integer
+                    timestamp:
+                      type: integer
+                      format: int64
+              granularity:
+                type: string
+    PostAssetsRequest:
+      type: object
+      properties:
+        registerUploadRequest:
+          type: object
+          properties:
+            owner:
+              type: string
+            recipes:
+              type: array
+              items:
+                type: string
+            serviceRelationships:
+              type: array
+              items:
+                type: object
+                properties:
+                  identifier:
+                    type: string
+                  relationshipType:
+                    type: string
+            supportedUploadMechanism:
+              type: array
+              items:
+                type: string
+    PostSharesRequest:
+      type: object
+      properties:
+        owner:
+          type: string
+        text:
+          type: object
+          properties:
+            text:
+              type: string
+        subject:
+          type: string
+        distribution:
+          type: object
+          properties:
+            linkedInDistributionTarget:
+              type: object
+              properties: {}
+        content:
+          type: object
+          properties:
+            contentEntities:
+              type: array
+              items:
+                type: object
+                properties:
+                  entity:
+                    type: string
+            title:
+              type: string
+            shareMediaCategory:
+              type: string
+        agent:
+          type: string
+    PostAdCampaignsRequest:
+      type: object
+      properties:
+        account:
+          type: string
+        campaignGroup:
+          type: string
+        associatedEntity:
+          type: string
+        audienceExpansionEnabled:
+          type: boolean
+        costType:
+          type: string
+        creativeSelection:
+          type: string
+        dailyBudget:
+          type: object
+          properties:
+            amount:
+              type: string
+            currencyCode:
+              type: string
+        locale:
+          type: object
+          properties:
+            country:
+              type: string
+            language:
+              type: string
+        name:
+          type: string
+        offsiteDeliveryEnabled:
+          type: boolean
+        runSchedule:
+          type: object
+          properties:
+            end:
+              type: integer
+              format: int64
+            start:
+              type: integer
+              format: int64
+        targetingCriteria:
+          type: object
+          properties:
+            include:
+              type: object
+              properties:
+                and:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      or:
+                        type: object
+                        additionalProperties:
+                          type: array
+                          items:
+                            type: string
+        type:
+          type: string
+        unitCost:
+          type: object
+          properties:
+            amount:
+              type: string
+            currencyCode:
+              type: string
+        status:
+          type: string
+        campaign:
+          type: string
+        reference:
+          type: string
+        variables:
+          type: object
+          properties:
+            data:
+              type: object
+              properties:
+                com.linkedin.ads.SponsoredUpdateCreativeVariables:
+                  type: object
+                  properties: {}
+        objectiveType:
+          type: string
+        format:
+          type: string
+    7CreateACreativeForTheImageAdRequest:
+      type: object
+      properties:
+        campaign:
+          type: string
+        reference:
+          type: string
+        status:
+          type: string
+        type:
+          type: string
+        variables:
+          type: object
+          properties:
+            data:
+              type: object
+              properties:
+                com.linkedin.ads.SponsoredUpdateCreativeVariables:
+                  type: object
+                  properties: {}
+    PostPostsRequest:
+      type: object
+      properties:
+        author:
+          type: string
+        lifecycleState:
+          type: string
+        specificContent:
+          type: object
+          properties:
+            com.linkedin.ugc.ShareContent:
+              type: object
+              properties:
+                media:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      title:
+                        type: object
+                        properties:
+                          attributes:
+                            type: array
+                            items: {}
+                          text:
+                            type: string
+                      description:
+                        type: object
+                        properties:
+                          attributes:
+                            type: array
+                            items: {}
+                          text:
+                            type: string
+                      media:
+                        type: string
+                      thumbnails:
+                        type: array
+                        items: {}
+                      status:
+                        type: string
+                shareCommentary:
+                  type: object
+                  properties:
+                    attributes:
+                      type: array
+                      items: {}
+                    text:
+                      type: string
+                shareMediaCategory:
+                  type: string
+        visibility:
+          type: object
+          properties:
+            com.linkedin.ugc.MemberNetworkVisibility:
+              type: string
+    PostCreativesRequest:
+      type: object
+      properties:
+        campaign:
+          type: string
+        reference:
+          type: string
+        status:
+          type: string
+        type:
+          type: string
+        variables:
+          type: object
+          properties:
+            data:
+              type: object
+              properties:
+                com.linkedin.ads.SponsoredVideoCreativeVariables:
+                  type: object
+                  properties: {}
+    FindAudienceCountByTargetingCriteriaResponse:
+      type: object
+      properties:
+        paging:
+          type: object
+          properties:
+            start:
+              type: integer
+            count:
+              type: integer
+            links:
+              type: array
+              items: {}
+            total:
+              type: integer
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              active:
+                type: integer
+              total:
+                type: integer

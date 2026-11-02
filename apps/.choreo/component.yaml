@@ -1,0 +1,188 @@
+# Amplify Jobs (amplify-jobs). Choreo Service, Dockerfile buildpack. Never published.
+# Docker context: apps  |  Dockerfile: apps/amplify/amplify-jobs/Dockerfile
+# Choreo reads the descriptor from <docker context>/.choreo/component.yaml. Jobs builds from `apps`, the parent of
+# apps/amplify, so it has its own descriptor (this file); amplify-api builds from apps/amplify and reads
+# apps/amplify/.choreo/component.yaml (ADR-027, amendment 2026-11-01). apps/.dockerignore keeps the other apps out.
+# Keep endpoints and env names in sync with amplify/amplify-jobs/workload.yaml (scripts/check-descriptors.sh).
+# Console steps (connections, secrets, visibility): docs/runbooks/choreo-deploy.md.
+schemaVersion: "1.2"
+endpoints:
+  - name: amplify-jobs
+    displayName: Amplify Jobs
+    service:
+      basePath: /
+      port: 9091
+    type: REST
+    networkVisibilities:
+      - Project
+    schemaFilePath: amplify/amplify-jobs/openapi.yaml
+configurations:
+  env:
+    - name: BAL_CONFIG_VAR_DBHOST
+      valueFrom:
+        configForm:
+          displayName: DB host
+          type: string
+    - name: BAL_CONFIG_VAR_DBPORT
+      valueFrom:
+        configForm:
+          displayName: DB port
+          type: number
+    - name: BAL_CONFIG_VAR_DBNAME
+      valueFrom:
+        configForm:
+          displayName: DB name
+          type: string
+    - name: BAL_CONFIG_VAR_DBUSER
+      valueFrom:
+        configForm:
+          displayName: DB user
+          type: string
+    - name: BAL_CONFIG_VAR_DBPASSWORD
+      valueFrom:
+        configForm:
+          displayName: DB password
+          type: secret
+    # Managed Postgres CA (domain review H-1): mount the CA PEM as a Choreo file mount (console: Configs &
+    # Secrets > File Mount, e.g. /home/choreo/db-ca/ca.pem) and put that path here. dbSslMode defaults to
+    # VERIFY_FULL, which checks the server certificate against it and the host name.
+    - name: BAL_CONFIG_VAR_DBSSLROOTCERT
+      valueFrom:
+        configForm:
+          displayName: DB CA certificate file path (file mount)
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_LINKEDINCLIENTID
+      valueFrom:
+        configForm:
+          displayName: LinkedIn client id
+          type: string
+    - name: BAL_CONFIG_VAR_LINKEDINAPIBASEURL
+      valueFrom:
+        configForm:
+          displayName: LinkedIn API base URL
+          type: string
+    - name: BAL_CONFIG_VAR_LINKEDINAUTHBASEURL
+      valueFrom:
+        configForm:
+          displayName: LinkedIn OAuth base URL
+          type: string
+    - name: BAL_CONFIG_VAR_INTERNALAPIKEY
+      valueFrom:
+        configForm:
+          displayName: Internal API key, full access to amplify-jobs (secret, at least 32 characters; the same value on both components)
+          type: secret
+    - name: BAL_CONFIG_VAR_SCHEDULERAPIKEY
+      valueFrom:
+        configForm:
+          displayName: Scheduler API key: amplify-jobs accepts it only for POST /runs and POST /maintenance/partitions; amplify-api sets it on the scheduler jobs. Must differ from the internal key (secret, at least 32 characters; the same value on both components)
+          type: secret
+    - name: BAL_CONFIG_VAR_LEAVERSWEEPMODE
+      valueFrom:
+        configForm:
+          displayName: Leaver sweep: OFF (default), DRY_RUN or ERASE. Start with DRY_RUN; see ADR-040
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_PEOPLEDIRECTORYURL
+      valueFrom:
+        configForm:
+          displayName: People directory URL for the leaver sweep (full GET .../employees/basic-info)
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_PEOPLEDIRECTORYTOKENURL
+      valueFrom:
+        configForm:
+          displayName: People directory OAuth token URL
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_PEOPLEDIRECTORYCLIENTID
+      valueFrom:
+        configForm:
+          displayName: People directory client id
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_PEOPLEDIRECTORYCLIENTSECRET
+      valueFrom:
+        configForm:
+          displayName: People directory client secret
+          type: secret
+          required: false
+    - name: BAL_CONFIG_VAR_TOKENKEYS
+      valueFrom:
+        configForm:
+          displayName: Token keys keyId:base64Key[,...]
+          type: secret
+    - name: BAL_CONFIG_VAR_TOKENCURRENTKEYID
+      valueFrom:
+        configForm:
+          displayName: Current token key id
+          type: string
+    - name: BAL_CONFIG_VAR_CHATWEBHOOKURL
+      valueFrom:
+        configForm:
+          displayName: Google Chat webhook URL
+          type: secret
+    - name: BAL_CONFIG_VAR_CHATSPACE
+      valueFrom:
+        configForm:
+          displayName: Chat space label (club or dev-test)
+          type: string
+    - name: BAL_CONFIG_VAR_CHATCARDAVATARURL
+      valueFrom:
+        configForm:
+          displayName: Chat card avatar URL (https)
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_CHATDEFAULTIMAGEURL
+      valueFrom:
+        configForm:
+          displayName: Chat card default image URL (public https PNG/JPEG; used when a post has no usable image)
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_SHAREPAGEBASEURL
+      valueFrom:
+        configForm:
+          displayName: One WSO2 Celebrate page URL (card button adds ?share=<campaignId>)
+          type: string
+    - name: BAL_CONFIG_VAR_NOVERANOTIFYURL
+      valueFrom:
+        configForm:
+          displayName: Novera notifications URL (the gateway URL of POST /internal/notifications, https)
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_NOVERATOKENURL
+      valueFrom:
+        configForm:
+          displayName: Novera token endpoint (client-credentials grant)
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_NOVERACLIENTID
+      valueFrom:
+        configForm:
+          displayName: Novera application client id
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_NOVERACLIENTSECRET
+      valueFrom:
+        configForm:
+          displayName: Novera application client secret
+          type: secret
+          required: false
+    - name: BAL_CONFIG_VAR_NOVERASCOPES
+      valueFrom:
+        configForm:
+          displayName: Novera token scopes (comma-separated, optional)
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_AMPLIFYONNOVERA
+      valueFrom:
+        configForm:
+          displayName: Announce shares through Novera (true or false; default true)
+          type: boolean
+          required: false
+    - name: BAL_CONFIG_VAR_AMPLIFYONWEBHOOK
+      valueFrom:
+        configForm:
+          displayName: Announce shares through the Google Chat webhook (true or false; default false)
+          type: boolean
+          required: false

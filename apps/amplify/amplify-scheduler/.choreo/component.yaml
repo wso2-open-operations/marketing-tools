@@ -1,0 +1,23 @@
+# Amplify Scheduler (pinned akorn/scheduler, ADR-026). Choreo Service, Dockerfile buildpack.
+# NO API auth upstream: Project visibility only, never published, never behind the API proxy.
+# Docker context: apps/amplify/amplify-scheduler  |  Dockerfile: apps/amplify/amplify-scheduler/Dockerfile
+# Choreo reads this file from <docker context>/.choreo/component.yaml, so every component has its own context
+# (ADR-027). Keep endpoints and env names in sync with apps/amplify/amplify-scheduler/workload.yaml (scripts/check-descriptors.sh).
+# Console steps (connections, secrets, visibility): docs/runbooks/choreo-deploy.md.
+schemaVersion: "1.2"
+endpoints:
+  - name: amplify-scheduler
+    displayName: Amplify Scheduler
+    service:
+      basePath: /
+      port: 8080
+    type: REST
+    networkVisibilities:
+      - Project
+configurations:
+  env:
+    - name: DSN
+      valueFrom:
+        configForm:
+          displayName: Scheduler Postgres DSN (own database and user)
+          type: secret

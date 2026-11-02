@@ -1,0 +1,5183 @@
+openapi: 3.0.3
+info:
+  title: Community Management
+  version: 1.0.0
+  description: '**You must apply for access to the Marketing Developer Platform in order to use these APIs. See
+    the** [**Developer Portal**](https://developer.linkedin.com/product-catalog/marketing/page-management) **on
+    how to apply.**
+
+
+    This collection aims to focus on different Community Management use cases, for example, social action notifications,
+    and should be used with the **community-management-env-versioning** environment.
+
+
+    \--All requests for the Community Management API collection are in the Restli 2.0 format--
+
+
+    AuthorizationOAuth 2.0
+
+
+    _Generated from the Postman collection "Community Management". All calls use Rest.li 2.0 conventions: send `X-Restli-Protocol-Version:
+    2.0.0` and a `LinkedIn-Version` header (YYYYMM). Query parameters such as `List(...)`, `(a:b,c:d)` and URNs
+    are Rest.li-encoded strings; do not re-encode the structural characters `( ) , :`. Several finders/actions share
+    one path in LinkedIn''s API, so they are modelled as one operation with a `q`/`action` selector. Schemas are
+    inferred from the example payloads saved in the collection: every field is optional and field semantics are
+    not documented here._'
+servers:
+- url: https://api.linkedin.com/rest
+  description: LinkedIn REST API (`{{baseUrl}}` in the Postman environment)
+security:
+- linkedinOAuth2:
+  - rw_organization_admin
+  - w_organization_social
+  - r_basicprofile
+  - r_organization_social
+  - r_organization_social_feed
+  - r_organization_followers
+tags:
+- name: Use Cases
+paths:
+  /shares:
+    post:
+      operationId: postShares
+      summary: Create / update / action on shares
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **2. Create a share with Company Mention**: Mention a company name by using the annotations. [Learn more](https://docs.microsoft.com/en-us/linkedin/marketing/integrations/community-management/shares/share-api?tabs=http#share-text-and-mentions)
+        by viewing our public documentation.
+
+        - **2. Create a share with a Company Mention**: Mention a company name by using the annotations. [Learn
+        more](https://docs.microsoft.com/en-us/linkedin/marketing/integrations/community-management/shares/share-api?tabs=http#share-text-and-mentions) by
+        viewing our public documentation.'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostSharesRequest'
+            examples:
+              2CreateAShareWithCompanyMention:
+                summary: 2. Create a share with Company Mention
+                value:
+                  owner: urn:li:organization:{{organization_id}}
+                  text:
+                    annotations:
+                    - entity: urn:li:organization:1337
+                      length: 8
+                      start: 6
+                    text: Hello LinkedIn world Project 2B testing!
+                  subject: Test Share Subject  Project 2B testing
+                  distribution:
+                    linkedInDistributionTarget: {}
+                  content:
+                    contentEntities:
+                    - entityLocation: https://www.example.com
+                      thumbnails:
+                      - resolvedUrl: https://www.example.com/image.jpg
+                    title: Test Share with Content title  Project 2B testing
+              2CreateAShareWithACompanyMention:
+                summary: 2. Create a share with a Company Mention
+                value:
+                  owner: urn:li:organization:{{organization_id}}
+                  text:
+                    annotations:
+                    - entity: urn:li:organization:1337
+                      length: 8
+                      start: 6
+                    text: Hello LinkedIn world!
+                  subject: Test Share Subject
+                  distribution:
+                    linkedInDistributionTarget: {}
+                  content:
+                    contentEntities:
+                    - entityLocation: https://www.example.com
+                      thumbnails:
+                      - resolvedUrl: https://www.example.com/image.jpg
+                    title: Test Share with Content title
+      responses:
+        '201':
+          description: Success (inferred — the source collection has no saved example for this call)
+          headers:
+            x-restli-id:
+              schema:
+                type: string
+              description: Id (or URN) of the created resource.
+        default:
+          $ref: '#/components/responses/Error'
+  /eventSubscriptions/{eventSubscriptionKey}:
+    put:
+      operationId: 3CreateASubscriptionRequest
+      summary: 3. Create a subscription request
+      tags:
+      - Use Cases
+      description: '[Create a subscription](https://docs.microsoft.com/linkedin/marketing/integrations/community-management/organizations/organization-social-action-notifications?tabs=http#creating-and-updating-subscriptions) record
+        to include the webhook URL where your app will receive notifications. The subscription request will only
+        succeed if the subscribing member is an administrator of the organization being subscribed to.'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: eventSubscriptionKey
+        in: path
+        required: true
+        description: Composite Rest.li key, e.g. `(a:urn%3A...,b:urn%3A...)`.
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                webhook:
+                  type: string
+            examples:
+              3CreateASubscriptionRequest:
+                summary: 3. Create a subscription request
+                value:
+                  webhook: https://www.example.com/callback
+      responses:
+        '201':
+          description: Success (inferred — the source collection has no saved example for this call)
+          headers:
+            x-restli-id:
+              schema:
+                type: string
+              description: Id (or URN) of the created resource.
+        default:
+          $ref: '#/components/responses/Error'
+    get:
+      operationId: 5RetrieveSubscriptionByKey
+      summary: 5. Retrieve Subscription by Key
+      tags:
+      - Use Cases
+      description: Retrieve all the subscriptions details such as webhook url and expiration for the logged in user. [Learn
+        more](https://docs.microsoft.com/linkedin/marketing/integrations/community-management/organizations/organization-social-action-notifications?tabs=http#retrieve-subscriptions-for-an-authenticated-member) by
+        viewing our online documentation.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: eventSubscriptionKey
+        in: path
+        required: true
+        description: Composite Rest.li key, e.g. `(a:urn%3A...,b:urn%3A...)`.
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+    delete:
+      operationId: 6RemoveASubscription
+      summary: 6. Remove a Subscription
+      tags:
+      - Use Cases
+      description: '[Remove a subscription](https://docs.microsoft.com/linkedin/marketing/integrations/community-management/organizations/organization-social-action-notifications?tabs=http#remove-a-subscription) for
+        a your developer application and Organization.'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: eventSubscriptionKey
+        in: path
+        required: true
+        description: Composite Rest.li key, e.g. `(a:urn%3A...,b:urn%3A...)`.
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /eventSubscriptions:
+    get:
+      operationId: getEventSubscriptions
+      summary: Query eventSubscriptions
+      tags:
+      - Use Cases
+      description: "This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`\
+        \ / body shape). Variants seen in the source collection:\n- **4. Retrieve subscription for authenticated\
+        \ members** (`q=subscriberAndEventType`): Retrieve Subscriptions details such as webhook url and expiration\
+        \ for your application and registered user. [Learn more](https://docs.microsoft.com/linkedin/marketing/integrations/community-management/organizations/organization-social-action-notifications?tabs=http#retrieve-subscriptions-by-key) by\
+        \ \n- **3. Retrieve Notifications for the authenticated member's organization** (`q=subscriberAndEventType`):\
+        \ [Learn more](https://docs.microsoft.com/linkedin/marketing/integrations/community-management/organizations/organization-social-action-notifications?tabs=http#pull-organizational-notifications) by\
+        \ viewing our public documentation."
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - subscriberAndEventType
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: eventType
+        in: query
+        required: false
+        schema:
+          type: string
+        example: ORGANIZATION_SOCIAL_ACTION_NOTIFICATIONS
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /organizationalEntityFollowerStatistics:
+    get:
+      operationId: getOrganizationalEntityFollowerStatistics
+      summary: Query organizationalEntityFollowerStatistics
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Lifetime follower statistics** (`q=organizationalEntity`)
+
+        - **Time-Bound follower statistics** (`q=organizationalEntity`)
+
+        - **Lifetime Follower Statistics** (`q=organizationalEntity`): Retrieves lifetime follower statistics segmented
+        by professional demographic facets (association type, geo, geo country, function, industry, seniority, staff
+        count range). Omitting `timeIntervals` returns segmented lifetime stats. See https://learn.microsoft.com/en-us/linkedin/marketing/community-ma
+
+        - **Time-Bound Follower Statistics** (`q=organizationalEntity`): Retrieves time-bound (aggregate, non-segmented)
+        follower statistics for the given time range and granularity (DAY, WEEK, or MONTH). Provides data from 12
+        months before the request date through 2 days before the request date. Update follower_stats_time_range_start/end
+        env vars (epoch ms) as needed. S'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - organizationalEntity
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: organizationalEntity
+        in: query
+        required: false
+        schema:
+          type: string
+        example: urn:li:organization:2414183
+      - name: timeIntervals.timeGranularityType
+        in: query
+        required: false
+        schema:
+          type: string
+        example: DAY
+      - name: timeIntervals.timeRange.start
+        in: query
+        required: false
+        schema:
+          type: string
+        example: '1634018799000'
+      - name: timeIntervals.timeRange.end
+        in: query
+        required: false
+        schema:
+          type: string
+        example: '1634623599000'
+      - name: timeIntervals
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetOrganizationalEntityFollowerStatisticsResponse'
+              examples:
+                lifetimeFollowerStatistics:
+                  summary: Lifetime follower statistics
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                    elements:
+                    - followerCountsByAssociationType:
+                      - followerCounts:
+                          organicFollowerCount: 139
+                          paidFollowerCount: 0
+                        associationType: EMPLOYEE
+                      followerCountsBySeniority:
+                      - followerCounts:
+                          organicFollowerCount: 579
+                          paidFollowerCount: 0
+                        seniority: urn:li:seniority:3
+                      - followerCounts:
+                          organicFollowerCount: 431
+                          paidFollowerCount: 0
+                        seniority: urn:li:seniority:4
+                      followerCountsByIndustry:
+                      - followerCounts:
+                          organicFollowerCount: 187
+                          paidFollowerCount: 0
+                        industry: urn:li:industry:4
+                      - followerCounts:
+                          organicFollowerCount: 178
+                          paidFollowerCount: 0
+                        industry: urn:li:industry:96
+                      followerCountsByFunction:
+                      - followerCounts:
+                          organicFollowerCount: 493
+                          paidFollowerCount: 0
+                        function: urn:li:function:8
+                      - followerCounts:
+                          organicFollowerCount: 82
+                          paidFollowerCount: 0
+                        function: urn:li:function:13
+                      followerCountsByStaffCountRange:
+                      - followerCounts:
+                          organicFollowerCount: 332
+                          paidFollowerCount: 0
+                        staffCountRange: SIZE_10001_OR_MORE
+                      - followerCounts:
+                          organicFollowerCount: 228
+                          paidFollowerCount: 0
+                        staffCountRange: SIZE_51_TO_200
+                      followerCountsByGeoCountry:
+                      - geo: urn:li:geo:103644278
+                        followerCounts:
+                          organicFollowerCount: 550
+                          paidFollowerCount: 0
+                      - geo: urn:li:geo:102713980
+                        followerCounts:
+                          organicFollowerCount: 341
+                          paidFollowerCount: 0
+                      followerCountsByGeo:
+                      - geo: urn:li:geo:90000084
+                        followerCounts:
+                          organicFollowerCount: 277
+                          paidFollowerCount: 0
+                      - geo: urn:li:geo:90000070
+                        followerCounts:
+                          organicFollowerCount: 57
+                          paidFollowerCount: 0
+                      organizationalEntity: urn:li:organization:2414183
+                lifetimeFollowerStatistics2:
+                  summary: Lifetime follower statistics
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                    elements:
+                    - followerCountsByAssociationType:
+                      - followerCounts:
+                          organicFollowerCount: 139
+                          paidFollowerCount: 0
+                        associationType: EMPLOYEE
+                      followerCountsBySeniority:
+                      - followerCounts:
+                          organicFollowerCount: 579
+                          paidFollowerCount: 0
+                        seniority: urn:li:seniority:3
+                      - followerCounts:
+                          organicFollowerCount: 431
+                          paidFollowerCount: 0
+                        seniority: urn:li:seniority:4
+                      followerCountsByIndustry:
+                      - followerCounts:
+                          organicFollowerCount: 187
+                          paidFollowerCount: 0
+                        industry: urn:li:industry:4
+                      - followerCounts:
+                          organicFollowerCount: 178
+                          paidFollowerCount: 0
+                        industry: urn:li:industry:96
+                      followerCountsByFunction:
+                      - followerCounts:
+                          organicFollowerCount: 493
+                          paidFollowerCount: 0
+                        function: urn:li:function:8
+                      - followerCounts:
+                          organicFollowerCount: 82
+                          paidFollowerCount: 0
+                        function: urn:li:function:13
+                      followerCountsByStaffCountRange:
+                      - followerCounts:
+                          organicFollowerCount: 332
+                          paidFollowerCount: 0
+                        staffCountRange: SIZE_10001_OR_MORE
+                      - followerCounts:
+                          organicFollowerCount: 228
+                          paidFollowerCount: 0
+                        staffCountRange: SIZE_51_TO_200
+                      followerCountsByGeoCountry:
+                      - geo: urn:li:geo:103644278
+                        followerCounts:
+                          organicFollowerCount: 550
+                          paidFollowerCount: 0
+                      - geo: urn:li:geo:102713980
+                        followerCounts:
+                          organicFollowerCount: 341
+                          paidFollowerCount: 0
+                      followerCountsByGeo:
+                      - geo: urn:li:geo:90000084
+                        followerCounts:
+                          organicFollowerCount: 277
+                          paidFollowerCount: 0
+                      - geo: urn:li:geo:90000070
+                        followerCounts:
+                          organicFollowerCount: 57
+                          paidFollowerCount: 0
+                      organizationalEntity: urn:li:organization:2414183
+                lifetimeFollowerStatistics23:
+                  summary: Lifetime Follower Statistics
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                    elements:
+                    - followerCountsByAssociationType:
+                      - followerCounts:
+                          organicFollowerCount: 139
+                          paidFollowerCount: 0
+                        associationType: EMPLOYEE
+                      followerCountsBySeniority:
+                      - followerCounts:
+                          organicFollowerCount: 579
+                          paidFollowerCount: 0
+                        seniority: urn:li:seniority:3
+                      - followerCounts:
+                          organicFollowerCount: 431
+                          paidFollowerCount: 0
+                        seniority: urn:li:seniority:4
+                      followerCountsByIndustry:
+                      - followerCounts:
+                          organicFollowerCount: 187
+                          paidFollowerCount: 0
+                        industry: urn:li:industry:4
+                      - followerCounts:
+                          organicFollowerCount: 178
+                          paidFollowerCount: 0
+                        industry: urn:li:industry:96
+                      followerCountsByFunction:
+                      - followerCounts:
+                          organicFollowerCount: 493
+                          paidFollowerCount: 0
+                        function: urn:li:function:8
+                      - followerCounts:
+                          organicFollowerCount: 82
+                          paidFollowerCount: 0
+                        function: urn:li:function:13
+                      followerCountsByStaffCountRange:
+                      - followerCounts:
+                          organicFollowerCount: 332
+                          paidFollowerCount: 0
+                        staffCountRange: SIZE_10001_OR_MORE
+                      - followerCounts:
+                          organicFollowerCount: 228
+                          paidFollowerCount: 0
+                        staffCountRange: SIZE_51_TO_200
+                      followerCountsByGeoCountry:
+                      - geo: urn:li:geo:103644278
+                        followerCounts:
+                          organicFollowerCount: 550
+                          paidFollowerCount: 0
+                      - geo: urn:li:geo:102713980
+                        followerCounts:
+                          organicFollowerCount: 341
+                          paidFollowerCount: 0
+                      followerCountsByGeo:
+                      - geo: urn:li:geo:90000084
+                        followerCounts:
+                          organicFollowerCount: 277
+                          paidFollowerCount: 0
+                      - geo: urn:li:geo:90000070
+                        followerCounts:
+                          organicFollowerCount: 57
+                          paidFollowerCount: 0
+                      organizationalEntity: urn:li:organization:2414183
+        default:
+          $ref: '#/components/responses/Error'
+  /organizationPageStatistics:
+    get:
+      operationId: getOrganizationPageStatistics
+      summary: Query organizationPageStatistics
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Time-Bound organization page statistics** (`q=organization`)
+
+        - **Lifetime Page Statistics** (`q=organization`)
+
+        - **Lifetime Organization Page Statistics** (`q=organization`): Retrieves lifetime organization page view/click
+        statistics segmented by facets (geo, geo country, function, industry, seniority, staff count range). Omitting
+        `timeIntervals` returns lifetime stats. See https://learn.microsoft.com/en-us/linkedin/marketing/community-management/organizations/page-stati
+
+        - **Time-Bound Organization Page Statistics** (`q=organization`): Retrieves aggregate (non-segmented) organization
+        page statistics for the given time range and granularity (DAY or MONTH). Update page_stats_time_range_start/end
+        env vars (epoch ms) as needed. See https://learn.microsoft.com/en-us/linkedin/marketing/community-management/organizations/page-statistics'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - organization
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: organization
+        in: query
+        required: false
+        schema:
+          type: string
+        example: urn:li:organization:2414183
+      - name: timeIntervals.timeGranularityType
+        in: query
+        required: false
+        schema:
+          type: string
+        example: DAY
+      - name: timeIntervals.timeRange.start
+        in: query
+        required: false
+        schema:
+          type: string
+        example: '1634018799000'
+      - name: timeIntervals.timeRange.end
+        in: query
+        required: false
+        schema:
+          type: string
+        example: '1634623599000'
+      - name: timeIntervals
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetOrganizationPageStatisticsResponse'
+              examples:
+                lifetimeOrganizationPageStatistics:
+                  summary: Lifetime Organization Page Statistics
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                    elements:
+                    - pageStatisticsByIndustryV2:
+                      - industryV2: urn:li:industry:67
+                        pageStatistics:
+                          views:
+                            allPageViews:
+                              pageViews: 14
+                      - industryV2: urn:li:industry:68
+                        pageStatistics:
+                          views:
+                            allPageViews:
+                              pageViews: 79
+                      pageStatisticsBySeniority:
+                      - pageStatistics:
+                          views:
+                            mobileProductsPageViews:
+                              pageViews: 0
+                            allDesktopPageViews:
+                              pageViews: 98
+                            insightsPageViews:
+                              pageViews: 0
+                            mobileAboutPageViews:
+                              pageViews: 7
+                            allMobilePageViews:
+                              pageViews: 24
+                            productsPageViews:
+                              pageViews: 0
+                            desktopProductsPageViews:
+                              pageViews: 0
+                            jobsPageViews:
+                              pageViews: 0
+                            peoplePageViews:
+                              pageViews: 0
+                            overviewPageViews:
+                              pageViews: 115
+                            mobileOverviewPageViews:
+                              pageViews: 17
+                            lifeAtPageViews:
+                              pageViews: 0
+                            desktopOverviewPageViews:
+                              pageViews: 98
+                            mobileCareersPageViews:
+                              pageViews: 0
+                            allPageViews:
+                              pageViews: 122
+                            careersPageViews:
+                              pageViews: 0
+                            mobileJobsPageViews:
+                              pageViews: 0
+                            mobileLifeAtPageViews:
+                              pageViews: 0
+                            desktopJobsPageViews:
+                              pageViews: 0
+                            desktopPeoplePageViews:
+                              pageViews: 0
+                            aboutPageViews:
+                              pageViews: 7
+                            desktopAboutPageViews:
+                              pageViews: 0
+                            mobilePeoplePageViews:
+                              pageViews: 0
+                            desktopCareersPageViews:
+                              pageViews: 0
+                            desktopInsightsPageViews:
+                              pageViews: 0
+                        seniority: urn:li:seniority:2
+                      - pageStatistics:
+                          views:
+                            mobileProductsPageViews:
+                              pageViews: 12
+                            allDesktopPageViews:
+                              pageViews: 2365
+                            insightsPageViews:
+                              pageViews: 10
+                            mobileAboutPageViews:
+                              pageViews: 33
+                            allMobilePageViews:
+                              pageViews: 193
+                            productsPageViews:
+                              pageViews: 24
+                            desktopProductsPageViews:
+                              pageViews: 12
+                            jobsPageViews:
+                              pageViews: 59
+                            peoplePageViews:
+                              pageViews: 64
+                            overviewPageViews:
+                              pageViews: 2261
+                            mobileOverviewPageViews:
+                              pageViews: 131
+                            lifeAtPageViews:
+                              pageViews: 0
+                            desktopOverviewPageViews:
+                              pageViews: 2130
+                            mobileCareersPageViews:
+                              pageViews: 17
+                            allPageViews:
+                              pageViews: 2558
+                            careersPageViews:
+                              pageViews: 58
+                            mobileJobsPageViews:
+                              pageViews: 16
+                            mobileLifeAtPageViews:
+                              pageViews: 0
+                            desktopJobsPageViews:
+                              pageViews: 43
+                            desktopPeoplePageViews:
+                              pageViews: 64
+                            aboutPageViews:
+                              pageViews: 141
+                            desktopAboutPageViews:
+                              pageViews: 108
+                            mobilePeoplePageViews:
+                              pageViews: 0
+                            desktopCareersPageViews:
+                              pageViews: 41
+                            desktopInsightsPageViews:
+                              pageViews: 10
+                        seniority: urn:li:seniority:3
+                      organization: urn:li:organization:2414183
+                      pageStatisticsByGeoCountry:
+                      - geo: urn:li:geo:102713980
+                        pageStatistics:
+                          views:
+                            allPageViews:
+                              pageViews: 774
+                      - geo: urn:li:geo:101174742
+                        pageStatistics:
+                          views:
+                            allPageViews:
+                              pageViews: 274
+                      pageStatisticsByTargetedContent: []
+                      totalPageStatistics:
+                        views:
+                          mobileProductsPageViews:
+                            pageViews: 51
+                          allDesktopPageViews:
+                            pageViews: 5560
+                          insightsPageViews:
+                            pageViews: 16
+                          mobileAboutPageViews:
+                            pageViews: 66
+                          allMobilePageViews:
+                            pageViews: 683
+                          productsPageViews:
+                            pageViews: 87
+                          desktopProductsPageViews:
+                            pageViews: 36
+                          jobsPageViews:
+                            pageViews: 228
+                          peoplePageViews:
+                            pageViews: 193
+                          overviewPageViews:
+                            pageViews: 5387
+                          mobileOverviewPageViews:
+                            pageViews: 505
+                          lifeAtPageViews:
+                            pageViews: 0
+                          desktopOverviewPageViews:
+                            pageViews: 4882
+                          mobileCareersPageViews:
+                            pageViews: 43
+                          allPageViews:
+                            pageViews: 6243
+                          careersPageViews:
+                            pageViews: 228
+                          mobileJobsPageViews:
+                            pageViews: 43
+                          mobileLifeAtPageViews:
+                            pageViews: 0
+                          desktopJobsPageViews:
+                            pageViews: 185
+                          desktopPeoplePageViews:
+                            pageViews: 175
+                          aboutPageViews:
+                            pageViews: 332
+                          desktopAboutPageViews:
+                            pageViews: 266
+                          mobilePeoplePageViews:
+                            pageViews: 18
+                          desktopCareersPageViews:
+                            pageViews: 185
+                          desktopInsightsPageViews:
+                            pageViews: 16
+                      pageStatisticsByStaffCountRange:
+                      - staffCountRange: SIZE_1
+                        pageStatistics:
+                          views:
+                            mobileProductsPageViews:
+                              pageViews: 0
+                            allDesktopPageViews:
+                              pageViews: 53
+                            insightsPageViews:
+                              pageViews: 0
+                            mobileAboutPageViews:
+                              pageViews: 0
+                            allMobilePageViews:
+                              pageViews: 0
+                            productsPageViews:
+                              pageViews: 0
+                            desktopProductsPageViews:
+                              pageViews: 0
+                            jobsPageViews:
+                              pageViews: 0
+                            peoplePageViews:
+                              pageViews: 0
+                            overviewPageViews:
+                              pageViews: 53
+                            mobileOverviewPageViews:
+                              pageViews: 0
+                            lifeAtPageViews:
+                              pageViews: 0
+                            desktopOverviewPageViews:
+                              pageViews: 53
+                            mobileCareersPageViews:
+                              pageViews: 0
+                            allPageViews:
+                              pageViews: 53
+                            careersPageViews:
+                              pageViews: 0
+                            mobileJobsPageViews:
+                              pageViews: 0
+                            mobileLifeAtPageViews:
+                              pageViews: 0
+                            desktopJobsPageViews:
+                              pageViews: 0
+                            desktopPeoplePageViews:
+                              pageViews: 0
+                            aboutPageViews:
+                              pageViews: 0
+                            desktopAboutPageViews:
+                              pageViews: 0
+                            mobilePeoplePageViews:
+                              pageViews: 0
+                            desktopCareersPageViews:
+                              pageViews: 0
+                            desktopInsightsPageViews:
+                              pageViews: 0
+                      - staffCountRange: SIZE_2_TO_10
+                        pageStatistics:
+                          views:
+                            mobileProductsPageViews:
+                              pageViews: 0
+                            allDesktopPageViews:
+                              pageViews: 511
+                            insightsPageViews:
+                              pageViews: 0
+                            mobileAboutPageViews:
+                              pageViews: 0
+                            allMobilePageViews:
+                              pageViews: 34
+                            productsPageViews:
+                              pageViews: 0
+                            desktopProductsPageViews:
+                              pageViews: 0
+                            jobsPageViews:
+                              pageViews: 0
+                            peoplePageViews:
+                              pageViews: 0
+                            overviewPageViews:
+                              pageViews: 520
+                            mobileOverviewPageViews:
+                              pageViews: 34
+                            lifeAtPageViews:
+                              pageViews: 0
+                            desktopOverviewPageViews:
+                              pageViews: 486
+                            mobileCareersPageViews:
+                              pageViews: 0
+                            allPageViews:
+                              pageViews: 545
+                            careersPageViews:
+                              pageViews: 0
+                            mobileJobsPageViews:
+                              pageViews: 0
+                            mobileLifeAtPageViews:
+                              pageViews: 0
+                            desktopJobsPageViews:
+                              pageViews: 0
+                            desktopPeoplePageViews:
+                              pageViews: 0
+                            aboutPageViews:
+                              pageViews: 25
+                            desktopAboutPageViews:
+                              pageViews: 25
+                            mobilePeoplePageViews:
+                              pageViews: 0
+                            desktopCareersPageViews:
+                              pageViews: 0
+                            desktopInsightsPageViews:
+                              pageViews: 0
+                      pageStatisticsByFunction:
+                      - pageStatistics:
+                          views:
+                            mobileProductsPageViews:
+                              pageViews: 0
+                            allDesktopPageViews:
+                              pageViews: 16
+                            insightsPageViews:
+                              pageViews: 0
+                            mobileAboutPageViews:
+                              pageViews: 0
+                            allMobilePageViews:
+                              pageViews: 0
+                            productsPageViews:
+                              pageViews: 0
+                            desktopProductsPageViews:
+                              pageViews: 0
+                            jobsPageViews:
+                              pageViews: 0
+                            peoplePageViews:
+                              pageViews: 0
+                            overviewPageViews:
+                              pageViews: 16
+                            mobileOverviewPageViews:
+                              pageViews: 0
+                            lifeAtPageViews:
+                              pageViews: 0
+                            desktopOverviewPageViews:
+                              pageViews: 16
+                            mobileCareersPageViews:
+                              pageViews: 0
+                            allPageViews:
+                              pageViews: 16
+                            careersPageViews:
+                              pageViews: 0
+                            mobileJobsPageViews:
+                              pageViews: 0
+                            mobileLifeAtPageViews:
+                              pageViews: 0
+                            desktopJobsPageViews:
+                              pageViews: 0
+                            desktopPeoplePageViews:
+                              pageViews: 0
+                            aboutPageViews:
+                              pageViews: 0
+                            desktopAboutPageViews:
+                              pageViews: 0
+                            mobilePeoplePageViews:
+                              pageViews: 0
+                            desktopCareersPageViews:
+                              pageViews: 0
+                            desktopInsightsPageViews:
+                              pageViews: 0
+                        function: urn:li:function:11
+                      - pageStatistics:
+                          views:
+                            mobileProductsPageViews:
+                              pageViews: 0
+                            allDesktopPageViews:
+                              pageViews: 21
+                            insightsPageViews:
+                              pageViews: 0
+                            mobileAboutPageViews:
+                              pageViews: 0
+                            allMobilePageViews:
+                              pageViews: 0
+                            productsPageViews:
+                              pageViews: 0
+                            desktopProductsPageViews:
+                              pageViews: 0
+                            jobsPageViews:
+                              pageViews: 0
+                            peoplePageViews:
+                              pageViews: 0
+                            overviewPageViews:
+                              pageViews: 21
+                            mobileOverviewPageViews:
+                              pageViews: 0
+                            lifeAtPageViews:
+                              pageViews: 0
+                            desktopOverviewPageViews:
+                              pageViews: 21
+                            mobileCareersPageViews:
+                              pageViews: 0
+                            allPageViews:
+                              pageViews: 21
+                            careersPageViews:
+                              pageViews: 0
+                            mobileJobsPageViews:
+                              pageViews: 0
+                            mobileLifeAtPageViews:
+                              pageViews: 0
+                            desktopJobsPageViews:
+                              pageViews: 0
+                            desktopPeoplePageViews:
+                              pageViews: 0
+                            aboutPageViews:
+                              pageViews: 0
+                            desktopAboutPageViews:
+                              pageViews: 0
+                            mobilePeoplePageViews:
+                              pageViews: 0
+                            desktopCareersPageViews:
+                              pageViews: 0
+                            desktopInsightsPageViews:
+                              pageViews: 0
+                        function: urn:li:function:22
+                      pageStatisticsByGeo:
+                      - geo: urn:li:geo:90009469
+                        pageStatistics:
+                          views:
+                            allPageViews:
+                              pageViews: 9
+                      - geo: urn:li:geo:90010216
+                        pageStatistics:
+                          views:
+                            allPageViews:
+                              pageViews: 12
+                timeBoundOrganizationPageStatistics:
+                  summary: Time-Bound Organization Page Statistics
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                    elements:
+                    - pageStatisticsByIndustryV2: []
+                      pageStatisticsBySeniority: []
+                      organization: urn:li:organization:2414183
+                      pageStatisticsByGeoCountry: []
+                      pageStatisticsByTargetedContent: []
+                      totalPageStatistics:
+                        clicks:
+                          mobileCustomButtonClickCounts:
+                          - clicks: 0
+                          desktopCustomButtonClickCounts:
+                          - clicks: 0
+                        views:
+                          mobileProductsPageViews:
+                            pageViews: 3
+                            uniquePageViews: 1
+                          allDesktopPageViews:
+                            pageViews: 15
+                            uniquePageViews: 9
+                          insightsPageViews:
+                            pageViews: 0
+                          mobileAboutPageViews:
+                            pageViews: 0
+                          allMobilePageViews:
+                            pageViews: 3
+                            uniquePageViews: 1
+                          productsPageViews:
+                            pageViews: 3
+                            uniquePageViews: 1
+                          desktopProductsPageViews:
+                            pageViews: 0
+                            uniquePageViews: 0
+                          jobsPageViews:
+                            pageViews: 0
+                          peoplePageViews:
+                            pageViews: 0
+                          overviewPageViews:
+                            pageViews: 15
+                            uniquePageViews: 9
+                          mobileOverviewPageViews:
+                            pageViews: 0
+                            uniquePageViews: 0
+                          lifeAtPageViews:
+                            pageViews: 0
+                          desktopOverviewPageViews:
+                            pageViews: 15
+                            uniquePageViews: 9
+                          mobileCareersPageViews:
+                            pageViews: 0
+                          allPageViews:
+                            pageViews: 18
+                            uniquePageViews: 10
+                          careersPageViews:
+                            pageViews: 0
+                          mobileJobsPageViews:
+                            pageViews: 0
+                          mobileLifeAtPageViews:
+                            pageViews: 0
+                          desktopJobsPageViews:
+                            pageViews: 0
+                          desktopPeoplePageViews:
+                            pageViews: 0
+                          aboutPageViews:
+                            pageViews: 0
+                          desktopAboutPageViews:
+                            pageViews: 0
+                          mobilePeoplePageViews:
+                            pageViews: 0
+                          desktopCareersPageViews:
+                            pageViews: 0
+                          desktopInsightsPageViews:
+                            pageViews: 0
+                      pageStatisticsByStaffCountRange: []
+                      pageStatisticsByFunction: []
+                      pageStatisticsByGeo: []
+                      timeRange:
+                        start: 1755648000000
+                        end: 1755734400000
+        default:
+          $ref: '#/components/responses/Error'
+  /organizationalEntityShareStatistics:
+    get:
+      operationId: getOrganizationalEntityShareStatistics
+      summary: Query organizationalEntityShareStatistics
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Lifetime Share Statistics** (`q=organizationalEntity`)
+
+        - **Time Bound Share Statistics** (`q=organizationalEntity`)
+
+        - **Lifetime Share Statistics** (`q=organizationalEntity`): Retrieves lifetime (aggregate) organic share
+        statistics for the organization. Omitting `timeIntervals` returns lifetime stats (totalShareStatistics).
+        Does not support pagination. See https://learn.microsoft.com/en-us/linkedin/marketing/community-management/organizations/share-statistics
+
+        - **Time-Bound Share Statistics** (`q=organizationalEntity`): Retrieves aggregate organic share statistics
+        within the given time range/granularity (DAY or MONTH), from a rolling 12-month window. Update share_stats_time_range_start/end
+        env vars (epoch ms) as needed. See https://learn.microsoft.com/en-us/linkedin/marketing/community-management/organizations/shar
+
+        - **Share Statistics for Specific Shares** (`q=organizationalEntity`): Retrieves lifetime share statistics
+        for specific organization share URNs (share_id, share_id2 env vars). Time-bound statistics is not supported
+        for specific share queries. Shares with no actions/impressions are omitted from the response. See https://learn.microsoft.com/en-us/linkedin/marketing/commu
+
+        - **Share Statistics for Specific UGC Posts** (`q=organizationalEntity`): Retrieves lifetime share statistics
+        for specific UGC Post URNs (ugc_post_id, ugc_post_id2 env vars). Time-bound statistics is not supported
+        for specific UGC Post queries. Posts with no actions/impressions are omitted from the response. See https://learn.microsoft.com/en-us/linkedin/marketing/communi'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - organizationalEntity
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: organizationalEntity
+        in: query
+        required: false
+        schema:
+          type: string
+        example: urn:li:organization:2414183
+      - name: timeIntervals.timeGranularityType
+        in: query
+        required: false
+        schema:
+          type: string
+        example: DAY
+      - name: timeIntervals.timeRange.start
+        in: query
+        required: false
+        schema:
+          type: string
+        example: '1634018799000'
+      - name: timeIntervals.timeRange.end
+        in: query
+        required: false
+        schema:
+          type: string
+        example: '1634623599000'
+      - name: timeIntervals
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: shares
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: ugcPosts[0]
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetOrganizationalEntityShareStatisticsResponse'
+              examples:
+                lifetimeShareStatistics:
+                  summary: Lifetime Share Statistics
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                      total: 1
+                    elements:
+                    - totalShareStatistics:
+                        uniqueImpressionsCount: 12605
+                        shareCount: 37
+                        engagement: 0.012616656267401995
+                        clickCount: 2671
+                        likeCount: 130
+                        impressionCount: 298098
+                        commentCount: 923
+                      organizationalEntity: urn:li:organization:2414183
+                timeBoundShareStatistics:
+                  summary: Time-Bound Share Statistics
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                      total: 7
+                    elements:
+                    - totalShareStatistics:
+                        uniqueImpressionsCount: 0
+                        shareCount: 0
+                        engagement: 0
+                        clickCount: 0
+                        likeCount: 0
+                        impressionCount: 0
+                        commentCount: 0
+                      organizationalEntity: urn:li:organization:2414183
+                      timeRange:
+                        start: 1551398400000
+                        end: 1551484800000
+                    - totalShareStatistics:
+                        uniqueImpressionsCount: 0
+                        shareCount: 0
+                        engagement: 0
+                        clickCount: 0
+                        likeCount: 0
+                        impressionCount: 0
+                        commentCount: 0
+                      organizationalEntity: urn:li:organization:2414183
+                      timeRange:
+                        start: 1551484800000
+                        end: 1551571200000
+        default:
+          $ref: '#/components/responses/Error'
+  /brandPageStatistics:
+    get:
+      operationId: getBrandPageStatistics
+      summary: Query brandPageStatistics
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Lifetime Organization Brand Page Statistics** (`q=brand`): Retrieves lifetime organization brand page
+        statistics segmented by facets (country, function, industry, region, seniority, staff count range). Omitting
+        `timeIntervals` returns lifetime stats. See https://learn.microsoft.com/en-us/linkedin/marketing/community-management/organizations/page-statistics
+
+        - **Time-Bound Organization Brand Page Statistics** (`q=brand`): Retrieves aggregate (non-segmented) organization
+        brand page statistics for the given time range and granularity (DAY or MONTH). Update page_stats_time_range_start/end
+        env vars (epoch ms) as needed. See https://learn.microsoft.com/en-us/linkedin/marketing/community-management/organizations/page-stati'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - brand
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: brand
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: timeIntervals
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /peopleTypeahead:
+    get:
+      operationId: searchByKeyword
+      summary: Search By Keyword
+      tags:
+      - Use Cases
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - organizationFollowers
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: keywords
+        in: query
+        required: false
+        schema:
+          type: string
+        example: chris
+      - name: organization
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /vanityUrl:
+    get:
+      operationId: searchByVanityURL
+      summary: Search By Vanity URL
+      tags:
+      - Use Cases
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - vanityUrlAsOrganization
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: vanityUrl
+        in: query
+        required: false
+        schema:
+          type: string
+        example: https://www.linkedin.com/in/vanityName/
+      - name: organization
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /organizations:
+    get:
+      operationId: getOrganizations
+      summary: Query organizations
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Batch GET by Administered Org Ids**
+
+        - **Find Organization by Vanity Name** (`q=vanityName`)
+
+        - **Find Organization by Email Domain** (`q=emailDomain`)
+
+        - **Find Administered Organization Brands by Parent Org** (`q=parentOrganization`)'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: ids
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Batch ids in Rest.li 2.0 list syntax, e.g. `List(id1,id2)`.
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - vanityName
+          - emailDomain
+          - parentOrganization
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: vanityName
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: emailDomain
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: parent
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetOrganizationsResponse'
+              examples:
+                batchGETByAdministeredOrgIds:
+                  summary: Batch GET by Administered Org Ids
+                  value:
+                    results:
+                      '79988552':
+                        vanityName: firstdemocompany
+                        localizedName: FirstDemoCompany
+                        groups: []
+                        versionTag: '111146657'
+                        coverPhotoV2:
+                          cropped: urn:li:digitalmediaAsset:C561BAQHqQYsCLYiAnA
+                          original: urn:li:digitalmediaAsset:C561BAQHqQYsCLYiAnA
+                          cropInfo:
+                            x: 0
+                            width: 800
+                            y: 108
+                            height: 135
+                        organizationType: SELF_EMPLOYED
+                        defaultLocale:
+                          country: US
+                          language: en
+                        alternativeNames: []
+                        specialties: []
+                        localizedSpecialties: []
+                        industries:
+                        - urn:li:industry:4
+                        name:
+                          localized:
+                            en_US: FirstDemoCompany
+                          preferredLocale:
+                            country: US
+                            language: en
+                        primaryOrganizationType: NONE
+                        locations: []
+                        id: 79988552
+                    statuses:
+                      '3803': 403
+                      '79988552': 200
+                    errors:
+                      '3803':
+                        message: Viewer don't have permission to the ADMIN_ONLY VisibilityReduction for urn:li:organization:3803
+                        status: 403
+                findOrganizationByVanityName:
+                  summary: Find Organization by Vanity Name
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                      total: 1
+                    elements:
+                    - name:
+                        localized:
+                          en_US: FirstDemoCompany
+                        preferredLocale:
+                          country: US
+                          language: en
+                      primaryOrganizationType: NONE
+                      vanityName: firstdemocompany
+                      locations: []
+                      localizedName: FirstDemoCompany
+                      id: 79988552
+                findOrganizationByEmailDomain:
+                  summary: Find Organization by Email Domain
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                      total: 3
+                    elements:
+                    - name:
+                        localized:
+                          en_US: Microsoft Korea
+                        preferredLocale:
+                          country: US
+                          language: en
+                      primaryOrganizationType: NONE
+                      vanityName: microsoft-korea
+                      locations: []
+                      localizedName: Microsoft Korea
+                      id: 9259085
+                    - vanityName: skype
+                      localizedName: Skype
+                      name:
+                        localized:
+                          en_US: Skype
+                        preferredLocale:
+                          country: US
+                          language: en
+                      primaryOrganizationType: NONE
+                      locations:
+                      - locationType: HEADQUARTERS
+                        address:
+                          geographicArea: WA
+                          country: US
+                          city: Redmond
+                          line1: 1 Microsoft Way
+                          postalCode: '98052'
+                        staffCountRange: SIZE_1
+                        geoLocation: urn:li:geo:100610900
+                        streetAddressFieldState: UNSET_OPT_OUT
+                      id: 7299
+                      logoV2:
+                        cropped: urn:li:digitalmediaAsset:C4D0BAQFJ0XE6_E1fpg
+                        original: urn:li:digitalmediaAsset:C4D0BAQFJ0XE6_E1fpg
+                        cropInfo:
+                          x: 0
+                          width: 0
+                          y: 0
+                          height: 0
+        default:
+          $ref: '#/components/responses/Error'
+  /organizations/{organizationId}:
+    get:
+      operationId: getOrganizations2
+      summary: Query organizations
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Retrieve Organization by ID**
+
+        - **Retrieve Organization using projection**
+
+        - **Lookup by Organization Primary Type**'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: organizationId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      - name: projection
+        in: query
+        required: false
+        schema:
+          type: string
+        example: (vanityName,primaryOrganizationType,id)
+        allowReserved: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetOrganizations2Response'
+              examples:
+                retrieveOrganizationByID:
+                  summary: Retrieve Organization by ID
+                  value:
+                    vanityName: firstdemocompany
+                    localizedName: FirstDemoCompany
+                    groups: []
+                    versionTag: '111146657'
+                    coverPhotoV2:
+                      cropped: urn:li:digitalmediaAsset:C561BAQHqQYsCLYiAnA
+                      original: urn:li:digitalmediaAsset:C561BAQHqQYsCLYiAnA
+                      cropInfo:
+                        x: 0
+                        width: 800
+                        y: 108
+                        height: 135
+                    organizationType: SELF_EMPLOYED
+                    defaultLocale:
+                      country: US
+                      language: en
+                    alternativeNames: []
+                    specialties: []
+                    staffCountRange: SIZE_1
+                    localizedSpecialties: []
+                    industries:
+                    - urn:li:industry:4
+                    name:
+                      localized:
+                        en_US: FirstDemoCompany
+                      preferredLocale:
+                        country: US
+                        language: en
+                    primaryOrganizationType: NONE
+                    locations: []
+                    id: 79988552
+                    $URN: urn:li:organization:79988552
+                retrieveOrganizationByID2:
+                  summary: Retrieve Organization by ID
+                  value:
+                    description:
+                      localized:
+                        bn_IN: xlfkj
+                        te_IN: adsfadfsdfadfsdf
+                        el_GR: Test
+                        zh_TW: Celebrating over 35 years as an industry leader, 24 Hour Fitness is committed to
+                          creating a healthier, happier world through fitness. We know our greatest responsibility
+                          is the physical and mental wel
+                        en_US: Paradime’s Paradime platform, powered by DinoAI, replaces dbt Cloud™ to provide production-grade
+                          orchestration, smart scheduling, CI/CD, instant error alerts and one-click dbt Cloud™
+                          import—boosting a
+                        hi_IN: desc
+                        th_TH: lkfdjssldkj
+                        hu_HU: alkdsflsdjf
+                        de_DE: sdvbdzfbd
+                      preferredLocale:
+                        country: US
+                        language: en
+                    alternativeNames:
+                    - locale:
+                        country: IN
+                        language: hi
+                      value: DevtestCo 12366
+                    specialties: []
+                    staffCountRange: SIZE_51_TO_200
+                    localizedSpecialties: []
+                    primaryOrganizationType: NONE
+                    id: 2414183
+                    localizedDescription: Paradime’s Paradime platform, powered by DinoAI, replaces dbt Cloud™ to
+                      provide production-grade orchestration, smart scheduling, CI/CD, instant error alerts and
+                      one-click dbt Cloud™ import—boosting a
+                    autoCreated: false
+                    localizedWebsite: https://www.paradime.io/?utm_source=linkedin&utm_medium=social
+                    logoV2:
+                      cropped: urn:li:digitalmediaAsset:D560BAQF3xLW1H8QwSg
+                      original: urn:li:digitalmediaAsset:D560BAQF3xLW1H8QwSg
+                      cropInfo:
+                        x: 0
+                        width: 0
+                        y: 0
+                        height: 0
+                    vanityName: test-company-for-developers-new-1
+                    localizedName: DevtestCo 12366
+                    website:
+                      localized:
+                        en_US: https://www.paradime.io/?utm_source=linkedin&utm_medium=social
+                      preferredLocale:
+                        country: US
+                        language: en
+                    foundedOn:
+                      year: 1999
+                    created:
+                      actor: urn:li:person:PNSd99OxGc
+                      time: 0
+                    coverPhoto:
+                      cropped: urn:li:media:/gcrc/dms/image/v2/D563DAQEucvlZ8gcXOA/image-scale_325_1920/B56aBiPOhyIAAI-/0/1788354554248/test_company_for_developers_new_1_cover?e=1790888400&v=beta&t=gj9tchTPTn5ErI65mqJfqplScO0mWqndD
+                      original: urn:li:media:/gcrc/dms/image/v2/D561BAQHkqHeoi0YJXg/company-background_10000/B56aBiPOsLIsAI-/0/1788354554950/test_company_for_developers_new_1_cover?e=1790888400&v=beta&t=iOtz96YFwgnlCoeXcMmoyGgmugVSj
+                      cropInfo:
+                        x: 7
+                        width: 680
+                        y: 7
+                        height: 232
+                    groups: []
+                    versionTag: '3272023280'
+                    coverPhotoV2:
+                      cropped: urn:li:digitalmediaAsset:D563DAQEucvlZ8gcXOA
+                      original: urn:li:digitalmediaAsset:D561BAQHkqHeoi0YJXg
+                      cropInfo:
+                        x: 0
+                        width: 1128
+                        y: 0
+                        height: 191
+                    defaultLocale:
+                      country: US
+                      language: en
+                    organizationType: SELF_EMPLOYED
+                    name:
+                      localized:
+                        en_US: DevtestCo 12366
+                      preferredLocale:
+                        country: US
+                        language: en
+                    locations:
+                    - description:
+                        localized:
+                          en_US: Headquarters
+                        preferredLocale:
+                          country: US
+                          language: en
+                      locationType: HEADQUARTERS
+                      address:
+                        geographicArea: CA
+                        country: US
+                        city: San Jose
+                        postalCode: '95125'
+                      localizedDescription: Headquarters
+                      streetAddressFieldState: OPT_OUT
+                      geoLocation: urn:li:geo:100235557
+                    lastModified:
+                      actor: urn:li:person:PNSd99OxGc
+                      impersonator: urn:li:application:(company-event-processor,company-event-processor)
+                      time: 1790104232578
+                retrieveOrganizationUsingProjection:
+                  summary: Retrieve Organization using projection
+                  value:
+                    primaryOrganizationType: NONE
+                    id: 79988552
+                    vanityName: firstdemocompany
+        default:
+          $ref: '#/components/responses/Error'
+  /organizationsLookup:
+    get:
+      operationId: findNonAdministeredOrganization
+      summary: Find Non-Administered Organization
+      tags:
+      - Use Cases
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: ids
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Batch ids in Rest.li 2.0 list syntax, e.g. `List(id1,id2)`.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FindNonAdministeredOrganizationResponse'
+              examples:
+                findNonAdministeredOrganization:
+                  summary: Find Non-Administered Organization
+                  value:
+                    results:
+                      '3803':
+                        name:
+                          localized:
+                            en_US: New Century
+                          preferredLocale:
+                            country: US
+                            language: en
+                        primaryOrganizationType: NONE
+                        vanityName: new-century
+                        locations:
+                        - staffCountRange: SIZE_1
+                          locationType: HEADQUARTERS
+                          address:
+                            country: US
+                        - staffCountRange: SIZE_1
+                          locationType: OTHER
+                          address: {}
+                        localizedName: New Century
+                        id: 3803
+                      '79988552':
+                        name:
+                          localized:
+                            en_US: FirstDemoCompany
+                          preferredLocale:
+                            country: US
+                            language: en
+                        primaryOrganizationType: NONE
+                        vanityName: firstdemocompany
+                        locations: []
+                        localizedName: FirstDemoCompany
+                        id: 79988552
+                    statuses:
+                      '3803': 200
+                      '79988552': 200
+                    errors: {}
+        default:
+          $ref: '#/components/responses/Error'
+  /networkSizes/{networkSizeUrn}:
+    get:
+      operationId: retrieveOrganizationFollowerCount
+      summary: Retrieve Organization Follower Count
+      tags:
+      - Use Cases
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: networkSizeUrn
+        in: path
+        required: true
+        description: URN of the resource (URL-encoded).
+        schema:
+          type: string
+      - name: edgeType
+        in: query
+        required: false
+        schema:
+          type: string
+        example: CompanyFollowedByMember
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  firstDegreeSize:
+                    type: integer
+              examples:
+                retrieveOrganizationFollowerCount:
+                  summary: Retrieve Organization Follower Count
+                  value:
+                    firstDegreeSize: 0
+        default:
+          $ref: '#/components/responses/Error'
+  /organizationBrands:
+    get:
+      operationId: getOrganizationBrands
+      summary: Query organizationBrands
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Find Organization Brand by Vanity Name** (`q=vanityName`)
+
+        - **Batch GET on Administered Organization Brands**'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - vanityName
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: vanityName
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: ids
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Batch ids in Rest.li 2.0 list syntax, e.g. `List(id1,id2)`.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetOrganizationBrandsResponse'
+              examples:
+                findOrganizationBrandByVanityName:
+                  summary: Find Organization Brand by Vanity Name
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                      total: 0
+                    elements: []
+                batchGETOnAdministeredOrganizationBrands:
+                  summary: Batch GET on Administered Organization Brands
+                  value:
+                    results:
+                      '89758488':
+                        vanityName: internal-ei-demo
+                        localizedName: Internal_EI_Demo
+                        website:
+                          localized:
+                            en_US: https://internal-ei-test-company.com
+                          preferredLocale:
+                            country: US
+                            language: en
+                        groups: []
+                        versionTag: '3061199585'
+                        defaultLocale:
+                          country: US
+                          language: en
+                        alternativeNames: []
+                        specialties: []
+                        parentRelationship:
+                          relationshipStatus: ACTIVE
+                          parent: urn:li:organization:79988552
+                        localizedSpecialties: []
+                        industries:
+                        - urn:li:industry:84
+                        name:
+                          localized:
+                            en_US: Internal_EI_Demo
+                          preferredLocale:
+                            country: US
+                            language: en
+                        primaryOrganizationType: BRAND
+                        id: 89758488
+                        autoCreated: false
+                        localizedWebsite: https://internal-ei-test-company.com
+                    statuses:
+                      '35625943': 403
+                      '89758488': 200
+                    errors:
+                      '35625943':
+                        message: Viewer don't have permission to the ADMIN_ONLY VisibilityReduction for urn:li:organization:35625943
+                        status: 403
+        default:
+          $ref: '#/components/responses/Error'
+  /organizationBrands/{organizationBrandId}:
+    get:
+      operationId: retrieveAnAdministeredOrganizationBrand
+      summary: Retrieve an Administered Organization Brand
+      tags:
+      - Use Cases
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: organizationBrandId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetrieveAnAdministeredOrganizationBrandResponse'
+              examples:
+                retrieveAnAdministeredOrganizationBrand:
+                  summary: Retrieve an Administered Organization Brand
+                  value:
+                    vanityName: internal-ei-demo
+                    localizedName: Internal_EI_Demo
+                    website:
+                      localized:
+                        en_US: https://internal-ei-test-company.com
+                      preferredLocale:
+                        country: US
+                        language: en
+                    groups: []
+                    versionTag: '3061199585'
+                    defaultLocale:
+                      country: US
+                      language: en
+                    alternativeNames: []
+                    specialties: []
+                    parentRelationship:
+                      relationshipStatus: ACTIVE
+                      parent: urn:li:organization:79988552
+                    localizedSpecialties: []
+                    industries:
+                    - urn:li:industry:84
+                    name:
+                      localized:
+                        en_US: Internal_EI_Demo
+                      preferredLocale:
+                        country: US
+                        language: en
+                    primaryOrganizationType: BRAND
+                    id: 89758488
+                    $URN: urn:li:organizationBrand:89758488
+                    autoCreated: false
+                    localizedWebsite: https://internal-ei-test-company.com
+        default:
+          $ref: '#/components/responses/Error'
+  /organizationBrandsLookup:
+    get:
+      operationId: batchGETOnNonAdministeredOrganizationBrands
+      summary: Batch GET on Non-Administered Organization Brands
+      tags:
+      - Use Cases
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: ids
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Batch ids in Rest.li 2.0 list syntax, e.g. `List(id1,id2)`.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchGETOnNonAdministeredOrganizationBrandsResponse'
+              examples:
+                batchGETOnNonAdministeredOrganizationBrands:
+                  summary: Batch GET on Non-Administered Organization Brands
+                  value:
+                    results:
+                      '35625943':
+                        name:
+                          localized:
+                            en_US: Company LGF Showcase
+                          preferredLocale:
+                            country: US
+                            language: en
+                        primaryOrganizationType: BRAND
+                        vanityName: company-lgf-showcase
+                        localizedName: Company LGF Showcase
+                        id: 35625943
+                      '89758488':
+                        name:
+                          localized:
+                            en_US: Internal_EI_Demo
+                          preferredLocale:
+                            country: US
+                            language: en
+                        primaryOrganizationType: BRAND
+                        vanityName: internal-ei-demo
+                        localizedName: Internal_EI_Demo
+                        id: 89758488
+                        localizedWebsite: https://internal-ei-test-company.com
+                    statuses:
+                      '35625943': 200
+                      '89758488': 200
+                    errors: {}
+        default:
+          $ref: '#/components/responses/Error'
+  /organizationAcls:
+    get:
+      operationId: getOrganizationAcls
+      summary: Query organizationAcls
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Find a Member''s Organization Access Control** (`q=roleAssignee`)
+
+        - **Find Organization Administrators** (`q=organization`)
+
+        - **Find Organization Access Control** (`q=organization`)'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - roleAssignee
+          - organization
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: organization
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: role
+        in: query
+        required: false
+        schema:
+          type: string
+        example: ADMINISTRATOR
+      - name: state
+        in: query
+        required: false
+        schema:
+          type: string
+        example: APPROVED
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetOrganizationAclsResponse'
+              examples:
+                findAMemberSOrganizationAccessControl:
+                  summary: Find a Member's Organization Access Control
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                    elements: []
+                findAMemberSOrganizationAccessControl2:
+                  summary: Find a Member's Organization Access Control
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                    elements: []
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  status:
+                    type: integer
+              examples:
+                findOrganizationAdministrators:
+                  summary: Find Organization Administrators
+                  value:
+                    message: OrganizationAcl FindByOrganization Viewer Authorization Failed. Viewer {member=urn:li:person:bB4Pmsd_uL}
+                      is not allowed to view organizationAcls at Organization urn:li:organization:2414183 with Role
+                      n
+                    status: 403
+                findOrganizationAccessControl:
+                  summary: Find Organization Access Control
+                  value:
+                    message: OrganizationAcl FindByOrganization Viewer Authorization Failed. Viewer {member=urn:li:person:bB4Pmsd_uL}
+                      is not allowed to view organizationAcls at Organization urn:li:organization:2414183 with Role
+                      n
+                    status: 403
+        default:
+          $ref: '#/components/responses/Error'
+  /organizationAcls/{organizationAclKey}:
+    put:
+      operationId: requestDirectSponsoredContentPosterRole
+      summary: Request Direct Sponsored Content Poster Role
+      tags:
+      - Use Cases
+      description: Requests the DIRECT_SPONSORED_CONTENT_POSTER role for the authenticated member on an organization
+        (self-request only, not on behalf of others). Returns 204 on success. See https://learn.microsoft.com/en-us/linkedin/marketing/community-management/organizations/organization-access-control-by-role
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: organizationAclKey
+        in: path
+        required: true
+        description: Composite Rest.li key, e.g. `(a:urn%3A...,b:urn%3A...)`.
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestDirectSponsoredContentPosterRoleRequest'
+            examples:
+              requestDirectSponsoredContentPosterRole:
+                summary: Request Direct Sponsored Content Poster Role
+                value:
+                  state: REQUESTED
+                  role: DIRECT_SPONSORED_CONTENT_POSTER
+                  roleAssignee: urn:li:person:{{person_id}}
+                  organization: urn:li:organization:{{organization_id}}
+      responses:
+        '201':
+          description: Success (inferred — the source collection has no saved example for this call)
+          headers:
+            x-restli-id:
+              schema:
+                type: string
+              description: Id (or URN) of the created resource.
+        default:
+          $ref: '#/components/responses/Error'
+  /memberFollowersCount:
+    get:
+      operationId: getMemberFollowersCount
+      summary: Query memberFollowersCount
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Total Followers Count** (`q=me`)
+
+        - **Followers Count By DataRange** (`q=dateRange`)'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - me
+          - dateRange
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: dateRange
+        in: query
+        required: false
+        schema:
+          type: string
+        example: (start:(year:2024,month:4,day:20),end:(year:2024,month:5,day:15))
+        allowReserved: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetMemberFollowersCountResponse'
+              examples:
+                totalFollowersCount:
+                  summary: Total Followers Count
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                      total: 1
+                    elements:
+                    - memberFollowersCount: 2
+                followersCountByDataRange:
+                  summary: Followers Count By DataRange
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                      total: 25
+                    elements:
+                    - dateRange:
+                        start:
+                          month: 4
+                          year: 2024
+                          day: 20
+                        end:
+                          month: 4
+                          year: 2024
+                          day: 21
+                      memberFollowersCount: 0
+                    - dateRange:
+                        start:
+                          month: 4
+                          year: 2024
+                          day: 21
+                        end:
+                          month: 4
+                          year: 2024
+                          day: 22
+                      memberFollowersCount: 0
+        default:
+          $ref: '#/components/responses/Error'
+  /memberCreatorPostAnalytics:
+    post:
+      operationId: postMemberCreatorPostAnalytics
+      summary: Create / update / action on memberCreatorPostAnalytics
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Aggregate Analytics for Member Posts** (`q=me`)
+
+        - **Analytics for Specific Member Post** (`q=entity`)'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - me
+          - entity
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: queryType
+        in: query
+        required: false
+        schema:
+          type: string
+        example: REACTION
+      - name: aggregation
+        in: query
+        required: false
+        schema:
+          type: string
+        example: DAILY
+      - name: dateRange
+        in: query
+        required: false
+        schema:
+          type: string
+        example: (start:(day:4,month:5,year:2024),end:(day:6,month:5,year:2024))
+        allowReserved: true
+      - name: entity
+        in: query
+        required: false
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostSharesRequest'
+            examples:
+              aggregateAnalyticsForMemberPosts:
+                summary: Aggregate Analytics for Member Posts
+                value:
+                  owner: urn:li:organization:{{organization_id}}
+                  text:
+                    annotations:
+                    - entity: urn:li:organization:1337
+                      length: 8
+                      start: 6
+                    text: Hello LinkedIn world!
+                  subject: Test Share Subject
+                  distribution:
+                    linkedInDistributionTarget: {}
+                  content:
+                    contentEntities:
+                    - entityLocation: https://www.example.com
+                      thumbnails:
+                      - resolvedUrl: https://www.example.com/image.jpg
+                    title: Test Share with Content title
+              analyticsForSpecificMemberPost:
+                summary: Analytics for Specific Member Post
+                value:
+                  owner: urn:li:organization:{{organization_id}}
+                  text:
+                    annotations:
+                    - entity: urn:li:organization:1337
+                      length: 8
+                      start: 6
+                    text: Hello LinkedIn world!
+                  subject: Test Share Subject
+                  distribution:
+                    linkedInDistributionTarget: {}
+                  content:
+                    contentEntities:
+                    - entityLocation: https://www.example.com
+                      thumbnails:
+                      - resolvedUrl: https://www.example.com/image.jpg
+                    title: Test Share with Content title
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /memberCreatorVideoAnalytics:
+    post:
+      operationId: analyticsForSpecificMemberVIDEOPost
+      summary: Analytics for Specific Member VIDEO Post
+      tags:
+      - Use Cases
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - entity
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: entity
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: queryType
+        in: query
+        required: false
+        schema:
+          type: string
+        example: VIDEO_PLAY
+      - name: aggregation
+        in: query
+        required: false
+        schema:
+          type: string
+        example: TOTAL
+      - name: dateRange
+        in: query
+        required: false
+        schema:
+          type: string
+        example: (start:(day:15,month:5,year:2024),end:(day:16,month:5,year:2024))
+        allowReserved: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostSharesRequest'
+            examples:
+              analyticsForSpecificMemberVIDEOPost:
+                summary: Analytics for Specific Member VIDEO Post
+                value:
+                  owner: urn:li:organization:{{organization_id}}
+                  text:
+                    annotations:
+                    - entity: urn:li:organization:1337
+                      length: 8
+                      start: 6
+                    text: Hello LinkedIn world!
+                  subject: Test Share Subject
+                  distribution:
+                    linkedInDistributionTarget: {}
+                  content:
+                    contentEntities:
+                    - entityLocation: https://www.example.com
+                      thumbnails:
+                      - resolvedUrl: https://www.example.com/image.jpg
+                    title: Test Share with Content title
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /socialMetadata/{socialMetadataUrn}:
+    get:
+      operationId: getASummaryOfSocialMetadata
+      summary: Get a Summary of Social Metadata
+      tags:
+      - Use Cases
+      description: Retrieves reaction and comment summary metadata (commentsState, commentSummary, reactionSummaries)
+        for a single share, UGC post, or comment URN. See https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/social-metadata-api
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: socialMetadataUrn
+        in: path
+        required: true
+        description: URN of the resource (URL-encoded).
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetASummaryOfSocialMetadataResponse'
+              examples:
+                getASummaryOfSocialMetadata:
+                  summary: Get a Summary of Social Metadata
+                  value:
+                    reactionSummaries: {}
+                    commentsState: OPEN
+                    entity: urn:li:ugcPost:7508595577971105792
+                    commentSummary:
+                      count: 0
+                      topLevelCount: 0
+                getASummaryOfSocialMetadata2:
+                  summary: Get a Summary of Social Metadata
+                  value:
+                    reactionSummaries:
+                      LIKE:
+                        count: 1
+                        reactionType: LIKE
+                    commentsState: OPEN
+                    entity: urn:li:ugcPost:7508595577971105792
+                    commentSummary:
+                      count: 0
+                      topLevelCount: 0
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: enableOrDisableCommentsOnAThread
+      summary: Enable or Disable Comments on a Thread
+      tags:
+      - Use Cases
+      description: Enables (OPEN) or disables (CLOSED) comments on a share/UGC post thread (thread URNs only, not
+        comment URNs). Disabling deletes all existing comments; reactions are unaffected. actor must be an organization
+        or person URN. Returns 202 Accepted on success. See https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/social-metadata-api
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: socialMetadataUrn
+        in: path
+        required: true
+        description: URN of the resource (URL-encoded).
+        schema:
+          type: string
+      - name: actor
+        in: query
+        required: false
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnableOrDisableCommentsOnAThreadRequest'
+            examples:
+              enableOrDisableCommentsOnAThread:
+                summary: Enable or Disable Comments on a Thread
+                value:
+                  patch:
+                    $set:
+                      commentsState: '{{comments_state}}'
+      responses:
+        '204':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /socialMetadata:
+    get:
+      operationId: batchGetASummaryOfSocialMetadata
+      summary: Batch Get a Summary of Social Metadata
+      tags:
+      - Use Cases
+      description: Batch retrieves reaction and comment summary metadata for multiple share/UGC post/comment URNs
+        at once. See https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/social-metadata-api
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: ids
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Batch ids in Rest.li 2.0 list syntax, e.g. `List(id1,id2)`.
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /reactions/{reactionKey}:
+    get:
+      operationId: getReactions
+      summary: Query reactions
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Get a Reaction**: Retrieves a single reaction by compound key (actor + entity). Actor can be a person
+        or organization URN; entity can be a share, UGC post, or comment URN. See https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/reactions-api
+
+        - **Get Reactions on a Share** (`q=entity`): Retrieves all reactions on a given share/UGC post entity, sorted
+        by CHRONOLOGICAL, REVERSE_CHRONOLOGICAL (default), or RELEVANCE via the reaction_sort_order env var. See
+        https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/reactions-api'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: reactionKey
+        in: path
+        required: true
+        description: Composite Rest.li key, e.g. `(a:urn%3A...,b:urn%3A...)`.
+        schema:
+          type: string
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - entity
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetReactionsResponse'
+              examples:
+                getAReaction:
+                  summary: Get a Reaction
+                  value:
+                    lastModified:
+                      actor: urn:li:organization:2414183
+                      impersonator: urn:li:person:bB4Pmsd_uL
+                      time: 1790272252945
+                    id: urn:li:reaction:(urn:li:organization:2414183,urn:li:ugcPost:7508595577971105792)
+                    reactionType: LIKE
+                    created:
+                      actor: urn:li:organization:2414183
+                      impersonator: urn:li:person:bB4Pmsd_uL
+                      time: 1790272252945
+                    root: urn:li:ugcPost:7508595577971105792
+        default:
+          $ref: '#/components/responses/Error'
+    delete:
+      operationId: deleteAReaction
+      summary: Delete a Reaction
+      tags:
+      - Use Cases
+      description: Deletes a reaction by its (actor, entity) compound key. Returns 204 No Content on success. See
+        https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/reactions-api
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: reactionKey
+        in: path
+        required: true
+        description: Composite Rest.li key, e.g. `(a:urn%3A...,b:urn%3A...)`.
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /reactions:
+    get:
+      operationId: batchGetACollectionOfReactions
+      summary: Batch Get a Collection of Reactions
+      tags:
+      - Use Cases
+      description: Batch retrieves multiple reactions at once by their (actor, entity) compound keys. See https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/reactions-api
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: ids
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Batch ids in Rest.li 2.0 list syntax, e.g. `List(id1,id2)`.
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: postReactions
+      summary: Create / update / action on reactions
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Create a Reaction on a Share**: Creates a reaction (default LIKE, via reaction_type env var) on a share/UGC
+        post/activity on behalf of the actor (organization or person URN). Returns 201 Created. See https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/reactions-api
+
+        - **Create a Reaction on a Comment**: Creates a reaction (default LIKE, via reaction_type env var) on a
+        specific comment (identified by parent activity_id + comment_id) on behalf of the actor. Returns 201 Created.
+        See https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/reactions-api'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: actor
+        in: query
+        required: false
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                root:
+                  type: string
+                reactionType:
+                  type: string
+            examples:
+              createAReactionOnAShare:
+                summary: Create a Reaction on a Share
+                value:
+                  root: urn:li:ugcPost:7508595577971105792
+                  reactionType: '{{reaction_type}}'
+              createAReactionOnAComment:
+                summary: Create a Reaction on a Comment
+                value:
+                  root: urn:li:comment:(urn:li:activity:{{activity_id}},{{comment_id}})
+                  reactionType: '{{reaction_type}}'
+      responses:
+        '201':
+          description: Created
+          headers:
+            location:
+              schema:
+                type: string
+              description: URL of the created resource.
+            x-restli-id:
+              schema:
+                type: string
+              description: Id (or URN) of the created resource.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetReactionsResponse'
+              examples:
+                createAReactionOnAShare:
+                  summary: Create a Reaction on a Share
+                  value:
+                    lastModified:
+                      actor: urn:li:organization:2414183
+                      impersonator: urn:li:person:bB4Pmsd_uL
+                      time: 1790272252945
+                    id: urn:li:reaction:(urn:li:organization:2414183,urn:li:ugcPost:7508595577971105792)
+                    reactionType: LIKE
+                    created:
+                      actor: urn:li:organization:2414183
+                      impersonator: urn:li:person:bB4Pmsd_uL
+                      time: 1790272252945
+                    root: urn:li:ugcPost:7508595577971105792
+        default:
+          $ref: '#/components/responses/Error'
+  /videoAnalytics:
+    get:
+      operationId: getVideoAnalytics
+      summary: Query videoAnalytics
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Video Analytics - Lifetime (VIEWER / VIDEO_VIEW)** (`q=entity`): Retrieves lifetime (no aggregation/timeRange)
+        video analytics for a video ugcPost entity, using the metric type set in video_analytics_type (VIDEO_VIEW,
+        VIEWER, TIME_WATCHED, TIME_WATCHED_FOR_VIDEO_VIEWS). See https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/video-ana
+
+        - **Video Analytics - Time-Bound (Day/Week Aggregated)** (`q=entity`): Retrieves video analytics for a video
+        ugcPost entity aggregated by DAY or WEEK (via video_analytics_aggregation) within a time range (start inclusive,
+        end exclusive, epoch ms). See https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/video-analytics-api'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - entity
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: entity
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: type
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: timeRange
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: aggregation
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /documents:
+    post:
+      operationId: initializeDocumentUpload
+      summary: Initialize Document Upload
+      tags:
+      - Use Cases
+      description: Registers a document upload. Returns an uploadUrl (for uploading the raw file via a separate
+        PUT/upload-file request) and the new document URN. Copy the returned document URN into document_id for subsequent
+        requests. See https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/documents-api
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: action
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - initializeUpload
+        description: Rest.li action name.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InitializeDocumentUploadRequest'
+            examples:
+              initializeDocumentUpload:
+                summary: Initialize Document Upload
+                value:
+                  initializeUploadRequest:
+                    owner: urn:li:organization:{{organization_id}}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InitializeDocumentUploadResponse'
+              examples:
+                initializeDocumentUpload:
+                  summary: Initialize Document Upload
+                  value:
+                    value:
+                      uploadUrlExpiresAt: 1790359523665
+                      uploadUrl: https://www.linkedin.com/dms-uploads/sp/v2/D5610AQGj9_04rEoDOw/ads-uploadedDocument/B56aDUl_VCHUAA-/0?REDACTED_SIGNED_QUERY
+                      document: urn:li:document:D5610AQGj9_04rEoDOw
+        default:
+          $ref: '#/components/responses/Error'
+    get:
+      operationId: batchGetDocuments
+      summary: Batch Get Documents
+      tags:
+      - Use Cases
+      description: Batch retrieves multiple document assets by their URNs in a single call. See https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/documents-api
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: ids
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Batch ids in Rest.li 2.0 list syntax, e.g. `List(id1,id2)`.
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /documents/{documentId}:
+    get:
+      operationId: getASingleDocument
+      summary: Get a Single Document
+      tags:
+      - Use Cases
+      description: Retrieves a single document asset (owner, status, downloadUrl, downloadUrlExpiresAt) by its document
+        URN. See https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/documents-api
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: documentId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetASingleDocumentResponse'
+              examples:
+                getASingleDocument:
+                  summary: Get a Single Document
+                  value:
+                    downloadUrl: https://media.licdn.com/dms/document/media/v2/D5610AQGj9_04rEoDOw/ads-document-pdf-analyzed/B56aDUnF0ZI4AQ-/0/1790273413720?e=1790881200&v=beta&t=a8zbcOFQzpn8zIqAOLg4mmp5XmT2Ctysn1JBHjVsyVA
+                    owner: urn:li:organization:2414183
+                    id: urn:li:document:D5610AQGj9_04rEoDOw
+                    downloadUrlExpiresAt: 1790881200000
+                    status: AVAILABLE
+        default:
+          $ref: '#/components/responses/Error'
+  /posts:
+    post:
+      operationId: postPosts
+      summary: Create / update / action on posts
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Create Document Content (Post)**: Creates a Post that attaches a previously-uploaded document (via its
+        document URN) as media content. Returns 201 Created with the new post URN in the x-restli-id response header.
+        See https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/documents-api
+
+        - **Create Poll Content (Post)**: Creates a Post with Poll content (2-4 options, max question length 140
+        chars, max option length 30 chars). Returns 201 Created with the new post URN in the x-restli-id response
+        header. Poll content cannot be updated after creation. See https://learn.microsoft.com/en-us/linkedin/marketing/community-m
+
+        - **Create Post with Mention + HashtagTemplate**: Creates a Post whose commentary uses `little` text format:
+        a MentionElement (@[Name](urn)) tagging an organization, plus a HashtagTemplate ({hashtag|#|tag}). See https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/little-text-format
+
+        - **Create Post with HashtagElement**: Creates a Post whose commentary uses the simpler `little` HashtagElement
+        syntax (#word) rather than the HashtagTemplate. See https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/little-text-format
+
+        - **Create Post with Escaped Reserved Characters (Bullet List)**: Creates a Post demonstrating escaping
+        of `little` reserved characters (e.g. ''*'' must be escaped as ''\\*'') so they render as literal plaintext
+        instead of being parsed as little syntax. See https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/little-text-format'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostPostsRequest'
+            examples:
+              createDocumentContentPost:
+                summary: Create Document Content (Post)
+                value:
+                  author: urn:li:organization:{{organization_id}}
+                  commentary: '{{document_post_commentary}}'
+                  visibility: PUBLIC
+                  distribution:
+                    feedDistribution: MAIN_FEED
+                    targetEntities: []
+                    thirdPartyDistributionChannels: []
+                  content:
+                    media:
+                      title: '{{document_title}}'
+                      id: urn:li:document:{{document_id2}}
+                  lifecycleState: PUBLISHED
+                  isReshareDisabledByAuthor: false
+              createPollContentPost:
+                summary: Create Poll Content (Post)
+                value:
+                  author: urn:li:organization:{{organization_id}}
+                  commentary: '{{poll_commentary}}'
+                  visibility: PUBLIC
+                  distribution:
+                    feedDistribution: MAIN_FEED
+                    targetEntities: []
+                    thirdPartyDistributionChannels: []
+                  lifecycleState: PUBLISHED
+                  isReshareDisabledByAuthor: false
+                  content:
+                    poll:
+                      question: '{{poll_question}}'
+                      options:
+                      - text: '{{poll_option_1}}'
+                      - text: '{{poll_option_2}}'
+                      - text: '{{poll_option_3}}'
+                      settings:
+                        duration: '{{poll_duration}}'
+                        voteSelectionType: '{{poll_vote_selection_type}}'
+              createPostWithMentionHashtagTemplate:
+                summary: Create Post with Mention + HashtagTemplate
+                value:
+                  author: urn:li:organization:{{organization_id}}
+                  commentary: This example mentions a company @[{{little_text_mention_name}}](urn:li:organization:{{organization_id}})
+                    and {hashtag|\#|{{little_text_hashtag}}}
+                  visibility: PUBLIC
+                  distribution:
+                    feedDistribution: MAIN_FEED
+                  lifecycleState: PUBLISHED
+              createPostWithHashtagElement:
+                summary: Create Post with HashtagElement
+                value:
+                  author: urn:li:organization:{{organization_id}}
+                  commentary: 'This example uses a plain hashtag element #{{little_text_hashtag}}'
+                  visibility: PUBLIC
+                  distribution:
+                    feedDistribution: MAIN_FEED
+                  lifecycleState: PUBLISHED
+              createPostWithEscapedReservedCharactersBulletList:
+                summary: Create Post with Escaped Reserved Characters (Bullet List)
+                value:
+                  author: urn:li:organization:{{organization_id}}
+                  commentary: 'Hello, these are some bullet points:
+
+
+                    \* Point 1
+
+                    \* Point 2
+
+                    \* Point 3'
+                  visibility: PUBLIC
+                  distribution:
+                    feedDistribution: MAIN_FEED
+                  lifecycleState: PUBLISHED
+      responses:
+        '201':
+          description: Created
+          headers:
+            location:
+              schema:
+                type: string
+              description: URL of the created resource.
+            x-restli-id:
+              schema:
+                type: string
+              description: Id (or URN) of the created resource.
+        default:
+          $ref: '#/components/responses/Error'
+    get:
+      operationId: getPosts2
+      summary: Query posts
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Batch Get Document Content (Posts)**: Batch retrieves multiple posts (and their attached document content)
+        by post URNs. Requires the X-RestLi-Method: batch_get header. See https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/documents-api
+
+        - **Batch Get Poll Content (Posts)**: Batch retrieves multiple posts (Poll or other content types, e.g.
+        Carousel) by ugcPost URNs. Requires the X-RestLi-Method: batch_get header. See https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/poll-post-api
+
+        - **Batch Get Celebration Content (Posts)**: Batch retrieves multiple posts (Celebration or other content
+        types, e.g. Carousel) by ugcPost URNs. Requires the X-RestLi-Method: BATCH_GET header. See https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/celebration-post-api'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: X-RestLi-Method
+        in: header
+        required: false
+        description: Rest.li method override used for batch / partial-update style calls.
+        schema:
+          type: string
+          enum:
+          - BATCH_GET
+      - name: ids
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Batch ids in Rest.li 2.0 list syntax, e.g. `List(id1,id2)`.
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /posts/{postUrn}:
+    get:
+      operationId: getPosts
+      summary: Query posts
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Get Document Content (Post)**: Retrieves a Post (and its attached document content) by post URN. See
+        https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/documents-api
+
+        - **Get Poll Content (Post)**: Retrieves a single Post with Poll content (including option vote counts and
+        settings) by its ugcPost URN. See https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/poll-post-api
+
+        - **Get Celebration Content (Post)**: Retrieves a single Post with Celebration content (type, media template/image,
+        tagged recipients) by its ugcPost URN. Note: Celebration posts cannot be created via this API (returns 400)
+        - fetch only. See https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/celebration-pos
+
+        - **Little-Text-Get**'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: postUrn
+        in: path
+        required: true
+        description: URN of the resource (URL-encoded).
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetPostsResponse'
+              examples:
+                getDocumentContentPost:
+                  summary: Get Document Content (Post)
+                  value:
+                    isReshareDisabledByAuthor: false
+                    createdAt: 1790273638842
+                    lifecycleState: PUBLISHED
+                    lastModifiedAt: 1790273640871
+                    visibility: PUBLIC
+                    publishedAt: 1790273638842
+                    author: urn:li:organization:2414183
+                    id: urn:li:ugcPost:7508951883789651968
+                    distribution:
+                      feedDistribution: MAIN_FEED
+                      thirdPartyDistributionChannels: []
+                    content:
+                      media:
+                        title: Example.pdf
+                        id: urn:li:document:D5610AQGj9_04rEoDOw
+                    commentary: test Document project 2b
+                    lifecycleStateInfo:
+                      isEditedByAuthor: false
+                getCelebrationContentPost:
+                  summary: Get Celebration Content (Post)
+                  value:
+                    lifecycleState: PUBLISHED
+                    lastModifiedAt: 1790188714629
+                    visibility: PUBLIC
+                    publishedAt: 1790188688915
+                    author: urn:li:organization:2414183
+                    distribution:
+                      feedDistribution: NONE
+                      thirdPartyDistributionChannels: []
+                    content:
+                      media:
+                        title: title of the video
+                        id: urn:li:video:D4D10AQEramjQvYp0Hg
+                    lifecycleStateInfo:
+                      isEditedByAuthor: false
+                    isReshareDisabledByAuthor: true
+                    createdAt: 1790188688915
+                    id: urn:li:ugcPost:7508595577971105792
+                    commentary: Sample Video Post
+                    adContext:
+                      dscStatus: ACTIVE
+                      dscAdType: VIDEO
+                      isDsc: true
+                      dscAdAccount: urn:li:sponsoredAccount:508915158
+                littleTextGet:
+                  summary: Little-Text-Get
+                  value:
+                    isReshareDisabledByAuthor: false
+                    lifecycleState: PUBLISHED
+                    createdAt: 1790282825147
+                    lastModifiedAt: 1790282827221
+                    visibility: PUBLIC
+                    publishedAt: 1790282825147
+                    author: urn:li:organization:2414183
+                    id: urn:li:share:7508990414155227137
+                    distribution:
+                      feedDistribution: MAIN_FEED
+                      thirdPartyDistributionChannels: []
+                    commentary: This example mentions a company DevtestCo and {hashtag|\#|MyTestTag2B}
+                    lifecycleStateInfo:
+                      isEditedByAuthor: false
+        default:
+          $ref: '#/components/responses/Error'
+  /dms-uploads/{uploadPath}:
+    put:
+      operationId: uploadDocument
+      summary: Upload Document
+      tags:
+      - Use Cases
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: uploadPath
+        in: path
+        required: true
+        description: Remainder of the upload URL returned by the corresponding initializeUpload call (use that URL
+          verbatim).
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '201':
+          description: Created
+        default:
+          $ref: '#/components/responses/Error'
+      servers:
+      - url: https://www.linkedin.com
+  /socialActions/{socialActionUrn}/comments/{commentId}:
+    get:
+      operationId: getAComment
+      summary: Get a Comment
+      tags:
+      - Use Cases
+      description: Retrieves a single comment by its ID, scoped under the share/ugcPost/comment (thread) URN in
+        the path. See https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/comments-api
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: socialActionUrn
+        in: path
+        required: true
+        description: URN of the resource (URL-encoded).
+        schema:
+          type: string
+      - name: commentId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: editAComment
+      summary: Edit a Comment
+      tags:
+      - Use Cases
+      description: 'Edits the text of an existing comment via a partial-update patch (only message.text/attributes
+        may be modified). Requires the X-RestLi-Method: PARTIAL_UPDATE header. The actor query param is only required
+        when editing as an organization. See https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/comments-api'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: socialActionUrn
+        in: path
+        required: true
+        description: URN of the resource (URL-encoded).
+        schema:
+          type: string
+      - name: commentId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      - name: X-RestLi-Method
+        in: header
+        required: false
+        description: Rest.li method override used for batch / partial-update style calls.
+        schema:
+          type: string
+          enum:
+          - PARTIAL_UPDATE
+      - name: actor
+        in: query
+        required: false
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EditACommentRequest'
+            examples:
+              editAComment:
+                summary: Edit a Comment
+                value:
+                  patch:
+                    message:
+                      $set:
+                        text: '{{comment_edited_text}}'
+      responses:
+        '204':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+    delete:
+      operationId: deleteAComment
+      summary: Delete a Comment
+      tags:
+      - Use Cases
+      description: Deletes a comment by ID. The actor query param is only required when deleting as an organization.
+        See https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/comments-api
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: socialActionUrn
+        in: path
+        required: true
+        description: URN of the resource (URL-encoded).
+        schema:
+          type: string
+      - name: commentId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      - name: actor
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /socialActions/{socialActionUrn}/comments:
+    get:
+      operationId: getSocialActionsComments
+      summary: Query comments
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Batch Get a Collection of Comments**: Batch retrieves multiple comments by ID on the same thread (share/ugcPost/comment
+        URN). See https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/comments-api
+
+        - **Get Comments on a Share**: Retrieves all top-level comments on a given share/ugcPost (thread URN). See
+        https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/comments-api
+
+        - **Get Comments on a Comment (Nested)**: Resolves nested (reply) comments for a given parent commentUrn
+        (composite URN of thread activityUrn + comment ID). See https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/comments-api'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: socialActionUrn
+        in: path
+        required: true
+        description: URN of the resource (URL-encoded).
+        schema:
+          type: string
+      - name: ids
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Batch ids in Rest.li 2.0 list syntax, e.g. `List(id1,id2)`.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetSocialActionsCommentsResponse'
+              examples:
+                getCommentsOnAShare:
+                  summary: Get Comments on a Share
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                      total: 1
+                    elements:
+                    - actor: urn:li:organization:2414183
+                      agent: urn:li:person:bB4Pmsd_uL
+                      commentUrn: urn:li:comment:(urn:li:ugcPost:7508595577971105792,7508993488256962561)
+                      created:
+                        actor: urn:li:organization:2414183
+                        impersonator: urn:li:person:bB4Pmsd_uL
+                        time: 1790283557954
+                      id: '7508993488256962561'
+                      lastModified:
+                        actor: urn:li:organization:2414183
+                        impersonator: urn:li:person:bB4Pmsd_uL
+                        time: 1790283557954
+                      message:
+                        attributes: []
+                        text: A sample text comment
+                      object: urn:li:ugcPost:7508595577971105792
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: postSocialActionsComments
+      summary: Create / update / action on comments
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Create a Comment**: Creates a top-level comment on a share/ugcPost (thread). Returns the new comment
+        ID in the x-restli-id response header. See https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/comments-api
+
+        - **Create a Comment on a Comment (Nested)**: Creates a nested (reply) comment by including the parentComment
+        field (composite URN of thread activityUrn + parent comment ID). See https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/comments-api'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: socialActionUrn
+        in: path
+        required: true
+        description: URN of the resource (URL-encoded).
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostSocialActionsCommentsRequest'
+            examples:
+              createAComment:
+                summary: Create a Comment
+                value:
+                  actor: urn:li:organization:{{organization_id}}
+                  object: urn:li:ugcPost:{{ugc_post_id}}
+                  message:
+                    text: '{{comment_message_text}}'
+              createACommentOnACommentNested:
+                summary: Create a Comment on a Comment (Nested)
+                value:
+                  actor: urn:li:organization:{{organization_id}}
+                  message:
+                    text: '{{comment_message_text}}'
+                  object: urn:li:share:{{share_id}}
+                  parentComment: urn:li:comment:(urn:li:activity:{{activity_id}},{{comment_id}})
+      responses:
+        '201':
+          description: Created
+          headers:
+            location:
+              schema:
+                type: string
+              description: URL of the created resource.
+            x-restli-id:
+              schema:
+                type: string
+              description: Id (or URN) of the created resource.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostSocialActionsCommentsResponse'
+              examples:
+                createAComment:
+                  summary: Create a Comment
+                  value:
+                    actor: urn:li:organization:2414183
+                    agent: urn:li:person:bB4Pmsd_uL
+                    commentUrn: urn:li:comment:(urn:li:ugcPost:7508595577971105792,7508993488256962561)
+                    created:
+                      actor: urn:li:organization:2414183
+                      impersonator: urn:li:person:bB4Pmsd_uL
+                      time: 1790283557954
+                    id: '7508993488256962561'
+                    lastModified:
+                      actor: urn:li:organization:2414183
+                      impersonator: urn:li:person:bB4Pmsd_uL
+                      time: 1790283557954
+                    message:
+                      attributes: []
+                      text: A sample text comment
+                    likesSummary:
+                      selectedLikes: []
+                      aggregatedTotalLikes: 0
+                      likedByCurrentUser: false
+                      totalLikes: 0
+                    object: urn:li:ugcPost:7508595577971105792
+        default:
+          $ref: '#/components/responses/Error'
+components:
+  securitySchemes:
+    linkedinOAuth2:
+      type: oauth2
+      description: LinkedIn 3-legged OAuth 2.0 (authorization code).
+      flows:
+        authorizationCode:
+          authorizationUrl: https://www.linkedin.com/oauth/v2/authorization
+          tokenUrl: https://www.linkedin.com/oauth/v2/accessToken
+          scopes:
+            rw_organization_admin: LinkedIn permission `rw_organization_admin`
+            w_organization_social: LinkedIn permission `w_organization_social`
+            r_basicprofile: LinkedIn permission `r_basicprofile`
+            r_organization_social: LinkedIn permission `r_organization_social`
+            r_organization_social_feed: LinkedIn permission `r_organization_social_feed`
+            r_organization_followers: LinkedIn permission `r_organization_followers`
+  parameters:
+    LinkedInVersion:
+      name: LinkedIn-Version
+      in: header
+      required: true
+      description: API version in YYYYMM format (e.g. `202509`).
+      schema:
+        type: string
+        pattern: ^[0-9]{6}$
+    RestliProtocolVersion:
+      name: X-Restli-Protocol-Version
+      in: header
+      required: false
+      schema:
+        type: string
+        enum:
+        - 2.0.0
+        default: 2.0.0
+  responses:
+    Error:
+      description: Error response
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Error:
+      type: object
+      properties:
+        status:
+          type: integer
+        code:
+          type: string
+        serviceErrorCode:
+          type: integer
+        message:
+          type: string
+    PostSharesRequest:
+      type: object
+      properties:
+        owner:
+          type: string
+        text:
+          type: object
+          properties:
+            annotations:
+              type: array
+              items:
+                type: object
+                properties:
+                  entity:
+                    type: string
+                  length:
+                    type: integer
+                  start:
+                    type: integer
+            text:
+              type: string
+        subject:
+          type: string
+        distribution:
+          type: object
+          properties:
+            linkedInDistributionTarget:
+              type: object
+              properties: {}
+        content:
+          type: object
+          properties:
+            contentEntities:
+              type: array
+              items:
+                type: object
+                properties:
+                  entityLocation:
+                    type: string
+                  thumbnails:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        resolvedUrl:
+                          type: string
+            title:
+              type: string
+    Views:
+      type: object
+      properties:
+        mobileProductsPageViews:
+          type: object
+          properties:
+            pageViews:
+              type: integer
+        allDesktopPageViews:
+          type: object
+          properties:
+            pageViews:
+              type: integer
+        insightsPageViews:
+          type: object
+          properties:
+            pageViews:
+              type: integer
+        mobileAboutPageViews:
+          type: object
+          properties:
+            pageViews:
+              type: integer
+        allMobilePageViews:
+          type: object
+          properties:
+            pageViews:
+              type: integer
+        productsPageViews:
+          type: object
+          properties:
+            pageViews:
+              type: integer
+        desktopProductsPageViews:
+          type: object
+          properties:
+            pageViews:
+              type: integer
+        jobsPageViews:
+          type: object
+          properties:
+            pageViews:
+              type: integer
+        peoplePageViews:
+          type: object
+          properties:
+            pageViews:
+              type: integer
+        overviewPageViews:
+          type: object
+          properties:
+            pageViews:
+              type: integer
+        mobileOverviewPageViews:
+          type: object
+          properties:
+            pageViews:
+              type: integer
+        lifeAtPageViews:
+          type: object
+          properties:
+            pageViews:
+              type: integer
+        desktopOverviewPageViews:
+          type: object
+          properties:
+            pageViews:
+              type: integer
+        mobileCareersPageViews:
+          type: object
+          properties:
+            pageViews:
+              type: integer
+        allPageViews:
+          type: object
+          properties:
+            pageViews:
+              type: integer
+        careersPageViews:
+          type: object
+          properties:
+            pageViews:
+              type: integer
+        mobileJobsPageViews:
+          type: object
+          properties:
+            pageViews:
+              type: integer
+        mobileLifeAtPageViews:
+          type: object
+          properties:
+            pageViews:
+              type: integer
+        desktopJobsPageViews:
+          type: object
+          properties:
+            pageViews:
+              type: integer
+        desktopPeoplePageViews:
+          type: object
+          properties:
+            pageViews:
+              type: integer
+        aboutPageViews:
+          type: object
+          properties:
+            pageViews:
+              type: integer
+        desktopAboutPageViews:
+          type: object
+          properties:
+            pageViews:
+              type: integer
+        mobilePeoplePageViews:
+          type: object
+          properties:
+            pageViews:
+              type: integer
+        desktopCareersPageViews:
+          type: object
+          properties:
+            pageViews:
+              type: integer
+        desktopInsightsPageViews:
+          type: object
+          properties:
+            pageViews:
+              type: integer
+        desktopLifeAtPageViews:
+          type: object
+          properties:
+            pageViews:
+              type: integer
+        mobileInsightsPageViews:
+          type: object
+          properties:
+            pageViews:
+              type: integer
+    CoverPhotoV2:
+      type: object
+      properties:
+        cropped:
+          type: string
+        original:
+          type: string
+        cropInfo:
+          type: object
+          properties:
+            x:
+              type: integer
+            width:
+              type: integer
+            y:
+              type: integer
+            height:
+              type: integer
+    GetReactionsResponse:
+      type: object
+      properties:
+        lastModified:
+          type: object
+          properties:
+            actor:
+              type: string
+            impersonator:
+              type: string
+            time:
+              type: integer
+              format: int64
+        id:
+          type: string
+        reactionType:
+          type: string
+        created:
+          type: object
+          properties:
+            actor:
+              type: string
+            impersonator:
+              type: string
+            time:
+              type: integer
+              format: int64
+        root:
+          type: string
+    GetOrganizationalEntityFollowerStatisticsResponse:
+      type: object
+      properties:
+        paging:
+          type: object
+          properties:
+            start:
+              type: integer
+            count:
+              type: integer
+            links:
+              type: array
+              items: {}
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              followerCountsByAssociationType:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    followerCounts:
+                      type: object
+                      properties:
+                        organicFollowerCount:
+                          type: integer
+                        paidFollowerCount:
+                          type: integer
+                    associationType:
+                      type: string
+              followerCountsBySeniority:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    followerCounts:
+                      type: object
+                      properties:
+                        organicFollowerCount:
+                          type: integer
+                        paidFollowerCount:
+                          type: integer
+                    seniority:
+                      type: string
+              followerCountsByIndustry:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    followerCounts:
+                      type: object
+                      properties:
+                        organicFollowerCount:
+                          type: integer
+                        paidFollowerCount:
+                          type: integer
+                    industry:
+                      type: string
+              followerCountsByFunction:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    followerCounts:
+                      type: object
+                      properties:
+                        organicFollowerCount:
+                          type: integer
+                        paidFollowerCount:
+                          type: integer
+                    function:
+                      type: string
+              followerCountsByStaffCountRange:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    followerCounts:
+                      type: object
+                      properties:
+                        organicFollowerCount:
+                          type: integer
+                        paidFollowerCount:
+                          type: integer
+                    staffCountRange:
+                      type: string
+              followerCountsByGeoCountry:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    geo:
+                      type: string
+                    followerCounts:
+                      type: object
+                      properties:
+                        organicFollowerCount:
+                          type: integer
+                        paidFollowerCount:
+                          type: integer
+              followerCountsByGeo:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    geo:
+                      type: string
+                    followerCounts:
+                      type: object
+                      properties:
+                        organicFollowerCount:
+                          type: integer
+                        paidFollowerCount:
+                          type: integer
+              organizationalEntity:
+                type: string
+              followerGains:
+                type: object
+                properties:
+                  organicFollowerGain:
+                    type: integer
+                  paidFollowerGain:
+                    type: integer
+              timeRange:
+                type: object
+                properties:
+                  start:
+                    type: integer
+                    format: int64
+                  end:
+                    type: integer
+                    format: int64
+    GetOrganizationPageStatisticsResponse:
+      type: object
+      properties:
+        paging:
+          type: object
+          properties:
+            start:
+              type: integer
+            count:
+              type: integer
+            links:
+              type: array
+              items: {}
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              pageStatisticsByIndustryV2:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    industryV2:
+                      type: string
+                    pageStatistics:
+                      type: object
+                      properties:
+                        views:
+                          type: object
+                          properties:
+                            allPageViews:
+                              type: object
+                              properties:
+                                pageViews:
+                                  type: integer
+              pageStatisticsBySeniority:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    pageStatistics:
+                      type: object
+                      properties:
+                        views:
+                          $ref: '#/components/schemas/Views'
+                    seniority:
+                      type: string
+              organization:
+                type: string
+              pageStatisticsByGeoCountry:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    geo:
+                      type: string
+                    pageStatistics:
+                      type: object
+                      properties:
+                        views:
+                          type: object
+                          properties:
+                            allPageViews:
+                              type: object
+                              properties:
+                                pageViews:
+                                  type: integer
+              pageStatisticsByTargetedContent:
+                type: array
+                items: {}
+              totalPageStatistics:
+                type: object
+                properties:
+                  views:
+                    type: object
+                    properties:
+                      mobileProductsPageViews:
+                        type: object
+                        properties:
+                          pageViews:
+                            type: integer
+                          uniquePageViews:
+                            type: integer
+                      allDesktopPageViews:
+                        type: object
+                        properties:
+                          pageViews:
+                            type: integer
+                          uniquePageViews:
+                            type: integer
+                      insightsPageViews:
+                        type: object
+                        properties:
+                          pageViews:
+                            type: integer
+                      mobileAboutPageViews:
+                        type: object
+                        properties:
+                          pageViews:
+                            type: integer
+                      allMobilePageViews:
+                        type: object
+                        properties:
+                          pageViews:
+                            type: integer
+                          uniquePageViews:
+                            type: integer
+                      productsPageViews:
+                        type: object
+                        properties:
+                          pageViews:
+                            type: integer
+                          uniquePageViews:
+                            type: integer
+                      desktopProductsPageViews:
+                        type: object
+                        properties:
+                          pageViews:
+                            type: integer
+                          uniquePageViews:
+                            type: integer
+                      jobsPageViews:
+                        type: object
+                        properties:
+                          pageViews:
+                            type: integer
+                      peoplePageViews:
+                        type: object
+                        properties:
+                          pageViews:
+                            type: integer
+                      overviewPageViews:
+                        type: object
+                        properties:
+                          pageViews:
+                            type: integer
+                          uniquePageViews:
+                            type: integer
+                      mobileOverviewPageViews:
+                        type: object
+                        properties:
+                          pageViews:
+                            type: integer
+                          uniquePageViews:
+                            type: integer
+                      lifeAtPageViews:
+                        type: object
+                        properties:
+                          pageViews:
+                            type: integer
+                      desktopOverviewPageViews:
+                        type: object
+                        properties:
+                          pageViews:
+                            type: integer
+                          uniquePageViews:
+                            type: integer
+                      mobileCareersPageViews:
+                        type: object
+                        properties:
+                          pageViews:
+                            type: integer
+                      allPageViews:
+                        type: object
+                        properties:
+                          pageViews:
+                            type: integer
+                          uniquePageViews:
+                            type: integer
+                      careersPageViews:
+                        type: object
+                        properties:
+                          pageViews:
+                            type: integer
+                      mobileJobsPageViews:
+                        type: object
+                        properties:
+                          pageViews:
+                            type: integer
+                      mobileLifeAtPageViews:
+                        type: object
+                        properties:
+                          pageViews:
+                            type: integer
+                      desktopJobsPageViews:
+                        type: object
+                        properties:
+                          pageViews:
+                            type: integer
+                      desktopPeoplePageViews:
+                        type: object
+                        properties:
+                          pageViews:
+                            type: integer
+                      aboutPageViews:
+                        type: object
+                        properties:
+                          pageViews:
+                            type: integer
+                      desktopAboutPageViews:
+                        type: object
+                        properties:
+                          pageViews:
+                            type: integer
+                      mobilePeoplePageViews:
+                        type: object
+                        properties:
+                          pageViews:
+                            type: integer
+                      desktopCareersPageViews:
+                        type: object
+                        properties:
+                          pageViews:
+                            type: integer
+                      desktopInsightsPageViews:
+                        type: object
+                        properties:
+                          pageViews:
+                            type: integer
+                      desktopLifeAtPageViews:
+                        type: object
+                        properties:
+                          pageViews:
+                            type: integer
+                      mobileInsightsPageViews:
+                        type: object
+                        properties:
+                          pageViews:
+                            type: integer
+                  clicks:
+                    type: object
+                    properties:
+                      mobileCustomButtonClickCounts:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            clicks:
+                              type: integer
+                      desktopCustomButtonClickCounts:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            clicks:
+                              type: integer
+              pageStatisticsByStaffCountRange:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    staffCountRange:
+                      type: string
+                    pageStatistics:
+                      type: object
+                      properties:
+                        views:
+                          $ref: '#/components/schemas/Views'
+              pageStatisticsByFunction:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    pageStatistics:
+                      type: object
+                      properties:
+                        views:
+                          $ref: '#/components/schemas/Views'
+                    function:
+                      type: string
+              pageStatisticsByGeo:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    geo:
+                      type: string
+                    pageStatistics:
+                      type: object
+                      properties:
+                        views:
+                          type: object
+                          properties:
+                            allPageViews:
+                              type: object
+                              properties:
+                                pageViews:
+                                  type: integer
+              timeRange:
+                type: object
+                properties:
+                  start:
+                    type: integer
+                    format: int64
+                  end:
+                    type: integer
+                    format: int64
+    GetOrganizationalEntityShareStatisticsResponse:
+      type: object
+      properties:
+        paging:
+          type: object
+          properties:
+            start:
+              type: integer
+            count:
+              type: integer
+            links:
+              type: array
+              items: {}
+            total:
+              type: integer
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              totalShareStatistics:
+                type: object
+                properties:
+                  uniqueImpressionsCount:
+                    type: integer
+                  shareCount:
+                    type: integer
+                  engagement:
+                    type: number
+                  clickCount:
+                    type: integer
+                  likeCount:
+                    type: integer
+                  impressionCount:
+                    type: integer
+                  commentCount:
+                    type: integer
+              organizationalEntity:
+                type: string
+              timeRange:
+                type: object
+                properties:
+                  start:
+                    type: integer
+                    format: int64
+                  end:
+                    type: integer
+                    format: int64
+    GetOrganizationsResponse:
+      type: object
+      properties:
+        results:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              vanityName:
+                type: string
+              localizedName:
+                type: string
+              groups:
+                type: array
+                items: {}
+              versionTag:
+                type: string
+              coverPhotoV2:
+                $ref: '#/components/schemas/CoverPhotoV2'
+              organizationType:
+                type: string
+              defaultLocale:
+                type: object
+                properties:
+                  country:
+                    type: string
+                  language:
+                    type: string
+              alternativeNames:
+                type: array
+                items: {}
+              specialties:
+                type: array
+                items: {}
+              localizedSpecialties:
+                type: array
+                items: {}
+              industries:
+                type: array
+                items:
+                  type: string
+              name:
+                type: object
+                properties:
+                  localized:
+                    type: object
+                    properties:
+                      en_US:
+                        type: string
+                  preferredLocale:
+                    type: object
+                    properties:
+                      country:
+                        type: string
+                      language:
+                        type: string
+              primaryOrganizationType:
+                type: string
+              locations:
+                type: array
+                items: {}
+              id:
+                type: integer
+        statuses:
+          type: object
+          additionalProperties:
+            type: integer
+        errors:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              message:
+                type: string
+              status:
+                type: integer
+        paging:
+          type: object
+          properties:
+            start:
+              type: integer
+            count:
+              type: integer
+            links:
+              type: array
+              items: {}
+            total:
+              type: integer
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: object
+                properties:
+                  localized:
+                    type: object
+                    properties:
+                      en_US:
+                        type: string
+                  preferredLocale:
+                    type: object
+                    properties:
+                      country:
+                        type: string
+                      language:
+                        type: string
+              primaryOrganizationType:
+                type: string
+              vanityName:
+                type: string
+              locations:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    locationType:
+                      type: string
+                    address:
+                      type: object
+                      properties:
+                        geographicArea:
+                          type: string
+                        country:
+                          type: string
+                        city:
+                          type: string
+                        line1:
+                          type: string
+                        postalCode:
+                          type: string
+                        line2:
+                          type: string
+                    staffCountRange:
+                      type: string
+                    geoLocation:
+                      type: string
+                    streetAddressFieldState:
+                      type: string
+                    phoneNumber1:
+                      type: object
+                      properties:
+                        number:
+                          type: string
+                    description:
+                      type: object
+                      properties:
+                        localized:
+                          type: object
+                          properties:
+                            en_US:
+                              type: string
+                        preferredLocale:
+                          type: object
+                          properties:
+                            country:
+                              type: string
+                            language:
+                              type: string
+                    localizedDescription:
+                      type: string
+              localizedName:
+                type: string
+              id:
+                type: integer
+              logoV2:
+                $ref: '#/components/schemas/CoverPhotoV2'
+    GetOrganizations2Response:
+      type: object
+      properties:
+        vanityName:
+          type: string
+        localizedName:
+          type: string
+        groups:
+          type: array
+          items: {}
+        versionTag:
+          type: string
+        coverPhotoV2:
+          $ref: '#/components/schemas/CoverPhotoV2'
+        organizationType:
+          type: string
+        defaultLocale:
+          type: object
+          properties:
+            country:
+              type: string
+            language:
+              type: string
+        alternativeNames:
+          type: array
+          items:
+            type: object
+            properties:
+              locale:
+                type: object
+                properties:
+                  country:
+                    type: string
+                  language:
+                    type: string
+              value:
+                type: string
+        specialties:
+          type: array
+          items: {}
+        staffCountRange:
+          type: string
+        localizedSpecialties:
+          type: array
+          items: {}
+        industries:
+          type: array
+          items:
+            type: string
+        name:
+          type: object
+          properties:
+            localized:
+              type: object
+              properties:
+                en_US:
+                  type: string
+            preferredLocale:
+              type: object
+              properties:
+                country:
+                  type: string
+                language:
+                  type: string
+        primaryOrganizationType:
+          type: string
+        locations:
+          type: array
+          items:
+            type: object
+            properties:
+              description:
+                type: object
+                properties:
+                  localized:
+                    type: object
+                    properties:
+                      en_US:
+                        type: string
+                  preferredLocale:
+                    type: object
+                    properties:
+                      country:
+                        type: string
+                      language:
+                        type: string
+              locationType:
+                type: string
+              address:
+                type: object
+                properties:
+                  geographicArea:
+                    type: string
+                  country:
+                    type: string
+                  city:
+                    type: string
+                  postalCode:
+                    type: string
+              localizedDescription:
+                type: string
+              streetAddressFieldState:
+                type: string
+              geoLocation:
+                type: string
+        id:
+          type: integer
+        $URN:
+          type: string
+        description:
+          type: object
+          properties:
+            localized:
+              type: object
+              properties:
+                bn_IN:
+                  type: string
+                te_IN:
+                  type: string
+                el_GR:
+                  type: string
+                zh_TW:
+                  type: string
+                en_US:
+                  type: string
+                hi_IN:
+                  type: string
+                th_TH:
+                  type: string
+                hu_HU:
+                  type: string
+                de_DE:
+                  type: string
+            preferredLocale:
+              type: object
+              properties:
+                country:
+                  type: string
+                language:
+                  type: string
+        localizedDescription:
+          type: string
+        autoCreated:
+          type: boolean
+        localizedWebsite:
+          type: string
+        logoV2:
+          $ref: '#/components/schemas/CoverPhotoV2'
+        website:
+          type: object
+          properties:
+            localized:
+              type: object
+              properties:
+                en_US:
+                  type: string
+            preferredLocale:
+              type: object
+              properties:
+                country:
+                  type: string
+                language:
+                  type: string
+        foundedOn:
+          type: object
+          properties:
+            year:
+              type: integer
+        created:
+          type: object
+          properties:
+            actor:
+              type: string
+            time:
+              type: integer
+        coverPhoto:
+          $ref: '#/components/schemas/CoverPhotoV2'
+        lastModified:
+          type: object
+          properties:
+            actor:
+              type: string
+            impersonator:
+              type: string
+            time:
+              type: integer
+              format: int64
+    FindNonAdministeredOrganizationResponse:
+      type: object
+      properties:
+        results:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              name:
+                type: object
+                properties:
+                  localized:
+                    type: object
+                    properties:
+                      en_US:
+                        type: string
+                  preferredLocale:
+                    type: object
+                    properties:
+                      country:
+                        type: string
+                      language:
+                        type: string
+              primaryOrganizationType:
+                type: string
+              vanityName:
+                type: string
+              locations:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    staffCountRange:
+                      type: string
+                    locationType:
+                      type: string
+                    address:
+                      type: object
+                      properties:
+                        country:
+                          type: string
+              localizedName:
+                type: string
+              id:
+                type: integer
+        statuses:
+          type: object
+          additionalProperties:
+            type: integer
+        errors:
+          type: object
+          properties: {}
+    GetOrganizationBrandsResponse:
+      type: object
+      properties:
+        paging:
+          type: object
+          properties:
+            start:
+              type: integer
+            count:
+              type: integer
+            links:
+              type: array
+              items: {}
+            total:
+              type: integer
+        elements:
+          type: array
+          items: {}
+        results:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              vanityName:
+                type: string
+              localizedName:
+                type: string
+              website:
+                type: object
+                properties:
+                  localized:
+                    type: object
+                    properties:
+                      en_US:
+                        type: string
+                  preferredLocale:
+                    type: object
+                    properties:
+                      country:
+                        type: string
+                      language:
+                        type: string
+              groups:
+                type: array
+                items: {}
+              versionTag:
+                type: string
+              defaultLocale:
+                type: object
+                properties:
+                  country:
+                    type: string
+                  language:
+                    type: string
+              alternativeNames:
+                type: array
+                items: {}
+              specialties:
+                type: array
+                items: {}
+              parentRelationship:
+                type: object
+                properties:
+                  relationshipStatus:
+                    type: string
+                  parent:
+                    type: string
+              localizedSpecialties:
+                type: array
+                items: {}
+              industries:
+                type: array
+                items:
+                  type: string
+              name:
+                type: object
+                properties:
+                  localized:
+                    type: object
+                    properties:
+                      en_US:
+                        type: string
+                  preferredLocale:
+                    type: object
+                    properties:
+                      country:
+                        type: string
+                      language:
+                        type: string
+              primaryOrganizationType:
+                type: string
+              id:
+                type: integer
+              autoCreated:
+                type: boolean
+              localizedWebsite:
+                type: string
+        statuses:
+          type: object
+          additionalProperties:
+            type: integer
+        errors:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              message:
+                type: string
+              status:
+                type: integer
+    RetrieveAnAdministeredOrganizationBrandResponse:
+      type: object
+      properties:
+        vanityName:
+          type: string
+        localizedName:
+          type: string
+        website:
+          type: object
+          properties:
+            localized:
+              type: object
+              properties:
+                en_US:
+                  type: string
+            preferredLocale:
+              type: object
+              properties:
+                country:
+                  type: string
+                language:
+                  type: string
+        groups:
+          type: array
+          items: {}
+        versionTag:
+          type: string
+        defaultLocale:
+          type: object
+          properties:
+            country:
+              type: string
+            language:
+              type: string
+        alternativeNames:
+          type: array
+          items: {}
+        specialties:
+          type: array
+          items: {}
+        parentRelationship:
+          type: object
+          properties:
+            relationshipStatus:
+              type: string
+            parent:
+              type: string
+        localizedSpecialties:
+          type: array
+          items: {}
+        industries:
+          type: array
+          items:
+            type: string
+        name:
+          type: object
+          properties:
+            localized:
+              type: object
+              properties:
+                en_US:
+                  type: string
+            preferredLocale:
+              type: object
+              properties:
+                country:
+                  type: string
+                language:
+                  type: string
+        primaryOrganizationType:
+          type: string
+        id:
+          type: integer
+        $URN:
+          type: string
+        autoCreated:
+          type: boolean
+        localizedWebsite:
+          type: string
+    BatchGETOnNonAdministeredOrganizationBrandsResponse:
+      type: object
+      properties:
+        results:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              name:
+                type: object
+                properties:
+                  localized:
+                    type: object
+                    properties:
+                      en_US:
+                        type: string
+                  preferredLocale:
+                    type: object
+                    properties:
+                      country:
+                        type: string
+                      language:
+                        type: string
+              primaryOrganizationType:
+                type: string
+              vanityName:
+                type: string
+              localizedName:
+                type: string
+              id:
+                type: integer
+              localizedWebsite:
+                type: string
+        statuses:
+          type: object
+          additionalProperties:
+            type: integer
+        errors:
+          type: object
+          properties: {}
+    GetOrganizationAclsResponse:
+      type: object
+      properties:
+        paging:
+          type: object
+          properties:
+            start:
+              type: integer
+            count:
+              type: integer
+            links:
+              type: array
+              items: {}
+        elements:
+          type: array
+          items: {}
+    RequestDirectSponsoredContentPosterRoleRequest:
+      type: object
+      properties:
+        state:
+          type: string
+        role:
+          type: string
+        roleAssignee:
+          type: string
+        organization:
+          type: string
+    GetMemberFollowersCountResponse:
+      type: object
+      properties:
+        paging:
+          type: object
+          properties:
+            start:
+              type: integer
+            count:
+              type: integer
+            links:
+              type: array
+              items: {}
+            total:
+              type: integer
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              memberFollowersCount:
+                type: integer
+              dateRange:
+                type: object
+                properties:
+                  start:
+                    type: object
+                    properties:
+                      month:
+                        type: integer
+                      year:
+                        type: integer
+                      day:
+                        type: integer
+                  end:
+                    type: object
+                    properties:
+                      month:
+                        type: integer
+                      year:
+                        type: integer
+                      day:
+                        type: integer
+    GetASummaryOfSocialMetadataResponse:
+      type: object
+      properties:
+        reactionSummaries:
+          type: object
+          properties:
+            LIKE:
+              type: object
+              properties:
+                count:
+                  type: integer
+                reactionType:
+                  type: string
+        commentsState:
+          type: string
+        entity:
+          type: string
+        commentSummary:
+          type: object
+          properties:
+            count:
+              type: integer
+            topLevelCount:
+              type: integer
+    EnableOrDisableCommentsOnAThreadRequest:
+      type: object
+      properties:
+        patch:
+          type: object
+          properties:
+            $set:
+              type: object
+              properties:
+                commentsState:
+                  type: string
+    InitializeDocumentUploadRequest:
+      type: object
+      properties:
+        initializeUploadRequest:
+          type: object
+          properties:
+            owner:
+              type: string
+    InitializeDocumentUploadResponse:
+      type: object
+      properties:
+        value:
+          type: object
+          properties:
+            uploadUrlExpiresAt:
+              type: integer
+              format: int64
+            uploadUrl:
+              type: string
+            document:
+              type: string
+    GetASingleDocumentResponse:
+      type: object
+      properties:
+        downloadUrl:
+          type: string
+        owner:
+          type: string
+        id:
+          type: string
+        downloadUrlExpiresAt:
+          type: integer
+          format: int64
+        status:
+          type: string
+    PostPostsRequest:
+      type: object
+      properties:
+        author:
+          type: string
+        commentary:
+          type: string
+        visibility:
+          type: string
+        distribution:
+          type: object
+          properties:
+            feedDistribution:
+              type: string
+            targetEntities:
+              type: array
+              items: {}
+            thirdPartyDistributionChannels:
+              type: array
+              items: {}
+        content:
+          type: object
+          properties:
+            media:
+              type: object
+              properties:
+                title:
+                  type: string
+                id:
+                  type: string
+            poll:
+              type: object
+              properties:
+                question:
+                  type: string
+                options:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      text:
+                        type: string
+                settings:
+                  type: object
+                  properties:
+                    duration:
+                      type: string
+                    voteSelectionType:
+                      type: string
+        lifecycleState:
+          type: string
+        isReshareDisabledByAuthor:
+          type: boolean
+    GetPostsResponse:
+      type: object
+      properties:
+        isReshareDisabledByAuthor:
+          type: boolean
+        createdAt:
+          type: integer
+          format: int64
+        lifecycleState:
+          type: string
+        lastModifiedAt:
+          type: integer
+          format: int64
+        visibility:
+          type: string
+        publishedAt:
+          type: integer
+          format: int64
+        author:
+          type: string
+        id:
+          type: string
+        distribution:
+          type: object
+          properties:
+            feedDistribution:
+              type: string
+            thirdPartyDistributionChannels:
+              type: array
+              items: {}
+        content:
+          type: object
+          properties:
+            media:
+              type: object
+              properties:
+                title:
+                  type: string
+                id:
+                  type: string
+        commentary:
+          type: string
+        lifecycleStateInfo:
+          type: object
+          properties:
+            isEditedByAuthor:
+              type: boolean
+        adContext:
+          type: object
+          properties:
+            dscStatus:
+              type: string
+            dscAdType:
+              type: string
+            isDsc:
+              type: boolean
+            dscAdAccount:
+              type: string
+    EditACommentRequest:
+      type: object
+      properties:
+        patch:
+          type: object
+          properties:
+            message:
+              type: object
+              properties:
+                $set:
+                  type: object
+                  properties:
+                    text:
+                      type: string
+    GetSocialActionsCommentsResponse:
+      type: object
+      properties:
+        paging:
+          type: object
+          properties:
+            start:
+              type: integer
+            count:
+              type: integer
+            links:
+              type: array
+              items: {}
+            total:
+              type: integer
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              actor:
+                type: string
+              agent:
+                type: string
+              commentUrn:
+                type: string
+              created:
+                type: object
+                properties:
+                  actor:
+                    type: string
+                  impersonator:
+                    type: string
+                  time:
+                    type: integer
+                    format: int64
+              id:
+                type: string
+              lastModified:
+                type: object
+                properties:
+                  actor:
+                    type: string
+                  impersonator:
+                    type: string
+                  time:
+                    type: integer
+                    format: int64
+              message:
+                type: object
+                properties:
+                  attributes:
+                    type: array
+                    items: {}
+                  text:
+                    type: string
+              object:
+                type: string
+    PostSocialActionsCommentsRequest:
+      type: object
+      properties:
+        actor:
+          type: string
+        object:
+          type: string
+        message:
+          type: object
+          properties:
+            text:
+              type: string
+        parentComment:
+          type: string
+    PostSocialActionsCommentsResponse:
+      type: object
+      properties:
+        actor:
+          type: string
+        agent:
+          type: string
+        commentUrn:
+          type: string
+        created:
+          type: object
+          properties:
+            actor:
+              type: string
+            impersonator:
+              type: string
+            time:
+              type: integer
+              format: int64
+        id:
+          type: string
+        lastModified:
+          type: object
+          properties:
+            actor:
+              type: string
+            impersonator:
+              type: string
+            time:
+              type: integer
+              format: int64
+        message:
+          type: object
+          properties:
+            attributes:
+              type: array
+              items: {}
+            text:
+              type: string
+        likesSummary:
+          type: object
+          properties:
+            selectedLikes:
+              type: array
+              items: {}
+            aggregatedTotalLikes:
+              type: integer
+            likedByCurrentUser:
+              type: boolean
+            totalLikes:
+              type: integer
+        object:
+          type: string
