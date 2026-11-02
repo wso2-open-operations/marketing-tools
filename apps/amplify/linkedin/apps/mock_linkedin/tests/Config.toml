@@ -1,0 +1,11 @@
+# Test-only values. Made up, not real credentials.
+[wso2.mock_linkedin]
+apiPort = 19090
+wwwPort = 19091
+wwwBaseUrl = "http://localhost:19091"
+clientId = "test-client-id"
+clientSecret = "test-client-secret"
+redirectUris = ["http://localhost:3000/callback"]
+enableMockAdmin = true
+mockAdminKey = "test-admin-key-for-mock-linkedin-0123456789"
+maxUploadBytes = 4096

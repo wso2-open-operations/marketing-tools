@@ -1,0 +1,10 @@
+# Ballerina generates this directory during the compilation of a package.
+target/
+
+# Ballerina maintains the compiler-generated source code here.
+generated/
+
+# Contains configuration values used during development time.
+# Copy Config.toml.local to Config.toml and fill in your values.
+Config.toml
+!tests/Config.toml
