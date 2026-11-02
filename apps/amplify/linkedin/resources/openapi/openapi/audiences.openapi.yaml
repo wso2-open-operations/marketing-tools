@@ -1,0 +1,904 @@
+openapi: 3.0.3
+info:
+  title: Audiences
+  version: 1.0.0
+  description: 'This collection aims to focus on different Audiences use cases and should be used with the **audiences-env-versioning**
+    environment.
+
+
+    \--All requests for the Audiences API collection are in the Restli 2.0 format--
+
+
+    AuthorizationOAuth 2.0
+
+
+    _Generated from the Postman collection "Audiences". All calls use Rest.li 2.0 conventions: send `X-Restli-Protocol-Version:
+    2.0.0` and a `LinkedIn-Version` header (YYYYMM). Query parameters such as `List(...)`, `(a:b,c:d)` and URNs
+    are Rest.li-encoded strings; do not re-encode the structural characters `( ) , :`. Several finders/actions share
+    one path in LinkedIn''s API, so they are modelled as one operation with a `q`/`action` selector. Schemas are
+    inferred from the example payloads saved in the collection: every field is optional and field semantics are
+    not documented here._'
+servers:
+- url: https://api.linkedin.com/rest
+  description: LinkedIn REST API (`{{baseUrl}}` in the Postman environment)
+security:
+- linkedinOAuth2:
+  - r_ads
+  - rw_dmp_segments
+  - r_basicprofile
+tags:
+- name: Use Cases
+paths:
+  /adAccounts:
+    get:
+      operationId: getAdAccounts
+      summary: Query adAccounts
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **2. Retrieve the user''s Ad Accounts (sponsoredAccount)** (`q=search`)
+
+        - **2. Retrieve the user''s Ad Accounts (sponsoredAccount)** (`q=search`): View [Search for Accounts](https://docs.microsoft.com/en-us/linkedin/marketing/integrations/ads/account-structure/create-and-manage-accounts?tabs=http#search-for-accounts) documentation
+        for more information.
+
+        - **1. Retrieve the user''s Ad Accounts (sponsoredAccount)** (`q=search`)
+
+        - **2. Retrieve the user''s Ad Accounts (sponsoredAccount)** (`q=search`): View [Search for Accounts](https://docs.microsoft.com/en-us/linkedin/marketing/integrations/ads/account-structure/create-and-manage-accounts?tabs=http#search-for-accounts)
+        documentation for more information.'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - search
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: search
+        in: query
+        required: false
+        schema:
+          type: string
+        example: (type:(values:List(BUSINESS)),status:(values:List(ACTIVE)),test:false)
+        allowReserved: true
+      - name: fields
+        in: query
+        required: false
+        schema:
+          type: string
+        example: id,name,test,reference
+        allowReserved: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAdAccountsResponse'
+              examples:
+                2RetrieveTheUserSAdAccountsSponsoredAccount:
+                  summary: 2. Retrieve the user's Ad Accounts (sponsoredAccount)
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                      total: 2
+                    elements:
+                    - name: Test ad account
+                      reference: urn:li:organization:11223344
+                      id: 123456
+                      test: false
+                    - name: MDO ad account
+                      reference: urn:li:organization:2355689
+                      id: 456789
+                      test: false
+                2RetrieveTheUserSAdAccountsSponsoredAccount2:
+                  summary: 2. Retrieve the user's Ad Accounts (sponsoredAccount)
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                      total: 2
+                    elements:
+                    - name: Test ad account
+                      reference: urn:li:organization:11223344
+                      id: 123456
+                      test: false
+                    - name: MDO ad account
+                      reference: urn:li:organization:2355689
+                      id: 456789
+                      test: false
+                1RetrieveTheUserSAdAccountsSponsoredAccount:
+                  summary: 1. Retrieve the user's Ad Accounts (sponsoredAccount)
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                      total: 2
+                    elements:
+                    - name: Test ad account
+                      reference: urn:li:organization:11223344
+                      id: 123456
+                      test: false
+                    - name: MDO ad account
+                      reference: urn:li:organization:2355689
+                      id: 456789
+                      test: false
+        default:
+          $ref: '#/components/responses/Error'
+  /dmpSegments:
+    get:
+      operationId: getDmpSegments
+      summary: Query dmpSegments
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **4. Fetch existing Audiences for chosen Ad Accounts** (`q=account`): The api call [fetches all DMP segments
+        for a specific ad account](https://docs.microsoft.com/linkedin/marketing/integrations/matched-audiences/create-and-manage-segments?tabs=http#find-dmp-segments-by-account) and
+        your designated sourcePlatform ENUM.
+
+        - **8.  Monitor Status of the Company DMP Segments** (`q=account`): The api call [fetches all DMP segments
+        for a specific ad account](https://docs.microsoft.com/linkedin/marketing/integrations/matched-audiences/create-and-manage-segments?tabs=http#find-dmp-segments-by-account) and
+        your designated sourcePlatform ENUM.
+
+        - **4. Fetch existing Audiences for the chosen Ad Account** (`q=account`): The api call [fetches all DMP
+        segments for a specific ad account](https://docs.microsoft.com/linkedin/marketing/integrations/matched-audiences/create-and-manage-segments?tabs=http#find-dmp-segments-by-account) and
+        your designated sourcePlatform ENUM.
+
+        - **8. Monitor Status of the User DMP Segments** (`q=account`): The api call [fetches all DMP segments for
+        a specific ad account](https://docs.microsoft.com/linkedin/marketing/integrations/matched-audiences/create-and-manage-segments?tabs=http#find-dmp-segments-by-account) and
+        your designated sourcePlatform ENUM.
+
+        - **8. Monitor Status of the List Upload DMP Segments** (`q=account`): The api call [fetches all DMP segments
+        for a specific ad account](https://docs.microsoft.com/linkedin/marketing/integrations/matched-audiences/create-and-manage-segments?tabs=http#find-dmp-segments-by-account) that
+        are List Upload segments.'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - account
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: account
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: sourcePlatform
+        in: query
+        required: false
+        schema:
+          type: string
+        example: LIST_UPLOAD
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetDmpSegmentsResponse'
+              examples:
+                4FetchExistingAudiencesForChosenAdAccounts:
+                  summary: 4. Fetch existing Audiences for chosen Ad Accounts
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                      total: 1
+                    elements:
+                    - created: 1634519022000
+                      destinations:
+                      - audienceSize: 240000
+                        created: 1634519022000
+                        destinationSegmentId: urn:li:adSegment:8596576
+                        destination: LINKEDIN
+                        matchedCount: 2
+                        lastModified: 1637219449000
+                        status: READY
+                      name: DMP Segment 1
+                      sourcePlatform: FAKE
+                      lastModified: 1634592751000
+                      accessPolicy: PRIVATE
+                      id: 9821736
+                      type: COMPANY
+                      account: urn:li:sponsoredAccount:123456
+                      inputCount: 2
+                8MonitorStatusOfTheCompanyDMPSegments:
+                  summary: 8.  Monitor Status of the Company DMP Segments
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                      total: 2
+                    elements:
+                    - created: 1634519022000
+                      destinations:
+                      - audienceSize: 240000
+                        destinationSegmentId: urn:li:adSegment:8596576
+                        created: 1634519022000
+                        destination: LINKEDIN
+                        matchedCount: 2
+                        lastModified: 1637219449000
+                        status: READY
+                      name: DMP Segment 1
+                      sourcePlatform: FAKE
+                      accessPolicy: PRIVATE
+                      id: 9821736
+                      lastModified: 1634592751000
+                      type: COMPANY
+                      account: urn:li:sponsoredAccount:123456
+                      inputCount: 2
+                    - created: 1683068124000
+                      destinations:
+                      - destination: LINKEDIN
+                        lastModified: 1683068124000
+                        destinationSegmentId: urn:li:adSegment:15326243
+                        created: 1683068124000
+                        status: BUILDING
+                      name: Company DMP Segment
+                      sourcePlatform: FAKE
+                      accessPolicy: PRIVATE
+                      id: 17667093
+                      lastModified: 1683068124000
+                      type: COMPANY
+                      account: urn:li:sponsoredAccount:123546
+                4FetchExistingAudiencesForTheChosenAdAccount:
+                  summary: 4. Fetch existing Audiences for the chosen Ad Account
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                      total: 1
+                    elements:
+                    - created: 1634519022000
+                      destinations:
+                      - audienceSize: 240000
+                        created: 1634519022000
+                        destinationSegmentId: urn:li:adSegment:9896577
+                        destination: LINKEDIN
+                        matchedCount: 2
+                        lastModified: 1637219449000
+                        status: READY
+                      name: DMP Segment TEST
+                      sourcePlatform: FAKE
+                      lastModified: 1634592751000
+                      accessPolicy: PRIVATE
+                      id: 96754
+                      type: USER
+                      account: urn:li:sponsoredAccount:123456
+                      inputCount: 2
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: postDmpSegments
+      summary: Create / update / action on dmpSegments
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **6. Create a Company DMP Segment**: This call [creates a DMP segment](https://docs.microsoft.com/linkedin/marketing/integrations/matched-audiences/create-and-manage-segments?tabs=http#create-dmp-segment) named "DMP
+        Segment 1" tied to the sponsored account the user chose in step 2.
+
+        - **6. Create a User DMP segment (skip this step if the user chose to update an existing Audience)**: This
+        call [creates a DMP segment](https://docs.microsoft.com/linkedin/marketing/integrations/matched-audiences/create-and-manage-segments?tabs=http#create-dmp-segment) named "DMP
+        Segment 2" for users to be streamed to.
+
+        - **2. Create a Predictive Audience DMP Segment**: This call [creates a DMP segment](https://docs.microsoft.com/linkedin/marketing/integrations/matched-audiences/create-and-manage-segments?tabs=http#create-dmp-segment)
+        named "DMP Segment 1" tied to the sponsored account the user chose in step 2.
+
+        - **6. Create list upload DMP Segment**: Here we create the CSV List Upload DMP segment. See our [online
+        documentation](https://learn.microsoft.com/en-us/linkedin/marketing/integrations/matched-audiences/create-and-manage-list-uploads?tabs=http#sample-request-1)
+        for more information.'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostDmpSegmentsRequest'
+            examples:
+              6CreateACompanyDMPSegment:
+                summary: 6. Create a Company DMP Segment
+                value:
+                  name: Company DMP Segment
+                  sourcePlatform: '{{dmp_partner_platform_enum}}'
+                  account: urn:li:sponsoredAccount:{{sponsoredaccount_id}}
+                  type: COMPANY
+                  destinations:
+                  - destination: LINKEDIN
+              6CreateAUserDMPSegmentSkipThisStepIfTheUserChoseToUpdateAnEx:
+                summary: 6. Create a User DMP segment (skip this step if the user chose to update an existing Audience)
+                value:
+                  name: User DMP Segment
+                  sourcePlatform: '{{dmp_partner_platform_enum}}'
+                  account: urn:li:sponsoredAccount:{{sponsoredaccount_id}}
+                  type: USER
+                  destinations:
+                  - destination: LINKEDIN
+              2CreateAPredictiveAudienceDMPSegment:
+                summary: 2. Create a Predictive Audience DMP Segment
+                value:
+                  name: Company DMP Segment
+                  sourcePlatform: LINKEDIN_BUSINESS_OBJECTIVE_BASED_AUDIENCES
+                  account: urn:li:sponsoredAccount:{{sponsoredaccount_id}}
+                  type: COMPANY
+                  destinations:
+                  - destination: LINKEDIN
+              6CreateListUploadDMPSegment:
+                summary: 6. Create list upload DMP Segment
+                value:
+                  account: urn:li:sponsoredAccount:{{sponsoredaccount_id}}
+                  destinations:
+                  - destination: LINKEDIN
+                  name: DMP segment for CSV uploads
+                  sourcePlatform: LIST_UPLOAD
+                  type: COMPANY_LIST_UPLOAD
+      responses:
+        '201':
+          description: Created
+          headers:
+            Location:
+              schema:
+                type: string
+              description: URL of the created resource.
+            x-restli-id:
+              schema:
+                type: string
+              description: Id (or URN) of the created resource.
+            ETag:
+              schema:
+                type: string
+              description: Entity tag.
+        default:
+          $ref: '#/components/responses/Error'
+  /dmpSegments/{dmpSegmentId}/companies:
+    post:
+      operationId: 7StreamCompanyDataAddOrRemoveMultipleCompanies
+      summary: 7.  Stream company data - add or remove multiple companies
+      tags:
+      - Use Cases
+      description: 'This example adds multiple companies to the DMP segment created in step 2.
+
+
+        To see what other fields can also be added/removed, review the [schema section](https://docs.microsoft.com/linkedin/marketing/integrations/matched-audiences/create-and-manage-segment-companies?tabs=http#add-or-remove-a-company) of
+        our online documentation.
+
+
+        The more information on a company that is provided, the better chance of a higher match rate.'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: dmpSegmentId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      - name: X-RestLi-Method
+        in: header
+        required: false
+        description: Rest.li method override used for batch / partial-update style calls.
+        schema:
+          type: string
+          enum:
+          - BATCH_CREATE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/7StreamCompanyDataAddOrRemoveMultipleCompaniesRequest'
+            examples:
+              7StreamCompanyDataAddOrRemoveMultipleCompanies:
+                summary: 7.  Stream company data - add or remove multiple companies
+                value:
+                  elements:
+                  - action: ADD
+                    companyName: LinkedIn
+                  - action: ADD
+                    companyName: Microsoft
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/7StreamCompanyDataAddOrRemoveMultipleCompaniesResponse'
+              examples:
+                7StreamCompanyDataAddOrRemoveMultipleCompanies:
+                  summary: 7.  Stream company data - add or remove multiple companies
+                  value:
+                    elements:
+                    - status: 201
+                    - status: 201
+        default:
+          $ref: '#/components/responses/Error'
+  /dmpSegments/{dmpSegmentId}/users:
+    post:
+      operationId: 7StreamUserDataAddOrRemoveMultipleUsers
+      summary: 7. Stream user data - add or remove multiple users
+      tags:
+      - Use Cases
+      description: 'This example adds multiple users to the DMP segment created in step 2.
+
+
+        To see what other fields can also be added/removed, review the [schema section](https://docs.microsoft.com/linkedin/marketing/integrations/matched-audiences/create-and-manage-segment-users?tabs=http#add-or-remove-a-user) of
+        our online documentation.
+
+
+        The more information on a user that is provided, the better chance of a higher match rate.'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: dmpSegmentId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      - name: X-RestLi-Method
+        in: header
+        required: false
+        description: Rest.li method override used for batch / partial-update style calls.
+        schema:
+          type: string
+          enum:
+          - BATCH_CREATE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/7StreamUserDataAddOrRemoveMultipleUsersRequest'
+            examples:
+              7StreamUserDataAddOrRemoveMultipleUsers:
+                summary: 7. Stream user data - add or remove multiple users
+                value:
+                  elements:
+                  - action: ADD
+                    userIds:
+                    - idType: SHA256_EMAIL
+                      idValue: 6b56c85c1ce461e7ef77e3a52f13a6bc09feb93a04ce0670f9909e8ffde01f3a
+                  - action: ADD
+                    userIds:
+                    - idType: SHA256_EMAIL
+                      idValue: 0100c74de9670c6bf2882502a486ec9e9d259fd090f19895974bae7efdc87913
+                  - action: ADD
+                    userIds:
+                    - idType: SHA256_EMAIL
+                      idValue: 89147c81369d80ff259ed23a7d6949f2ce34b5e62619d7e00e880db0495bbed0
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/7StreamCompanyDataAddOrRemoveMultipleCompaniesResponse'
+              examples:
+                7StreamUserDataAddOrRemoveMultipleUsers:
+                  summary: 7. Stream user data - add or remove multiple users
+                  value:
+                    elements:
+                    - status: 201
+                    - status: 201
+        default:
+          $ref: '#/components/responses/Error'
+  /dmpSegments/{dmpSegmentId}/businessObjectiveBasedAudiences:
+    post:
+      operationId: 3CreatePredictiveAudience
+      summary: 3.  Create Predictive Audience
+      tags:
+      - Use Cases
+      description: This example created a predictive audience within the DMP segment created in step 2.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: dmpSegmentId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      - name: X-RestLi-Method
+        in: header
+        required: false
+        description: Rest.li method override used for batch / partial-update style calls.
+        schema:
+          type: string
+          enum:
+          - BATCH_CREATE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/3CreatePredictiveAudienceRequest'
+            examples:
+              3CreatePredictiveAudience:
+                summary: 3.  Create Predictive Audience
+                value:
+                  targetingFilter:
+                    include:
+                      and:
+                      - or:
+                          urn:li:adTargetingFacet:locations:
+                          - urn:li:countryGroup:AS
+                  desiredAudienceCount: 20000
+                  seeds:
+                  - urn:li:dmpSegment:{{seed_segment_id}}
+      responses:
+        '201':
+          description: OK
+        default:
+          $ref: '#/components/responses/Error'
+  /dmpSegments/{dmpSegmentId}/businessObjectiveBasedAudiences/{businessObjectiveBasedAudienceId}:
+    get:
+      operationId: 4RetrieveThePredictiveAudience
+      summary: 4. Retrieve the Predictive Audience
+      tags:
+      - Use Cases
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: dmpSegmentId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      - name: businessObjectiveBasedAudienceId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/4RetrieveThePredictiveAudienceResponse'
+              examples:
+                4RetrieveThePredictiveAudience:
+                  summary: 4. Retrieve the Predictive Audience
+                  value:
+                    targetingFilter:
+                      include:
+                        and:
+                        - or:
+                            urn:li:adTargetingFacet:locations:
+                            - urn:li:countryGroup:AS
+                    created: 1740775557000
+                    dmpSegmentId: 12345
+                    seeds:
+                    - urn:li:dmpSegment:84735
+                    versionTag: '1'
+                    lastModified: 1740775557000
+                    desiredAudienceCount: 20000
+        default:
+          $ref: '#/components/responses/Error'
+  /dmpSegments/{dmpSegmentId}/listUploads:
+    post:
+      operationId: 7AttachTheUploadedListToTheListUploadDMPSegment
+      summary: 7. Attach the Uploaded List to the List Upload DMP Segment
+      tags:
+      - Use Cases
+      description: 'This call attaches the uploaded CSV list file (using the media URN returned in step 5) to the
+        DMP segment created in step 6.
+
+
+        For more detail on [attaching an uploaded list to a DMP segment](https://docs.microsoft.com/linkedin/marketing/integrations/matched-audiences/create-and-manage-list-uploads?tabs=http#attach-list-to-dmp-segment),
+        see our online documentation.'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: dmpSegmentId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                inputFile:
+                  type: string
+            examples:
+              7AttachTheUploadedListToTheListUploadDMPSegment:
+                summary: 7. Attach the Uploaded List to the List Upload DMP Segment
+                value:
+                  inputFile: <media urn returned from step 5 curl call>
+      responses:
+        '201':
+          description: Success (inferred — the source collection has no saved example for this call)
+          headers:
+            x-restli-id:
+              schema:
+                type: string
+              description: Id (or URN) of the created resource.
+        default:
+          $ref: '#/components/responses/Error'
+components:
+  securitySchemes:
+    linkedinOAuth2:
+      type: oauth2
+      description: LinkedIn 3-legged OAuth 2.0 (authorization code).
+      flows:
+        authorizationCode:
+          authorizationUrl: https://www.linkedin.com/oauth/v2/authorization
+          tokenUrl: https://www.linkedin.com/oauth/v2/accessToken
+          scopes:
+            r_ads: LinkedIn permission `r_ads`
+            rw_dmp_segments: LinkedIn permission `rw_dmp_segments`
+            r_basicprofile: LinkedIn permission `r_basicprofile`
+  parameters:
+    LinkedInVersion:
+      name: LinkedIn-Version
+      in: header
+      required: true
+      description: API version in YYYYMM format (e.g. `202509`).
+      schema:
+        type: string
+        pattern: ^[0-9]{6}$
+    RestliProtocolVersion:
+      name: X-Restli-Protocol-Version
+      in: header
+      required: false
+      schema:
+        type: string
+        enum:
+        - 2.0.0
+        default: 2.0.0
+  responses:
+    Error:
+      description: Error response
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Error:
+      type: object
+      properties:
+        status:
+          type: integer
+        code:
+          type: string
+        serviceErrorCode:
+          type: integer
+        message:
+          type: string
+    GetAdAccountsResponse:
+      type: object
+      properties:
+        paging:
+          type: object
+          properties:
+            start:
+              type: integer
+            count:
+              type: integer
+            links:
+              type: array
+              items: {}
+            total:
+              type: integer
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              reference:
+                type: string
+              id:
+                type: integer
+              test:
+                type: boolean
+    GetDmpSegmentsResponse:
+      type: object
+      properties:
+        paging:
+          type: object
+          properties:
+            start:
+              type: integer
+            count:
+              type: integer
+            links:
+              type: array
+              items: {}
+            total:
+              type: integer
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              created:
+                type: integer
+                format: int64
+              destinations:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    audienceSize:
+                      type: integer
+                    created:
+                      type: integer
+                      format: int64
+                    destinationSegmentId:
+                      type: string
+                    destination:
+                      type: string
+                    matchedCount:
+                      type: integer
+                    lastModified:
+                      type: integer
+                      format: int64
+                    status:
+                      type: string
+              name:
+                type: string
+              sourcePlatform:
+                type: string
+              lastModified:
+                type: integer
+                format: int64
+              accessPolicy:
+                type: string
+              id:
+                type: integer
+              type:
+                type: string
+              account:
+                type: string
+              inputCount:
+                type: integer
+    PostDmpSegmentsRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        sourcePlatform:
+          type: string
+        account:
+          type: string
+        type:
+          type: string
+        destinations:
+          type: array
+          items:
+            type: object
+            properties:
+              destination:
+                type: string
+    7StreamCompanyDataAddOrRemoveMultipleCompaniesRequest:
+      type: object
+      properties:
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              action:
+                type: string
+              companyName:
+                type: string
+    7StreamCompanyDataAddOrRemoveMultipleCompaniesResponse:
+      type: object
+      properties:
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              status:
+                type: integer
+    7StreamUserDataAddOrRemoveMultipleUsersRequest:
+      type: object
+      properties:
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              action:
+                type: string
+              userIds:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    idType:
+                      type: string
+                    idValue:
+                      type: string
+    3CreatePredictiveAudienceRequest:
+      type: object
+      properties:
+        targetingFilter:
+          type: object
+          properties:
+            include:
+              type: object
+              properties:
+                and:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      or:
+                        type: object
+                        additionalProperties:
+                          type: array
+                          items:
+                            type: string
+        desiredAudienceCount:
+          type: integer
+        seeds:
+          type: array
+          items:
+            type: string
+    4RetrieveThePredictiveAudienceResponse:
+      type: object
+      properties:
+        targetingFilter:
+          type: object
+          properties:
+            include:
+              type: object
+              properties:
+                and:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      or:
+                        type: object
+                        additionalProperties:
+                          type: array
+                          items:
+                            type: string
+        created:
+          type: integer
+          format: int64
+        dmpSegmentId:
+          type: integer
+        seeds:
+          type: array
+          items:
+            type: string
+        versionTag:
+          type: string
+        lastModified:
+          type: integer
+          format: int64
+        desiredAudienceCount:
+          type: integer

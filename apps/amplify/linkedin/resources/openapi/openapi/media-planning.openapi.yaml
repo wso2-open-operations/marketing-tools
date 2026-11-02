@@ -1,0 +1,1137 @@
+openapi: 3.0.3
+info:
+  title: Media Planning
+  version: 1.0.0
+  description: "## Overview\n\nMedia Planning API can help Media Planners understand the reach and ROI that LinkedIn\
+    \ can offer to their client. It allows them to make budget allocation recommendations with confidence and know\
+    \ how to improve the results, even before spending the first dollar. Media Planning API helps Media Planners\
+    \ make that decision by giving the forecasted reach, impressions (and more in future, like clicks, leads) curve\
+    \ over the budget, based on inputs provided like targeted audience, campaign start/end date and more.\n\nNote:\
+    \ This is a private API that is available to qualified developers who meet additional criteria for access. To\
+    \ learn more about eligibility qualifications and how to request access, please see the [FAQ](https://learn.microsoft.com/en-us/linkedin/marketing/lms-faq#how-do-i-get-access-to-media-planning-api-product).\
+    \ If you wish to apply for access, please submit a [Zendesk support ticket](https://linkedin.zendesk.com/).\n\
+    \n## Permissions\n\nMedia Planning API requires a [3-legged OAuth](https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow)\
+    \ member token and your developer application needs to be provisioned with the Media Planning API product. Once\
+    \ you have been approved to access, you can use any valid member access token associated with the authenticated\
+    \ user with any valid scope permissions for member authentication. If there is no valid member token for the\
+    \ relevant user from any previous integration, we recommend using the bare minimum scope permissions like `r_ads`\
+    \ which will be required to fetch authenticated user's ad accounts.  \nNote: This API is application-specific;\
+    \ hence, explicit member consent is not required. Any valid member access token associated with the authenticated\
+    \ user can be used, and you do not need to add any additional permission in the scope of your Oauth2 flow for\
+    \ authorization.\n\nThis collection aims to focus on different Media Planning use cases and should be used with\
+    \ the **media-planning-env-versioning** environment.\n\n\\--All requests for the Media Planning API collection\
+    \ are in the Restli 2.0 format--\n\n_Generated from the Postman collection \"Media Planning\". All calls use\
+    \ Rest.li 2.0 conventions: send `X-Restli-Protocol-Version: 2.0.0` and a `LinkedIn-Version` header (YYYYMM).\
+    \ Query parameters such as `List(...)`, `(a:b,c:d)` and URNs are Rest.li-encoded strings; do not re-encode the\
+    \ structural characters `( ) , :`. Several finders/actions share one path in LinkedIn's API, so they are modelled\
+    \ as one operation with a `q`/`action` selector. Schemas are inferred from the example payloads saved in the\
+    \ collection: every field is optional and field semantics are not documented here._"
+servers:
+- url: https://api.linkedin.com/rest
+  description: LinkedIn REST API (`{{baseUrl}}` in the Postman environment)
+security:
+- bearerAuth: []
+tags:
+- name: Ad Targeting Entities
+- name: Forecast Media Plans
+- name: Manage Media Plans
+paths:
+  /adTargetingFacets:
+    get:
+      operationId: getAListOfAvailableAdTargetingFacets
+      summary: Get a list of available Ad Targeting Facets
+      tags:
+      - Ad Targeting Entities
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAListOfAvailableAdTargetingFacetsResponse'
+              examples:
+                getAListOfAvailableAdTargetingFacets:
+                  summary: Get a list of available Ad Targeting Facets
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                    elements:
+                    - entityTypes:
+                      - FUNCTION
+                      facetName: jobFunctions
+                      $URN: urn:li:adTargetingFacet:jobFunctions
+                      availableEntityFinders:
+                      - AD_TARGETING_FACET
+                    - entityTypes:
+                      - AGE
+                      facetName: ageRanges
+                      $URN: urn:li:adTargetingFacet:ageRanges
+                      availableEntityFinders:
+                      - AD_TARGETING_FACET
+        default:
+          $ref: '#/components/responses/Error'
+  /adTargetingEntities:
+    get:
+      operationId: getAdTargetingEntities
+      summary: Query adTargetingEntities
+      tags:
+      - Ad Targeting Entities
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Get all seniorities** (`q=adTargetingFacet`)
+
+        - **Get all job functions** (`q=adTargetingFacet`)
+
+        - **Get all job titles (paginated)** (`q=adTargetingFacet`)
+
+        - **Get all skills (paginated)** (`q=adTargetingFacet`)
+
+        - **Get all interests** (`q=adTargetingFacet`)
+
+        - **Get all member behaviors** (`q=adTargetingFacet`)
+
+        - **Get all yearsOfExperience ranges** (`q=adTargetingFacet`)
+
+        - **Get all age ranges** (`q=adTargetingFacet`)
+
+        - **Get all industries** (`q=adTargetingFacet`)
+
+        - **Get all company revenue categories** (`q=adTargetingFacet`)
+
+        - **Get all company ranking list categories** (`q=adTargetingFacet`)
+
+        - **Get all company growth rate categories** (`q=adTargetingFacet`)
+
+        - **Get all company staff count categories** (`q=adTargetingFacet`)
+
+        - **Get Bing Geo locations using search typeahead** (`q=typeahead`)'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - adTargetingFacet
+          - typeahead
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: queryVersion
+        in: query
+        required: false
+        schema:
+          type: string
+        example: QUERY_USES_URNS
+      - name: facet
+        in: query
+        required: false
+        schema:
+          type: string
+        example: urn:li:adTargetingFacet:seniorities
+      - name: fields
+        in: query
+        required: false
+        schema:
+          type: string
+        example: name,urn
+        allowReserved: true
+      - name: start
+        in: query
+        required: false
+        schema:
+          type: integer
+        example: 0
+      - name: count
+        in: query
+        required: false
+        schema:
+          type: integer
+        example: 1000
+      - name: totals
+        in: query
+        required: false
+        schema:
+          type: boolean
+        example: false
+      - name: query
+        in: query
+        required: false
+        schema:
+          type: string
+        example: united states
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAdTargetingEntitiesResponse'
+              examples:
+                getAllSeniorities:
+                  summary: Get all seniorities
+                  value:
+                    paging:
+                      start: 0
+                      count: 2147483647
+                      links: []
+                      total: 10
+                    elements:
+                    - name: Unpaid
+                      urn: urn:li:seniority:1
+                    - name: Training
+                      urn: urn:li:seniority:2
+                getAllJobFunctions:
+                  summary: Get all job functions
+                  value:
+                    paging:
+                      start: 0
+                      count: 2147483647
+                      links: []
+                      total: 26
+                    elements:
+                    - name: Accounting
+                      urn: urn:li:function:1
+                    - name: Administrative
+                      urn: urn:li:function:2
+                getAllJobTitlesPaginated:
+                  summary: Get all job titles (paginated)
+                  value:
+                    paging:
+                      start: 0
+                      count: 1000
+                      links:
+                      - type: application/json
+                        rel: next
+                        href: /rest/adTargetingEntities?q=adTargetingFacet&start=1000&count=1000&totals=false&fields=urn,name&facet=urn%3Ali%3AadTargetingFacet%3Atitles&queryVersion=QUERY_USES_URNS
+                    elements:
+                    - name: Owner
+                      urn: urn:li:title:1
+                    - name: Manager
+                      urn: urn:li:title:2
+        default:
+          $ref: '#/components/responses/Error'
+  /mediaPlanning:
+    post:
+      operationId: postMediaPlanning
+      summary: Create / update / action on mediaPlanning
+      tags:
+      - Forecast Media Plans
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Forecast Reach Curve** (`action=forecastReaches`)
+
+        - **Forecast Reach Percentage Curve** (`action=forecastReaches`)
+
+        - **Forecast Impression Curve** (`action=forecastImpressions`)
+
+        - **Forecast Avg Lifetime Frequency** (`action=forecastImpressions`)'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: action
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - forecastReaches
+          - forecastImpressions
+        description: Rest.li action name.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostMediaPlanningRequest'
+            examples:
+              forecastReachCurve:
+                summary: Forecast Reach Curve
+                value:
+                  request:
+                    sponsoredAccountUrn: urn:li:sponsoredAccount:{{sponsoredaccount_id}}
+                    targetingCriteria:
+                      include:
+                        and:
+                        - or:
+                            urn:li:adTargetingFacet:ageRanges:
+                            - urn:li:ageRange:(18,24)
+                        - or:
+                            urn:li:adTargetingFacet:locations:
+                            - urn:li:geo:103644278
+                    targetBudgetMicros: 300000000
+                    optimizationType: MAX_REACH
+                    objectiveType: BRAND_AWARENESS
+                    enableAudienceExpansion: true
+                    enableAudienceNetwork: true
+                    startDateOn:
+                      day: 1
+                      month: 4
+                      year: 2024
+                    endDateOn:
+                      day: 1
+                      month: 5
+                      year: 2024
+              forecastReachPercentageCurve:
+                summary: Forecast Reach Percentage Curve
+                value:
+                  request:
+                    sponsoredAccountUrn: urn:li:sponsoredAccount:{{sponsoredaccount_id}}
+                    targetingCriteria:
+                      include:
+                        and:
+                        - or:
+                            urn:li:adTargetingFacet:ageRanges:
+                            - urn:li:ageRange:(18,24)
+                        - or:
+                            urn:li:adTargetingFacet:locations:
+                            - urn:li:geo:103644278
+                    targetBudgetMicros: 300000000
+                    optimizationType: MAX_REACH
+                    objectiveType: BRAND_AWARENESS
+                    enableAudienceExpansion: false
+                    enableAudienceNetwork: true
+                    startDateOn:
+                      day: 1
+                      month: 4
+                      year: 2024
+                    endDateOn:
+                      day: 1
+                      month: 5
+                      year: 2024
+              forecastImpressionCurve:
+                summary: Forecast Impression Curve
+                value:
+                  request:
+                    sponsoredAccountUrn: urn:li:sponsoredAccount:{{sponsoredaccount_id}}
+                    targetingCriteria:
+                      include:
+                        and:
+                        - or:
+                            urn:li:adTargetingFacet:ageRanges:
+                            - urn:li:ageRange:(18,24)
+                        - or:
+                            urn:li:adTargetingFacet:locations:
+                            - urn:li:geo:103644278
+                    optimizationType: MAX_REACH
+                    objectiveType: BRAND_AWARENESS
+                    enableAudienceExpansion: true
+                    enableAudienceNetwork: true
+                    startDateOn:
+                      day: 1
+                      month: 4
+                      year: 2024
+                    endDateOn:
+                      day: 1
+                      month: 5
+                      year: 2024
+              forecastAvgLifetimeFrequency:
+                summary: Forecast Avg Lifetime Frequency
+                value:
+                  request:
+                    sponsoredAccountUrn: urn:li:sponsoredAccount:{{sponsoredaccount_id}}
+                    targetingCriteria:
+                      include:
+                        and:
+                        - or:
+                            urn:li:adTargetingFacet:ageRanges:
+                            - urn:li:ageRange:(18,24)
+                        - or:
+                            urn:li:adTargetingFacet:locations:
+                            - urn:li:geo:103644278
+                    targetBudgetMicros: 300000000
+                    optimizationType: MAX_REACH
+                    objectiveType: BRAND_AWARENESS
+                    enableAudienceExpansion: true
+                    enableAudienceNetwork: true
+                    startDateOn:
+                      day: 1
+                      month: 4
+                      year: 2024
+                    endDateOn:
+                      day: 1
+                      month: 5
+                      year: 2024
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostMediaPlanningResponse'
+              examples:
+                forecastReachCurve:
+                  summary: Forecast Reach Curve
+                  value:
+                    value:
+                      reachCurve:
+                        metricCurve:
+                        - metricUpper: 25659.671418622052
+                          metricValue: 21383.05859375
+                          budgetMicros: 100000000
+                          metricLower: 17106.447187571506
+                        - metricUpper: 27496.198628198934
+                          metricValue: 22913.498046875
+                          budgetMicros: 109838386
+                          metricLower: 18330.798630215664
+                        singlePointMetric:
+                          metricUpper: 25659.67133212369
+                          metricValue: 21383.05859375
+                          budgetMicros: 100000000
+                          metricLower: 17106.447129905922
+                forecastReachPercentageCurve:
+                  summary: Forecast Reach Percentage Curve
+                  value:
+                    value:
+                      reachCurve:
+                        metricCurve:
+                        - metricUpper: 33647.62453523772
+                          metricValue: 28039.685546875
+                          budgetMicros: 100000000
+                          metricLower: 22431.74913305982
+                        - metricUpper: 34197.68409919554
+                          metricValue: 28803.34375
+                          budgetMicros: 106459541
+                          metricLower: 23042.67505878464
+                        singlePointMetric:
+                          metricUpper: 33647.6239932864
+                          metricValue: 28039.685546875
+                          budgetMicros: 100000000
+                          metricLower: 22431.7487717591
+                      reachPercentageCurve:
+                        metricCurve:
+                        - metricUpper: 50.74750322037542
+                          metricValue: 42.289581298828125
+                          budgetMicros: 100000000
+                          metricLower: 33.83166797336484
+                        - metricUpper: 51.57710560327513
+                          metricValue: 43.44133377075195
+                          budgetMicros: 106459541
+                          metricLower: 34.75306928508784
+                        singlePointMetric:
+                          metricUpper: 50.74749957511813
+                          metricValue: 42.289581298828125
+                          budgetMicros: 100000000
+                          metricLower: 33.831665543193594
+                forecastImpressionCurve:
+                  summary: Forecast Impression Curve
+                  value:
+                    value:
+                      impressionCurve:
+                        metricCurve:
+                        - metricUpper: 41041.77753037701
+                          metricValue: 34201.48046875
+                          budgetMicros: 100000000
+                          metricLower: 27361.184340729073
+                        - metricUpper: 44134.88726831776
+                          metricValue: 36779.0703125
+                          budgetMicros: 108898986
+                          metricLower: 29423.257448144108
+        default:
+          $ref: '#/components/responses/Error'
+  /mediaPlans:
+    post:
+      operationId: createAMediaPlan
+      summary: Create a Media Plan
+      tags:
+      - Manage Media Plans
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: forecastMetricType
+        in: query
+        required: false
+        schema:
+          type: string
+        example: REACH
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAMediaPlanRequest'
+            examples:
+              createAMediaPlan:
+                summary: Create a Media Plan
+                value:
+                  name: TEST_MEDIA_PLAN
+                  sponsoredAccountUrn: urn:li:sponsoredAccount:{{sponsoredaccount_id}}
+                  targetingCriteria:
+                    include:
+                      and:
+                      - or:
+                          urn:li:adTargetingFacet:locations:
+                          - urn:li:geo:105080838
+                      - or:
+                          urn:li:adTargetingFacet:interfaceLocales:
+                          - urn:li:locale:en_US
+                      - or:
+                          urn:li:adTargetingFacet:skills:
+                          - urn:li:skill:236
+                          - urn:li:skill:242
+                          - urn:li:skill:252
+                  currencyCode: USD
+                  objectiveType: BRAND_AWARENESS
+                  optimizationType: MAX_REACH
+                  targetBudgetMicros: 200000000
+                  enableAudienceNetwork: true
+                  enableAudienceExpansion: true
+                  ctvOnly: false
+                  endDateOn:
+                    month: 3
+                    year: 2025
+                    day: 5
+                  startDateOn:
+                    month: 12
+                    year: 2024
+                    day: 6
+      responses:
+        '201':
+          description: Created
+          headers:
+            x-restli-id:
+              schema:
+                type: string
+              description: Id (or URN) of the created resource.
+        default:
+          $ref: '#/components/responses/Error'
+    get:
+      operationId: fetchAllMediaPlansInAnAdAccount
+      summary: Fetch all Media Plans in an Ad Account
+      tags:
+      - Manage Media Plans
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - getAllMediaPlans
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: accountUrn
+        in: query
+        required: false
+        schema:
+          type: string
+        example: urn:li:sponsoredAccount:123456
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FetchAllMediaPlansInAnAdAccountResponse'
+              examples:
+                forecastReachCurve:
+                  summary: Forecast Reach Curve
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                    elements:
+                    - creator: urn:li:person:xyz
+                      targetBudgetMicros: 200000000
+                      enableAudienceNetwork: true
+                      targetingCriteria:
+                        include:
+                          and:
+                          - or:
+                              urn:li:adTargetingFacet:skills:
+                              - urn:li:skill:236
+                              - urn:li:skill:242
+                          - or:
+                              urn:li:adTargetingFacet:locations:
+                              - urn:li:geo:105080838
+                      endDateOn:
+                        month: 3
+                        year: 2025
+                        day: 5
+                      ctvOnly: false
+                      startDateOn:
+                        month: 12
+                        year: 2024
+                        day: 6
+                      objectiveType: BRAND_AWARENESS
+                      createdAt: 1733468343336
+                      reachCurve:
+                        metricCurve:
+                        - metricUpper: 13559.999942779541
+                          metricValue: 12000.0
+                          budgetMicros: 100000000
+                          metricLower: 10440.000057220459
+                        - metricUpper: 719941.7518669176
+                          metricValue: 600140.0
+                          budgetMicros: 35152515625
+                          metricLower: 480338.3312979588
+                        singlePointMetric:
+                          metricUpper: 73230.62905367583
+                          metricValue: 61635.265625
+                          budgetMicros: 200000000
+                          metricLower: 50040.03962425415
+                      enableAudienceExpansion: true
+                      optimizationType: MAX_REACH
+                      name: TEST_MEDIA_PLAN
+                      sponsoredAccountUrn: urn:li:sponsoredAccount:123456
+                      mediaPlanUrn: urn:li:mediaPlan:1234567
+                      currencyCode: USD
+                    - creator: urn:li:person:xyz
+                      targetBudgetMicros: 200000000
+                      enableAudienceNetwork: true
+                      targetingCriteria:
+                        include:
+                          and:
+                          - or:
+                              urn:li:adTargetingFacet:skills:
+                              - urn:li:skill:236
+                              - urn:li:skill:242
+                          - or:
+                              urn:li:adTargetingFacet:locations:
+                              - urn:li:geo:105080838
+                      endDateOn:
+                        month: 3
+                        year: 2025
+                        day: 5
+                      ctvOnly: false
+                      startDateOn:
+                        month: 12
+                        year: 2024
+                        day: 6
+                      objectiveType: BRAND_AWARENESS
+                      createdAt: 1733467844713
+                      reachCurve:
+                        metricCurve:
+                        - metricUpper: 13559.999942779541
+                          metricValue: 12000.0
+                          budgetMicros: 100000000
+                          metricLower: 10440.000057220459
+                        - metricUpper: 719941.7518669176
+                          metricValue: 600140.0
+                          budgetMicros: 35152515625
+                          metricLower: 480338.3312979588
+                        singlePointMetric:
+                          metricUpper: 73230.62905367583
+                          metricValue: 61635.265625
+                          budgetMicros: 200000000
+                          metricLower: 50040.03962425415
+                      enableAudienceExpansion: true
+                      optimizationType: MAX_REACH
+                      name: TEST_MEDIA_PLAN
+                      sponsoredAccountUrn: urn:li:sponsoredAccount:123456
+                      mediaPlanUrn: urn:li:mediaPlan:1234567
+                      currencyCode: USD
+        default:
+          $ref: '#/components/responses/Error'
+  /mediaPlans/{mediaPlanUrn}:
+    get:
+      operationId: fetchAMediaPlan
+      summary: Fetch a Media Plan
+      tags:
+      - Manage Media Plans
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: mediaPlanUrn
+        in: path
+        required: true
+        description: URN of the resource (URL-encoded).
+        schema:
+          type: string
+      - name: accountUrn
+        in: query
+        required: false
+        schema:
+          type: string
+        example: urn:li:sponsoredAccount:123456
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Elements'
+              examples:
+                forecastReachCurve:
+                  summary: Forecast Reach Curve
+                  value:
+                    creator: urn:li:person:xyz
+                    targetBudgetMicros: 200000000
+                    enableAudienceNetwork: true
+                    targetingCriteria:
+                      include:
+                        and:
+                        - or:
+                            urn:li:adTargetingFacet:skills:
+                            - urn:li:skill:236
+                            - urn:li:skill:242
+                        - or:
+                            urn:li:adTargetingFacet:locations:
+                            - urn:li:geo:105080838
+                    endDateOn:
+                      month: 3
+                      year: 2025
+                      day: 5
+                    ctvOnly: false
+                    startDateOn:
+                      month: 12
+                      year: 2024
+                      day: 6
+                    objectiveType: BRAND_AWARENESS
+                    createdAt: 1733467427466
+                    reachCurve:
+                      metricCurve:
+                      - metricUpper: 13559.999942779541
+                        metricValue: 12000.0
+                        budgetMicros: 100000000
+                        metricLower: 10440.000057220459
+                      - metricUpper: 719941.7518669176
+                        metricValue: 600140.0
+                        budgetMicros: 35152515625
+                        metricLower: 480338.3312979588
+                      singlePointMetric:
+                        metricUpper: 73230.62905367583
+                        metricValue: 61635.265625
+                        budgetMicros: 200000000
+                        metricLower: 50040.03962425415
+                    enableAudienceExpansion: true
+                    optimizationType: MAX_REACH
+                    name: TEST_MEDIA_PLAN
+                    sponsoredAccountUrn: urn:li:sponsoredAccount:123456
+                    mediaPlanUrn: urn:li:mediaPlan:123456
+                    currencyCode: USD
+        default:
+          $ref: '#/components/responses/Error'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: LinkedIn OAuth 2.0 access token.
+  parameters:
+    LinkedInVersion:
+      name: LinkedIn-Version
+      in: header
+      required: true
+      description: API version in YYYYMM format (e.g. `202509`).
+      schema:
+        type: string
+        pattern: ^[0-9]{6}$
+    RestliProtocolVersion:
+      name: X-Restli-Protocol-Version
+      in: header
+      required: false
+      schema:
+        type: string
+        enum:
+        - 2.0.0
+        default: 2.0.0
+  responses:
+    Error:
+      description: Error response
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Error:
+      type: object
+      properties:
+        status:
+          type: integer
+        code:
+          type: string
+        serviceErrorCode:
+          type: integer
+        message:
+          type: string
+    Elements:
+      type: object
+      properties:
+        creator:
+          type: string
+        targetBudgetMicros:
+          type: integer
+        enableAudienceNetwork:
+          type: boolean
+        targetingCriteria:
+          type: object
+          properties:
+            include:
+              type: object
+              properties:
+                and:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      or:
+                        type: object
+                        additionalProperties:
+                          type: array
+                          items:
+                            type: string
+        endDateOn:
+          type: object
+          properties:
+            month:
+              type: integer
+            year:
+              type: integer
+            day:
+              type: integer
+        ctvOnly:
+          type: boolean
+        startDateOn:
+          type: object
+          properties:
+            month:
+              type: integer
+            year:
+              type: integer
+            day:
+              type: integer
+        objectiveType:
+          type: string
+        createdAt:
+          type: integer
+          format: int64
+        reachCurve:
+          type: object
+          properties:
+            metricCurve:
+              type: array
+              items:
+                type: object
+                properties:
+                  metricUpper:
+                    type: number
+                  metricValue:
+                    type: number
+                  budgetMicros:
+                    type: integer
+                    format: int64
+                  metricLower:
+                    type: number
+            singlePointMetric:
+              type: object
+              properties:
+                metricUpper:
+                  type: number
+                metricValue:
+                  type: number
+                budgetMicros:
+                  type: integer
+                metricLower:
+                  type: number
+        enableAudienceExpansion:
+          type: boolean
+        optimizationType:
+          type: string
+        name:
+          type: string
+        sponsoredAccountUrn:
+          type: string
+        mediaPlanUrn:
+          type: string
+        currencyCode:
+          type: string
+    GetAListOfAvailableAdTargetingFacetsResponse:
+      type: object
+      properties:
+        paging:
+          type: object
+          properties:
+            start:
+              type: integer
+            count:
+              type: integer
+            links:
+              type: array
+              items: {}
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              entityTypes:
+                type: array
+                items:
+                  type: string
+              facetName:
+                type: string
+              $URN:
+                type: string
+              availableEntityFinders:
+                type: array
+                items:
+                  type: string
+    GetAdTargetingEntitiesResponse:
+      type: object
+      properties:
+        paging:
+          type: object
+          properties:
+            start:
+              type: integer
+            count:
+              type: integer
+            links:
+              type: array
+              items:
+                type: object
+                properties:
+                  type:
+                    type: string
+                  rel:
+                    type: string
+                  href:
+                    type: string
+            total:
+              type: integer
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              urn:
+                type: string
+              facetUrn:
+                type: string
+    PostMediaPlanningRequest:
+      type: object
+      properties:
+        request:
+          type: object
+          properties:
+            sponsoredAccountUrn:
+              type: string
+            targetingCriteria:
+              type: object
+              properties:
+                include:
+                  type: object
+                  properties:
+                    and:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          or:
+                            type: object
+                            additionalProperties:
+                              type: array
+                              items:
+                                type: string
+            targetBudgetMicros:
+              type: integer
+            optimizationType:
+              type: string
+            objectiveType:
+              type: string
+            enableAudienceExpansion:
+              type: boolean
+            enableAudienceNetwork:
+              type: boolean
+            startDateOn:
+              type: object
+              properties:
+                day:
+                  type: integer
+                month:
+                  type: integer
+                year:
+                  type: integer
+            endDateOn:
+              type: object
+              properties:
+                day:
+                  type: integer
+                month:
+                  type: integer
+                year:
+                  type: integer
+    PostMediaPlanningResponse:
+      type: object
+      properties:
+        value:
+          type: object
+          properties:
+            reachCurve:
+              type: object
+              properties:
+                metricCurve:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      metricUpper:
+                        type: number
+                      metricValue:
+                        type: number
+                      budgetMicros:
+                        type: integer
+                      metricLower:
+                        type: number
+                singlePointMetric:
+                  type: object
+                  properties:
+                    metricUpper:
+                      type: number
+                    metricValue:
+                      type: number
+                    budgetMicros:
+                      type: integer
+                    metricLower:
+                      type: number
+            reachPercentageCurve:
+              type: object
+              properties:
+                metricCurve:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      metricUpper:
+                        type: number
+                      metricValue:
+                        type: number
+                      budgetMicros:
+                        type: integer
+                      metricLower:
+                        type: number
+                singlePointMetric:
+                  type: object
+                  properties:
+                    metricUpper:
+                      type: number
+                    metricValue:
+                      type: number
+                    budgetMicros:
+                      type: integer
+                    metricLower:
+                      type: number
+            impressionCurve:
+              type: object
+              properties:
+                metricCurve:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      metricUpper:
+                        type: number
+                      metricValue:
+                        type: number
+                      budgetMicros:
+                        type: integer
+                      metricLower:
+                        type: number
+                singlePointMetric:
+                  type: object
+                  properties:
+                    metricUpper:
+                      type: number
+                    metricValue:
+                      type: number
+                    budgetMicros:
+                      type: integer
+                    metricLower:
+                      type: number
+            averageFrequency:
+              type: object
+              properties:
+                metricCurve:
+                  type: array
+                  items: {}
+                singlePointMetric:
+                  type: object
+                  properties:
+                    metricValue:
+                      type: number
+                    budgetMicros:
+                      type: integer
+    CreateAMediaPlanRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        sponsoredAccountUrn:
+          type: string
+        targetingCriteria:
+          type: object
+          properties:
+            include:
+              type: object
+              properties:
+                and:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      or:
+                        type: object
+                        additionalProperties:
+                          type: array
+                          items:
+                            type: string
+        currencyCode:
+          type: string
+        objectiveType:
+          type: string
+        optimizationType:
+          type: string
+        targetBudgetMicros:
+          type: integer
+        enableAudienceNetwork:
+          type: boolean
+        enableAudienceExpansion:
+          type: boolean
+        ctvOnly:
+          type: boolean
+        endDateOn:
+          type: object
+          properties:
+            month:
+              type: integer
+            year:
+              type: integer
+            day:
+              type: integer
+        startDateOn:
+          type: object
+          properties:
+            month:
+              type: integer
+            year:
+              type: integer
+            day:
+              type: integer
+    FetchAllMediaPlansInAnAdAccountResponse:
+      type: object
+      properties:
+        paging:
+          type: object
+          properties:
+            start:
+              type: integer
+            count:
+              type: integer
+            links:
+              type: array
+              items: {}
+        elements:
+          type: array
+          items:
+            $ref: '#/components/schemas/Elements'

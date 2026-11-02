@@ -1,0 +1,574 @@
+openapi: 3.0.3
+info:
+  title: Reporting & ROI
+  version: 1.0.0
+  description: '**You must apply for access to the LinkedIn Advertising APIs in order to gain access to these APIs.
+    See the** [**Developer Platform**](https://developer.linkedin.com/product-catalog/marketing/reporting-and-roi)
+    **on how to apply.**
+
+
+    [LinkedIn''s Reporting & ROI APIs](https://learn.microsoft.com/en-us/linkedin/marketing/integrations/ads-reporting/getting-started)
+    enable you to leverage LinkedIn marketing data to automate internal reporting and gain valuable insights. Partners
+    can integrate LinkedIn data into their solutions to retrieve performance data, targeting information, audience
+    insights, and much more.
+
+
+    This collection aims to focus on different Reporting & ROI use cases and should be used with the **reporting-roi-env-versioning**
+    environment.
+
+
+    \--All requests for the Reporting & ROI API collection are in the Restli 2.0 format--
+
+
+    AuthorizationOAuth 2.0
+
+
+    _Generated from the Postman collection "Reporting & ROI". All calls use Rest.li 2.0 conventions: send `X-Restli-Protocol-Version:
+    2.0.0` and a `LinkedIn-Version` header (YYYYMM). Query parameters such as `List(...)`, `(a:b,c:d)` and URNs
+    are Rest.li-encoded strings; do not re-encode the structural characters `( ) , :`. Several finders/actions share
+    one path in LinkedIn''s API, so they are modelled as one operation with a `q`/`action` selector. Schemas are
+    inferred from the example payloads saved in the collection: every field is optional and field semantics are
+    not documented here._'
+servers:
+- url: https://api.linkedin.com/rest
+  description: LinkedIn REST API (`{{baseUrl}}` in the Postman environment)
+security:
+- linkedinOAuth2:
+  - r_ads
+  - r_ads_reporting
+  - r_basicprofile
+tags:
+- name: Use Cases
+paths:
+  /adAnalytics:
+    get:
+      operationId: getAdAnalytics
+      summary: Query adAnalytics
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **By Creative + Campaign with creative type,status & campaign name, type, status, campaign group projection**
+        (`q=statistics`): This API slice the conversion and the campaign data against campaign name, type, status
+        and campaign group projection.
+
+        - **By Creative with content projection for different creative types** (`q=analytics`): This API slice the
+        creative data against content projections for different creative types.
+
+        - **By Member Industry with name projection** (`q=analytics`): This API pull the analytics data by slicing
+        it through the member insdustry with name projection.
+
+        - **By Conversion + Campaign with campaign name, type, status, campaign group projection** (`q=statistics`):
+        This API slice the conversion and the campaign data against nme, type, status and campaign projection.
+
+        - **By Member Company with name & website projection** (`q=analytics`): This API pull the analytics data
+        by slicing it through the member company with name and website projection.
+
+        - **Performance - by Objective** (`q=statistics`)
+
+        - **Performance - by Campaign** (`q=analytics`)
+
+        - **Performance - by Creative** (`q=analytics`)
+
+        - **Performance - Dashboard Overview** (`q=analytics`)
+
+        - **Demographics - Member Company** (`q=analytics`)
+
+        - **Demographics - Member Funtion** (`q=analytics`)
+
+        - **Demographics - Member Seniority** (`q=analytics`)
+
+        - **Demographics - Member Title** (`q=analytics`)
+
+        - **Account Performance Bundle** (`q=analytics`)
+
+        - **Account Engagement Bundle** (`q=analytics`)
+
+        - **Basic Conversion Type** (`q=statistics`)
+
+        - **Conversions through Funnel** (`q=statistics`)
+
+        - **Conversions by Member Company** (`q=analytics`)
+
+        - **Conversions by Member Function** (`q=analytics`)
+
+        - **Conversions by Member Seniority** (`q=analytics`)
+
+        - **Conversions by Member Job Title** (`q=analytics`)
+
+        - **Conversions by Member Industry** (`q=analytics`)
+
+        - **Conversions by Member Company Size** (`q=analytics`)
+
+        - **Revenue Metrics By Ad Account** (`q=attributedRevenueMetrics`)
+
+        - **Ad Metrics By Ad Account** (`q=analytics`)
+
+        - **Revenue Metrics By Ad Account + Campaign Group + Campaign** (`q=attributedRevenueMetrics`)
+
+        - **Ad Metrics By Ad Account + Campaign Group + Campaign** (`q=statistics`)'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - statistics
+          - analytics
+          - attributedRevenueMetrics
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: dateRange
+        in: query
+        required: false
+        schema:
+          type: string
+        example: (start:(day:1,month:1,year:2023),end:(day:30,month:3,year:2023))
+        allowReserved: true
+      - name: timeGranularity
+        in: query
+        required: false
+        schema:
+          type: string
+        example: ALL
+        allowReserved: true
+      - name: accounts
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: pivots
+        in: query
+        required: false
+        schema:
+          type: string
+        example: List(CREATIVE,CAMPAIGN)
+        allowReserved: true
+      - name: fields
+        in: query
+        required: false
+        schema:
+          type: string
+        example: impressions,clicks,totalEngagements,comments,shares,reactions,approximateUniqueImpressions,externalWebsiteConversions,externalWebsitePostClickConversions,externalWebsitePostViewConversions,conversionValueInLocalCurrency,oneClickLeads
+        allowReserved: true
+      - name: pivot
+        in: query
+        required: false
+        schema:
+          type: string
+        example: CREATIVE
+      - name: projection
+        in: query
+        required: false
+        schema:
+          type: string
+        example: (*,elements*(*,approximateUniqueImpressions, pivotValue~(vanityName,localizedName,localizedWebsite)))
+        allowReserved: true
+      - name: account
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAdAnalyticsResponse'
+              examples:
+                byCreativeCampaignWithCreativeTypeStatusCampaignNameTypeStat:
+                  summary: By Creative + Campaign with creative type,status & campaign name, type, status, campaign
+                    group projection
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                    elements:
+                    - externalWebsitePostClickConversions: 1
+                      shares: 0
+                      pivot: CREATIVE
+                      pivotValues~:
+                      - type: SPONSORED_VIDEO
+                        status: ACTIVE
+                      - campaignGroup: urn:li:sponsoredCampaignGroup:123
+                        campaignGroup~:
+                          name: Default Campaign Group
+                          id: 123
+                          status: ACTIVE
+                        name: Website visits - Jan 6, 2020
+                        id: 234
+                        type: SPONSORED_UPDATES
+                        objectiveType: WEBSITE_VISIT
+                        status: COMPLETED
+                      pivotValue: urn:li:sponsoredCreative:345
+                      comments: 1
+                      externalWebsitePostViewConversions: 2
+                      oneClickLeads: 0
+                      conversionValueInLocalCurrency: '0'
+                      impressions: 1505
+                      externalWebsiteConversions: 3
+                      clicks: 40
+                      totalEngagements: 217
+                      reactions: 8
+                      pivotValues:
+                      - urn:li:sponsoredCreative:345
+                      - urn:li:sponsoredCampaign:234
+                      approximateUniqueImpressions: 1120
+                    - externalWebsitePostClickConversions: 0
+                      shares: 0
+                      pivot: CREATIVE
+                      pivotValues~:
+                      - type: SPONSORED_VIDEO
+                        status: PAUSED
+                      - campaignGroup: urn:li:sponsoredCampaignGroup:567
+                        campaignGroup~:
+                          name: Default Campaign Group
+                          id: 567
+                          status: ACTIVE
+                        name: Video views 2
+                        id: 456
+                        type: SPONSORED_UPDATES
+                        objectiveType: VIDEO_VIEW
+                        status: COMPLETED
+                      pivotValue: urn:li:sponsoredCreative:678
+                      comments: 1
+                      externalWebsitePostViewConversions: 1
+                      oneClickLeads: 0
+                      conversionValueInLocalCurrency: '0'
+                      impressions: 867
+                      externalWebsiteConversions: 1
+                      clicks: 46
+                      totalEngagements: 72
+                      reactions: 4
+                      pivotValues:
+                      - urn:li:sponsoredCreative:678
+                      - urn:li:sponsoredCampaign:456
+                      approximateUniqueImpressions: 628
+                byCreativeWithContentProjectionForDifferentCreativeTypes:
+                  summary: By Creative with content projection for different creative types
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                    elements:
+                    - pivotValue: urn:li:sponsoredCreative:123
+                      externalWebsiteConversions: 0
+                      pivotValue~:
+                        variables:
+                          data:
+                            com.linkedin.ads.SponsoredVideoCreativeVariables:
+                              mediaAsset~:
+                                paging:
+                                  count: 10
+                                  start: 0
+                                  links: []
+                                elements: []
+                              videoAspectRatio:
+                                widthAspect: 1
+                                heightAspect: 1.1111112
+                              mediaAsset: urn:li:digitalmediaAsset:123
+                              userGeneratedContentPost: urn:li:ugcPost:12345
+                              directSponsoredContent: true
+                              durationMicro: 10167000
+                      clicks: 1
+                      impressions: 8
+                      likes: 0
+                byMemberIndustryWithNameProjection:
+                  summary: By Member Industry with name projection
+                  value:
+                    paging:
+                      count: 10
+                      start: 0
+                      links: []
+                    elements:
+                    - pivotValues~:
+                      - name:
+                          localized:
+                            en_US: Internet
+                      comments: 0
+                      landingPageClicks: 53
+                      follows: 0
+                      impressions: 4219
+                      shares: 0
+                      externalWebsiteConversions: 0
+                      clicks: 136
+                      totalEngagements: 342
+                      pivotValues:
+                      - urn:li:industry:6
+                      likes: 16
+                    - pivotValues~:
+                      - name:
+                          localized:
+                            en_US: Computer Software
+                      comments: 0
+                      landingPageClicks: 53
+                      follows: 0
+                      impressions: 3973
+                      shares: 0
+                      externalWebsiteConversions: 0
+                      clicks: 134
+                      totalEngagements: 342
+                      pivotValues:
+                      - urn:li:industry:4
+                      likes: 17
+        default:
+          $ref: '#/components/responses/Error'
+components:
+  securitySchemes:
+    linkedinOAuth2:
+      type: oauth2
+      description: LinkedIn 3-legged OAuth 2.0 (authorization code).
+      flows:
+        authorizationCode:
+          authorizationUrl: https://www.linkedin.com/oauth/v2/authorization
+          tokenUrl: https://www.linkedin.com/oauth/v2/accessToken
+          scopes:
+            r_ads: LinkedIn permission `r_ads`
+            r_ads_reporting: LinkedIn permission `r_ads_reporting`
+            r_basicprofile: LinkedIn permission `r_basicprofile`
+  parameters:
+    LinkedInVersion:
+      name: LinkedIn-Version
+      in: header
+      required: true
+      description: API version in YYYYMM format (e.g. `202509`).
+      schema:
+        type: string
+        pattern: ^[0-9]{6}$
+    RestliProtocolVersion:
+      name: X-Restli-Protocol-Version
+      in: header
+      required: false
+      schema:
+        type: string
+        enum:
+        - 2.0.0
+        default: 2.0.0
+  responses:
+    Error:
+      description: Error response
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Error:
+      type: object
+      properties:
+        status:
+          type: integer
+        code:
+          type: string
+        serviceErrorCode:
+          type: integer
+        message:
+          type: string
+    GetAdAnalyticsResponse:
+      type: object
+      properties:
+        paging:
+          type: object
+          properties:
+            start:
+              type: integer
+            count:
+              type: integer
+            links:
+              type: array
+              items:
+                type: object
+                properties:
+                  type:
+                    type: string
+                  rel:
+                    type: string
+                  href:
+                    type: string
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              externalWebsitePostClickConversions:
+                type: integer
+              shares:
+                type: integer
+              pivot:
+                type: string
+              pivotValues~:
+                type: array
+                items:
+                  type: object
+                  nullable: true
+                  properties:
+                    type:
+                      type: string
+                    status:
+                      type: string
+                    campaignGroup:
+                      type: string
+                    campaignGroup~:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        id:
+                          type: integer
+                        status:
+                          type: string
+                    name:
+                      oneOf:
+                      - type: string
+                      - type: object
+                        properties:
+                          localized:
+                            type: object
+                            properties:
+                              en_US:
+                                type: string
+                      - type: string
+                    id:
+                      type: integer
+                    objectiveType:
+                      type: string
+              pivotValue:
+                type: string
+              comments:
+                type: integer
+              externalWebsitePostViewConversions:
+                type: integer
+              oneClickLeads:
+                type: integer
+              conversionValueInLocalCurrency:
+                type: string
+              impressions:
+                type: integer
+              externalWebsiteConversions:
+                type: integer
+              clicks:
+                type: integer
+              totalEngagements:
+                type: integer
+              reactions:
+                type: integer
+              pivotValues:
+                type: array
+                items:
+                  type: string
+              approximateUniqueImpressions:
+                type: integer
+              pivotValue~:
+                type: object
+                properties:
+                  variables:
+                    type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          com.linkedin.ads.SponsoredVideoCreativeVariables:
+                            type: object
+                            properties:
+                              mediaAsset~:
+                                type: object
+                                properties:
+                                  paging:
+                                    type: object
+                                    properties:
+                                      count:
+                                        type: integer
+                                      start:
+                                        type: integer
+                                      links:
+                                        type: array
+                                        items: {}
+                                  elements:
+                                    type: array
+                                    items: {}
+                              videoAspectRatio:
+                                type: object
+                                properties:
+                                  widthAspect:
+                                    type: integer
+                                  heightAspect:
+                                    type: number
+                              mediaAsset:
+                                type: string
+                              userGeneratedContentPost:
+                                type: string
+                              directSponsoredContent:
+                                type: boolean
+                              durationMicro:
+                                type: integer
+                  vanityName:
+                    type: string
+                  localizedName:
+                    type: string
+                  localizedWebsite:
+                    type: string
+              likes:
+                type: integer
+              landingPageClicks:
+                type: integer
+              follows:
+                type: integer
+              dateRange:
+                type: object
+                properties:
+                  start:
+                    type: object
+                    properties:
+                      month:
+                        type: integer
+                      year:
+                        type: integer
+                      day:
+                        type: integer
+                  end:
+                    type: object
+                    properties:
+                      month:
+                        type: integer
+                      year:
+                        type: integer
+                      day:
+                        type: integer
+              videoCompletions:
+                type: integer
+              costInUsd:
+                type: string
+              costInLocalCurrency:
+                type: string
+              sends:
+                type: integer
+              opens:
+                type: integer
+              videoViews:
+                type: integer
+              revenueAttributionMetrics:
+                type: object
+                properties:
+                  openOpportunities:
+                    type: integer
+                  returnOnAdSpend:
+                    type: number
+                  opportunityWinRate:
+                    type: number
+                  revenueWonInUsd:
+                    type: string
+                  closedWonOpportunities:
+                    type: integer
+                  averageDaysToClose:
+                    type: number
+                  opportunityAmountInUsd:
+                    type: string
+                  averageDealSizeInUsd:
+                    type: string
+              oneClickLeadFormOpens:
+                type: integer

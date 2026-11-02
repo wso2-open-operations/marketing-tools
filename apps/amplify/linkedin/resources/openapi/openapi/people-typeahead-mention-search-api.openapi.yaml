@@ -1,0 +1,189 @@
+openapi: 3.0.3
+info:
+  title: People Typeahead (@Mention Search) API
+  version: 1.0.0
+  description: 'Standalone collection for the LinkedIn People Typeahead API (@mention search), used to discover
+    organization page followers who can be @mentioned in UGC/organization posts. Restricted endpoint — permission
+    is granted to select developers only. See https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/posts-atmention-search-api
+
+
+    Use together with the existing **community-management-env-versioning** environment (shared with the Community
+    Management collection).
+
+
+    --All requests are in the Restli 2.0 format--
+
+
+    _Generated from the Postman collection "People Typeahead (@Mention Search) API". All calls use Rest.li 2.0 conventions:
+    send `X-Restli-Protocol-Version: 2.0.0` and a `LinkedIn-Version` header (YYYYMM). Query parameters such as `List(...)`,
+    `(a:b,c:d)` and URNs are Rest.li-encoded strings; do not re-encode the structural characters `( ) , :`. Several
+    finders/actions share one path in LinkedIn''s API, so they are modelled as one operation with a `q`/`action`
+    selector. Schemas are inferred from the example payloads saved in the collection: every field is optional and
+    field semantics are not documented here._'
+servers:
+- url: https://api.linkedin.com/rest
+  description: LinkedIn REST API (`{{baseUrl}}` in the Postman environment)
+security:
+- linkedinOAuth2:
+  - r_organization_followers
+  - w_organization_social
+  - r_basicprofile
+tags:
+- name: People Typeahead (@Mention Search) API
+paths:
+  /peopleTypeahead:
+    get:
+      operationId: searchByKeywordForOrganizationPages
+      summary: Search by Keyword for Organization Pages
+      tags:
+      - People Typeahead (@Mention Search) API
+      description: 'Search followers of an organization page by keyword (matches first few characters of first/last
+        name) so they can be @mentioned in a post. Returns up to 10 profiles: member urn, firstName, lastName, headline,
+        optional photo.'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - organizationFollowers
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: keywords
+        in: query
+        required: false
+        schema:
+          type: string
+        example: surendra
+      - name: organization
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /vanityUrl:
+    get:
+      operationId: searchByVanityURLForOrganizationPage
+      summary: Search by Vanity URL for Organization Page
+      tags:
+      - People Typeahead (@Mention Search) API
+      description: Exact-match search by a member's profile vanity URL to resolve their person URN for @mentioning
+        in an organization page post.
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - vanityUrlAsOrganization
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: vanityUrl
+        in: query
+        required: false
+        schema:
+          type: string
+        example: ' https://www.linkedin.com/in/surendra-jambe/'
+      - name: organization
+        in: query
+        required: false
+        schema:
+          type: string
+        example: urn:li:organization:2414183
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchByVanityURLForOrganizationPageResponse'
+              examples:
+                searchByVanityURLForOrganizationPage:
+                  summary: Search by Vanity URL for Organization Page
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                    elements:
+                    - member: urn:li:person:yLNJIP4VFH
+        default:
+          $ref: '#/components/responses/Error'
+components:
+  securitySchemes:
+    linkedinOAuth2:
+      type: oauth2
+      description: LinkedIn 3-legged OAuth 2.0 (authorization code).
+      flows:
+        authorizationCode:
+          authorizationUrl: https://www.linkedin.com/oauth/v2/authorization
+          tokenUrl: https://www.linkedin.com/oauth/v2/accessToken
+          scopes:
+            r_organization_followers: LinkedIn permission `r_organization_followers`
+            w_organization_social: LinkedIn permission `w_organization_social`
+            r_basicprofile: LinkedIn permission `r_basicprofile`
+  parameters:
+    LinkedInVersion:
+      name: LinkedIn-Version
+      in: header
+      required: true
+      description: API version in YYYYMM format (e.g. `202509`).
+      schema:
+        type: string
+        pattern: ^[0-9]{6}$
+    RestliProtocolVersion:
+      name: X-Restli-Protocol-Version
+      in: header
+      required: false
+      schema:
+        type: string
+        enum:
+        - 2.0.0
+        default: 2.0.0
+  responses:
+    Error:
+      description: Error response
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Error:
+      type: object
+      properties:
+        status:
+          type: integer
+        code:
+          type: string
+        serviceErrorCode:
+          type: integer
+        message:
+          type: string
+    SearchByVanityURLForOrganizationPageResponse:
+      type: object
+      properties:
+        paging:
+          type: object
+          properties:
+            start:
+              type: integer
+            count:
+              type: integer
+            links:
+              type: array
+              items: {}
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              member:
+                type: string

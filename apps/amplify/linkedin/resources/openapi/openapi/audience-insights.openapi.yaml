@@ -1,0 +1,551 @@
+openapi: 3.0.3
+info:
+  title: Audience Insights
+  version: 1.0.0
+  description: "## Overview\n\nAudience Insights API enables you to discover and identify the audience segments\
+    \ that meet your target persona, demonstrate interest and engagement in relevant customer products/offerings,\
+    \ uncover insights about the companies the target audience works for, and activate audience for targeting in\
+    \ sponsored ad campaigns on LinkedIn. This enables advertisers to use LinkedIn data and insights as a part of\
+    \ their broader audience discovery, planning, activation and optimization processes by delivering on the “Audience\
+    \ first” approach.\n\nNote: This is a private API that is available to qualified developers who meet additional\
+    \ criteria for access. To learn more about eligibility qualifications and how to request access, please see\
+    \ the [FAQ](https://learn.microsoft.com/en-us/linkedin/marketing/lms-faq#how-do-i-get-access-to-audience-insights-api-product).\
+    \ If you wish to apply for access, please submit a [Zendesk support ticket](https://linkedin.zendesk.com/).\n\
+    \n## Permissions\n\nAudience Insights API requires a [3-legged OAuth](https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow)\
+    \ member token and your developer application needs to be provisioned with the Audience Insights API product.\
+    \ Once you have been approved to access, you can use any valid member access token associated with the authenticated\
+    \ user with any valid scope permissions for member authentication. If there is no valid member token for the\
+    \ relevant user from any previous integration, we recommend using the bare minimum scope permissions like `r_ads`\
+    \ which will be required to fetch authenticated user's ad accounts.  \nNote: This API is application-specific;\
+    \ hence, explicit member consent is not required. Any valid member access token associated with the authenticated\
+    \ user can be used, and you do not need to add any additional permission in the scope of your Oauth2 flow for\
+    \ authorization.\n\nThis collection aims to focus on different Audience Insights use cases and should be used\
+    \ with the **audience-insights-env-versioning** environment.\n\n\\--All requests for the Audience Insights API\
+    \ collection are in the Restli 2.0 format--\n\n_Generated from the Postman collection \"Audience Insights\"\
+    . All calls use Rest.li 2.0 conventions: send `X-Restli-Protocol-Version: 2.0.0` and a `LinkedIn-Version` header\
+    \ (YYYYMM). Query parameters such as `List(...)`, `(a:b,c:d)` and URNs are Rest.li-encoded strings; do not re-encode\
+    \ the structural characters `( ) , :`. Several finders/actions share one path in LinkedIn's API, so they are\
+    \ modelled as one operation with a `q`/`action` selector. Schemas are inferred from the example payloads saved\
+    \ in the collection: every field is optional and field semantics are not documented here._"
+servers:
+- url: https://api.linkedin.com/rest
+  description: LinkedIn REST API (`{{baseUrl}}` in the Postman environment)
+security:
+- linkedinOAuth2:
+  - r_ads
+tags:
+- name: Ad Targeting Entities
+- name: Fetch Audience Insights
+paths:
+  /adTargetingFacets:
+    get:
+      operationId: getAListOfAvailableAdTargetingFacets
+      summary: Get a list of available Ad Targeting Facets
+      tags:
+      - Ad Targeting Entities
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAListOfAvailableAdTargetingFacetsResponse'
+              examples:
+                getAListOfAvailableAdTargetingFacets:
+                  summary: Get a list of available Ad Targeting Facets
+                  value:
+                    paging:
+                      start: 0
+                      count: 10
+                      links: []
+                    elements:
+                    - entityTypes:
+                      - FUNCTION
+                      facetName: jobFunctions
+                      $URN: urn:li:adTargetingFacet:jobFunctions
+                      availableEntityFinders:
+                      - AD_TARGETING_FACET
+                    - entityTypes:
+                      - AGE
+                      facetName: ageRanges
+                      $URN: urn:li:adTargetingFacet:ageRanges
+                      availableEntityFinders:
+                      - AD_TARGETING_FACET
+        default:
+          $ref: '#/components/responses/Error'
+  /adTargetingEntities:
+    get:
+      operationId: getAdTargetingEntities
+      summary: Query adTargetingEntities
+      tags:
+      - Ad Targeting Entities
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Get all seniorities** (`q=adTargetingFacet`)
+
+        - **Get all job functions** (`q=adTargetingFacet`)
+
+        - **Get all job titles (paginated)** (`q=adTargetingFacet`)
+
+        - **Get all skills (paginated)** (`q=adTargetingFacet`)
+
+        - **Get all interests** (`q=adTargetingFacet`)
+
+        - **Get all member behaviors** (`q=adTargetingFacet`)
+
+        - **Get all yearsOfExperience ranges** (`q=adTargetingFacet`)
+
+        - **Get all age ranges** (`q=adTargetingFacet`)
+
+        - **Get all industries** (`q=adTargetingFacet`)
+
+        - **Get all company revenue categories** (`q=adTargetingFacet`)
+
+        - **Get all company ranking list categories** (`q=adTargetingFacet`)
+
+        - **Get all company growth rate categories** (`q=adTargetingFacet`)
+
+        - **Get all company staff count categories** (`q=adTargetingFacet`)
+
+        - **Get Bing Geo locations using search typeahead** (`q=typeahead`)'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - adTargetingFacet
+          - typeahead
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: queryVersion
+        in: query
+        required: false
+        schema:
+          type: string
+        example: QUERY_USES_URNS
+      - name: facet
+        in: query
+        required: false
+        schema:
+          type: string
+        example: urn:li:adTargetingFacet:seniorities
+      - name: fields
+        in: query
+        required: false
+        schema:
+          type: string
+        example: name,urn
+        allowReserved: true
+      - name: start
+        in: query
+        required: false
+        schema:
+          type: integer
+        example: 0
+      - name: count
+        in: query
+        required: false
+        schema:
+          type: integer
+        example: 1000
+      - name: totals
+        in: query
+        required: false
+        schema:
+          type: boolean
+        example: false
+      - name: query
+        in: query
+        required: false
+        schema:
+          type: string
+        example: united states
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAdTargetingEntitiesResponse'
+              examples:
+                getAllSeniorities:
+                  summary: Get all seniorities
+                  value:
+                    paging:
+                      start: 0
+                      count: 2147483647
+                      links: []
+                      total: 10
+                    elements:
+                    - name: Unpaid
+                      urn: urn:li:seniority:1
+                    - name: Training
+                      urn: urn:li:seniority:2
+                getAllJobFunctions:
+                  summary: Get all job functions
+                  value:
+                    paging:
+                      start: 0
+                      count: 2147483647
+                      links: []
+                      total: 26
+                    elements:
+                    - name: Accounting
+                      urn: urn:li:function:1
+                    - name: Administrative
+                      urn: urn:li:function:2
+                getAllJobTitlesPaginated:
+                  summary: Get all job titles (paginated)
+                  value:
+                    paging:
+                      start: 0
+                      count: 1000
+                      links:
+                      - type: application/json
+                        rel: next
+                        href: /rest/adTargetingEntities?q=adTargetingFacet&start=1000&count=1000&totals=false&fields=urn,name&facet=urn%3Ali%3AadTargetingFacet%3Atitles&queryVersion=QUERY_USES_URNS
+                    elements:
+                    - name: Owner
+                      urn: urn:li:title:1
+                    - name: Manager
+                      urn: urn:li:title:2
+        default:
+          $ref: '#/components/responses/Error'
+  /targetingAudienceInsights:
+    post:
+      operationId: postTargetingAudienceInsights
+      summary: Create / update / action on targetingAudienceInsights
+      tags:
+      - Fetch Audience Insights
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **What are the top Job Functions among members with Product Management skills in NY?** (`action=audienceInsights`)
+
+        - **What top year of experience ranges do US members who are interested in ‘Computer Programming’ have?**
+        (`action=audienceInsights`)
+
+        - **What are the top skills of sotware engineers in the US?** (`action=audienceInsights`)
+
+        - **What are the top interests of Directors in Finance and in the US?** (`action=audienceInsights`)'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: action
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - audienceInsights
+        description: Rest.li action name.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostTargetingAudienceInsightsRequest'
+            examples:
+              whatAreTheTopJobFunctionsAmongMembersWithProductManagementSk:
+                summary: What are the top Job Functions among members with Product Management skills in NY?
+                value:
+                  request:
+                    requestMetaData:
+                      sponsoredAccount: urn:li:sponsoredAccount:{{sponsoredaccount_id}}
+                    targetingCriteria:
+                      include:
+                        and:
+                        - or:
+                            urn:li:adTargetingFacet:locations:
+                            - urn:li:geo:105080838
+                        - or:
+                            urn:li:adTargetingFacet:interfaceLocales:
+                            - urn:li:locale:en_US
+                        - or:
+                            urn:li:adTargetingFacet:skills:
+                            - urn:li:skill:252
+                    groupBy: urn:li:adTargetingFacet:jobFunctions
+              whatTopYearOfExperienceRangesDoUSMembersWhoAreInterestedInCo:
+                summary: What top year of experience ranges do US members who are interested in ‘Computer Programming’
+                  have?
+                value:
+                  request:
+                    requestMetaData:
+                      sponsoredAccount: urn:li:sponsoredAccount:{{sponsoredaccount_id}}
+                    targetingCriteria:
+                      include:
+                        and:
+                        - or:
+                            urn:li:adTargetingFacet:locations:
+                            - urn:li:geo:103644278
+                        - or:
+                            urn:li:adTargetingFacet:interfaceLocales:
+                            - urn:li:locale:en_US
+                        - or:
+                            urn:li:adTargetingFacet:interests:
+                            - urn:li:interest:1537426
+                    groupBy: urn:li:adTargetingFacet:yearsOfExperienceRanges
+              whatAreTheTopSkillsOfSotwareEngineersInTheUS:
+                summary: What are the top skills of sotware engineers in the US?
+                value:
+                  request:
+                    requestMetaData:
+                      sponsoredAccount: urn:li:sponsoredAccount:{{sponsoredaccount_id}}
+                    targetingCriteria:
+                      include:
+                        and:
+                        - or:
+                            urn:li:adTargetingFacet:locations:
+                            - urn:li:geo:103644278
+                        - or:
+                            urn:li:adTargetingFacet:interfaceLocales:
+                            - urn:li:locale:en_US
+                        - or:
+                            urn:li:adTargetingFacet:titles:
+                            - urn:li:title:9
+                    groupBy: urn:li:adTargetingFacet:skills
+              whatAreTheTopInterestsOfDirectorsInFinanceAndInTheUS:
+                summary: What are the top interests of Directors in Finance and in the US?
+                value:
+                  request:
+                    requestMetaData:
+                      sponsoredAccount: urn:li:sponsoredAccount:{{sponsoredaccount_id}}
+                    targetingCriteria:
+                      include:
+                        and:
+                        - or:
+                            urn:li:adTargetingFacet:locations:
+                            - urn:li:geo:103644278
+                        - or:
+                            urn:li:adTargetingFacet:interfaceLocales:
+                            - urn:li:locale:en_US
+                        - or:
+                            urn:li:adTargetingFacet:jobFunctions:
+                            - urn:li:function:10
+                    groupBy: urn:li:adTargetingFacet:interests
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostTargetingAudienceInsightsResponse'
+              examples:
+                whatAreTheTopJobFunctionsAmongMembersWithProductManagementSk:
+                  summary: What are the top Job Functions among members with Product Management skills in NY?
+                  value:
+                    value:
+                      audienceInsight:
+                        segmentations:
+                        - entityCount: 120000
+                          entityPercentage: 22
+                          value: urn:li:function:4
+                        - entityCount: 78000
+                          entityPercentage: 14
+                          value: urn:li:function:20
+                        groupedBy: urn:li:adTargetingFacet:jobFunctions
+                      totalAudienceCount: 550000
+                whatTopYearOfExperienceRangesDoUSMembersWhoAreInterestedInCo:
+                  summary: What top year of experience ranges do US members who are interested in ‘Computer Programming’
+                    have?
+                  value:
+                    value:
+                      audienceInsight:
+                        segmentations:
+                        - entityCount: 6200000
+                          entityPercentage: 39
+                          value: urn:li:yearsOfExperience:12
+                        - entityCount: 520000
+                          entityPercentage: 3
+                          value: urn:li:yearsOfExperience:8
+                        groupedBy: urn:li:adTargetingFacet:yearsOfExperienceRanges
+                      totalAudienceCount: 16000000
+                whatAreTheTopSkillsOfSotwareEngineersInTheUS:
+                  summary: What are the top skills of sotware engineers in the US?
+                  value:
+                    value:
+                      audienceInsight:
+                        segmentations:
+                        - entityCount: 1900000
+                          entityPercentage: 90
+                          value: urn:li:skill:602
+                        - entityCount: 1500000
+                          entityPercentage: 71
+                          value: urn:li:skill:242
+                        groupedBy: urn:li:adTargetingFacet:skills
+                      totalAudienceCount: 2100000
+        default:
+          $ref: '#/components/responses/Error'
+components:
+  securitySchemes:
+    linkedinOAuth2:
+      type: oauth2
+      description: LinkedIn 3-legged OAuth 2.0 (authorization code).
+      flows:
+        authorizationCode:
+          authorizationUrl: https://www.linkedin.com/oauth/v2/authorization
+          tokenUrl: https://www.linkedin.com/oauth/v2/accessToken
+          scopes:
+            r_ads: LinkedIn permission `r_ads`
+  parameters:
+    LinkedInVersion:
+      name: LinkedIn-Version
+      in: header
+      required: true
+      description: API version in YYYYMM format (e.g. `202509`).
+      schema:
+        type: string
+        pattern: ^[0-9]{6}$
+    RestliProtocolVersion:
+      name: X-Restli-Protocol-Version
+      in: header
+      required: false
+      schema:
+        type: string
+        enum:
+        - 2.0.0
+        default: 2.0.0
+  responses:
+    Error:
+      description: Error response
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Error:
+      type: object
+      properties:
+        status:
+          type: integer
+        code:
+          type: string
+        serviceErrorCode:
+          type: integer
+        message:
+          type: string
+    GetAListOfAvailableAdTargetingFacetsResponse:
+      type: object
+      properties:
+        paging:
+          type: object
+          properties:
+            start:
+              type: integer
+            count:
+              type: integer
+            links:
+              type: array
+              items: {}
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              entityTypes:
+                type: array
+                items:
+                  type: string
+              facetName:
+                type: string
+              $URN:
+                type: string
+              availableEntityFinders:
+                type: array
+                items:
+                  type: string
+    GetAdTargetingEntitiesResponse:
+      type: object
+      properties:
+        paging:
+          type: object
+          properties:
+            start:
+              type: integer
+            count:
+              type: integer
+            links:
+              type: array
+              items:
+                type: object
+                properties:
+                  type:
+                    type: string
+                  rel:
+                    type: string
+                  href:
+                    type: string
+            total:
+              type: integer
+        elements:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              urn:
+                type: string
+              facetUrn:
+                type: string
+    PostTargetingAudienceInsightsRequest:
+      type: object
+      properties:
+        request:
+          type: object
+          properties:
+            requestMetaData:
+              type: object
+              properties:
+                sponsoredAccount:
+                  type: string
+            targetingCriteria:
+              type: object
+              properties:
+                include:
+                  type: object
+                  properties:
+                    and:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          or:
+                            type: object
+                            additionalProperties:
+                              type: array
+                              items:
+                                type: string
+            groupBy:
+              type: string
+    PostTargetingAudienceInsightsResponse:
+      type: object
+      properties:
+        value:
+          type: object
+          properties:
+            audienceInsight:
+              type: object
+              properties:
+                segmentations:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      entityCount:
+                        type: integer
+                      entityPercentage:
+                        type: integer
+                      value:
+                        type: string
+                groupedBy:
+                  type: string
+            totalAudienceCount:
+              type: integer

@@ -1,0 +1,276 @@
+openapi: 3.0.3
+info:
+  title: Events Management API
+  version: 1.0.0
+  description: '_Generated from the Postman collection "Events Management API". All calls use Rest.li 2.0 conventions:
+    send `X-Restli-Protocol-Version: 2.0.0` and a `LinkedIn-Version` header (YYYYMM). Query parameters such as `List(...)`,
+    `(a:b,c:d)` and URNs are Rest.li-encoded strings; do not re-encode the structural characters `( ) , :`. Several
+    finders/actions share one path in LinkedIn''s API, so they are modelled as one operation with a `q`/`action`
+    selector. Schemas are inferred from the example payloads saved in the collection: every field is optional and
+    field semantics are not documented here._'
+servers:
+- url: https://api.linkedin.com/rest
+  description: LinkedIn REST API (`{{baseUrl}}` in the Postman environment)
+security:
+- bearerAuth: []
+tags:
+- name: Use Cases
+paths:
+  /organizationAcls:
+    get:
+      operationId: findAMemberSOrganizationAccessControl
+      summary: Find a Member's Organization Access Control
+      tags:
+      - Use Cases
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - roleAssignee
+        description: Rest.li finder name. Selects which query this call performs.
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /events/{eventId}:
+    get:
+      operationId: getEventByID
+      summary: Get Event by ID
+      tags:
+      - Use Cases
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: eventId
+        in: path
+        required: true
+        description: Resource identifier (numeric id, or URL-encoded URN where the API expects one).
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+  /events:
+    get:
+      operationId: getEvents
+      summary: Query events
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Find Events by Organizer** (`q=eventsByOrganizer`)
+
+        - **Find Events with Lead Gen Form by Organizer** (`q=organizerLeadGenFormEnabledEvents`)'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - eventsByOrganizer
+          - organizerLeadGenFormEnabledEvents
+        description: Rest.li finder name. Selects which query this call performs.
+      - name: organizer
+        in: query
+        required: false
+        schema:
+          type: string
+        example: urn:li:organization:7185861
+      - name: start
+        in: query
+        required: false
+        schema:
+          type: integer
+        example: 0
+      - name: count
+        in: query
+        required: false
+        schema:
+          type: integer
+        example: 10
+      - name: excludeCancelled
+        in: query
+        required: false
+        schema:
+          type: boolean
+        example: true
+      - name: timeBasedFilter
+        in: query
+        required: false
+        schema:
+          type: string
+        example: (lifeCycleState:PAST)
+        allowReserved: true
+      - name: entryCriteria
+        in: query
+        required: false
+        schema:
+          type: string
+        example: PUBLIC
+      - name: sortOrder
+        in: query
+        required: false
+        schema:
+          type: string
+        example: END_TIME_DESC
+      responses:
+        '200':
+          description: Success (inferred — the source collection has no saved example for this call)
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: postEvents
+      summary: Create / update / action on events
+      tags:
+      - Use Cases
+      description: 'This operation covers several related calls (distinguished by the `q` finder / `action` / `X-RestLi-Method`
+        / body shape). Variants seen in the source collection:
+
+        - **Create Organization Owned Event**
+
+        - **Create Person Owned Event**'
+      parameters:
+      - $ref: '#/components/parameters/LinkedInVersion'
+      - $ref: '#/components/parameters/RestliProtocolVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostEventsRequest'
+            examples:
+              createOrganizationOwnedEvent:
+                summary: Create Organization Owned Event
+                value:
+                  name:
+                    localized:
+                      en_US: My First Online Event
+                  type:
+                    online:
+                      format:
+                        liveVideo:
+                          endsAt: 9091536065000
+                  organizer: urn:li:organization:2414183
+                  leadGenFormSpec:
+                    privacyPolicyUrl: https://www.example.com/privacyPolicy
+                  startsAt: 9091536064111
+                  backgroundImage: urn:li:digitalmediaAsset:D5522AQEFM6ArFzip2Q
+              createPersonOwnedEvent:
+                summary: Create Person Owned Event
+                value:
+                  name:
+                    localized:
+                      en_US: My First Online Event
+                  type:
+                    online:
+                      format:
+                        liveVideo:
+                          endsAt: 9091536065000
+                  organizer: urn:li:person:ABC123
+                  leadGenFormSpec:
+                    privacyPolicyUrl: https://www.example.com/privacyPolicy
+                  startsAt: 9091536064111
+                  backgroundImage: urn:li:digitalmediaAsset:D5522AQEFM6ArFzip2Q
+      responses:
+        '201':
+          description: Success (inferred — the source collection has no saved example for this call)
+          headers:
+            x-restli-id:
+              schema:
+                type: string
+              description: Id (or URN) of the created resource.
+        default:
+          $ref: '#/components/responses/Error'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: LinkedIn OAuth 2.0 access token.
+  parameters:
+    LinkedInVersion:
+      name: LinkedIn-Version
+      in: header
+      required: true
+      description: API version in YYYYMM format (e.g. `202509`).
+      schema:
+        type: string
+        pattern: ^[0-9]{6}$
+    RestliProtocolVersion:
+      name: X-Restli-Protocol-Version
+      in: header
+      required: false
+      schema:
+        type: string
+        enum:
+        - 2.0.0
+        default: 2.0.0
+  responses:
+    Error:
+      description: Error response
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Error:
+      type: object
+      properties:
+        status:
+          type: integer
+        code:
+          type: string
+        serviceErrorCode:
+          type: integer
+        message:
+          type: string
+    PostEventsRequest:
+      type: object
+      properties:
+        name:
+          type: object
+          properties:
+            localized:
+              type: object
+              properties:
+                en_US:
+                  type: string
+        type:
+          type: object
+          properties:
+            online:
+              type: object
+              properties:
+                format:
+                  type: object
+                  properties:
+                    liveVideo:
+                      type: object
+                      properties:
+                        endsAt:
+                          type: integer
+                          format: int64
+        organizer:
+          type: string
+        leadGenFormSpec:
+          type: object
+          properties:
+            privacyPolicyUrl:
+              type: string
+        startsAt:
+          type: integer
+          format: int64
+        backgroundImage:
+          type: string

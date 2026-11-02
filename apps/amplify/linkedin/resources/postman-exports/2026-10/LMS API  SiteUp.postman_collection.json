@@ -1,0 +1,145 @@
+{
+  "info": {
+    "_postman_id": "aeb5470d-b1e5-4bea-9f7c-7b83309084b5",
+    "name": "LMS API  SiteUp",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "17301545",
+    "_collection_link": "https://go.postman.co/collection/1914235-aeb5470d-b1e5-4bea-9f7c-7b83309084b5?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "Auth and Basics",
+      "item": [
+        {
+          "name": "Fetch the Authenticated User's Ad Accounts",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Restli-Protocol-Version",
+                "value": "2.0.0",
+                "type": "text"
+              },
+              {
+                "key": "LinkedIn-Version",
+                "value": "{{insert_version}}",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{insert_token}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/adAccountUsers?q=authenticatedUser",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "adAccountUsers"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "authenticatedUser"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Fetch the Authenticated User's Organization Roles",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Restli-Protocol-Version",
+                "value": "2.0.0",
+                "type": "text"
+              },
+              {
+                "key": "LinkedIn-Version",
+                "value": "{{insert_version}}",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{insert_token}}",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/organizationAcls?q=roleAssignee",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "organizationAcls"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "roleAssignee"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Ad Account and core Campaign Entities ",
+      "item": [
+        {
+          "name": "Fetch the Ad Account by ID",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "LinkedIn-Version",
+                "value": "{{insert_version}}",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{insert_token}}",
+                "type": "text",
+                "disabled": true
+              },
+              {
+                "key": "X-Restli-Protocol-Version",
+                "value": "2.0.0",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/adAccounts/{{sponsoredaccount_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "adAccounts",
+                "{{sponsoredaccount_id}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
