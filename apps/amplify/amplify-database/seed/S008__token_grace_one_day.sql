@@ -18,9 +18,7 @@
 -- changed after it was applied, so S003 stays as it was. On a fresh database S003 inserts 5 after V016 has
 -- already run, so this moves it to 1. A value an admin set to anything else is left alone.
 
-SET LOCAL ROLE amplify_migrate;
-
-UPDATE config.app_setting
+UPDATE config_app_setting
 SET value = '1'::jsonb,
     updated_by = 'system',
     updated_at = now(),

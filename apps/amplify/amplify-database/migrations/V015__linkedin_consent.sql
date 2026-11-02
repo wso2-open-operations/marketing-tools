@@ -19,9 +19,7 @@
 -- completes; DECLINED rows carry the LinkedIn profile URL the person typed so sharing can still be tracked; it is
 -- optional, so NULL when they left it blank.
 
-SET LOCAL ROLE amplify_migrate;
-
-CREATE TABLE connection.linkedin_consent (
+CREATE TABLE connection_linkedin_consent (
     employee_id  text        NOT NULL PRIMARY KEY,
     decision     text        NOT NULL CHECK (decision IN ('CONSENTED', 'DECLINED')),
     profile_url  text        CHECK (profile_url IS NULL OR length(profile_url) <= 255),
@@ -30,4 +28,3 @@ CREATE TABLE connection.linkedin_consent (
 );
 
 -- Personal data: the profile URL stays private like the member URN (nothing for amplify_readonly).
-GRANT SELECT, INSERT, UPDATE ON connection.linkedin_consent TO amplify_api;

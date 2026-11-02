@@ -14,21 +14,18 @@
 -- specific language governing permissions and limitations
 -- under the License.
 
-
 -- V014: every action the points table prices, so later phases need no schema change (docs/requirements/point-values.md).
 -- Adds REACTION (like), COMMENT, CHALLENGE_ENTRY and CHALLENGE_WINNER to the actions a point rule can price and a
 -- ledger row can record. Nothing awards them yet: likes and comments need Community Management (phase 4) and the
--- Amplify Challenge awards are PO adjustments until it has its own flow. `sharing.engagement.action` is unchanged
+-- Amplify Challenge awards are PO adjustments until it has its own flow. `sharing_engagement.action` is unchanged
 -- (it grows when comments and reactions are synced).
 
-SET LOCAL ROLE amplify_migrate;
-
-ALTER TABLE scoring.point_rule DROP CONSTRAINT point_rule_action_check;
-ALTER TABLE scoring.point_rule ADD CONSTRAINT point_rule_action_check
+ALTER TABLE scoring_point_rule DROP CONSTRAINT scoring_point_rule_action_check;
+ALTER TABLE scoring_point_rule ADD CONSTRAINT point_rule_action_check
     CHECK (action IN ('REPOST', 'REPOST_COMMENTARY', 'SHARE', 'SHARE_COMMENTARY', 'OWN_POST', 'OWN_POST_AMPLIFIED',
                       'REACTION', 'COMMENT', 'CHALLENGE_ENTRY', 'CHALLENGE_WINNER'));
 
-ALTER TABLE scoring.points_ledger DROP CONSTRAINT points_ledger_action_check;
-ALTER TABLE scoring.points_ledger ADD CONSTRAINT points_ledger_action_check
+ALTER TABLE scoring_points_ledger DROP CONSTRAINT scoring_points_ledger_action_check;
+ALTER TABLE scoring_points_ledger ADD CONSTRAINT points_ledger_action_check
     CHECK (action IN ('REPOST', 'REPOST_COMMENTARY', 'SHARE', 'SHARE_COMMENTARY', 'OWN_POST', 'OWN_POST_AMPLIFIED',
                       'REACTION', 'COMMENT', 'CHALLENGE_ENTRY', 'CHALLENGE_WINNER'));

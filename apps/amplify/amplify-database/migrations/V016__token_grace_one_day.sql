@@ -18,9 +18,7 @@
 -- existing value, so this moves a database that still holds the old default of 5. A value an admin set to
 -- anything else is left alone. A fresh database gets 1 from S003.
 
-SET LOCAL ROLE amplify_migrate;
-
-UPDATE config.app_setting
+UPDATE config_app_setting
 SET value = '1'::jsonb,
     updated_by = 'system',
     updated_at = now(),

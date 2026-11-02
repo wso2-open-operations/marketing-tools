@@ -31,9 +31,7 @@
 -- Not here: likes/comments (1 point) aren't tracked until phase 4; Amplify Challenge entry (10) and winner
 -- (25) have no action of their own yet, so the PO awards them as points adjustments with a reason.
 
-SET LOCAL ROLE amplify_migrate;
-
-INSERT INTO scoring.point_rule (action, points, effective_from, created_by)
+INSERT INTO scoring_point_rule (action, points, effective_from, created_by)
 VALUES ('REPOST', 2, '2026-10-19T00:00:00Z', 'system'),
        ('SHARE', 2, '2026-10-19T00:00:00Z', 'system'),
        ('REPOST_COMMENTARY', 5, '2026-10-19T00:00:00Z', 'system'),

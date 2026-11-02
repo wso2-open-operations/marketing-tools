@@ -17,9 +17,7 @@
 -- V003: S2 Connection (phase1-data-model › connection, ADR-002).
 -- `org_connection` is a future phase (Community Management) and isn't created here.
 
-SET LOCAL ROLE amplify_migrate;
-
-CREATE TABLE connection.member_connection (
+CREATE TABLE connection_member_connection (
     employee_id             text        NOT NULL,
     provider                text        NOT NULL CHECK (provider IN ('linkedin')),
     member_urn              text        NOT NULL CHECK (member_urn LIKE 'urn:li:person:%'),
@@ -43,7 +41,7 @@ CREATE TABLE connection.member_connection (
 
 -- Encrypted tokens, one RANGE partition per UTC day of issue (ADR-002). PK holds the partition key.
 -- No FK points here on purpose: Postgres won't drop a partition a foreign key points into.
-CREATE TABLE connection.provider_token (
+CREATE TABLE connection_provider_token (
     token_id   uuid        NOT NULL DEFAULT uuidv7(),
     issued_on  date        NOT NULL DEFAULT (now() AT TIME ZONE 'UTC')::date,
     owner_type text        NOT NULL CHECK (owner_type IN ('MEMBER', 'ORG')),
@@ -58,9 +56,9 @@ CREATE TABLE connection.provider_token (
     PRIMARY KEY (token_id, issued_on)
 ) PARTITION BY RANGE (issued_on);
 
-CREATE INDEX provider_token_owner_idx ON connection.provider_token (owner_id, provider);
+CREATE INDEX provider_token_owner_idx ON connection_provider_token (owner_id, provider);
 
-CREATE TABLE connection.oauth_state (
+CREATE TABLE connection_oauth_state (
     state               text        PRIMARY KEY CHECK (length(state) BETWEEN 32 AND 128),
     employee_id         text        NOT NULL,
     provider            text        NOT NULL CHECK (provider IN ('linkedin')),
@@ -73,11 +71,11 @@ CREATE TABLE connection.oauth_state (
     CHECK (expires_at > created_at)
 );
 
-CREATE INDEX oauth_state_expires_idx ON connection.oauth_state (expires_at);
+CREATE INDEX oauth_state_expires_idx ON connection_oauth_state (expires_at);
 
--- Integer setting with a default. PL/pgSQL so the body isn't bound at create time: `config.app_setting`
+-- Integer setting with a default. PL/pgSQL so the body isn't bound at create time: `config_app_setting`
 -- arrives in V008, and the view below needs `connection.reminder_days`.
-CREATE FUNCTION config.int_setting(p_key text, p_default int)
+CREATE FUNCTION config_int_setting(p_key text, p_default int)
     RETURNS int
     LANGUAGE plpgsql
     STABLE
@@ -85,31 +83,27 @@ AS $fn$
 DECLARE
     v_value int;
 BEGIN
-    SELECT (s.value #>> '{}')::int INTO v_value FROM config.app_setting s WHERE s.key = p_key;
+    SELECT (s.value #>> '{}')::int INTO v_value FROM config_app_setting s WHERE s.key = p_key;
     RETURN COALESCE(v_value, p_default);
 END
 $fn$;
 
-REVOKE ALL ON FUNCTION config.int_setting(text, int) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION config.int_setting(text, int) TO amplify_api, amplify_jobs;
+REVOKE ALL ON FUNCTION config_int_setting(text, int) FROM PUBLIC;
 
 -- Derived status (B14). NEEDS_RECONNECT also when the token row is gone (partition dropped, or deleted).
-CREATE VIEW connection.member_connection_v WITH (security_invoker = true) AS
+CREATE VIEW connection_member_connection_v WITH (security_invoker = true) AS
 SELECT mc.*,
        CASE WHEN mc.removed_at IS NOT NULL THEN 'REMOVED'
             WHEN mc.revoked_at IS NOT NULL AND mc.revoked_at > mc.connected_at THEN 'NEEDS_RECONNECT'
             WHEN mc.access_expires_at <= now() THEN 'NEEDS_RECONNECT'
             WHEN mc.current_token_id IS NULL THEN 'NEEDS_RECONNECT'
             WHEN NOT EXISTS (SELECT 1
-                             FROM connection.provider_token t
+                             FROM connection_provider_token t
                              WHERE t.token_id = mc.current_token_id
                                AND t.issued_on = mc.current_token_issued_on) THEN 'NEEDS_RECONNECT'
-            WHEN mc.access_expires_at - make_interval(days => config.int_setting('connection.reminder_days', 7))
+            WHEN mc.access_expires_at - make_interval(days => config_int_setting('connection.reminder_days', 7))
                     <= now() THEN 'EXPIRING'
             ELSE 'ACTIVE' END AS status
-FROM connection.member_connection mc;
+FROM connection_member_connection mc;
 
 -- amplify_readonly gets nothing in this schema (tokens and member URNs stay private).
-GRANT SELECT, INSERT, UPDATE, DELETE ON connection.member_connection, connection.provider_token,
-    connection.oauth_state TO amplify_api, amplify_jobs;
-GRANT SELECT ON connection.member_connection_v TO amplify_api, amplify_jobs;
