@@ -16,9 +16,7 @@
 
 -- V006: C2 Scoring and the points ledger (phase1-data-model › scoring, C1, C4).
 
-SET LOCAL ROLE amplify_migrate;
-
-CREATE TABLE scoring.point_rule (
+CREATE TABLE scoring_point_rule (
     id             uuid        PRIMARY KEY DEFAULT uuidv7(),
     action         text        NOT NULL CHECK (action IN ('REPOST', 'REPOST_COMMENTARY', 'SHARE', 'SHARE_COMMENTARY',
                                                          'OWN_POST', 'OWN_POST_AMPLIFIED')),
@@ -30,7 +28,7 @@ CREATE TABLE scoring.point_rule (
 );
 
 -- Append-only facts. Only the settlement columns are updatable (column grants below).
-CREATE TABLE scoring.points_ledger (
+CREATE TABLE scoring_points_ledger (
     reference          varchar(66) PRIMARY KEY CHECK (reference ~ '^(AMP|ADJ|REV)-'),
     employee_id        text        NOT NULL,
     campaign_id        uuid,
@@ -39,8 +37,8 @@ CREATE TABLE scoring.points_ledger (
     action             text        CHECK (action IN ('REPOST', 'REPOST_COMMENTARY', 'SHARE', 'SHARE_COMMENTARY',
                                                      'OWN_POST', 'OWN_POST_AMPLIFIED')),
     points             int         NOT NULL,
-    rule_id            uuid        REFERENCES scoring.point_rule (id),
-    reverses_reference varchar(66) REFERENCES scoring.points_ledger (reference),
+    rule_id            uuid        REFERENCES scoring_point_rule (id),
+    reverses_reference varchar(66) REFERENCES scoring_points_ledger (reference),
     reason             text,
     actor_id           text        NOT NULL,
     correlation_id     text,
@@ -62,25 +60,25 @@ CREATE TABLE scoring.points_ledger (
     CONSTRAINT points_ledger_no_paid_phase1_ck CHECK (status IS DISTINCT FROM 'PAID')
 );
 
-CREATE INDEX points_ledger_employee_idx ON scoring.points_ledger (employee_id, created_at);
-CREATE INDEX points_ledger_campaign_idx ON scoring.points_ledger (campaign_id);
+CREATE INDEX points_ledger_employee_idx ON scoring_points_ledger (employee_id, created_at);
+CREATE INDEX points_ledger_campaign_idx ON scoring_points_ledger (campaign_id);
 -- PO "action required" list.
-CREATE INDEX points_ledger_action_required_idx ON scoring.points_ledger (created_at) WHERE status IS NULL;
+CREATE INDEX points_ledger_action_required_idx ON scoring_points_ledger (created_at) WHERE status IS NULL;
 
--- A reversal carries the action of the row it reverses. `recognition.action_delta` (V010) turns the action into the
+-- A reversal carries the action of the row it reverses. `recognition_action_delta` (V010) turns the action into the
 -- change in `actions_count` and `reposters`, and returns 0 for a NULL action, so a reversal whose action differs from its
 -- original would take the points off but leave the counts wrong. A CHECK can't compare two rows, and "action is not null"
 -- would be wrong: a PO adjustment has no action, and neither does its reversal.
-CREATE FUNCTION scoring.check_reversal_action()
+CREATE FUNCTION scoring_check_reversal_action()
     RETURNS trigger
     LANGUAGE plpgsql
-    SET search_path = pg_catalog, pg_temp
+    SET search_path FROM CURRENT
 AS $fn$
 DECLARE
     v_action text;
     v_found  boolean := false;
 BEGIN
-    SELECT true, l.action INTO v_found, v_action FROM scoring.points_ledger l WHERE l.reference = NEW.reverses_reference;
+    SELECT true, l.action INTO v_found, v_action FROM scoring_points_ledger l WHERE l.reference = NEW.reverses_reference;
     -- No original is `points_ledger_reversal_ck`'s business (a reversal names the row it reverses).
     IF v_found AND NEW.action IS DISTINCT FROM v_action THEN
         RAISE EXCEPTION 'a reversal must carry the action of the row it reverses (% reverses %)', NEW.reference, NEW.reverses_reference
@@ -91,14 +89,8 @@ END
 $fn$;
 
 CREATE TRIGGER points_ledger_reversal_action
-    BEFORE INSERT ON scoring.points_ledger
+    BEFORE INSERT ON scoring_points_ledger
     FOR EACH ROW WHEN (NEW.source_type = 'REVERSAL')
-    EXECUTE FUNCTION scoring.check_reversal_action();
-
-GRANT SELECT, INSERT ON scoring.point_rule TO amplify_api;
-GRANT SELECT ON scoring.point_rule TO amplify_jobs, amplify_readonly;
+    EXECUTE FUNCTION scoring_check_reversal_action();
 
 -- Facts are physically immutable to app roles: insert/select plus the settlement columns only.
-GRANT SELECT, INSERT ON scoring.points_ledger TO amplify_api, amplify_jobs;
-GRANT UPDATE (status, status_changed_at, paid_at, coin_reference) ON scoring.points_ledger TO amplify_api, amplify_jobs;
-GRANT SELECT ON scoring.points_ledger TO amplify_readonly;

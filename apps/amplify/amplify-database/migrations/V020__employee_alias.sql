@@ -15,25 +15,21 @@
 -- under the License.
 
 -- V020: a person whose Asgardeo account was re-created signs in with a new `sub` and the same email. Until now that was
--- a unique violation on identity.employee.email, answered 409 forever. The employee id keys the points ledger, the
+-- a unique violation on identity_employee.email, answered 409 forever. The employee id keys the points ledger, the
 -- standings, connections, shares and the audit log; those are history and are never rewritten, so the new `sub` is
 -- mapped to the person's first employee id instead (an alias) and everything keeps one key. Nothing else changes.
 --
 -- One row per alias `sub`. The first sign-in of the new account creates it (amplify-api, once, with an audit row
 -- `EMPLOYEE_ALIASED`); it holds two opaque ids and no email or name.
 
-SET LOCAL ROLE amplify_migrate;
-
-CREATE TABLE identity.employee_alias (
+CREATE TABLE identity_employee_alias (
     alias_sub   text        PRIMARY KEY CHECK (length(alias_sub) BETWEEN 1 AND 255),
     employee_id text        NOT NULL CHECK (length(employee_id) BETWEEN 1 AND 255),
     created_at  timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT employee_alias_not_self_ck CHECK (employee_id <> alias_sub)
 );
-CREATE INDEX employee_alias_employee_idx ON identity.employee_alias (employee_id);
+CREATE INDEX employee_alias_employee_idx ON identity_employee_alias (employee_id);
 
-COMMENT ON TABLE identity.employee_alias IS
+COMMENT ON TABLE identity_employee_alias IS
     'A re-created Asgardeo account (new sub, same email) mapped to the employee id the person already has.';
 
-GRANT SELECT, INSERT ON identity.employee_alias TO amplify_api;
-GRANT SELECT ON identity.employee_alias TO amplify_jobs, amplify_readonly;

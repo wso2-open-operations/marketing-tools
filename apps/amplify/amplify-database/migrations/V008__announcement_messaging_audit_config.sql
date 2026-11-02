@@ -17,12 +17,10 @@
 -- V008: S5 Announcements and the infrastructure schemas: messaging (outbox, idempotency), audit
 -- (monthly partitions, 5-year retention, B17) and config (app_setting).
 
-SET LOCAL ROLE amplify_migrate;
-
 -- ---- announcement --------------------------------------------------------------------------------
 
 -- PK = campaign_id: a campaign is announced exactly once.
-CREATE TABLE announcement.announcement (
+CREATE TABLE announcement (
     campaign_id       uuid        PRIMARY KEY,
     outbox_id         bigint,
     space             text        NOT NULL CHECK (length(space) BETWEEN 1 AND 100),
@@ -35,24 +33,20 @@ CREATE TABLE announcement.announcement (
     CONSTRAINT announcement_sent_xor_failed_ck CHECK (sent_at IS NULL OR failed_at IS NULL)
 );
 
-CREATE INDEX announcement_failed_idx ON announcement.announcement (failed_at) WHERE failed_at IS NOT NULL;
+CREATE INDEX announcement_failed_idx ON announcement (failed_at) WHERE failed_at IS NOT NULL;
 
-CREATE VIEW announcement.announcement_v WITH (security_invoker = true) AS
+CREATE VIEW announcement_v WITH (security_invoker = true) AS
 SELECT a.*,
        CASE WHEN a.sent_at IS NOT NULL THEN 'SENT'
             WHEN a.failed_at IS NOT NULL THEN 'FAILED'
             ELSE 'QUEUED' END AS status
-FROM announcement.announcement a;
-
-GRANT SELECT ON announcement.announcement, announcement.announcement_v TO amplify_api, amplify_readonly;
-GRANT SELECT, INSERT, UPDATE, DELETE ON announcement.announcement TO amplify_jobs;
-GRANT SELECT ON announcement.announcement_v TO amplify_jobs;
+FROM announcement a;
 
 -- ---- messaging -----------------------------------------------------------------------------------
 
 -- Written in the producer's transaction; claimed by amplify-jobs with FOR UPDATE SKIP LOCKED.
 -- bigint identity: strict queue order matters more than global uniqueness.
-CREATE TABLE messaging.outbox (
+CREATE TABLE messaging_outbox (
     id              bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     aggregate_type  text        NOT NULL,
     aggregate_id    text        NOT NULL,
@@ -72,10 +66,10 @@ CREATE TABLE messaging.outbox (
     CONSTRAINT outbox_done_processed_ck CHECK (status <> 'DONE' OR processed_at IS NOT NULL)
 );
 
-CREATE INDEX outbox_pending_idx ON messaging.outbox (next_attempt_at) WHERE status = 'PENDING';
-CREATE INDEX outbox_done_idx ON messaging.outbox (processed_at) WHERE status = 'DONE';
+CREATE INDEX outbox_pending_idx ON messaging_outbox (next_attempt_at) WHERE status = 'PENDING';
+CREATE INDEX outbox_done_idx ON messaging_outbox (processed_at) WHERE status = 'DONE';
 
-CREATE TABLE messaging.idempotency_key (
+CREATE TABLE messaging_idempotency_key (
     employee_id     text        NOT NULL,
     key             text        NOT NULL CHECK (length(key) BETWEEN 1 AND 255),
     request_hash    text        NOT NULL,
@@ -86,14 +80,12 @@ CREATE TABLE messaging.idempotency_key (
     PRIMARY KEY (employee_id, key)
 );
 
-CREATE INDEX idempotency_key_expires_idx ON messaging.idempotency_key (expires_at);
-
-GRANT SELECT, INSERT, UPDATE, DELETE ON messaging.outbox, messaging.idempotency_key TO amplify_api, amplify_jobs;
+CREATE INDEX idempotency_key_expires_idx ON messaging_idempotency_key (expires_at);
 
 -- ---- audit ---------------------------------------------------------------------------------------
 
 -- Append-only, monthly RANGE partitions on `at` (UTC month), retained 60 months (B17).
-CREATE TABLE audit.audit_log (
+CREATE TABLE audit_log (
     id             uuid        NOT NULL DEFAULT uuidv7(),
     at             timestamptz NOT NULL DEFAULT now(),
     actor_id       text        NOT NULL,
@@ -109,14 +101,12 @@ CREATE TABLE audit.audit_log (
     PRIMARY KEY (id, at)
 ) PARTITION BY RANGE (at);
 
-CREATE INDEX audit_log_entity_idx ON audit.audit_log (entity_type, entity_id, at DESC);
-CREATE INDEX audit_log_actor_idx ON audit.audit_log (actor_id, at DESC);
-
-GRANT SELECT, INSERT ON audit.audit_log TO amplify_api, amplify_jobs;
+CREATE INDEX audit_log_entity_idx ON audit_log (entity_type, entity_id, at DESC);
+CREATE INDEX audit_log_actor_idx ON audit_log (actor_id, at DESC);
 
 -- ---- config --------------------------------------------------------------------------------------
 
-CREATE TABLE config.app_setting (
+CREATE TABLE config_app_setting (
     key        text        PRIMARY KEY CHECK (key ~ '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$'),
     value      jsonb       NOT NULL,
     updated_by text        NOT NULL DEFAULT 'system',
@@ -124,5 +114,3 @@ CREATE TABLE config.app_setting (
     version    int         NOT NULL DEFAULT 1 CHECK (version > 0)
 );
 
-GRANT SELECT, INSERT, UPDATE ON config.app_setting TO amplify_api;
-GRANT SELECT ON config.app_setting TO amplify_jobs;
