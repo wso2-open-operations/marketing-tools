@@ -1,0 +1,3 @@
+# Migration scripts are checksummed byte for byte by amplify-database, so a CRLF checkout (Windows,
+# core.autocrlf=true) would look like every applied script changed. Keep them LF everywhere.
+*.sql text eol=lf

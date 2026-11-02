@@ -1,0 +1,2065 @@
+openapi: 3.0.1
+info:
+  title: Amplify API
+  version: 1.0.0
+  description: |
+    WSO2 Amplify phase 1 published API (M5). Reached only through the Choreo API proxy at the cell edge
+    (ADR-004); the proxy forwards the caller as a signed backend JWT in `x-jwt-assertion` (ADR-022).
+
+    - Access: every operation names the grant it needs in `x-access` (`EMPLOYEE` = any signed-in
+      employee; `CAN_*` = a capability given to the Asgardeo groups configured for it, see
+      `modules/auth/access.bal`). This mirrors `modules/auth/matrix.bal` and `activity-matrix.md`; anyone
+      else gets 403.
+    - Every response echoes `X-Correlation-ID` (generated when the caller sends none).
+    - Every POST accepts `Idempotency-Key`: a repeat with the same key and body returns the stored
+      response (`Idempotent-Replayed: true`); the same key with a different body is 422
+      `IDEMPOTENCY_KEY_REUSED`; a repeat while the first is still running is 409 `IDEMPOTENCY_IN_PROGRESS`.
+    - Every error is `application/problem+json` (`Problem`) with a stable `code`; bodies never carry
+      stack traces, SQL or upstream responses.
+    - Optimistic locking: changes to versioned resources carry the `version` that was read; a stale one
+      is 409 `VERSION_CONFLICT`.
+    - Responses are `Cache-Control: no-store` unless the operation says otherwise (`/leaderboard`,
+      `/po/dashboard`).
+servers:
+  - url: /
+security:
+  - backendJwt: []
+tags:
+  - name: Identity
+  - name: S1 Campaign
+  - name: S2 Connection
+  - name: C1 Sharing
+  - name: S3 External Sharing
+  - name: C2 Scoring
+  - name: S4 Recognition
+  - name: S5 Admin
+  - name: S6 Dashboards
+  - name: Probes
+
+paths:
+  /health:
+    get:
+      tags: [Probes]
+      operationId: getHealth
+      security: []
+      x-access: PUBLIC
+      description: Liveness. Not published through the proxy.
+      responses:
+        "200":
+          description: Up
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/HealthStatus"}
+  /ready:
+    get:
+      tags: [Probes]
+      operationId: getReady
+      security: []
+      x-access: PUBLIC
+      description: Readiness. 200 when the database answers and the token-key breaker isn't open; non-critical breakers (jobs trigger, roster) are reported but don't fail readiness.
+      responses:
+        "200":
+          description: Ready
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ReadyStatus"}
+        "503":
+          description: Not ready
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ReadyStatus"}
+
+  /me:
+    get:
+      tags: [Identity]
+      operationId: getMe
+      x-access: EMPLOYEE
+      description: The caller (upserts the employee row from the backend JWT claims), capabilities from the activity matrix, LinkedIn status.
+      parameters: [{$ref: "#/components/parameters/CorrelationId"}]
+      responses:
+        "200":
+          description: OK
+          headers: {X-Correlation-ID: {$ref: "#/components/headers/CorrelationId"}}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Me"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+
+  /campaigns:
+    get:
+      tags: [S1 Campaign]
+      operationId: listCampaigns
+      x-access: EMPLOYEE
+      description: Paged campaigns, priority first then newest. Employees (and SLT/Admin) see OPEN campaigns that opened inside the window only; PO and Marketing may ask for any status.
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {name: status, in: query, schema: {type: string, enum: [open, scheduled, closed, archived, all], default: open}}
+        - {name: window, in: query, description: "Opened in the last N days, `<N>d`, 1-365 (default `posts.window_days`, 14)", schema: {type: string, pattern: "^[0-9]{1,3}d$"}}
+        - {name: tag, in: query, schema: {type: string, maxLength: 50}}
+        - {$ref: "#/components/parameters/Page"}
+        - {name: size, in: query, schema: {type: integer, minimum: 1, maximum: 50, default: 14}}
+      responses:
+        "200":
+          description: OK
+          headers: {X-Correlation-ID: {$ref: "#/components/headers/CorrelationId"}}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CampaignPage"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+    post:
+      tags: [S1 Campaign]
+      operationId: registerCampaign
+      x-access: CAN_CAMPAIGN
+      description: Registers a campaign (Save). With `shareNow=true` it also asks amplify-jobs to start a Run right away (fire-and-forget behind a circuit breaker; the scheduled Run catches up when that fails).
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+        - {name: shareNow, in: query, schema: {type: boolean, default: false}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CampaignDraft"}
+      responses:
+        "201":
+          description: Registered
+          headers: {X-Correlation-ID: {$ref: "#/components/headers/CorrelationId"}}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CampaignRegistration"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "413": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /campaigns/{id}:
+    parameters: [{$ref: "#/components/parameters/CampaignId"}]
+    get:
+      tags: [S1 Campaign]
+      operationId: getCampaign
+      x-access: EMPLOYEE
+      description: One campaign. Employees, SLT and Admin get 404 unless it is OPEN.
+      parameters: [{$ref: "#/components/parameters/CorrelationId"}]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Campaign"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+    patch:
+      tags: [S1 Campaign]
+      operationId: editCampaign
+      x-access: CAN_CAMPAIGN
+      description: Edits a campaign (optimistic lock on `version`). Not on an archived campaign. The post link may always change; the post id (`resourceUrn`) only while the campaign has no recorded activity.
+      parameters: [{$ref: "#/components/parameters/CorrelationId"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CampaignPatch"}
+      responses:
+        "200":
+          description: Changed
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Campaign"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "413": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+    delete:
+      tags: [S1 Campaign]
+      operationId: archiveCampaign
+      x-access: CAN_CAMPAIGN
+      description: Archives the campaign (soft delete). Points and ledger references already earned stay.
+      parameters: [{$ref: "#/components/parameters/CorrelationId"}]
+      responses:
+        "200":
+          description: Archived
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Campaign"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /tags:
+    get:
+      tags: [S1 Campaign]
+      operationId: listTags
+      x-access: EMPLOYEE
+      parameters: [{$ref: "#/components/parameters/CorrelationId"}]
+      responses:
+        "200":
+          description: Tags in use on campaigns that aren't archived
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/TagList"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /categories:
+    get:
+      tags: [S1 Campaign]
+      operationId: listCategories
+      x-access: EMPLOYEE
+      parameters: [{$ref: "#/components/parameters/CorrelationId"}]
+      responses:
+        "200":
+          description: Active categories
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CategoryList"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+
+  /connections/linkedin/start:
+    post:
+      tags: [S2 Connection]
+      operationId: startLinkedInConnect
+      x-access: EMPLOYEE
+      description: Starts the LinkedIn OAuth flow for the caller. Issues a single-use `state` valid for 10 minutes.
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ConnectStart"}
+      responses:
+        "200":
+          description: Redirect the browser to `authorizationUrl`
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ConnectAuthorization"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "413": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /connections/linkedin/complete:
+    post:
+      tags: [S2 Connection]
+      operationId: completeLinkedInConnect
+      x-access: EMPLOYEE
+      description: Completes the flow. The `state` must be the caller's, unused and unexpired. Exchanges the code, reads userinfo, encrypts the token into today's partition, and records `ConnectionReady`.
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ConnectComplete"}
+      responses:
+        "200":
+          description: Connected
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LinkedInConnection"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "413": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /connections/linkedin/decline:
+    post:
+      tags: [S2 Connection]
+      operationId: declineLinkedInConnect
+      x-access: EMPLOYEE
+      description: Records "I don't consent" from the Link Me pop-up with the caller's LinkedIn profile URL (`https://www.linkedin.com/in/<name>`), which is optional; blank or missing stores nothing. No LinkedIn link or token is created.
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                profileUrl: {type: string, maxLength: 255, nullable: true, example: "https://www.linkedin.com/in/your-name"}
+      responses:
+        "204": {description: Recorded}
+        "400": {$ref: "#/components/responses/Problem"}
+        "413": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /connections/linkedin:
+    delete:
+      tags: [S2 Connection]
+      operationId: removeLinkedInConnection
+      x-access: EMPLOYEE
+      description: Revokes the caller's access token at LinkedIn, then removes the connection and deletes the token row (`ConnectionRemoved`). A token LinkedIn already treats as invalid, or one past its own expiry, goes straight to the delete. If LinkedIn can't confirm the revoke, the connection is kept and the call returns 503 `DEPENDENCY_UNAVAILABLE`; try again.
+      parameters: [{$ref: "#/components/parameters/CorrelationId"}]
+      responses:
+        "204": {description: "Removed, or there was no connection to remove"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+
+  /campaigns/{id}/shares:
+    parameters: [{$ref: "#/components/parameters/CampaignId"}]
+    post:
+      tags: [C1 Sharing]
+      operationId: requestShare
+      x-access: EMPLOYEE
+      description: Queues "Amplify, share this for me" (202). One per campaign per employee; asking again after FAILED retries the same row (ADR-015). An employee gets 404 for a campaign that is archived, scheduled or closed (same as `GET /campaigns/{id}`); an editor gets `CAMPAIGN_CLOSED` or `CAMPAIGN_ARCHIVED`. Errors - `LINKEDIN_NOT_CONNECTED`, `NEEDS_RECONNECT`, `CAMPAIGN_CLOSED` (editors), `DUPLICATE_ACTION`, `FEATURE_DISABLED`.
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ShareCommand"}
+      responses:
+        "202":
+          description: Queued
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Share"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "413": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /me/shares:
+    get:
+      tags: [C1 Sharing]
+      operationId: listMyShares
+      x-access: EMPLOYEE
+      parameters: [{$ref: "#/components/parameters/CorrelationId"}]
+      responses:
+        "200":
+          description: The caller's shares, newest first
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ShareList"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+
+  /external-shares:
+    post:
+      tags: [S3 External Sharing]
+      operationId: claimExternalShare
+      x-access: EMPLOYEE
+      description: Claims promotion done outside Amplify (My Campaign). Any public HTTPS URL (not a `lnkd.in` short link), or just a LinkedIn post number; one claim per normalized URL across everyone (`EVIDENCE_ALREADY_CLAIMED`).
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ExternalShareClaim"}
+      responses:
+        "201":
+          description: Pending review
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ExternalShare"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "413": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /me/external-shares:
+    get:
+      tags: [S3 External Sharing]
+      operationId: listMyExternalShares
+      x-access: EMPLOYEE
+      parameters: [{$ref: "#/components/parameters/CorrelationId"}]
+      responses:
+        "200":
+          description: The caller's claims, newest first
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ExternalShareList"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /po/external-shares:
+    get:
+      tags: [S3 External Sharing]
+      operationId: listExternalSharesForReview
+      x-access: CAN_REVIEW_SHARES
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {name: status, in: query, schema: {type: string, enum: [PENDING, APPROVED, REJECTED, AMPLIFIED, ALL], default: PENDING}}
+        - {$ref: "#/components/parameters/Page"}
+        - {$ref: "#/components/parameters/Size"}
+      responses:
+        "200":
+          description: Claims, oldest first
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ExternalSharePage"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /po/external-shares/{id}/approve:
+    parameters: [{$ref: "#/components/parameters/ExternalShareId"}]
+    post:
+      tags: [S3 External Sharing]
+      operationId: approveExternalShare
+      x-access: CAN_REVIEW_SHARES
+      description: Approves a PENDING claim (not the PO's own) and awards `OWN_POST` points in the same transaction.
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      responses:
+        "200":
+          description: Approved
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ExternalShare"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /po/external-shares/{id}/reject:
+    parameters: [{$ref: "#/components/parameters/ExternalShareId"}]
+    post:
+      tags: [S3 External Sharing]
+      operationId: rejectExternalShare
+      x-access: CAN_REVIEW_SHARES
+      description: Rejects a PENDING claim; a reason is required.
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/Reason"}
+      responses:
+        "200":
+          description: Rejected
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ExternalShare"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "413": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /po/external-shares/{id}/amplified:
+    parameters: [{$ref: "#/components/parameters/ExternalShareId"}]
+    post:
+      tags: [S3 External Sharing]
+      operationId: markExternalShareAmplified
+      x-access: CAN_REVIEW_SHARES
+      description: Marks an APPROVED claim amplified (C4, once) and appends the T4 top-up in the same transaction.
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      responses:
+        "200":
+          description: Amplified
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ExternalShare"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+
+  /po/point-rules:
+    get:
+      tags: [C2 Scoring]
+      operationId: listPointRules
+      x-access: CAN_POINT_RULES
+      parameters: [{$ref: "#/components/parameters/CorrelationId"}]
+      responses:
+        "200":
+          description: Every rule version; `inForce` marks the one used now
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/PointRuleList"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+    post:
+      tags: [C2 Scoring]
+      operationId: addPointRuleVersion
+      x-access: CAN_POINT_RULES
+      description: Adds a rule version from now on (never backdated); past awards keep their value.
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PointRuleDraft"}
+      responses:
+        "201":
+          description: Added
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/PointRule"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "413": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /po/points/adjustments:
+    post:
+      tags: [C2 Scoring]
+      operationId: adjustPoints
+      x-access: CAN_ADJUST_POINTS
+      description: Adds or removes points with a reason (ADR-010). Standings update in the same transaction (B12).
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PointsAdjustment"}
+      responses:
+        "201":
+          description: Ledger row
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LedgerEntry"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "413": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /po/points/{reference}/reverse:
+    parameters:
+      - {name: reference, in: path, required: true, schema: {type: string, maxLength: 66}}
+    post:
+      tags: [C2 Scoring]
+      operationId: reverseLedgerEntry
+      x-access: CAN_ADJUST_POINTS
+      description: Cancels a ledger row with a reversal row; reason required; once per row. Standings update in the same transaction (B12).
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/Reason"}
+      responses:
+        "201":
+          description: Reversal row
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LedgerEntry"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "413": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+
+  /leaderboard:
+    get:
+      tags: [S4 Recognition]
+      operationId: getLeaderboard
+      x-access: EMPLOYEE
+      description: "Company top N, personal, and My Team (leaderboards.md, B15). ETag `<period>:<standing_version>` with `Cache-Control: private, max-age=30`; `If-None-Match` gives 304 with the same two headers. When the roster lookup failed (`teamStatus = UNAVAILABLE` with a roster configured) the body has no ETag and is `Cache-Control: no-store`, so it is never revalidated into a stale My Team."
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {$ref: "#/components/parameters/Period"}
+        - {name: If-None-Match, in: header, schema: {type: string}}
+      responses:
+        "200":
+          description: OK
+          headers:
+            ETag: {schema: {type: string}}
+            Cache-Control: {schema: {type: string}}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Leaderboard"}
+        "304":
+          description: Not modified
+          headers:
+            ETag: {schema: {type: string}}
+            Cache-Control: {schema: {type: string}}
+        "400": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /leaderboard/top:
+    get:
+      tags: [S4 Recognition]
+      operationId: getLeaderboardTop
+      x-access: EMPLOYEE
+      description: "The Celebrate top three and the caller's own position, company wide. The scope is the `leaderboard.top_scope` setting: `MONTH` (default) covers the current calendar month, the 1st 00:00 UTC to the next 1st, summed from the points ledger; `ALL` is the all-time standings. Only people with at least `leaderboard.top_min_points` (default 100) that month are ranked; `me` still carries the caller's own points when they are under it, with no rank. Monthly totals are shared by every caller and kept in memory for 2 hours (`topBoardCacheSeconds`), so the first caller after they run out loads them and the rest reuse them; a failed reload serves the previous totals of the same month. `me` comes from the same totals, so it matches the top three (ADR-037)."
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+      responses:
+        "200":
+          description: OK
+          headers:
+            Cache-Control: {schema: {type: string}, description: "private, max-age=60"}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LeaderboardTop"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /leaderboard/people:
+    get:
+      tags: [S4 Recognition]
+      operationId: getLeaderboardPeople
+      x-access: EMPLOYEE
+      description: "People ranked within the whole company, a business unit (BU) or a team. Open to every employee (ADR-035). `BU` and `TEAM` default to the caller's own when `bu` / `team` is omitted; the team key is the opaque `key` from `/headcount` or `/leaderboard/groups`. Membership comes from the people directory, so `BU` and `TEAM` answer 503 `DEPENDENCY_UNAVAILABLE` when it has never loaded."
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {$ref: "#/components/parameters/Period"}
+        - {name: scope, in: query, schema: {type: string, enum: [COMPANY, BU, TEAM], default: COMPANY}}
+        - {name: bu, in: query, schema: {type: string, maxLength: 100}}
+        - {name: team, in: query, schema: {type: string, maxLength: 200}}
+        - {name: q, in: query, schema: {type: string, maxLength: 100}}
+        - {$ref: "#/components/parameters/Page"}
+        - {$ref: "#/components/parameters/Size"}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LeaderboardPeople"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /leaderboard/groups:
+    get:
+      tags: [S4 Recognition]
+      operationId: getLeaderboardGroups
+      x-access: EMPLOYEE
+      description: "All teams (or one BU's teams), or all BUs, ranked against each other by the sum of their members' points. Open to every employee (ADR-035). Teams with no points are listed with 0. Participation is people with points over the employee count (`/headcount`). People the directory doesn't place are summed in `unassigned`, never dropped."
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {$ref: "#/components/parameters/Period"}
+        - {name: by, in: query, schema: {type: string, enum: [TEAM, BU, HOUSE], default: TEAM}}
+        - {name: bu, in: query, description: "Only the teams in this BU (by=TEAM only)", schema: {type: string, maxLength: 100}}
+        - {name: sort, in: query, description: "Column to order by; rank is the points-based dense rank", schema: {type: string, enum: [rank, name, points, participants, headcount, participation], default: rank}}
+        - {name: dir, in: query, schema: {type: string, enum: [asc, desc], default: asc}}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LeaderboardGroups"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /headcount:
+    get:
+      tags: [S4 Recognition]
+      operationId: getHeadcount
+      x-access: EMPLOYEE
+      description: "Current employee count, overall and by BU and team, counted from the people directory (everyone it returns with a work email). Kept in memory for `headcountCacheSeconds` (24 hours); when that runs out the directory is read again, and a failed read keeps serving the last count. Never stored in the database."
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Headcount"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /me/points:
+    get:
+      tags: [S4 Recognition]
+      operationId: getMyPoints
+      x-access: EMPLOYEE
+      description: Own total, rank and monthly history. Points only, no Coin value (A11).
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {$ref: "#/components/parameters/Period"}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MyPoints"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /team:
+    get:
+      tags: [S4 Recognition]
+      operationId: getTeamPage
+      x-access: EMPLOYEE
+      description: "Team page. Employees see their own team (roster from the people directory, server side); `CAN_ADJUST_POINTS` sees the company. `team.visibility = COMPANY` widens it for everyone (ADR-019). The list is the whole roster from the directory (names included), joined to the standings: a person nobody has recorded points for is an entry with `points` 0, `employeeId` null and `rank` null, whether or not they ever signed in. Directory results are reused for 24 hours (`rosterCacheSeconds`). With the directory down and nothing cached, the team view lists only the caller (`teamStatus` UNAVAILABLE) and the company view only people with points (`teamStatus` UNAVAILABLE, `headcount` null)."
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {$ref: "#/components/parameters/Period"}
+        - {name: q, in: query, schema: {type: string, maxLength: 100}}
+        - {name: sort, in: query, schema: {type: string, enum: [rank, points, name], default: rank}}
+        - {$ref: "#/components/parameters/Page"}
+        - {$ref: "#/components/parameters/Size"}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/TeamPage"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /team/{employeeId}/history:
+    parameters:
+      - {name: employeeId, in: path, required: true, schema: {type: string, maxLength: 255}}
+    get:
+      tags: [S4 Recognition]
+      operationId: getPointsHistory
+      x-access: EMPLOYEE
+      description: Ledger rows of one person, newest first. Without `CAN_ADJUST_POINTS` - self or a member of their team, else 403 `TEAM_SCOPE`.
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {$ref: "#/components/parameters/Page"}
+        - {$ref: "#/components/parameters/Size"}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/PointsHistory"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /po/dashboard:
+    get:
+      tags: [S4 Recognition]
+      operationId: getPoDashboard
+      x-access: CAN_PO_DASHBOARD
+      description: The eight PO tiles (po-dashboard.md), computed in one transaction; cached 60 s.
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {name: month, in: query, schema: {type: string, pattern: "^[0-9]{4}-(0[1-9]|1[0-2])$"}}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/PoDashboard"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+
+  /dashboards/operations:
+    get:
+      tags: [S6 Dashboards]
+      operationId: getDashboardOperations
+      x-access: CAN_DASHBOARD
+      description: "Operations board: what is live, who is sharing, whether anything is stuck. Read-only, computed from Amplify's own tables, cached 60 s. Not for plain employees (403)."
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DashboardOperations"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /dashboards/campaigns:
+    get:
+      tags: [S6 Dashboards]
+      operationId: getDashboardCampaigns
+      x-access: CAN_DASHBOARD
+      description: "Campaign performance: reposts per campaign, a selected campaign's first seven days, and reposts by category. `selected` defaults to the campaign with the most reposts. Cached 60 s."
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {name: days, in: query, description: "Look-back for campaigns and categories", schema: {type: integer, minimum: 1, maximum: 90, default: 30}}
+        - {name: campaignId, in: query, schema: {type: string, maxLength: 64}}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DashboardCampaigns"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /dashboards/export:
+    get:
+      tags: [S6 Dashboards]
+      operationId: getDashboardExport
+      x-access: CAN_EXPORT
+      description: "The raw rows behind every board for a date range as a CSV download (UTC days, both ends inclusive, at most 366 days). One row per engagement, share attempt, points ledger row, campaign opened and connection made, in one set of columns told apart by record_type. Not cached."
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {name: from, in: query, required: true, schema: {type: string, format: date}}
+        - {name: to, in: query, required: true, schema: {type: string, format: date}}
+      responses:
+        "200":
+          description: OK
+          content:
+            text/csv:
+              schema: {type: string}
+        "400": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /dashboards/people/{employeeId}:
+    get:
+      tags: [S6 Dashboards]
+      operationId: getDashboardPerson
+      x-access: CAN_DASHBOARD
+      description: "One person's Post Performance for the person popup: every post they have an active repost of (plain, and with their own comment) and the category split. Team and BU come from the people directory in the UI. Cached 60 s."
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {name: employeeId, in: path, required: true, schema: {type: string, maxLength: 255}}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DashboardPersonBoard"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /dashboards/participation:
+    get:
+      tags: [S6 Dashboards]
+      operationId: getDashboardParticipation
+      x-access: CAN_DASHBOARD
+      description: "Participation funnel numbers: employees, connected, reposted at least once, active in the last 30 days, expired connections. The team and BU boards come from /leaderboard/groups. Cached 60 s."
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DashboardParticipation"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /dashboards/glance:
+    get:
+      tags: [S6 Dashboards]
+      operationId: getDashboardGlance
+      x-access: CAN_DASHBOARD
+      description: "At a glance: the numbers for the leadership check-in. People, teams and the best campaign's rank come from /leaderboard and /leaderboard/groups. Cached 60 s."
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DashboardGlance"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /dashboards/scorecard:
+    get:
+      tags: [S6 Dashboards]
+      operationId: getDashboardScorecard
+      x-access: CAN_DASHBOARD
+      description: "Scorecard: seven measures against their targets (`scorecard*` configuration, ADR-036). Cached 60 s."
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DashboardScorecard"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+
+  /admin/announcements:
+    get:
+      tags: [S5 Admin]
+      operationId: listAnnouncements
+      x-access: CAN_ADMIN
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {name: status, in: query, schema: {type: string, enum: [QUEUED, SENT, FAILED, ALL], default: FAILED}}
+      responses:
+        "200":
+          description: Club cards, newest first
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AnnouncementList"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /admin/announcements/{id}/retry:
+    parameters: [{$ref: "#/components/parameters/CampaignId"}]
+    post:
+      tags: [S5 Admin]
+      operationId: retryAnnouncement
+      x-access: CAN_ADMIN
+      description: Re-queues a FAILED Club card (by campaign id); the next Run sends it. Refused while `announcements.enabled` is false.
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      responses:
+        "202":
+          description: Re-queued
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Announcement"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /admin/settings:
+    get:
+      tags: [S5 Admin]
+      operationId: listSettings
+      x-access: CAN_ADMIN
+      parameters: [{$ref: "#/components/parameters/CorrelationId"}]
+      responses:
+        "200":
+          description: Settings (Coin settings hidden in phase 1)
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SettingList"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+    put:
+      tags: [S5 Admin]
+      operationId: changeSettings
+      x-access: CAN_ADMIN
+      description: Changes known settings in one transaction, each guarded by its `version`. A new `leaderboard.top_n` asks amplify-jobs to rebuild the standings. A change to `run.schedule`, `run.enabled` or `maintenance.schedule` is pushed to the scheduler after the commit (ADR-026); the answer carries `schedulerSync` (`PENDING` when the scheduler couldn't be reached; the save still stands).
+      parameters: [{$ref: "#/components/parameters/CorrelationId"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SettingChanges"}
+      responses:
+        "200":
+          description: Settings after the change
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SettingList"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "413": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /admin/scheduler/sync:
+    post:
+      tags: [S5 Admin]
+      operationId: syncScheduler
+      x-access: CAN_ADMIN
+      description: Converges the scheduler's jobs (`amplify-run`, `amplify-maintenance-partitions`) to the schedule settings (ADR-026). Safe to repeat. 503 `SCHEDULER_UNAVAILABLE` when the scheduler can't be reached.
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      responses:
+        "200":
+          description: Scheduler matches the settings (or no scheduler is configured)
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SchedulerSync"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+
+components:
+  securitySchemes:
+    backendJwt:
+      type: apiKey
+      in: header
+      name: x-jwt-assertion
+      description: Backend JWT signed by the API proxy (ADR-022).
+  headers:
+    CorrelationId:
+      description: Echo of the caller's `X-Correlation-ID`, or a generated one
+      schema: {type: string}
+  parameters:
+    CorrelationId:
+      name: X-Correlation-ID
+      in: header
+      required: false
+      schema: {type: string, pattern: "^[A-Za-z0-9._-]{1,64}$"}
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Client-chosen key per caller (1-255 characters), remembered 24 hours.
+      schema: {type: string, minLength: 1, maxLength: 255}
+    Page:
+      name: page
+      in: query
+      schema: {type: integer, minimum: 0, maximum: 10000, default: 0}
+    Size:
+      name: size
+      in: query
+      schema: {type: integer, minimum: 1, maximum: 100, default: 25}
+    Period:
+      name: period
+      in: query
+      schema: {type: string, pattern: "^(ALL|[0-9]{4}-(0[1-9]|1[0-2])|[0-9]{4}-Q[1-4])$", default: ALL}
+    CampaignId:
+      name: id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    ExternalShareId:
+      name: id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+  responses:
+    Problem:
+      description: Problem details (RFC 9457)
+      content:
+        application/problem+json:
+          schema: {$ref: "#/components/schemas/Problem"}
+  schemas:
+    Problem:
+      type: object
+      required: [type, title, status, code]
+      properties:
+        type: {type: string, description: "`urn:wso2:amplify:problem:<code>`"}
+        title: {type: string}
+        status: {type: integer}
+        code:
+          type: string
+          description: Stable code; the client branches on this, never on `detail`.
+          x-stable-codes: [TOKEN_MISSING, TOKEN_MALFORMED, TOKEN_ALG_NOT_ALLOWED, TOKEN_SIGNATURE_INVALID,
+            TOKEN_EXPIRED, TOKEN_NOT_YET_VALID, TOKEN_ISSUER_INVALID, TOKEN_AUDIENCE_INVALID, TOKEN_CLAIMS_INVALID,
+            ROUTE_NOT_PERMITTED, ROLE_NOT_PERMITTED, DEPENDENCY_UNAVAILABLE, EMAIL_CONFLICT, VALIDATION_FAILED,
+            NOT_FOUND, METHOD_NOT_ALLOWED, PAYLOAD_TOO_LARGE, VERSION_CONFLICT, IDEMPOTENCY_KEY_REUSED, IDEMPOTENCY_IN_PROGRESS, INTERNAL_ERROR,
+            CAMPAIGN_ALREADY_REGISTERED, NOT_WSO2_RESOURCE, INVALID_CAMPAIGN, INVALID_WINDOW, CAMPAIGN_ARCHIVED,
+            POST_HAS_ACTIVITY, CAMPAIGN_CLOSED, OAUTH_STATE_INVALID, OAUTH_REDIRECT_MISMATCH, MISSING_SCOPE, MEMBER_ALREADY_LINKED, CONNECTION_REMOVED,
+            LINKEDIN_NOT_CONNECTED, NEEDS_RECONNECT, DUPLICATE_ACTION, COMMENTARY_REQUIRED, COMMENTARY_NOT_ALLOWED,
+            COMMENTARY_TOO_LONG, FEATURE_DISABLED, CERTIFICATION_REQUIRED, EVIDENCE_ALREADY_CLAIMED,
+            INVALID_EVIDENCE_URL, EVIDENCE_URL_NOT_HTTPS, EVIDENCE_URL_TOO_LONG, EVIDENCE_URL_CREDENTIALS,
+            EVIDENCE_URL_IP_HOST, NOT_PENDING, SELF_REVIEW, REASON_REQUIRED, NOT_APPROVED, ALREADY_AMPLIFIED,
+            RULE_NOT_FOUND, RULE_VERSION_EXISTS, RULE_BACKDATED, INVALID_POINTS, TOP_UP_NOT_POSITIVE,
+            ALREADY_REVERSED, CANNOT_REVERSE_REVERSAL, INVALID_LEDGER_REFERENCE, TEAM_SCOPE,
+            ANNOUNCEMENT_NOT_FAILED, UNKNOWN_SETTING, INVALID_SETTING, SCHEDULER_UNAVAILABLE, INVALID_EMPLOYEE_ID,
+            INVALID_EMAIL, INVALID_MEMBER_URN, INVALID_POST_URN, INVALID_UUID, SHARE_NOT_QUEUED, PAID_NOT_ALLOWED,
+            ALREADY_ANNOUNCED, ANNOUNCEMENT_NOT_QUEUED]
+        detail: {type: string, nullable: true}
+        correlationId: {type: string, nullable: true}
+    HealthStatus:
+      type: object
+      required: [component, status]
+      properties:
+        component: {type: string}
+        status: {type: string, enum: [UP, DOWN]}
+    ReadyStatus:
+      type: object
+      required: [component, status, database, breakers]
+      properties:
+        component: {type: string}
+        status: {type: string, enum: [UP, DOWN]}
+        database: {type: string, enum: [UP, DOWN]}
+        breakers:
+          type: object
+          required: [database, jwks, jobs, roster, linkedinOAuth, linkedinApi, linkedinIdTokenJwks]
+          properties:
+            database: {$ref: "#/components/schemas/BreakerState"}
+            jwks: {$ref: "#/components/schemas/BreakerState"}
+            jobs: {$ref: "#/components/schemas/BreakerState"}
+            roster: {$ref: "#/components/schemas/BreakerState"}
+            linkedinOAuth: {$ref: "#/components/schemas/BreakerState"}
+            linkedinApi: {$ref: "#/components/schemas/BreakerState"}
+            linkedinIdTokenJwks:
+              allOf: [{$ref: "#/components/schemas/BreakerState"}]
+              description: LinkedIn OIDC JWKS (ID-token validation on connect). Reported, never gates readiness; NOT_CONFIGURED while linkedinIdTokenValidation is off
+    BreakerState:
+      type: string
+      enum: [CLOSED, HALF_OPEN, OPEN, NOT_CONFIGURED]
+      description: "`NOT_CONFIGURED` = the dependency has no URL / client id in this deployment (gauge -1, ADR-028)"
+    Me:
+      type: object
+      required: [employee, roles, grants, capabilities, linkedin]
+      properties:
+        employee:
+          type: object
+          required: [employeeId, email, displayName]
+          properties:
+            employeeId: {type: string}
+            email: {type: string}
+            displayName: {type: string}
+        roles:
+          description: The caller's Asgardeo groups that the access configuration names
+          type: array
+          items: {type: string}
+        grants:
+          description: Grants from those groups; `EMPLOYEE` always. The UI gates on these, never on group names
+          type: array
+          items: {type: string, enum: [EMPLOYEE, CAN_CAMPAIGN, CAN_DASHBOARD, CAN_EXPORT, CAN_REVIEW_SHARES, CAN_POINT_RULES, CAN_ADJUST_POINTS, CAN_PO_DASHBOARD, CAN_REPORTS, CAN_ADMIN]}
+        capabilities: {type: array, items: {type: string}}
+        linkedin:
+          type: object
+          required: [status]
+          properties:
+            status: {$ref: "#/components/schemas/ConnectionStatus"}
+            expiresAt: {type: string, format: date-time, nullable: true}
+    ConnectionStatus: {type: string, enum: [ACTIVE, EXPIRING, NEEDS_RECONNECT, REMOVED, NOT_CONNECTED]}
+
+    CampaignStatus: {type: string, enum: [SCHEDULED, OPEN, CLOSED, ARCHIVED]}
+    Campaign:
+      type: object
+      required: [id, provider, resourceUrn, resourceType, ownerUrn, title, categoryCode, isPriority, tags, opensAt, closesAt, status, createdBy, createdAt, updatedAt, version]
+      properties:
+        id: {type: string, format: uuid}
+        provider: {type: string, enum: [linkedin]}
+        resourceUrn: {type: string}
+        resourceType: {type: string, enum: [SHARE, UGC_POST, ARTICLE, VIDEO, DOCUMENT, EVENT, OTHER]}
+        ownerUrn: {type: string}
+        resourceUrl: {type: string, nullable: true}
+        title: {type: string}
+        summary: {type: string, nullable: true}
+        imageUrl: {type: string, nullable: true}
+        categoryCode: {type: string}
+        isPriority: {type: boolean}
+        tags: {type: array, items: {type: string}}
+        opensAt: {type: string, format: date-time}
+        closesAt: {type: string, format: date-time}
+        archivedAt: {type: string, format: date-time, nullable: true}
+        status: {$ref: "#/components/schemas/CampaignStatus"}
+        createdBy: {type: string}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        version: {type: integer}
+    CampaignPage:
+      type: object
+      required: [items, page, size, total]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/Campaign"}}
+        page: {type: integer}
+        size: {type: integer}
+        total: {type: integer}
+    CampaignDraft:
+      type: object
+      additionalProperties: false
+      required: [resourceUrn, ownerUrn, title, categoryCode]
+      properties:
+        resourceUrn: {type: string, maxLength: 255, example: "urn:li:share:7123"}
+        ownerUrn: {type: string, maxLength: 255, example: "urn:li:organization:1477"}
+        resourceUrl: {type: string, maxLength: 2048}
+        title: {type: string, minLength: 1, maxLength: 200}
+        summary: {type: string, maxLength: 2000}
+        imageUrl: {type: string, maxLength: 2048}
+        categoryCode: {type: string, maxLength: 50}
+        isPriority: {type: boolean, default: false}
+        tags: {type: array, maxItems: 20, items: {type: string, maxLength: 50}}
+        opensAt: {type: string, format: date-time}
+        closesAt: {type: string, format: date-time, description: "Default `opensAt` + `campaign.default_window_days` (C7)"}
+    CampaignPatch:
+      type: object
+      additionalProperties: false
+      required: [version]
+      properties:
+        version: {type: integer, minimum: 1, description: Version read before the edit}
+        resourceUrn:
+          type: string
+          maxLength: 255
+          example: "urn:li:share:7123"
+          description: >-
+            New post id, same rules as registration. Allowed only while nothing is recorded against the campaign
+            (no share requests, reposts, external shares or points entries for the campaign); otherwise 409 `POST_HAS_ACTIVITY`. An id another
+            campaign already has answers 409 `CAMPAIGN_ALREADY_REGISTERED`.
+        resourceUrl:
+          type: string
+          maxLength: 2048
+          description: New link to the post, same origin rules as registration (`campaignLinkOrigins`). Blank clears it.
+        title: {type: string, minLength: 1, maxLength: 200}
+        summary: {type: string, maxLength: 2000}
+        imageUrl: {type: string, maxLength: 2048}
+        categoryCode: {type: string, maxLength: 50}
+        isPriority: {type: boolean}
+        tags: {type: array, maxItems: 20, items: {type: string, maxLength: 50}}
+        opensAt: {type: string, format: date-time}
+        closesAt: {type: string, format: date-time}
+    CampaignRegistration:
+      type: object
+      required: [campaign, run]
+      properties:
+        campaign: {$ref: "#/components/schemas/Campaign"}
+        run:
+          type: string
+          enum: [NOT_REQUESTED, STARTED, DEFERRED]
+          description: "`STARTED` = the Run trigger was sent; `DEFERRED` = jobs unreachable or breaker open, the next scheduled Run picks it up"
+    TagList:
+      type: object
+      required: [tags]
+      properties:
+        tags: {type: array, items: {type: string}}
+    CategoryList:
+      type: object
+      required: [categories]
+      properties:
+        categories:
+          type: array
+          items:
+            type: object
+            required: [code, label, sortOrder]
+            properties:
+              code: {type: string}
+              label: {type: string}
+              sortOrder: {type: integer}
+
+    ConnectStart:
+      type: object
+      additionalProperties: false
+      properties:
+        returnTo: {type: string, maxLength: 512, pattern: '^/([^/\\\s][^\\\s]*)?$', description: "One WSO2 path (relative) to come back to; no `//`, backslash or whitespace (open redirect)"}
+        pendingCampaignId: {type: string, format: uuid}
+    ConnectAuthorization:
+      type: object
+      required: [authorizationUrl, state, expiresAt]
+      properties:
+        authorizationUrl: {type: string}
+        state: {type: string}
+        expiresAt: {type: string, format: date-time}
+    ConnectComplete:
+      type: object
+      additionalProperties: false
+      required: [code, state, redirectUri]
+      properties:
+        code: {type: string, minLength: 1, maxLength: 2048}
+        state: {type: string, minLength: 32, maxLength: 128}
+        redirectUri:
+          type: string
+          maxLength: 2048
+          description: The callback page that received the code (no query). Required. It must equal the redirect URI Amplify put on the authorize request, else 422 `OAUTH_REDIRECT_MISMATCH`.
+    LinkedInConnection:
+      type: object
+      required: [status, memberUrn, connectedAt, expiresAt]
+      properties:
+        status: {$ref: "#/components/schemas/ConnectionStatus"}
+        memberUrn: {type: string}
+        connectedAt: {type: string, format: date-time}
+        expiresAt: {type: string, format: date-time}
+        returnTo: {type: string, nullable: true}
+        pendingCampaignId: {type: string, nullable: true}
+
+    ShareKind: {type: string, enum: [REPOST, REPOST_COMMENTARY, SHARE, SHARE_COMMENTARY]}
+    ShareCommand:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind: {$ref: "#/components/schemas/ShareKind"}
+        commentary: {type: string, maxLength: 3000, description: "Required for `*_COMMENTARY`, refused otherwise"}
+    Share:
+      type: object
+      required: [id, campaignId, kind, status, attempts, requestedAt]
+      properties:
+        id: {type: string, format: uuid}
+        campaignId: {type: string, format: uuid}
+        kind: {$ref: "#/components/schemas/ShareKind"}
+        status: {type: string, enum: [QUEUED, PUBLISHED, FAILED]}
+        failureReason: {type: string, nullable: true, enum: [NEEDS_RECONNECT, PROVIDER_REJECTED, RETRIES_EXHAUSTED, null]}
+        attempts: {type: integer}
+        requestedAt: {type: string, format: date-time}
+        publishedAt: {type: string, format: date-time, nullable: true}
+        failedAt: {type: string, format: date-time, nullable: true}
+        metrics: {type: object, nullable: true, description: Share metrics (future phase); always null in phase 1}
+    ShareList:
+      type: object
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/Share"}}
+
+    ExternalShareClaim:
+      type: object
+      additionalProperties: false
+      required: [certified]
+      description: "Send exactly one of `evidenceUrl` and `activityId` (both or neither is a `VALIDATION_FAILED` 400), and `certified` must be true."
+      oneOf:
+        - required: [evidenceUrl]
+        - required: [activityId]
+      properties:
+        evidenceUrl: {type: string, minLength: 1, maxLength: 2048, description: "Any public HTTPS URL; never fetched. `lnkd.in` short links are refused (`INVALID_EVIDENCE_URL`): one post could otherwise be claimed twice"}
+        activityId: {type: string, minLength: 1, maxLength: 100, pattern: "^[0-9]+$", description: "A LinkedIn post number (the activity id: the digits in `urn:li:activity:<number>` or `...-activity-<number>-...`). Amplify builds the canonical post URL from it, stores that as `evidenceUrl`, and so it collides with any other form of the same post (`EVIDENCE_ALREADY_CLAIMED`)"}
+        certified: {type: boolean, enum: [true], description: "\"I certify this is related to WSO2\" (must be true)"}
+        campaignId: {type: string, format: uuid}
+    ExternalShare:
+      type: object
+      required: [id, employeeId, action, evidenceUrl, evidenceHost, evidenceProvider, status, createdAt, version]
+      properties:
+        id: {type: string, format: uuid}
+        employeeId: {type: string}
+        campaignId: {type: string, nullable: true}
+        action: {type: string, enum: [OWN_POST]}
+        evidenceUrl: {type: string}
+        evidenceHost: {type: string}
+        evidenceProvider: {type: string, enum: [linkedin, medium, other]}
+        status: {type: string, enum: [PENDING, APPROVED, REJECTED, AMPLIFIED]}
+        decidedBy: {type: string, nullable: true}
+        decidedAt: {type: string, format: date-time, nullable: true}
+        decisionReason: {type: string, nullable: true}
+        amplifiedAt: {type: string, format: date-time, nullable: true}
+        createdAt: {type: string, format: date-time}
+        version: {type: integer}
+    ExternalShareList:
+      type: object
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/ExternalShare"}}
+    ExternalSharePage:
+      type: object
+      required: [items, page, size, total]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/ExternalShare"}}
+        page: {type: integer}
+        size: {type: integer}
+        total: {type: integer}
+    Reason:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason: {type: string, minLength: 1, maxLength: 1000}
+
+    PointAction: {type: string, enum: [REPOST, REPOST_COMMENTARY, SHARE, SHARE_COMMENTARY, OWN_POST, OWN_POST_AMPLIFIED, REACTION, COMMENT, CHALLENGE_ENTRY, CHALLENGE_WINNER]}
+    PointRule:
+      type: object
+      required: [id, action, points, effectiveFrom, createdBy, createdAt, inForce]
+      properties:
+        id: {type: string}
+        action: {$ref: "#/components/schemas/PointAction"}
+        points: {type: integer, minimum: 0}
+        effectiveFrom: {type: string, format: date-time}
+        createdBy: {type: string}
+        createdAt: {type: string, format: date-time}
+        inForce: {type: boolean}
+    PointRuleList:
+      type: object
+      required: [rules]
+      properties:
+        rules: {type: array, items: {$ref: "#/components/schemas/PointRule"}}
+    PointRuleDraft:
+      type: object
+      additionalProperties: false
+      required: [action, points]
+      properties:
+        action: {$ref: "#/components/schemas/PointAction"}
+        points: {type: integer, minimum: 0, maximum: 10000}
+        effectiveFrom: {type: string, format: date-time, description: Default now; never in the past}
+    PointsAdjustment:
+      type: object
+      additionalProperties: false
+      required: [employeeId, points, reason]
+      properties:
+        employeeId: {type: string, maxLength: 255}
+        points: {type: integer, minimum: -10000, maximum: 10000, description: "Signed, not zero"}
+        reason: {type: string, minLength: 1, maxLength: 1000}
+        campaignId: {type: string, format: uuid}
+    LedgerEntry:
+      type: object
+      required: [reference, employeeId, sourceType, points, createdAt]
+      properties:
+        reference: {type: string}
+        employeeId: {type: string}
+        campaignId: {type: string, nullable: true}
+        sourceType: {type: string, enum: [ENGAGEMENT, EXTERNAL_SHARE, ADJUSTMENT, REVERSAL]}
+        action: {type: string, nullable: true}
+        points: {type: integer}
+        reason: {type: string, nullable: true, description: "A PO's free text. Callers who are not a PO get the fixed label 'Adjusted by the PO team' on adjustment and reversal rows, and null on the others"}
+        reversesReference: {type: string, nullable: true}
+        actorId: {type: string, description: "The PO's employee id. Omitted for callers who are not a PO"}
+        createdAt: {type: string, format: date-time}
+        status: {type: string, nullable: true, enum: [HELD, PAID, null]}
+
+    LeaderboardTop:
+      type: object
+      required: [period, topN, generatedAt, company, me]
+      properties:
+        period: {type: string, enum: [MONTH, ALL]}
+        minPoints: {type: integer, nullable: true, description: "Points needed in the month to qualify for the top three (`leaderboard.top_min_points`, default 100); null for ALL"}
+        monthStart: {type: string, format: date-time, nullable: true, description: "The 1st 00:00 UTC; null for ALL"}
+        monthEnd: {type: string, format: date-time, nullable: true, description: "The next 1st 00:00 UTC; null for ALL"}
+        topN: {type: integer}
+        generatedAt: {type: string, format: date-time, description: "When the monthly totals were read (up to 2 hours ago)"}
+        company:
+          type: array
+          items:
+            type: object
+            required: [employeeId, displayName, email, points, rank]
+            properties:
+              employeeId: {type: string}
+              displayName: {type: string}
+              email: {type: string}
+              points: {type: integer}
+              rank: {type: integer}
+              previousRank: {type: integer, nullable: true}
+        me: {$ref: "#/components/schemas/PersonalStanding"}
+    Leaderboard:
+      type: object
+      required: [period, topN, generatedAt, company, me, teamStatus]
+      properties:
+        period: {type: string}
+        topN: {type: integer}
+        generatedAt: {type: string, format: date-time}
+        company:
+          type: array
+          items:
+            type: object
+            required: [employeeId, displayName, email, points, rank]
+            properties:
+              employeeId: {type: string}
+              displayName: {type: string}
+              email: {type: string}
+              points: {type: integer}
+              rank: {type: integer}
+              previousRank: {type: integer, nullable: true}
+        me: {$ref: "#/components/schemas/PersonalStanding"}
+        myTeam:
+          type: object
+          nullable: true
+          required: [teamName, headcount, activeCount, entries]
+          properties:
+            teamName: {type: string}
+            headcount: {type: integer}
+            activeCount: {type: integer}
+            entries:
+              type: array
+              items:
+                type: object
+                required: [employeeId, displayName, email, points, teamRank, companyRank, isMe]
+                properties:
+                  employeeId: {type: string, nullable: true, description: "Null for a team member nobody has recorded points for (no standing row), whether or not they ever signed in. Such an entry has points 0 and no companyRank."}
+                  displayName: {type: string, description: "The people directory's name, else the standing's, else the email"}
+                  email: {type: string}
+                  points: {type: integer}
+                  teamRank: {type: integer, description: "Dense rank within the team; every zero-point member shares the last rank"}
+                  companyRank: {type: integer, nullable: true, description: "Null without a standing row"}
+                  houseName: {type: string, nullable: true, description: "The member's house from the people directory"}
+                  isMe: {type: boolean}
+        teamStatus: {type: string, enum: [OK, NO_TEAM, UNAVAILABLE]}
+    PersonalStanding:
+      type: object
+      required: [employeeId, inTopN]
+      properties:
+        employeeId: {type: string}
+        points: {type: integer, nullable: true}
+        rank: {type: integer, nullable: true}
+        previousRank: {type: integer, nullable: true}
+        pointsToNextRank: {type: integer, nullable: true}
+        pointsToTopN: {type: integer, nullable: true}
+        inTopN: {type: boolean}
+        lastActivityAt: {type: string, format: date-time, nullable: true}
+    MyPoints:
+      type: object
+      required: [period, standing, monthly]
+      properties:
+        period: {type: string}
+        standing: {$ref: "#/components/schemas/PersonalStanding"}
+        monthly:
+          type: array
+          items:
+            type: object
+            required: [month, points, actions]
+            properties:
+              month: {type: string}
+              points: {type: integer}
+              actions: {type: integer}
+    TeamPage:
+      type: object
+      required: [period, scope, page, size, total, summary, entries, teamStatus]
+      properties:
+        period: {type: string}
+        scope: {type: string, enum: [TEAM, COMPANY]}
+        page: {type: integer}
+        size: {type: integer}
+        total: {type: integer}
+        teamStatus: {type: string, enum: [OK, NO_TEAM, UNAVAILABLE]}
+        summary:
+          type: object
+          required: [activeCount]
+          properties:
+            headcount: {type: integer, nullable: true, description: "Roster size from the people directory; on the company view everyone the directory lists. Null when the directory cannot supply it (no roster, or the company view falling back to standings)"}
+            activeCount: {type: integer, description: "People in the roster with points"}
+        entries:
+          type: array
+          items:
+            type: object
+            required: [employeeId, displayName, email, points, rank, teamRank, actions]
+            properties:
+              employeeId: {type: string, nullable: true, description: "Null for a person nobody has recorded points for (no standing row), whether or not they ever signed in. Such an entry has points 0 and no rank. Do not link to a person page or history for it."}
+              displayName: {type: string, description: "The people directory's name, else the standing's, else the email"}
+              email: {type: string}
+              points: {type: integer}
+              rank: {type: integer, nullable: true, description: "Company rank; null without a standing row"}
+              teamRank: {type: integer, description: "Dense rank within the list; every zero-point person shares the last rank. Ties order by name, then email"}
+              previousRank: {type: integer, nullable: true}
+              lastActivityAt: {type: string, format: date-time, nullable: true}
+              actions:
+                type: object
+                required: [canAdjust, canReverse]
+                properties:
+                  canAdjust: {type: boolean}
+                  canReverse: {type: boolean}
+    LeaderboardPeople:
+      type: object
+      required: [period, scope, page, size, total, summary, entries]
+      properties:
+        period: {type: string}
+        scope: {type: string, enum: [COMPANY, BU, TEAM]}
+        businessUnit: {type: string, nullable: true}
+        team: {type: string, nullable: true, description: "Team key (BU and TEAM scopes)"}
+        teamName: {type: string, nullable: true}
+        page: {type: integer}
+        size: {type: integer}
+        total: {type: integer}
+        summary:
+          type: object
+          required: [participants]
+          properties:
+            headcount: {type: integer, nullable: true, description: "Employees in the scope, from the cached count; null when the directory never loaded on the company view"}
+            participants: {type: integer, description: "People in the scope with points"}
+        entries:
+          type: array
+          items:
+            type: object
+            required: [employeeId, displayName, email, points, rank, scopeRank]
+            properties:
+              employeeId: {type: string}
+              displayName: {type: string}
+              email: {type: string}
+              points: {type: integer}
+              rank: {type: integer, description: "Company rank"}
+              scopeRank: {type: integer, description: "Rank within the scope (equals rank on the company view)"}
+              previousRank: {type: integer, nullable: true}
+              lastActivityAt: {type: string, format: date-time, nullable: true}
+    LeaderboardGroups:
+      type: object
+      required: [period, by, asOf, totals, entries, unassigned]
+      properties:
+        period: {type: string}
+        by: {type: string, enum: [TEAM, BU, HOUSE]}
+        businessUnit: {type: string, nullable: true}
+        asOf: {type: string, format: date-time, description: "When the employee count was taken"}
+        totals:
+          type: object
+          required: [headcount, participants, points]
+          properties:
+            headcount: {type: integer}
+            participants: {type: integer}
+            points: {type: integer}
+        entries:
+          type: array
+          items:
+            type: object
+            required: [rank, key, name, points, participants, headcount, participationRate]
+            properties:
+              rank: {type: integer, description: "Dense rank, ties share a rank"}
+              key: {type: string, description: "Opaque team key, or the BU name"}
+              name: {type: string}
+              businessUnit: {type: string, nullable: true}
+              points: {type: integer}
+              participants: {type: integer}
+              headcount: {type: integer}
+              participationRate: {type: number, description: "participants / headcount, 3 decimals"}
+        unassigned:
+          type: object
+          required: [participants, points]
+          description: People with points the directory doesn't place in a team or BU
+          properties:
+            participants: {type: integer}
+            points: {type: integer}
+    Headcount:
+      type: object
+      required: [asOf, cacheSeconds, total, businessUnits, teams]
+      properties:
+        asOf: {type: string, format: date-time, description: "When the directory was read"}
+        cacheSeconds: {type: integer}
+        total: {type: integer}
+        businessUnits:
+          type: array
+          items:
+            type: object
+            required: [name, headcount]
+            properties:
+              name: {type: string}
+              headcount: {type: integer}
+        teams:
+          type: array
+          items:
+            type: object
+            required: [key, name, headcount]
+            properties:
+              key: {type: string}
+              name: {type: string}
+              businessUnit: {type: string, nullable: true}
+              headcount: {type: integer}
+    DashboardAnnouncement:
+      type: object
+      required: [status]
+      properties:
+        status: {type: string, enum: [NONE, QUEUED, SENT, FAILED], description: "NONE = no announcement row yet"}
+        attempts: {type: integer, nullable: true, description: "Outbox attempts so far while QUEUED (the retry the worker is on); null otherwise"}
+        sentAt: {type: string, format: date-time, nullable: true}
+    DashboardCampaignRow:
+      type: object
+      required: [campaignId, title, categoryCode, categoryLabel, isPriority, opensAt, closesAt, reposts, repostsWithCommentary]
+      properties:
+        campaignId: {type: string}
+        title: {type: string}
+        categoryCode: {type: string}
+        categoryLabel: {type: string}
+        isPriority: {type: boolean}
+        status: {type: string, enum: [SCHEDULED, OPEN, CLOSED, ARCHIVED]}
+        opensAt: {type: string, format: date-time}
+        closesAt: {type: string, format: date-time}
+        reposts: {type: integer, description: "Active engagements recorded against the campaign"}
+        repostsWithCommentary: {type: integer, description: "Of those, reposts with the employee's own commentary"}
+        announcement: {$ref: "#/components/schemas/DashboardAnnouncement"}
+    DashboardOperations:
+      type: object
+      required: [asOf, kpis, campaigns, shareHealth, connections]
+      properties:
+        asOf: {type: string, format: date-time}
+        headcount: {type: integer, nullable: true, description: "Employee count from /headcount; null when the people directory never loaded"}
+        kpis:
+          type: object
+          required: [campaignsLive, campaignsLivePriority, campaignsClosingWithin7Days, repostsThisMonth, repostsThisMonthWithCommentary, repostsPrevMonth, peopleConnected, connectionsExpired, pointsThisMonth, pointsThisYear, peopleWithPoints]
+          properties:
+            campaignsLive: {type: integer}
+            campaignsLivePriority: {type: integer}
+            campaignsClosingWithin7Days: {type: integer}
+            repostsThisMonth: {type: integer, description: "Since the 1st 00:00 UTC"}
+            repostsThisMonthWithCommentary: {type: integer, description: "Of repostsThisMonth, with the employee's own commentary"}
+            repostsPrevMonth: {type: integer, description: "Last calendar month"}
+            peopleConnected: {type: integer}
+            connectionsExpired: {type: integer}
+            pointsThisMonth: {type: integer, description: "Since the 1st, UTC"}
+            pointsThisYear: {type: integer, description: "Since 1 January, UTC"}
+            peopleWithPoints: {type: integer}
+        campaigns: {type: array, items: {$ref: "#/components/schemas/DashboardCampaignRow"}}
+        shareHealth:
+          type: object
+          required: [windowStart, published, queued, failed, failedByReason]
+          properties:
+            windowStart: {type: string, format: date-time, description: "The 1st of the current month, 00:00 UTC"}
+            published: {type: integer}
+            queued: {type: integer}
+            failed: {type: integer}
+            failedByReason: {type: object, additionalProperties: {type: integer}}
+        connections:
+          type: object
+          required: [active, expiring, expired, revoked]
+          properties:
+            active: {type: integer}
+            expiring: {type: integer}
+            expired: {type: integer, description: "Token past its expiry"}
+            revoked: {type: integer, description: "Needs reconnect for another reason (revoked, token missing)"}
+            neverConnected: {type: integer, nullable: true, description: "headcount minus connected; null without a headcount"}
+    DashboardPerson:
+      type: object
+      required: [employeeId, displayName]
+      properties:
+        employeeId: {type: string}
+        displayName: {type: string, description: "The id when Amplify never recorded a name"}
+        email: {type: string, nullable: true, description: "Work email, the key to the people directory"}
+    DashboardPersonBoard:
+      type: object
+      required: [employeeId, displayName, reposts, repostsWithCommentary, pointsThisMonth, campaigns, byCategory]
+      properties:
+        employeeId: {type: string}
+        displayName: {type: string}
+        email: {type: string, nullable: true}
+        reposts: {type: integer, description: "Plain reposts"}
+        repostsWithCommentary: {type: integer}
+        pointsThisMonth: {type: integer, description: "Points earned since the 1st (UTC), adjustments and reversals included"}
+        campaigns:
+          type: array
+          items:
+            type: object
+            required: [campaignId, title, categoryCode, categoryLabel, isPriority, opensAt, closesAt, reposts, repostsWithCommentary, points]
+            properties:
+              campaignId: {type: string}
+              title: {type: string}
+              categoryCode: {type: string}
+              categoryLabel: {type: string}
+              isPriority: {type: boolean}
+              opensAt: {type: string, format: date-time}
+              closesAt: {type: string, format: date-time}
+              reposts: {type: integer}
+              repostsWithCommentary: {type: integer}
+              points: {type: integer, description: "Points the person earned on this post (ledger, reversals included)"}
+        byCategory:
+          type: array
+          items:
+            type: object
+            required: [code, label, reposts, repostsWithCommentary, points]
+            properties:
+              code: {type: string}
+              label: {type: string}
+              reposts: {type: integer, description: "Plain reposts"}
+              repostsWithCommentary: {type: integer}
+              points: {type: integer, description: "Points earned on this category's posts"}
+    DashboardCampaigns:
+      type: object
+      required: [asOf, windowDays, campaigns, byCategory]
+      properties:
+        asOf: {type: string, format: date-time}
+        windowDays: {type: integer}
+        peopleConnected: {type: integer}
+        campaigns: {type: array, items: {$ref: "#/components/schemas/DashboardCampaignRow"}}
+        selected:
+          type: object
+          nullable: true
+          required: [campaignId, title, categoryCode, categoryLabel, isPriority, opensAt, closesAt, reposts, repostsWithCommentary, first24Hours, announcement, byDay, people]
+          properties:
+            summary: {type: string, nullable: true}
+            imageUrl: {type: string, nullable: true}
+            resourceUrl: {type: string, nullable: true}
+            resourceUrn: {type: string}
+            people:
+              type: object
+              description: "Everyone with an active repost of the campaign, by name"
+              required: [reposts, withComments]
+              properties:
+                reposts: {type: array, items: {$ref: "#/components/schemas/DashboardPerson"}}
+                withComments: {type: array, items: {$ref: "#/components/schemas/DashboardPerson"}}
+            campaignId: {type: string}
+            title: {type: string}
+            categoryCode: {type: string}
+            categoryLabel: {type: string}
+            isPriority: {type: boolean}
+            opensAt: {type: string, format: date-time}
+            closesAt: {type: string, format: date-time}
+            reposts: {type: integer}
+            repostsWithCommentary: {type: integer}
+            shareOfConnected: {type: number, nullable: true, description: "reposts / people connected, 3 decimals"}
+            first24Hours: {type: integer}
+            announcement: {$ref: "#/components/schemas/DashboardAnnouncement"}
+            byDay:
+              type: array
+              description: "Seven entries, day 1 = the first 24 hours after opens_at"
+              items:
+                type: object
+                required: [day, reposts]
+                properties:
+                  day: {type: integer}
+                  reposts: {type: integer}
+        byCategory:
+          type: array
+          items:
+            type: object
+            required: [code, label, reposts, repostsWithCommentary]
+            properties:
+              code: {type: string}
+              label: {type: string}
+              reposts: {type: integer, description: "Active engagements: reposts plus reposts with comments"}
+              repostsWithCommentary: {type: integer, description: "Of those, with the employee's own commentary"}
+    DashboardParticipation:
+      type: object
+      required: [asOf, funnel]
+      properties:
+        asOf: {type: string, format: date-time}
+        funnel:
+          type: object
+          required: [connected, reposted, active30Days, expired]
+          properties:
+            employees: {type: integer, nullable: true}
+            connected: {type: integer}
+            reposted: {type: integer, description: "People with at least one active engagement"}
+            active30Days: {type: integer, description: "People with an engagement in the last 30 days"}
+            expired: {type: integer, description: "Connections past their expiry"}
+    DashboardGlance:
+      type: object
+      required: [asOf, month, reposts, monthly, participants, campaignsLive, campaignsReachingTarget, shareSuccess]
+      properties:
+        asOf: {type: string, format: date-time}
+        month: {type: string}
+        reposts:
+          type: object
+          required: [thisMonth, previousMonth]
+          properties:
+            thisMonth: {type: integer}
+            previousMonth: {type: integer}
+        monthly:
+          type: array
+          description: "Six calendar months, oldest first, the current month last (UTC)"
+          items:
+            type: object
+            required: [monthStart, reposts]
+            properties:
+              monthStart: {type: string, description: "First day of the month, YYYY-MM-DD"}
+              reposts: {type: integer}
+        participants: {type: integer, description: "People with at least one engagement"}
+        headcount: {type: integer, nullable: true}
+        campaignsLive: {type: integer}
+        campaignsReachingTarget:
+          type: object
+          required: [reached, live, thresholdPercent]
+          properties:
+            reached: {type: integer, description: "Live campaigns reposted by at least thresholdPercent of connected people"}
+            live: {type: integer}
+            thresholdPercent: {type: integer}
+        shareSuccess:
+          type: object
+          required: [published, attempts]
+          description: "This calendar month (UTC): published over published plus failed"
+          properties:
+            published: {type: integer}
+            attempts: {type: integer}
+        bestCampaign:
+          type: object
+          nullable: true
+          properties:
+            campaignId: {type: string}
+            title: {type: string}
+            categoryLabel: {type: string}
+            isPriority: {type: boolean}
+            reposts: {type: integer}
+    DashboardScorecard:
+      type: object
+      required: [asOf, measures]
+      properties:
+        asOf: {type: string, format: date-time}
+        measures:
+          type: array
+          items:
+            type: object
+            required: [key, label, unit, value, target, comparison, status]
+            properties:
+              key: {type: string, enum: [connected, expired, shareSuccess, chatCards, priorityReach, active30Days, repostsPerMonth]}
+              label: {type: string}
+              unit: {type: string, enum: [PERCENT, COUNT]}
+              value: {type: number}
+              numerator: {type: integer, nullable: true}
+              denominator: {type: integer, nullable: true}
+              target: {type: number}
+              comparison: {type: string, enum: [AT_LEAST, AT_MOST]}
+              status: {type: string, enum: [ON_TRACK, WATCH]}
+              note: {type: string, nullable: true}
+    PointsHistory:
+      type: object
+      required: [employeeId, page, size, total, items]
+      properties:
+        employeeId: {type: string}
+        page: {type: integer}
+        size: {type: integer}
+        total: {type: integer}
+        items: {type: array, items: {$ref: "#/components/schemas/LedgerEntry"}}
+
+    PoDashboard:
+      type: object
+      required: [asOf, month, reviewQueue, reviewThroughput, actionRequired, points, participation, campaigns, shareHealth, recentCorrections]
+      properties:
+        asOf: {type: string, format: date-time}
+        month: {type: string}
+        reviewQueue:
+          type: object
+          required: [pending, overSla, slaHours]
+          properties:
+            pending: {type: integer}
+            oldestPendingAt: {type: string, format: date-time, nullable: true}
+            overSla: {type: integer}
+            slaHours: {type: integer}
+        reviewThroughput:
+          type: object
+          required: [windowStart, approved, rejected, amplified]
+          properties:
+            windowStart: {type: string, format: date-time, description: "The 1st of the current month, 00:00 UTC"}
+            approved: {type: integer}
+            rejected: {type: integer}
+            amplified: {type: integer}
+            medianHoursToDecision: {type: number, nullable: true}
+        actionRequired:
+          type: object
+          required: [count]
+          properties:
+            count: {type: integer}
+        points:
+          type: object
+          required: [monthTotal, allTimeTotal, byAction]
+          properties:
+            monthTotal: {type: integer}
+            allTimeTotal: {type: integer}
+            byAction:
+              type: array
+              items:
+                type: object
+                required: [action, points, rows]
+                properties:
+                  action: {type: string}
+                  points: {type: integer}
+                  rows: {type: integer}
+        participation:
+          type: object
+          required: [connections, employeesWithPoints, activeLast30Days]
+          properties:
+            connections:
+              type: object
+              required: [active, expiring, needsReconnect]
+              properties:
+                active: {type: integer}
+                expiring: {type: integer}
+                needsReconnect: {type: integer}
+            employeesWithPoints: {type: integer}
+            activeLast30Days: {type: integer}
+        campaigns:
+          type: array
+          maxItems: 20
+          items:
+            type: object
+            required: [campaignId, title, isPriority, status, opensAt, closesAt, reposters, externalSharesApproved, points]
+            properties:
+              campaignId: {type: string}
+              title: {type: string}
+              isPriority: {type: boolean}
+              status: {$ref: "#/components/schemas/CampaignStatus"}
+              opensAt: {type: string, format: date-time}
+              closesAt: {type: string, format: date-time}
+              reposters: {type: integer}
+              externalSharesApproved: {type: integer}
+              points: {type: integer}
+              announcement: {type: string, nullable: true, enum: [QUEUED, SENT, FAILED, null]}
+        shareHealth:
+          type: object
+          required: [windowStart, queued, published, failed, failedByReason]
+          properties:
+            windowStart: {type: string, format: date-time, description: "The 1st of the current month, 00:00 UTC"}
+            queued: {type: integer}
+            published: {type: integer}
+            failed: {type: integer}
+            failedByReason: {type: object, additionalProperties: {type: integer}}
+        recentCorrections:
+          type: array
+          maxItems: 10
+          items:
+            type: object
+            required: [reference, type, employeeId, points, actorId, createdAt]
+            properties:
+              reference: {type: string}
+              type: {type: string, enum: [ADJUSTMENT, REVERSAL]}
+              employeeId: {type: string}
+              email: {type: string, nullable: true}
+              points: {type: integer}
+              reason: {type: string, nullable: true}
+              actorId: {type: string}
+              createdAt: {type: string, format: date-time}
+
+    Announcement:
+      type: object
+      required: [campaignId, status, space, queuedAt]
+      properties:
+        campaignId: {type: string}
+        status: {type: string, enum: [QUEUED, SENT, FAILED]}
+        space: {type: string}
+        queuedAt: {type: string, format: date-time}
+        sentAt: {type: string, format: date-time, nullable: true}
+        failedAt: {type: string, format: date-time, nullable: true}
+        lastError: {type: string, nullable: true}
+    AnnouncementList:
+      type: object
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/Announcement"}}
+    Setting:
+      type: object
+      required: [key, value, version, updatedBy, updatedAt]
+      properties:
+        key: {type: string}
+        value: {description: "JSON value (number, boolean or string)"}
+        version: {type: integer}
+        updatedBy: {type: string}
+        updatedAt: {type: string, format: date-time}
+    SettingList:
+      type: object
+      required: [settings]
+      properties:
+        settings: {type: array, items: {$ref: "#/components/schemas/Setting"}}
+        schedulerSync:
+          type: string
+          enum: [SYNCED, PENDING, NOT_CONFIGURED]
+          description: Only on a PUT that changed a schedule setting (ADR-026)
+    SchedulerSync:
+      type: object
+      required: [schedulerSync, jobs]
+      properties:
+        schedulerSync: {type: string, enum: [SYNCED, PENDING, NOT_CONFIGURED]}
+        jobs:
+          type: array
+          items:
+            type: object
+            required: [id, schedule, enabled, result]
+            properties:
+              id: {type: string}
+              schedule: {type: string}
+              enabled: {type: boolean}
+              result: {type: string, enum: [CREATED, UPDATED, UNCHANGED, FAILED, SKIPPED]}
+    SettingChanges:
+      type: object
+      additionalProperties: false
+      required: [changes]
+      properties:
+        changes:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            type: object
+            additionalProperties: false
+            required: [key, value, version]
+            properties:
+              key: {type: string}
+              value: {description: New JSON value}
+              version: {type: integer, minimum: 1}
