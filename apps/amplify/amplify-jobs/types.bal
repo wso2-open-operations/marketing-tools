@@ -24,7 +24,7 @@ import ballerina/log;
 # Body returned by `POST /maintenance/partitions`.
 type MaintenanceReport record {|
     *store:MaintenanceResult;
-    # Expired `messaging.idempotency_key` rows deleted
+    # Expired `messaging_idempotency_key` rows deleted
     int idempotency_keys_purged;
     # Token key rotation pass (`provider_token` rows moved to the active key)
     TokenRotation token_rotation;
@@ -47,7 +47,7 @@ type TokenRotation record {|
 
 # Body returned by `POST /maintenance/rebuild-recognition`.
 type RebuildResult record {|
-    # New `recognition.standing_version` for period `ALL`
+    # New `recognition_standing_version` for period `ALL`
     int standingVersion;
 |};
 

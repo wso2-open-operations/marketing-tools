@@ -17,7 +17,7 @@
 
 # Every test tier (plan M11), in order, and everything it starts is removed again:
 #   1. unit      bal test in each package (shared libraries packed to the local repository first)
-#   2. IT        throwaway postgres:18 + mock_linkedin: migrate runner, repositories, the Run, DB down mid-run
+#   2. IT        throwaway postgres:17.11 + mock_linkedin: migrate runner, repositories, the Run, DB down mid-run
 #   3. scheduler scripts/it-scheduler.sh (real akorn/scheduler image) + scripts/it-scheduler-history.sh
 #   4. e2e       make up -> make e2e -> make down
 # Needs Docker, bal, openssl, curl, jq; host ports 19590 (api unit tests), 19596 (people-stub), 9090 (Compose), 55432, 19190/19191,
@@ -32,7 +32,7 @@ MOCK="$(cd "$HERE/linkedin/apps/mock_linkedin" 2>/dev/null && pwd || true)"
 TIERS="${TIERS:-unit it scheduler e2e}"
 PG="amplify-it-pg-$$"
 # Same pin as compose.yaml (bump tag and digest together).
-PG_IMAGE="${PG_IMAGE:-postgres:18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336}"
+PG_IMAGE="${PG_IMAGE:-postgres:17.11@sha256:3b0cda93be7c8dba2ed484d19393d93845dc3dafb88973e248ba8e6d99d784e1}"
 PG_PORT="${AMPLIFY_IT_DB_PORT:-55432}"
 LOGDIR="$(mktemp -d)"
 SUMMARY=()
@@ -97,7 +97,7 @@ tier_unit() {
 }
 
 tier_it() {
-  echo "== integration (postgres:18 on $PG_PORT)"
+  echo "== integration (postgres:17.11 on $PG_PORT)"
   [ -n "$MOCK" ] || { echo "mock_linkedin not found next to this project"; exit 1; }
   docker run -d --name "$PG" -e POSTGRES_PASSWORD=postgres -p "127.0.0.1:${PG_PORT}:5432" "$PG_IMAGE" >/dev/null
   wait_pg "$PG" postgres

@@ -72,20 +72,20 @@ Four metrics for the pilot. Compute from the Amplify schema (queries below run a
 
 | Metric | Definition | Source | Pilot target (to confirm with PO) |
 | --- | --- | --- | --- |
-| **Connected employees** | Employees with an **ACTIVE** LinkedIn connection | `connection.member_connection_v` | ≥ 60% of the pilot group by week 4 |
-| **Shares per campaign** | Published in-app reposts per open campaign | `sharing.share_request_v` (`PUBLISHED`), grouped by campaign | ≥ 40% of connected employees share each weekly campaign |
-| **External shares reviewed within SLA** | PO decisions on external shares within `po.review_sla_hours` (48) | `external_sharing.external_share` (`decided_at - created_at`) | ≥ 90% within 48 h |
-| **Announcement delivery rate** | Campaign cards SENT vs (SENT + FAILED) | `announcement.announcement_v` | ≥ 98% |
+| **Connected employees** | Employees with an **ACTIVE** LinkedIn connection | `connection_member_connection_v` | ≥ 60% of the pilot group by week 4 |
+| **Shares per campaign** | Published in-app reposts per open campaign | `sharing_share_request_v` (`PUBLISHED`), grouped by campaign | ≥ 40% of connected employees share each weekly campaign |
+| **External shares reviewed within SLA** | PO decisions on external shares within `po.review_sla_hours` (48) | `external_sharing_external_share` (`decided_at - created_at`) | ≥ 90% within 48 h |
+| **Announcement delivery rate** | Campaign cards SENT vs (SENT + FAILED) | `announcement_v` | ≥ 98% |
 
 **Queries**
 
 ```sql
 -- Connected employees (ACTIVE)
-SELECT count(*) FROM connection.member_connection_v WHERE provider = 'linkedin' AND status = 'ACTIVE';
+SELECT count(*) FROM connection_member_connection_v WHERE provider = 'linkedin' AND status = 'ACTIVE';
 
 -- Shares per campaign (published, current window)
 SELECT campaign_id, count(*) AS reposts
-FROM sharing.share_request_v
+FROM sharing_share_request_v
 WHERE status = 'PUBLISHED'
 GROUP BY campaign_id ORDER BY reposts DESC;
 
@@ -94,13 +94,13 @@ SELECT
   count(*) FILTER (WHERE decided_at - created_at <= interval '48 hours') AS within_sla,
   count(*) FILTER (WHERE decided_at IS NOT NULL)                        AS decided,
   count(*)                                                              AS total
-FROM external_sharing.external_share;
+FROM external_sharing_external_share;
 
 -- Announcement delivery rate
 SELECT
   count(*) FILTER (WHERE sent_at IS NOT NULL)  AS sent,
   count(*) FILTER (WHERE failed_at IS NOT NULL) AS failed
-FROM announcement.announcement;
+FROM announcement;
 ```
 
 These also feed the PO dashboard tiles 2–7 ([po-dashboard.md](../../architecture/solution/Phase%201/po-dashboard.md)). Targets are proposals; PO confirms the numbers.

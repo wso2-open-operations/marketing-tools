@@ -4,7 +4,7 @@ The pinned `akorn/scheduler` image (v1.7.8) that triggers Amplify's background w
 
 ## Jobs
 
-amplify-api owns both jobs (`amplify-api/scheduler_sync.bal`) and pushes them into the scheduler collection `amplify` at startup and on `POST /admin/scheduler/sync`. The schedules come from `config.app_setting`. A manual edit in the scheduler UI is overwritten by the next sync, so change the setting instead.
+amplify-api owns both jobs (`amplify-api/scheduler_sync.bal`) and pushes them into the scheduler collection `amplify` at startup and on `POST /admin/scheduler/sync`. The schedules come from `config_app_setting`. A manual edit in the scheduler UI is overwritten by the next sync, so change the setting instead.
 
 ```
 ┌────────────────────────────────┬────────────────┬──────────────────────────────┬────────────────────────────┬────────────┬──────────┐

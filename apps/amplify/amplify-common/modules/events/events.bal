@@ -15,7 +15,7 @@
 // under the License.
 
 // Domain events: one record per row of the catalogue in phase1-data-model › "Domain events → which table
-// changes" (B9). Every event becomes a `messaging.outbox` row written in the producer's transaction.
+// changes" (B9). Every event becomes a `messaging_outbox` row written in the producer's transaction.
 // `EngagementDeleted` is a future phase (ADR-018) and `EmployeeErased` is not in phase 1 (C3), so neither
 // is here. Payloads never hold tokens or commentary. Times are RFC 3339 UTC strings.
 

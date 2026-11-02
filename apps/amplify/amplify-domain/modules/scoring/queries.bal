@@ -66,7 +66,7 @@ public isolated function historyOf(postgresql:Client db, types:EmployeeId employ
         SELECT reference, employee_id, campaign_id::text AS campaign_id, source_type, source_id::text AS source_id,
                action, points, rule_id::text AS rule_id, reverses_reference, reason, actor_id, correlation_id,
                created_at, status, status_changed_at, paid_at, coin_reference, (count(*) OVER ())::int AS total
-        FROM scoring.points_ledger WHERE employee_id = ${employeeId}
+        FROM scoring_points_ledger WHERE employee_id = ${employeeId}
         ORDER BY created_at DESC, reference LIMIT ${'limit} OFFSET ${offset}`);
     int total = 0;
     types:LedgerEntry[] items = [];
@@ -86,7 +86,7 @@ public isolated function historyOf(postgresql:Client db, types:EmployeeId employ
         };
     if items.length() == 0 && offset > 0 {
         // Past the last page the window count is gone with the rows; the total still holds.
-        total = check db->queryRow(`SELECT count(*)::int FROM scoring.points_ledger WHERE employee_id = ${employeeId}`);
+        total = check db->queryRow(`SELECT count(*)::int FROM scoring_points_ledger WHERE employee_id = ${employeeId}`);
     }
     return {items, total};
 }
@@ -105,7 +105,7 @@ public isolated function pointsByAction(postgresql:Client db, time:Utc fromTime,
     stream<record {|string grp; int points; int n;|}, error?> rows = db->query(`
         SELECT CASE WHEN source_type IN ('ADJUSTMENT', 'REVERSAL') THEN source_type ELSE action END AS grp,
                COALESCE(sum(points), 0)::int AS points, count(*)::int AS n
-        FROM scoring.points_ledger
+        FROM scoring_points_ledger
         WHERE created_at >= CAST(${f} AS timestamptz) AND created_at < CAST(${t} AS timestamptz)
         GROUP BY 1`);
     map<ActionPoints> byGroup = {};
@@ -122,7 +122,7 @@ public isolated function pointsByAction(postgresql:Client db, time:Utc fromTime,
 # + db - Client
 # + return - Count, or an error
 public isolated function actionRequiredCount(postgresql:Client db) returns int|error {
-    int n = check db->queryRow(`SELECT count(*)::int FROM scoring.points_ledger WHERE status IS NULL`);
+    int n = check db->queryRow(`SELECT count(*)::int FROM scoring_points_ledger WHERE status IS NULL`);
     return n;
 }
 
@@ -136,7 +136,7 @@ public isolated function recentCorrections(postgresql:Client db, int 'limit = 10
         SELECT reference, employee_id, campaign_id::text AS campaign_id, source_type, source_id::text AS source_id,
                action, points, rule_id::text AS rule_id, reverses_reference, reason, actor_id, correlation_id,
                created_at, status, status_changed_at, paid_at, coin_reference
-        FROM scoring.points_ledger WHERE source_type IN ('ADJUSTMENT', 'REVERSAL')
+        FROM scoring_points_ledger WHERE source_type IN ('ADJUSTMENT', 'REVERSAL')
         ORDER BY created_at DESC, reference LIMIT ${'limit}`);
     types:LedgerEntry[] entries = [];
     check from LedgerRow r in rows

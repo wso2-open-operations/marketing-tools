@@ -49,7 +49,7 @@ Amplify touches three rate-limited surfaces. Two are limits we **meet** (LinkedI
 | Symptom | Check | Action |
 | --- | --- | --- |
 | Run log shows `deferred` rising and `linkedinPosts` near the per-run or daily ceiling | `linkedinMaxPostsPerRun` (50), `linkedinMaxPostsPerDay` | Expected. Rows are due again later. Raise the ceiling only if L1 shows room |
-| Shares end `FAILED` with reason `RETRIES_EXHAUSTED` and code `RATE_LIMITED` | `sharing.share_request`, Developer Portal Analytics | A daily limit was hit. After 00:00 UTC the employee can request again (a failed share retries on the same row) |
+| Shares end `FAILED` with reason `RETRIES_EXHAUSTED` and code `RATE_LIMITED` | `sharing_share_request`, Developer Portal Analytics | A daily limit was hit. After 00:00 UTC the employee can request again (a failed share retries on the same row) |
 | Run log `breakers` shows `linkedinApi: OPEN` | LinkedIn status, Developer Portal | Wait: it half-opens after 30 s and one trial call decides. Nothing to reset by hand |
 | 75% email from LinkedIn | Developer Portal Analytics | Look at the day's volume. If real demand, lower the per-run ceiling so posts spread out |
 

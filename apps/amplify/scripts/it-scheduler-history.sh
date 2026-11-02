@@ -27,7 +27,7 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 SCHEDULER_IMAGE="${SCHEDULER_IMAGE:-akorn/scheduler:1.7.8@sha256:07462c0684245d5f8aaed8018e4594da3ba113d5b38bb6dffcc32403108d2cf6}"
-PG_IMAGE="${PG_IMAGE:-postgres:18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336}"
+PG_IMAGE="${PG_IMAGE:-postgres:17.11@sha256:3b0cda93be7c8dba2ed484d19393d93845dc3dafb88973e248ba8e6d99d784e1}"
 NAME="amplify-it-schedhist-$$"
 PORT="${AMPLIFY_IT_SCHEDULER_HISTORY_PORT:-18183}"
 DB_PASSWORD="$(openssl rand -hex 16)"

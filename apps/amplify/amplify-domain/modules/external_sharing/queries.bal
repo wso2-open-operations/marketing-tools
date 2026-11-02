@@ -72,7 +72,7 @@ public isolated function claimsOf(postgresql:Client db, types:EmployeeId employe
         SELECT id::text AS id, employee_id, campaign_id::text AS campaign_id, action, evidence_url,
                evidence_url_submitted, evidence_host, provider, resource_urn, certified_at, decision, decided_by,
                decided_at, decision_reason, amplified_at, created_at, version
-        FROM external_sharing.external_share WHERE employee_id = ${employeeId}
+        FROM external_sharing_external_share WHERE employee_id = ${employeeId}
         ORDER BY created_at DESC, id LIMIT ${'limit}`);
     ExternalShare[] claims = [];
     check from ExternalShareRow r in rows
@@ -100,7 +100,7 @@ public isolated function claimsForReview(postgresql:Client db, ExternalShareStat
         SELECT id::text AS id, employee_id, campaign_id::text AS campaign_id, action, evidence_url,
                evidence_url_submitted, evidence_host, provider, resource_urn, certified_at, decision, decided_by,
                decided_at, decision_reason, amplified_at, created_at, version, (count(*) OVER ())::int AS total
-        FROM external_sharing.external_share_v `, cond, `
+        FROM external_sharing_external_share_v `, cond, `
         ORDER BY created_at, id LIMIT ${'limit} OFFSET ${offset}`));
     int total = 0;
     ExternalShare[] items = [];
@@ -121,7 +121,7 @@ public isolated function claimsForReview(postgresql:Client db, ExternalShareStat
         };
     if items.length() == 0 && offset > 0 {
         // Past the last page the window count is gone with the rows; the total still holds.
-        total = check db->queryRow(sql:queryConcat(`SELECT count(*)::int FROM external_sharing.external_share_v `, cond));
+        total = check db->queryRow(sql:queryConcat(`SELECT count(*)::int FROM external_sharing_external_share_v `, cond));
     }
     return {items, total};
 }
@@ -137,7 +137,7 @@ public isolated function reviewQueue(postgresql:Client db, int slaHours, time:Ut
     record {|int pending; time:Utc? oldest; int over_sla;|} row = check db->queryRow(`
         SELECT count(*)::int AS pending, min(created_at) AS oldest,
                count(*) FILTER (WHERE created_at < CAST(${cutoff} AS timestamptz))::int AS over_sla
-        FROM external_sharing.external_share WHERE decision IS NULL`);
+        FROM external_sharing_external_share WHERE decision IS NULL`);
     return {pending: row.pending, oldestPendingAt: row.oldest, overSla: row.over_sla};
 }
 
@@ -154,7 +154,7 @@ public isolated function reviewThroughput(postgresql:Client db, time:Utc since) 
                count(*) FILTER (WHERE amplified_at >= CAST(${sinceText} AS timestamptz))::int AS amplified,
                (percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM decided_at - created_at) / 3600)
                    FILTER (WHERE decided_at >= CAST(${sinceText} AS timestamptz)))::numeric(10, 1) AS median
-        FROM external_sharing.external_share`);
+        FROM external_sharing_external_share`);
     return {approved: row.approved, rejected: row.rejected, amplified: row.amplified,
         medianHoursToDecision: row.median};
 }

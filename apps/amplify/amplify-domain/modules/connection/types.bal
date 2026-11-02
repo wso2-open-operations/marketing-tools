@@ -20,7 +20,7 @@ import amplify_common.types;
 
 import ballerina/time;
 
-# Derived connection status (`connection.member_connection_v`, B14). Never stored.
+# Derived connection status (`connection_member_connection_v`, B14). Never stored.
 public enum ConnectionStatus {
     ACTIVE,
     EXPIRING,
@@ -31,7 +31,7 @@ public enum ConnectionStatus {
 # Default reminder lead time (`connection.reminder_days`).
 public const int DEFAULT_REMINDER_DAYS = 7;
 
-# Pointer to the current encrypted token row (`connection.provider_token`, PK `(token_id, issued_on)`).
+# Pointer to the current encrypted token row (`connection_provider_token`, PK `(token_id, issued_on)`).
 # The token itself never enters this aggregate.
 public type TokenRef record {|
     # `provider_token.token_id` (UUIDv7)
@@ -40,7 +40,7 @@ public type TokenRef record {|
     string issuedOn;
 |};
 
-# LinkedIn connection aggregate (`connection.member_connection`): one per employee per provider,
+# LinkedIn connection aggregate (`connection_member_connection`): one per employee per provider,
 # one employee per LinkedIn member (B13).
 public type LinkedInConnection record {|
     # Owner
@@ -130,7 +130,7 @@ public type TokenOwnerType "MEMBER"|"ORG";
 # Kind of a token row.
 public type TokenKind "ACCESS"|"REFRESH";
 
-# One encrypted row of `connection.provider_token` (daily partition by `issuedOn`). Holds ciphertext only;
+# One encrypted row of `connection_provider_token` (daily partition by `issuedOn`). Holds ciphertext only;
 # the plaintext exists in memory just long enough to call LinkedIn.
 public type StoredToken record {|
     # UUIDv7, part of the AAD
@@ -155,7 +155,7 @@ public type StoredToken record {|
     time:Utc expiresAt;
 |};
 
-# Persistence port for `connection.provider_token`.
+# Persistence port for `connection_provider_token`.
 public type TokenRepository isolated object {
     # Inserts a token row into its day's partition.
     #

@@ -14,13 +14,13 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Shared kernel `identity.employee`. Publishes no events (no events.bal); erasure is deferred (C3, ADR-016).
+// Shared kernel `identity_employee`. Publishes no events (no events.bal); erasure is deferred (C3, ADR-016).
 
 import amplify_common.types;
 
 import ballerina/time;
 
-# Employee (`identity.employee`), upserted from the access token on authenticated calls (ADR-009).
+# Employee (`identity_employee`), upserted from the access token on authenticated calls (ADR-009).
 public type Employee record {|
     # Asgardeo `sub`
     types:EmployeeId employeeId;
@@ -52,7 +52,7 @@ public type TokenClaims record {|
     string? name = ();
 |};
 
-# Persistence port for `identity.employee`.
+# Persistence port for `identity_employee`.
 public type EmployeeRepository isolated object {
     # Finds an employee.
     #

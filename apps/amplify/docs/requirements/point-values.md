@@ -3,7 +3,7 @@
 - **Status:** **Decided 2026-10-19** (pilot points table from the business; see "Decided values" below). The original proposal follows for history.
 - **Date:** 2026-10-16, decided 2026-10-19
 - **Owner:** Lead Developer
-- **Decides:** the `scoring.point_rule` seed for phase 1 (plan M3 seed scripts, D6)
+- **Decides:** the `scoring_point_rule` seed for phase 1 (plan M3 seed scripts, D6)
 - **Scope:** points only. Coins and any Coin conversion rate are phase 2 and not part of this proposal.
 
 ## Decided values (pilot, 2026-10-19)
@@ -70,7 +70,7 @@ How `OWN_POST_AMPLIFIED` lands in the ledger: the employee already has the `OWN_
 
 ## Where every value lives (2026-10-22)
 
-All ten values of the pilot table are seeded, so none waits on its phase to be remembered. They stay in the database as effective-dated `scoring.point_rule` rows (S005 and S006, effective 2026-10-19); PO changes one with a new row through the point-rules API. They are deliberately **not** env or Choreo configuration: a config value has no effective date, so past awards could not keep the value they earned.
+All ten values of the pilot table are seeded, so none waits on its phase to be remembered. They stay in the database as effective-dated `scoring_point_rule` rows (S005 and S006, effective 2026-10-19); PO changes one with a new row through the point-rules API. They are deliberately **not** env or Choreo configuration: a config value has no effective date, so past awards could not keep the value they earned.
 
 | Table row | Action | Points | Seed | Awarded today by |
 | --- | --- | --- | --- | --- |
@@ -83,4 +83,4 @@ All ten values of the pilot table are seeded, so none waits on its phase to be r
 | Amplify Challenge entry | `CHALLENGE_ENTRY` | 10 | S006 | PO adjustment with a reason |
 | Amplify Challenge winner | `CHALLENGE_WINNER` | 25 | S006 | PO adjustment with a reason |
 
-`V014` widens the action checks on `scoring.point_rule` and `scoring.points_ledger` so these rows can exist. `SHARE_COMMENTARY` needed a row too: without it S001's old value of 12 would still apply to that fallback kind. `sharing.engagement.action` is unchanged until comments and reactions are synced.
+`V014` widens the action checks on `scoring_point_rule` and `scoring_points_ledger` so these rows can exist. `SHARE_COMMENTARY` needed a row too: without it S001's old value of 12 would still apply to that fallback kind. `sharing_engagement.action` is unchanged until comments and reactions are synced.

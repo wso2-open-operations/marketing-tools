@@ -20,8 +20,8 @@
 #
 #   scripts/unlink_by_db_del.sh ada@example.com
 #
-# Deletes rows in connection.member_connection for that employee. Local stack only. Nothing else references the row.
-# The employee is looked up by email in identity.employee, as unlink-linkedin-user.sh does. Works from any directory.
+# Deletes rows in connection_member_connection for that employee. Local stack only. Nothing else references the row.
+# The employee is looked up by email in identity_employee, as unlink-linkedin-user.sh does. Works from any directory.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -32,7 +32,7 @@ if [[ ! "$email" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+$ ]]; then
 fi
 
 # The email goes to psql as a variable (:'email'), never into the SQL text. The compose banner goes to stderr; drop it.
-if ! ids="$(printf "select employee_id from identity.employee where lower(email) = lower(:'email');\n" |
+if ! ids="$(printf "select employee_id from identity_employee where lower(email) = lower(:'email');\n" |
   scripts/compose.sh exec -T -e EMAIL="$email" postgres sh -c \
     'PGPASSWORD="$POSTGRES_PASSWORD" psql -U postgres -d amplify -At -v ON_ERROR_STOP=1 -v email="$EMAIL"' 2>/dev/null)"; then
   echo "Could not query the local database (is the stack up? try: make up)" >&2
@@ -46,7 +46,7 @@ case "$(printf '%s' "$ids" | grep -c .)" in
 esac
 
 echo "Deleting LinkedIn connection rows for $email ($employee_id)"
-printf "delete from connection.member_connection where employee_id = :'id' returning member_urn, removed_at;\n" |
+printf "delete from connection_member_connection where employee_id = :'id' returning member_urn, removed_at;\n" |
   scripts/compose.sh exec -T -e ID="$employee_id" postgres sh -c \
     'PGPASSWORD="$POSTGRES_PASSWORD" psql -U postgres -d amplify -At -v ON_ERROR_STOP=1 -v id="$ID"'
 echo "Done. Link me should now accept this LinkedIn member."
