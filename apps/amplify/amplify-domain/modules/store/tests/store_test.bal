@@ -139,9 +139,9 @@ function tlsWarningOnlyForUnverifiedRemoteHosts() {
 @test:Config {}
 function databaseNameCarriesTheSchemaAsAStartupOption() {
     test:assertEquals(databaseOf(cfg()), "amplify", "no schema: the plain database name");
-    DbConfig withSchema = {host: "db", database: "amplify", user: "amplify_stg_user", password: "x",
-        schema: "amplify_stg_user"};
-    test:assertEquals(databaseOf(withSchema), "amplify?options=-c%20search_path%3Damplify_stg_user,public"
+    DbConfig withSchema = {host: "db", database: "amplify", user: "amplify", password: "x",
+        schema: "amplify"};
+    test:assertEquals(databaseOf(withSchema), "amplify?options=-c%20search_path%3Damplify,public"
         + "%20-c%20idle_in_transaction_session_timeout%3D30000");
     DbConfig padded = {host: "db", database: "amplify", user: "u", password: "x", schema: " amplify_jobs ",
         idleInTransactionTimeoutMs: 5000};
