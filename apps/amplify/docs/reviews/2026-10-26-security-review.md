@@ -58,7 +58,7 @@ F-1 and F-3 were fixed on 2026-10-26, before the pilot. F-2 belongs in the peopl
   - [`handlers.bal:425-444`](../../amplify-api/handlers.bal) `adjustPoints` passes the body `employeeId` and `p.employeeId` straight through. No comparison.
   - [`service.bal:290-297`](../../amplify-domain/modules/scoring/service.bal) `adjustPoints` and `adjustment()` (line 184) check only for non-zero points and a reason.
   - `reverseEntry` ([`handlers.bal:447`](../../amplify-api/handlers.bal)) has no check either. Compare external shares, where `ensureDecidable` and `markAmplified` return `SELF_REVIEW` (threat model 4.6).
-  - No database constraint stops it: `scoring.points_ledger` has `actor_id` but no `actor_id <> employee_id` check (`amplify-database/migrations/V006__scoring.sql:45`).
+  - No database constraint stops it: `scoring_points_ledger` has `actor_id` but no `actor_id <> employee_id` check (`amplify-database/migrations/V006__scoring.sql:45`).
 - Exploit scenario: a PO posts `{"employeeId": "<own id>", "points": 10000, "reason": "correction"}` to `/po/points/adjustments` and tops the company leaderboard. The audit row exists, but nobody is told. Phase 2 Coins would turn that into money.
 - Fix: return `SELF_REVIEW` (403, same code the claims use) when the target is the caller, in both `adjustPoints` and `reverseEntry` (a reversal's target is the original entry's `employeeId`). Add the same `CHECK` on the ledger for adjustments if you want the database to agree. Cap `points` further than 10000 only if the PO team wants it.
 
@@ -88,7 +88,7 @@ F-1 and F-3 were fixed on 2026-10-26, before the pilot. F-2 belongs in the peopl
 ### F-7 Low: `amplify_api` holds more on `provider_token` than it needs
 
 - Category: least privilege. Confidence: 6/10 on whether the API ever reads the table directly, so check before changing.
-- Evidence: `amplify-database/migrations/V003__connection.sql:113` grants SELECT, INSERT, UPDATE, DELETE on `connection.provider_token` to both `amplify_api` and `amplify_jobs`. The API inserts a token at connect and deletes it at remove. Only jobs decrypts and re-seals. The API also holds the key ring (`tokenKeys`), so it needs the key to seal.
+- Evidence: `amplify-database/migrations/V003__connection.sql:113` grants SELECT, INSERT, UPDATE, DELETE on `connection_provider_token` to both `amplify_api` and `amplify_jobs`. The API inserts a token at connect and deletes it at remove. Only jobs decrypts and re-seals. The API also holds the key ring (`tokenKeys`), so it needs the key to seal.
 - Impact: a compromised API process can read ciphertext and has the key, so it can decrypt every member token. Narrowing the grant removes the read half of that.
 - Fix: give `amplify_api` INSERT and DELETE only on `provider_token` (the status view runs with the view owner's rights). If the API does read it, leave this alone. The longer fix is a seal-only key for the API, which is a design change and not for this PR.
 

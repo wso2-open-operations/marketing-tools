@@ -134,7 +134,7 @@ public isolated function liveCounts(postgresql:Client db) returns LiveCounts|err
         SELECT count(*)::int AS live,
                count(*) FILTER (WHERE is_priority)::int AS "livePriority",
                count(*) FILTER (WHERE closes_at <= now() + interval '7 days')::int AS "closingWithin7Days"
-        FROM campaign.campaign_v WHERE status = 'OPEN'`);
+        FROM campaign_v WHERE status = 'OPEN'`);
 }
 
 # Active engagements in a time range.
@@ -147,7 +147,7 @@ public isolated function repostsBetween(postgresql:Client db, time:Utc 'from, ti
     string a = time:utcToString('from);
     string b = time:utcToString(to);
     return db->queryRow(`
-        SELECT count(*)::int FROM sharing.engagement_v
+        SELECT count(*)::int FROM sharing_engagement_v
         WHERE status = 'ACTIVE' AND occurred_at >= CAST(${a} AS timestamptz) AND occurred_at < CAST(${b} AS timestamptz)`);
 }
 
@@ -174,11 +174,11 @@ public isolated function campaignRows(postgresql:Client db, int days, int 'limit
     |}, error?> rows = db->query(`
         SELECT c.id::text AS id, c.title, c.category_code, COALESCE(cat.label, c.category_code) AS category_label,
                c.is_priority, c.status, c.opens_at, c.closes_at, COALESCE(e.n, 0)::int AS reposts, COALESCE(e.c, 0)::int AS with_commentary
-        FROM campaign.campaign_v c
-        LEFT JOIN campaign.category cat ON cat.code = c.category_code
+        FROM campaign_v c
+        LEFT JOIN campaign_category cat ON cat.code = c.category_code
         LEFT JOIN (SELECT campaign_id, count(*) AS n,
                           count(*) FILTER (WHERE action IN ('REPOST_COMMENTARY', 'SHARE_COMMENTARY')) AS c
-                   FROM sharing.engagement_v WHERE status = 'ACTIVE'
+                   FROM sharing_engagement_v WHERE status = 'ACTIVE'
                    GROUP BY campaign_id) e ON e.campaign_id = c.id
         WHERE c.archived_at IS NULL AND c.status IN ('OPEN', 'CLOSED')
           AND (c.status = 'OPEN' OR c.opens_at >= CAST(${since} AS timestamptz))
@@ -210,7 +210,7 @@ public isolated function connectionBreakdown(postgresql:Client db) returns Conne
                count(*) FILTER (WHERE status = 'EXPIRING')::int AS expiring,
                count(*) FILTER (WHERE status = 'NEEDS_RECONNECT' AND access_expires_at <= now())::int AS expired,
                count(*) FILTER (WHERE status = 'NEEDS_RECONNECT' AND access_expires_at > now())::int AS revoked
-        FROM connection.member_connection_v WHERE status <> 'REMOVED'`);
+        FROM connection_member_connection_v WHERE status <> 'REMOVED'`);
 }
 
 # Announcement delivery by campaign: the card's state and how many times the outbox has tried.
@@ -222,8 +222,8 @@ public isolated function deliveryOf(postgresql:Client db, string[] campaignIds) 
     string ids = store:arrayLiteral(campaignIds);
     stream<record {|string campaign_id; string status; int? attempts; time:Utc? sent_at;|}, error?> rows = db->query(`
         SELECT a.campaign_id::text AS campaign_id, a.status, o.attempts, a.sent_at
-        FROM announcement.announcement_v a
-        LEFT JOIN messaging.outbox o ON o.id = a.outbox_id
+        FROM announcement_v a
+        LEFT JOIN messaging_outbox o ON o.id = a.outbox_id
         WHERE a.campaign_id = ANY (CAST(${ids} AS uuid[]))`);
     map<Delivery> result = {};
     check from var r in rows
@@ -246,9 +246,9 @@ public isolated function cardCounts(postgresql:Client db, time:Utc since) return
                count(*) FILTER (WHERE a.status = 'FAILED')::int AS failed,
                count(*) FILTER (WHERE a.status IS DISTINCT FROM 'SENT' AND a.status IS DISTINCT FROM 'FAILED')::int AS queued,
                count(*) FILTER (WHERE a.status = 'QUEUED' AND COALESCE(o.attempts, 0) > 0)::int AS retrying
-        FROM campaign.campaign_v c
-        LEFT JOIN announcement.announcement_v a ON a.campaign_id = c.id
-        LEFT JOIN messaging.outbox o ON o.id = a.outbox_id
+        FROM campaign_v c
+        LEFT JOIN announcement_v a ON a.campaign_id = c.id
+        LEFT JOIN messaging_outbox o ON o.id = a.outbox_id
         WHERE c.archived_at IS NULL AND c.opens_at <= now() AND c.opens_at >= CAST(${s} AS timestamptz)`);
 }
 
@@ -261,8 +261,8 @@ public isolated function cardCounts(postgresql:Client db, time:Utc since) return
 public isolated function repostsByDay(postgresql:Client db, string campaignId, int days) returns int[]|error {
     stream<record {|int day; int n;|}, error?> rows = db->query(`
         SELECT (floor(extract(epoch FROM (e.occurred_at - c.opens_at)) / 86400)::int + 1) AS day, count(*)::int AS n
-        FROM sharing.engagement_v e
-        JOIN campaign.campaign c ON c.id = e.campaign_id
+        FROM sharing_engagement_v e
+        JOIN campaign c ON c.id = e.campaign_id
         WHERE e.status = 'ACTIVE' AND e.campaign_id = CAST(${campaignId} AS uuid)
         GROUP BY 1`);
     int[] counts = [];
@@ -288,9 +288,9 @@ public isolated function repostsByCategory(postgresql:Client db, time:Utc since)
     stream<record {|string code; string label; int n; int commented;|}, error?> rows = db->query(`
         SELECT c.category_code AS code, COALESCE(cat.label, c.category_code) AS label, count(*)::int AS n,
                count(*) FILTER (WHERE e.action IN ('REPOST_COMMENTARY', 'SHARE_COMMENTARY'))::int AS commented
-        FROM sharing.engagement_v e
-        JOIN campaign.campaign c ON c.id = e.campaign_id
-        LEFT JOIN campaign.category cat ON cat.code = c.category_code
+        FROM sharing_engagement_v e
+        JOIN campaign c ON c.id = e.campaign_id
+        LEFT JOIN campaign_category cat ON cat.code = c.category_code
         WHERE e.status = 'ACTIVE' AND e.occurred_at >= CAST(${s} AS timestamptz)
         GROUP BY c.category_code, cat.label
         ORDER BY n DESC, label`);
@@ -304,11 +304,11 @@ public isolated function repostsByCategory(postgresql:Client db, time:Utc since)
 # + return - Counts, or an error
 public isolated function participationCounts(postgresql:Client db) returns ParticipationCounts|error {
     return db->queryRow(`
-        SELECT (SELECT count(*) FROM connection.member_connection_v WHERE status <> 'REMOVED')::int AS connected,
-               (SELECT count(*) FROM connection.member_connection_v
+        SELECT (SELECT count(*) FROM connection_member_connection_v WHERE status <> 'REMOVED')::int AS connected,
+               (SELECT count(*) FROM connection_member_connection_v
                 WHERE status = 'NEEDS_RECONNECT' AND access_expires_at <= now())::int AS expired,
-               (SELECT count(DISTINCT employee_id) FROM sharing.engagement_v WHERE status = 'ACTIVE')::int AS reposted,
-               (SELECT count(DISTINCT employee_id) FROM sharing.engagement_v
+               (SELECT count(DISTINCT employee_id) FROM sharing_engagement_v WHERE status = 'ACTIVE')::int AS reposted,
+               (SELECT count(DISTINCT employee_id) FROM sharing_engagement_v
                 WHERE status = 'ACTIVE' AND occurred_at >= now() - interval '30 days')::int AS "active30Days"`);
 }
 
@@ -322,7 +322,7 @@ public isolated function monthlyReposts(postgresql:Client db, int months) return
         SELECT to_char(m.month_start, 'YYYY-MM-DD') AS month_start, count(e.id)::int AS n
         FROM generate_series(date_trunc('month', now() AT TIME ZONE 'UTC') - make_interval(months => CAST(${months - 1} AS int)),
                              date_trunc('month', now() AT TIME ZONE 'UTC'), interval '1 month') AS m(month_start)
-        LEFT JOIN sharing.engagement_v e
+        LEFT JOIN sharing_engagement_v e
                ON e.status = 'ACTIVE'
               AND date_trunc('month', e.occurred_at AT TIME ZONE 'UTC') = m.month_start
         GROUP BY m.month_start ORDER BY m.month_start`);
@@ -335,7 +335,7 @@ public isolated function monthlyReposts(postgresql:Client db, int months) return
 # + db - Client
 # + return - Count, or an error
 public isolated function repostingPeople(postgresql:Client db) returns int|error {
-    return db->queryRow(`SELECT count(DISTINCT employee_id)::int FROM sharing.engagement_v WHERE status = 'ACTIVE'`);
+    return db->queryRow(`SELECT count(DISTINCT employee_id)::int FROM sharing_engagement_v WHERE status = 'ACTIVE'`);
 }
 
 # Points awarded in a month (employee_points_monthly).
@@ -345,7 +345,7 @@ public isolated function repostingPeople(postgresql:Client db) returns int|error
 # + return - Points this month, or an error
 public isolated function pointsInMonth(postgresql:Client db, string month) returns int|error {
     return db->queryRow(`
-        SELECT COALESCE(sum(points), 0)::int FROM recognition.employee_points_monthly
+        SELECT COALESCE(sum(points), 0)::int FROM recognition_employee_points_monthly
         WHERE month = CAST(${month} AS date)`);
 }
 
@@ -366,7 +366,7 @@ public isolated function pointsAwarded(postgresql:Client db) returns PointsAward
     return db->queryRow(`
         SELECT COALESCE(sum(points) FILTER (WHERE created_at >= date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'), 0)::int AS month,
                COALESCE(sum(points) FILTER (WHERE created_at >= date_trunc('year', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'), 0)::int AS year
-        FROM scoring.points_ledger
+        FROM scoring_points_ledger
         WHERE created_at >= date_trunc('year', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'`);
 }
 
@@ -380,7 +380,7 @@ public isolated function commentaryRepostsBetween(postgresql:Client db, time:Utc
     string a = time:utcToString('from);
     string b = time:utcToString(to);
     return db->queryRow(`
-        SELECT count(*)::int FROM sharing.engagement_v
+        SELECT count(*)::int FROM sharing_engagement_v
         WHERE status = 'ACTIVE' AND action IN ('REPOST_COMMENTARY', 'SHARE_COMMENTARY')
           AND occurred_at >= CAST(${a} AS timestamptz) AND occurred_at < CAST(${b} AS timestamptz)`);
 }
@@ -417,7 +417,7 @@ public type Reposter record {|
 public isolated function campaignCard(postgresql:Client db, string campaignId) returns CampaignCard?|error {
     stream<CampaignCard, error?> rows = db->query(`
         SELECT summary, image_url AS "imageUrl", resource_url AS "resourceUrl", resource_urn AS "resourceUrn"
-        FROM campaign.campaign WHERE id = CAST(${campaignId} AS uuid)`);
+        FROM campaign WHERE id = CAST(${campaignId} AS uuid)`);
     CampaignCard[] found = check from CampaignCard r in rows
         select r;
     return found.length() > 0 ? found[0] : ();
@@ -433,9 +433,9 @@ public isolated function campaignReposters(postgresql:Client db, string campaign
         SELECT e.employee_id, COALESCE(p.display_name, st.display_name, e.employee_id) AS display_name,
                COALESCE(p.email::text, st.email::text) AS email,
                e.action IN ('REPOST_COMMENTARY', 'SHARE_COMMENTARY') AS commented
-        FROM sharing.engagement_v e
-        LEFT JOIN identity.employee p ON p.employee_id = e.employee_id
-        LEFT JOIN recognition.standing st ON st.employee_id = e.employee_id AND st.period_key = 'ALL'
+        FROM sharing_engagement_v e
+        LEFT JOIN identity_employee p ON p.employee_id = e.employee_id
+        LEFT JOIN recognition_standing st ON st.employee_id = e.employee_id AND st.period_key = 'ALL'
         WHERE e.status = 'ACTIVE' AND e.campaign_id = CAST(${campaignId} AS uuid)
         ORDER BY lower(COALESCE(p.display_name, st.display_name, e.employee_id)), e.employee_id
         LIMIT 2000`);
@@ -492,28 +492,28 @@ public isolated function exportRows(postgresql:Client db, time:Utc 'from, time:U
                    c.is_priority AS "isPriority", e.employee_id AS "employeeId", p.display_name AS "employeeName",
                    p.email::text AS "employeeEmail", e.action, e.status, NULL::int AS points, NULL::text AS detail,
                    e.occurred_at AS sort_at
-            FROM sharing.engagement_v e
-            LEFT JOIN campaign.campaign c ON c.id = e.campaign_id
-            LEFT JOIN campaign.category cat ON cat.code = c.category_code
-            LEFT JOIN identity.employee p ON p.employee_id = e.employee_id
+            FROM sharing_engagement_v e
+            LEFT JOIN campaign c ON c.id = e.campaign_id
+            LEFT JOIN campaign_category cat ON cat.code = c.category_code
+            LEFT JOIN identity_employee p ON p.employee_id = e.employee_id
             WHERE e.occurred_at >= CAST(${a} AS timestamptz) AND e.occurred_at < CAST(${b} AS timestamptz)
           UNION ALL
             SELECT 'SHARE_REQUEST', to_char(s.requested_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
                    s.campaign_id::text, c.title, COALESCE(cat.label, c.category_code), c.is_priority,
                    s.employee_id, p.display_name, p.email::text, s.kind, s.status, NULL, s.failure_reason, s.requested_at
-            FROM sharing.share_request_v s
-            LEFT JOIN campaign.campaign c ON c.id = s.campaign_id
-            LEFT JOIN campaign.category cat ON cat.code = c.category_code
-            LEFT JOIN identity.employee p ON p.employee_id = s.employee_id
+            FROM sharing_share_request_v s
+            LEFT JOIN campaign c ON c.id = s.campaign_id
+            LEFT JOIN campaign_category cat ON cat.code = c.category_code
+            LEFT JOIN identity_employee p ON p.employee_id = s.employee_id
             WHERE s.requested_at >= CAST(${a} AS timestamptz) AND s.requested_at < CAST(${b} AS timestamptz)
           UNION ALL
             SELECT 'POINTS', to_char(l.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
                    l.campaign_id::text, c.title, COALESCE(cat.label, c.category_code), c.is_priority,
                    l.employee_id, p.display_name, p.email::text, l.action, l.status, l.points, l.source_type, l.created_at
-            FROM scoring.points_ledger l
-            LEFT JOIN campaign.campaign c ON c.id = l.campaign_id
-            LEFT JOIN campaign.category cat ON cat.code = c.category_code
-            LEFT JOIN identity.employee p ON p.employee_id = l.employee_id
+            FROM scoring_points_ledger l
+            LEFT JOIN campaign c ON c.id = l.campaign_id
+            LEFT JOIN campaign_category cat ON cat.code = c.category_code
+            LEFT JOIN identity_employee p ON p.employee_id = l.employee_id
             WHERE l.created_at >= CAST(${a} AS timestamptz) AND l.created_at < CAST(${b} AS timestamptz)
           UNION ALL
             SELECT 'CAMPAIGN', to_char(c.opens_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
@@ -521,17 +521,17 @@ public isolated function exportRows(postgresql:Client db, time:Utc 'from, time:U
                    NULL, NULL, NULL, NULL, c.status, NULL,
                    'closes ' || to_char(c.closes_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') || '; card ' || COALESCE(a.status, 'NONE'),
                    c.opens_at
-            FROM campaign.campaign_v c
-            LEFT JOIN campaign.category cat ON cat.code = c.category_code
-            LEFT JOIN announcement.announcement_v a ON a.campaign_id = c.id
+            FROM campaign_v c
+            LEFT JOIN campaign_category cat ON cat.code = c.category_code
+            LEFT JOIN announcement_v a ON a.campaign_id = c.id
             WHERE c.opens_at >= CAST(${a} AS timestamptz) AND c.opens_at < CAST(${b} AS timestamptz)
           UNION ALL
             SELECT 'CONNECTION', to_char(m.connected_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
                    NULL, NULL, NULL, NULL, m.employee_id, p.display_name, p.email::text, NULL, m.status, NULL,
                    'token expires ' || to_char(m.access_expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
                    m.connected_at
-            FROM connection.member_connection_v m
-            LEFT JOIN identity.employee p ON p.employee_id = m.employee_id
+            FROM connection_member_connection_v m
+            LEFT JOIN identity_employee p ON p.employee_id = m.employee_id
             WHERE m.connected_at >= CAST(${a} AS timestamptz) AND m.connected_at < CAST(${b} AS timestamptz)
         ) x
         ORDER BY x.sort_at, x."recordType", x."employeeId"
@@ -584,10 +584,10 @@ public isolated function personIdentity(postgresql:Client db, string employeeId)
         SELECT x.employee_id AS "employeeId", COALESCE(p.display_name, st.display_name, x.employee_id) AS "displayName",
                COALESCE(p.email::text, st.email::text) AS email
         FROM (SELECT ${employeeId}::text AS employee_id) x
-        LEFT JOIN identity.employee p ON p.employee_id = x.employee_id
-        LEFT JOIN recognition.standing st ON st.employee_id = x.employee_id AND st.period_key = 'ALL'
+        LEFT JOIN identity_employee p ON p.employee_id = x.employee_id
+        LEFT JOIN recognition_standing st ON st.employee_id = x.employee_id AND st.period_key = 'ALL'
         WHERE p.employee_id IS NOT NULL OR st.employee_id IS NOT NULL
-           OR EXISTS (SELECT 1 FROM sharing.engagement_v e WHERE e.employee_id = x.employee_id)`);
+           OR EXISTS (SELECT 1 FROM sharing_engagement_v e WHERE e.employee_id = x.employee_id)`);
     PersonIdentity[] found = check from PersonIdentity r in rows
         select r;
     return found.length() > 0 ? found[0] : ();
@@ -606,10 +606,10 @@ public isolated function personPosts(postgresql:Client db, string employeeId) re
                count(*) FILTER (WHERE e.action NOT IN ('REPOST_COMMENTARY', 'SHARE_COMMENTARY'))::int AS plain,
                count(*) FILTER (WHERE e.action IN ('REPOST_COMMENTARY', 'SHARE_COMMENTARY'))::int AS commented,
                COALESCE(max(pts.points), 0)::int AS points
-        FROM sharing.engagement_v e
-        JOIN campaign.campaign c ON c.id = e.campaign_id
-        LEFT JOIN campaign.category cat ON cat.code = c.category_code
-        LEFT JOIN (SELECT campaign_id, sum(points) AS points FROM scoring.points_ledger
+        FROM sharing_engagement_v e
+        JOIN campaign c ON c.id = e.campaign_id
+        LEFT JOIN campaign_category cat ON cat.code = c.category_code
+        LEFT JOIN (SELECT campaign_id, sum(points) AS points FROM scoring_points_ledger
                    WHERE employee_id = ${employeeId} AND campaign_id IS NOT NULL GROUP BY campaign_id) pts
                ON pts.campaign_id = c.id
         WHERE e.status = 'ACTIVE' AND e.employee_id = ${employeeId}
@@ -632,7 +632,7 @@ public isolated function personPosts(postgresql:Client db, string employeeId) re
 # + return - Points, or an error
 public isolated function personPointsThisMonth(postgresql:Client db, string employeeId) returns int|error {
     return db->queryRow(`
-        SELECT COALESCE(sum(points), 0)::int FROM scoring.points_ledger
+        SELECT COALESCE(sum(points), 0)::int FROM scoring_points_ledger
         WHERE employee_id = ${employeeId}
           AND created_at >= date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'`);
 }

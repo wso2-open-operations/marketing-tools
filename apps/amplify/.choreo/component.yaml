@@ -71,13 +71,19 @@ configurations:
     - name: BAL_CONFIG_VAR_DBUSER
       valueFrom:
         configForm:
-          displayName: DB user
+          displayName: DB login user (shared by every component)
           type: string
     - name: BAL_CONFIG_VAR_DBPASSWORD
       valueFrom:
         configForm:
           displayName: DB password
           type: secret
+    - name: BAL_CONFIG_VAR_DBSCHEMA
+      valueFrom:
+        configForm:
+          displayName: DB schema (empty = the login user name)
+          type: string
+          required: false
     # Managed Postgres CA (domain review H-1): mount the CA PEM as a Choreo file mount (console: Configs &
     # Secrets > File Mount, e.g. /home/choreo/db-ca/ca.pem) and put that path here. dbSslMode defaults to
     # VERIFY_FULL, which checks the server certificate against it and the host name.

@@ -22,7 +22,7 @@ import amplify_common.types;
 
 import ballerina/time;
 
-# Point rule (`scoring.point_rule`): versioned by `effectiveFrom`, one row per action per effective time.
+# Point rule (`scoring_point_rule`): versioned by `effectiveFrom`, one row per action per effective time.
 # The action is the tier. Past awards keep the value of the rule in force when they were priced.
 public type PointRule record {|
     # UUIDv7
@@ -79,7 +79,7 @@ public type LedgerAppend record {|
     events:OutboxEvent event;
 |};
 
-# Persistence port for `scoring.points_ledger`. Append-only: there is no update of facts, only `append`
+# Persistence port for `scoring_points_ledger`. Append-only: there is no update of facts, only `append`
 # (`INSERT … ON CONFLICT (reference) DO NOTHING`) and the settlement-column update.
 public type LedgerRepository isolated object {
     # Appends a row and its event in one transaction.
@@ -110,7 +110,7 @@ public type LedgerRepository isolated object {
         returns error?;
 };
 
-# Persistence port for `scoring.point_rule`.
+# Persistence port for `scoring_point_rule`.
 public type PointRuleRepository isolated object {
     # All versions of every rule.
     #

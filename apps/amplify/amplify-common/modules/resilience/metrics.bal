@@ -120,7 +120,7 @@ public isolated function exportedOutboxValue(string name, string component) retu
 }
 
 # Token partition runway: `amplify_token_partition_days_ahead` is how many days past today (UTC) have a
-# `connection.provider_token` partition. A connect fails on a day with none, and the daily maintenance run is the only
+# `connection_provider_token` partition. A connect fails on a day with none, and the daily maintenance run is the only
 # thing that creates them, so alert when this falls below 3 (the run has been down for most of the runway).
 public const string TOKEN_PARTITION_METRIC = "amplify_token_partition_days_ahead";
 

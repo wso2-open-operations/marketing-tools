@@ -44,7 +44,7 @@ Audit mitigations applied 2026-10-16 ([requirements-map.md](../architecture/solu
 ## Design rules
 
 1. **One schema per bounded context.** A context's module reads and writes only its own schema. The schema is the boundary you could later lift into its own component (or database) without touching other contexts.
-2. **No physical foreign keys across contexts.** They are **virtual FKs**: implied by name and type, enforced by the owning module and by domain events in `messaging.outbox`. Every diagram has a *Virtual FKs* table under it. Physical FKs exist only inside a context.
+2. **No physical foreign keys across contexts.** They are **virtual FKs**: implied by name and type, enforced by the owning module and by domain events in `messaging_outbox`. Every diagram has a *Virtual FKs* table under it. Physical FKs exist only inside a context.
 3. **Aggregate roots** are marked `AR`. Child tables belong to their root and are only changed through it.
 4. **Invariants live in constraints** wherever Postgres can enforce them (unique keys, checks, column grants). The domain code enforces the rest.
 5. **Identity is the Asgardeo `sub`** (`employee_id`, text). Email is an attribute and can change.
@@ -53,7 +53,7 @@ Audit mitigations applied 2026-10-16 ([requirements-map.md](../architecture/solu
 8. **Facts, not flags.** Store *what happened and when* (timestamps, decisions). Status is **derived** in `*_v` views, so it can't drift. See [How status works](#how-status-works).
 9. **Provider-agnostic.** Every external thing is `provider` + `provider_api` + a resource URN. The same tables serve **Share on LinkedIn** (phase 1), **Community Management** (future phase), webhooks, and other platforms later.
 10. **Read models are pre-built tables**, kept current in the same transaction as each ledger insert (jobs score pass, or `amplify-api` for PO decisions and corrections, B12), so One WSO2 reads are single indexed lookups. See [recognition](#recognition--s4-recognition-read-models).
-11. **Required extensions: `citext`** (`identity.employee.email`, `recognition.standing.email`) **and `pg_trgm`** (Team search). The M0 D2 check confirms both on a real Choreo database before M3 (B18). Portability rule: no other extension without an ADR. If either is missing, fall back to `text` + a `lower(email)` unique index, and `ILIKE` prefix search on a `lower(display_name)` btree index.
+11. **Required extensions: `citext`** (`identity_employee.email`, `recognition_standing.email`) **and `pg_trgm`** (Team search). The M0 D2 check confirms both on a real Choreo database before M3 (B18). Portability rule: no other extension without an ADR. If either is missing, fall back to `text` + a `lower(email)` unique index, and `ILIKE` prefix search on a `lower(display_name)` btree index.
 
 **IDs:** every `uuid` key defaults to **`uuidv7()`**, the native function in **PostgreSQL 18**. UUIDv7 is time-ordered, so new rows append to the end of the B-tree (no random-insert page splits), and `ORDER BY id` is roughly creation order. If an environment is ever below PG 18, generate v7 in Ballerina instead; never mix in v4.
 
@@ -65,33 +65,33 @@ Legend: `||--o{` physical FK (same context) · `}o..||` virtual FK (no constrain
 
 ```mermaid
 erDiagram
-    EMPLOYEE["identity.employee (AR)"] {
+    EMPLOYEE["identity_employee (AR)"] {
         text employee_id PK
     }
-    CAMPAIGN["campaign.campaign (AR)"] {
+    CAMPAIGN["campaign (AR)"] {
         uuid id PK
     }
-    MEMBER_CONNECTION["connection.member_connection (AR)"] {
+    MEMBER_CONNECTION["connection_member_connection (AR)"] {
         text employee_id PK
         text provider PK
     }
-    SHARE_REQUEST["sharing.share_request (AR)"] {
+    SHARE_REQUEST["sharing_share_request (AR)"] {
         uuid id PK
     }
-    ENGAGEMENT["sharing.engagement (AR)"] {
+    ENGAGEMENT["sharing_engagement (AR)"] {
         uuid id PK
     }
-    EXTERNAL_SHARE["external_sharing.external_share (AR)"] {
+    EXTERNAL_SHARE["external_sharing_external_share (AR)"] {
         uuid id PK
     }
-    LEDGER["scoring.points_ledger (AR)"] {
+    LEDGER["scoring_points_ledger (AR)"] {
         varchar reference PK
     }
-    STANDING["recognition.standing"] {
+    STANDING["recognition_standing"] {
         text period_key PK
         text employee_id PK
     }
-    ANNOUNCEMENT["announcement.announcement (AR)"] {
+    ANNOUNCEMENT["announcement (AR)"] {
         uuid campaign_id PK
     }
 
@@ -165,13 +165,13 @@ You asked whether status is set in code or by a trigger, and how it stays in syn
 Example view:
 
 ```sql
-CREATE VIEW campaign.campaign_v AS
+CREATE VIEW campaign_v AS
 SELECT c.*,
        CASE WHEN c.archived_at IS NOT NULL THEN 'ARCHIVED'
             WHEN now() <  c.opens_at        THEN 'SCHEDULED'
             WHEN now() <  c.closes_at       THEN 'OPEN'
             ELSE 'CLOSED' END AS status
-FROM campaign.campaign c;
+FROM campaign c;
 ```
 
 ---
@@ -180,7 +180,7 @@ FROM campaign.campaign c;
 
 ```mermaid
 erDiagram
-    EMPLOYEE["identity.employee (AR)"] {
+    EMPLOYEE["identity_employee (AR)"] {
         text employee_id PK "Asgardeo sub"
         citext email UK
         text display_name
@@ -199,13 +199,13 @@ erDiagram
 
 ```mermaid
 erDiagram
-    CATEGORY["campaign.category"] {
+    CATEGORY["campaign_category"] {
         text code PK
         text label
         boolean active
         int sort_order
     }
-    CAMPAIGN["campaign.campaign (AR)"] {
+    CAMPAIGN["campaign (AR)"] {
         uuid id PK "uuidv7()"
         text provider UK "linkedin"
         text resource_urn UK "any URN: share, ugcPost, article, video, event"
@@ -225,7 +225,7 @@ erDiagram
         timestamptz updated_at
         int version "optimistic lock"
     }
-    CAMPAIGN_TAG["campaign.campaign_tag"] {
+    CAMPAIGN_TAG["campaign_tag"] {
         uuid campaign_id PK, FK
         text tag PK "lowercase"
     }
@@ -247,8 +247,8 @@ erDiagram
 | `closes_at > opens_at` | `CHECK` |
 | Default window: `closes_at` = `opens_at` + `campaign.default_window_days` (30) when not given (C7) | domain, on create; `closes_at NOT NULL` |
 | Delete = archive; earned points stay | no `DELETE` grant; `archived_at` set |
-| Status SCHEDULED / OPEN / CLOSED / ARCHIVED | derived in `campaign.campaign_v` |
-| Announced exactly once | `announcement.announcement` PK = `campaign_id` |
+| Status SCHEDULED / OPEN / CLOSED / ARCHIVED | derived in `campaign_v` |
+| Announced exactly once | `announcement` PK = `campaign_id` |
 
 Indexes: `(opens_at DESC) WHERE archived_at IS NULL` for the Posts page two-week window; `campaign_tag (tag)`; `(is_priority, opens_at DESC) WHERE archived_at IS NULL`.
 
@@ -256,7 +256,7 @@ Indexes: `(opens_at DESC) WHERE archived_at IS NULL` for the Posts page two-week
 
 ```mermaid
 erDiagram
-    MEMBER_CONNECTION["connection.member_connection (AR)"] {
+    MEMBER_CONNECTION["connection_member_connection (AR)"] {
         text employee_id PK
         text provider PK "linkedin"
         text member_urn UK "urn:li:person:{sub}"
@@ -286,7 +286,7 @@ erDiagram
         timestamptz connected_at
         timestamptz revoked_at
     }
-    PROVIDER_TOKEN["connection.provider_token (partitioned by issued_on, daily)"] {
+    PROVIDER_TOKEN["connection_provider_token (partitioned by issued_on, daily)"] {
         uuid token_id PK "uuidv7()"
         date issued_on PK "RANGE partition key"
         enum owner_type "MEMBER ORG"
@@ -298,7 +298,7 @@ erDiagram
         text key_id
         timestamptz expires_at
     }
-    OAUTH_STATE["connection.oauth_state"] {
+    OAUTH_STATE["connection_oauth_state"] {
         text state PK
         text employee_id
         text provider
@@ -324,7 +324,7 @@ erDiagram
 
 The token references are virtual **inside** the context on purpose: Postgres won't drop a partition that a foreign key points into. A missing token row means "reconnect needed".
 
-**Derived status** (`connection.member_connection_v`): `REMOVED` if `removed_at`; `NEEDS_RECONNECT` if `revoked_at > connected_at` or `access_expires_at < now()`; `EXPIRING` inside `reminder_days`; else `ACTIVE`. A reconnect sets `connected_at`, `access_expires_at` and a new token pointer, and clears `revoked_at`.
+**Derived status** (`connection_member_connection_v`): `REMOVED` if `removed_at`; `NEEDS_RECONNECT` if `revoked_at > connected_at` or `access_expires_at < now()`; `EXPIRING` inside `reminder_days`; else `ACTIVE`. A reconnect sets `connected_at`, `access_expires_at` and a new token pointer, and clears `revoked_at`.
 
 **Token encryption (your question).** LinkedIn hands us a **plain opaque bearer token** over TLS; nothing about it is encrypted for us. **We** encrypt it before it touches the database:
 - **AES-256-GCM** with **our** 256-bit key (Choreo secret, `key_id` per row), a random 96-bit nonce per encryption, and **AAD = `token_id | owner_id | provider`**, so a ciphertext copied onto another row fails to decrypt.
@@ -353,7 +353,7 @@ The split: **`share_request` is the command** ("Amplify, repost this for me"). *
 
 ```mermaid
 erDiagram
-    SHARE_REQUEST["sharing.share_request (AR)"] {
+    SHARE_REQUEST["sharing_share_request (AR)"] {
         uuid id PK "uuidv7()"
         uuid campaign_id UK "one repost per campaign per employee"
         text employee_id UK
@@ -371,7 +371,7 @@ erDiagram
         uuid engagement_id FK "set on publish"
         int version
     }
-    ENGAGEMENT["sharing.engagement (AR)"] {
+    ENGAGEMENT["sharing_engagement (AR)"] {
         uuid id PK "uuidv7()"
         text provider UK
         enum provider_api "SHARE_ON_LINKEDIN COMMUNITY_MANAGEMENT WEBHOOK"
@@ -387,7 +387,7 @@ erDiagram
         timestamptz last_verified_at
         timestamptz deleted_at "verified gone"
     }
-    ENGAGEMENT_VERIFICATION["sharing.engagement_verification"] {
+    ENGAGEMENT_VERIFICATION["sharing_engagement_verification"] {
         uuid id PK "uuidv7()"
         uuid engagement_id FK
         enum provider_api
@@ -431,7 +431,7 @@ erDiagram
 | connection | `member_connection.(provider, member_urn)` | sharing | `engagement.(provider, actor_member_urn)` |
 | campaign | `campaign.(provider, resource_urn)` | sharing | `sync_cursor.(provider, resource_urn)` *(future)* |
 
-**Derived status** (`sharing.share_request_v`): `PUBLISHED` if `published_at`; `FAILED` if `failed_at`; else `QUEUED`. `engagement_v` adds `ACTIVE` / `DELETED` from `deleted_at`. These are the share states every doc uses (B14); there is no `PENDING` share state.
+**Derived status** (`sharing_share_request_v`): `PUBLISHED` if `published_at`; `FAILED` if `failed_at`; else `QUEUED`. `engagement_v` adds `ACTIVE` / `DELETED` from `deleted_at`. These are the share states every doc uses (B14); there is no `PENDING` share state.
 
 **Kinds (B4):** `REPOST` / `REPOST_COMMENTARY` reshare the campaign post (`reshareContext.parent`). `SHARE` / `SHARE_COMMENTARY` create a new post that links to it, and are the fallback. The M0 D5 spike passed on 2026-10-20 (a member token can reshare an organization post), so the Amplify action is `REPOST` ([ADR-034](../architecture/decisions/ADR-034-share-is-a-repost.md)). All four are in the enums from the first migration, so the fallback needs no schema change.
 
@@ -455,7 +455,7 @@ An employee's claim for promotion done **outside** Amplify (own LinkedIn post, M
 
 ```mermaid
 erDiagram
-    EXTERNAL_SHARE["external_sharing.external_share (AR)"] {
+    EXTERNAL_SHARE["external_sharing_external_share (AR)"] {
         uuid id PK "uuidv7()"
         text employee_id
         uuid campaign_id "nullable"
@@ -484,7 +484,7 @@ erDiagram
 | identity | `employee.employee_id` | external_sharing | `external_share.decided_by` |
 | campaign | `campaign.id` | external_sharing | `external_share.campaign_id` |
 
-**Derived status** (`external_sharing.external_share_v`): `PENDING` if `decision IS NULL`; `AMPLIFIED` if `amplified_at`; else `decision`.
+**Derived status** (`external_sharing_external_share_v`): `PENDING` if `decision IS NULL`; `AMPLIFIED` if `amplified_at`; else `decision`.
 
 **One claim per URL (C5, ADR-017).** `evidence_url` is normalized before the insert: scheme forced to `https`, host lowercased, default port, fragment and trailing slash removed, tracking parameters (`utm_*`, `trk`, `trackingId`, `fbclid`, `gclid`) stripped, remaining query parameters sorted. A second claim on the same URL and action, by anyone, fails on the unique key; the API returns `EVIDENCE_ALREADY_CLAIMED` and My Campaign shows *"Someone else already submitted this url, contact PO Team for review"*.
 
@@ -507,7 +507,7 @@ Index: `(created_at) WHERE decision IS NULL` for the PO queue.
 
 ```mermaid
 erDiagram
-    POINT_RULE["scoring.point_rule (AR)"] {
+    POINT_RULE["scoring_point_rule (AR)"] {
         uuid id PK "uuidv7()"
         enum action UK "REPOST REPOST_COMMENTARY SHARE SHARE_COMMENTARY OWN_POST OWN_POST_AMPLIFIED REACTION COMMENT CHALLENGE_ENTRY CHALLENGE_WINNER"
         int points
@@ -515,7 +515,7 @@ erDiagram
         text created_by
         timestamptz created_at
     }
-    POINTS_LEDGER["scoring.points_ledger (AR, append-only facts)"] {
+    POINTS_LEDGER["scoring_points_ledger (AR, append-only facts)"] {
         varchar reference PK "AMP- ADJ- REV- max 66, phase 1 max 47"
         text employee_id
         uuid campaign_id "nullable"
@@ -579,7 +579,7 @@ Indexes: `(employee_id, created_at)`; `(campaign_id)`; `(created_at) WHERE statu
 
 ```mermaid
 erDiagram
-    STANDING["recognition.standing"] {
+    STANDING["recognition_standing"] {
         text period_key PK "ALL, 2026-10, 2026-Q4"
         text employee_id PK
         text display_name "denormalized for Team search"
@@ -593,18 +593,18 @@ erDiagram
         timestamptz last_activity_at
         timestamptz updated_at
     }
-    STANDING_VERSION["recognition.standing_version"] {
+    STANDING_VERSION["recognition_standing_version"] {
         text period_key PK
         bigint version "ETag source"
         timestamptz refreshed_at
     }
-    EMPLOYEE_POINTS_MONTHLY["recognition.employee_points_monthly"] {
+    EMPLOYEE_POINTS_MONTHLY["recognition_employee_points_monthly"] {
         text employee_id PK
         date month PK
         int points
         int actions_count
     }
-    CAMPAIGN_PARTICIPATION["recognition.campaign_participation"] {
+    CAMPAIGN_PARTICIPATION["recognition_campaign_participation"] {
         uuid campaign_id PK
         int reposters
         int external_shares_approved
@@ -646,7 +646,7 @@ erDiagram
 
 ```mermaid
 erDiagram
-    ANNOUNCEMENT["announcement.announcement (AR)"] {
+    ANNOUNCEMENT["announcement (AR)"] {
         uuid campaign_id PK
         bigint outbox_id
         text space "club or dev-test"
@@ -673,7 +673,7 @@ Derived status (`announcement_v`): `SENT` / `FAILED` / `QUEUED` from the timesta
 
 ```mermaid
 erDiagram
-    OUTBOX["messaging.outbox"] {
+    OUTBOX["messaging_outbox"] {
         bigint id PK "identity, queue order"
         text aggregate_type
         text aggregate_id
@@ -690,7 +690,7 @@ erDiagram
         timestamptz created_at
         timestamptz processed_at
     }
-    IDEMPOTENCY_KEY["messaging.idempotency_key"] {
+    IDEMPOTENCY_KEY["messaging_idempotency_key"] {
         text employee_id PK
         text key PK "Idempotency-Key header"
         text request_hash
@@ -698,7 +698,7 @@ erDiagram
         jsonb response_body
         timestamptz expires_at "24 h"
     }
-    AUDIT_LOG["audit.audit_log (partitioned by month on at)"] {
+    AUDIT_LOG["audit_log (partitioned by month on at)"] {
         uuid id PK "uuidv7()"
         timestamptz at PK "partition key"
         text actor_id
@@ -712,7 +712,7 @@ erDiagram
         text reason
         text correlation_id
     }
-    APP_SETTING["config.app_setting"] {
+    APP_SETTING["config_app_setting"] {
         text key PK
         jsonb value
         text updated_by
@@ -737,26 +737,26 @@ erDiagram
 
 ## Domain events → which table changes
 
-**This is the one event catalogue** for phase 1 (B9). [phase1-domains](../architecture/solution/Phase%201/phase1-domains.md#domain-events-outbox--jobs-table) and the plan link here instead of keeping their own lists. Every event is a `messaging.outbox` row (`event_type` = the name below), written in the same transaction as the producer's change, and claimed by `amplify-jobs` with `FOR UPDATE SKIP LOCKED`.
+**This is the one event catalogue** for phase 1 (B9). [phase1-domains](../architecture/solution/Phase%201/phase1-domains.md#domain-events-outbox--jobs-table) and the plan link here instead of keeping their own lists. Every event is a `messaging_outbox` row (`event_type` = the name below), written in the same transaction as the producer's change, and claimed by `amplify-jobs` with `FOR UPDATE SKIP LOCKED`.
 
 | Event (outbox `event_type`) | Publisher | Producer writes | Consumer | Consumer writes | Idempotency key |
 | --- | --- | --- | --- | --- | --- |
-| `CampaignRegistered` | S1 (`amplify-api`, Save or Save & Share Now) | `campaign.campaign` | S5 chat notifier (jobs) | `announcement.announcement` (queued), then webhook | `campaign.id` |
-| `CampaignAnnounced` | S5 (jobs) | `announcement.announcement` (`sent_at`) | — (admin view only) | — | `outbox.id` |
-| `ConnectionReady` | S2 (api, OAuth complete or reconnect) | `connection.member_connection`, `provider_token` | C1, channel banners | — | `member_urn` + `connected_at` |
+| `CampaignRegistered` | S1 (`amplify-api`, Save or Save & Share Now) | `campaign` | S5 chat notifier (jobs) | `announcement` (queued), then webhook | `campaign.id` |
+| `CampaignAnnounced` | S5 (jobs) | `announcement` (`sent_at`) | — (admin view only) | — | `outbox.id` |
+| `ConnectionReady` | S2 (api, OAuth complete or reconnect) | `connection_member_connection`, `provider_token` | C1, channel banners | — | `member_urn` + `connected_at` |
 | `ConnectionRevoked` | S2 (jobs on a LinkedIn 401, or consent withdrawn) | `member_connection.revoked_at` | C1 | unpublished `share_request` rows: `failed_at`, `failure_reason = NEEDS_RECONNECT` | `member_urn` + `revoked_at` |
 | `ConnectionRemoved` | S2 (api, Remove Connection) | `member_connection.removed_at`; token row deleted | C1 | as above | `member_urn` + `removed_at` |
-| `RepostRequested` | C1 (api, new share or retry, ADR-015) | `sharing.share_request` | C1 LinkedIn adapter (jobs) | `share_request.published_at` + `sharing.engagement`, or `failed_at` | `share_request.id` + `attempts` |
-| `EngagementRecorded` | C1 (jobs) | `sharing.engagement` | C2 score pass (jobs) | `scoring.points_ledger` (`AMP-…`, `HELD`) | `engagement.id` |
+| `RepostRequested` | C1 (api, new share or retry, ADR-015) | `sharing_share_request` | C1 LinkedIn adapter (jobs) | `share_request.published_at` + `sharing_engagement`, or `failed_at` | `share_request.id` + `attempts` |
+| `EngagementRecorded` | C1 (jobs) | `sharing_engagement` | C2 score pass (jobs) | `scoring_points_ledger` (`AMP-…`, `HELD`) | `engagement.id` |
 | `RepostFailed` | C1 (jobs) | `share_request.failed_at` | channel (My shares shows FAILED) | — | `share_request.id` + `attempts` |
-| `ExternalShareSubmitted` | S3 (api) | `external_sharing.external_share` | PO queue (read model only) | — | `external_share.id` |
+| `ExternalShareSubmitted` | S3 (api) | `external_sharing_external_share` | PO queue (read model only) | — | `external_share.id` |
 | `ExternalShareApproved` | S3 (api, `amplify_po`) | `external_share.decision` | C2 (same transaction in api) | `points_ledger` (`AMP-…`, `OWN_POST`) | `external_share.id` |
 | `ExternalShareRejected` | S3 (api, `amplify_po`) | `external_share.decision`, `decision_reason` | — | — | `external_share.id` |
 | `ExternalShareAmplified` | S3 (api, `amplify_po`, approved claims only, C4) | `external_share.amplified_at` | C2 (same transaction in api) | `points_ledger` top-up (`AMP-…`, `OWN_POST_AMPLIFIED`, difference) | `external_share.id` + `AMPLIFIED` |
-| `PointsAwarded` / `PointsAdjusted` / `PointsReversed` | C2 (jobs or api) | `scoring.points_ledger` | S4 | `recognition.*` (same transaction, B12) | ledger `reference` |
+| `PointsAwarded` / `PointsAdjusted` / `PointsReversed` | C2 (jobs or api) | `scoring_points_ledger` | S4 | `recognition.*` (same transaction, B12) | ledger `reference` |
 | `EngagementDeleted` *(future phase, ADR-018)* | C1 verification pass | `engagement.deleted_at`, `engagement_verification` | C2 | `points_ledger` (`REV-…`, reason `ENGAGEMENT_DELETED`) | `engagement.id` |
 
-The stored `messaging.outbox.idempotency_key` is `<event_type>:` + the key parts above, joined by `:` (for example `RepostRequested:{id}:2`). The prefix keeps two events of one aggregate that share key parts (`RepostRequested` / `RepostFailed`, or the three `ExternalShare*` events) from colliding on the unique key.
+The stored `messaging_outbox.idempotency_key` is `<event_type>:` + the key parts above, joined by `:` (for example `RepostRequested:{id}:2`). The prefix keeps two events of one aggregate that share key parts (`RepostRequested` / `RepostFailed`, or the three `ExternalShare*` events) from colliding on the unique key.
 
 **Not events, on purpose:** campaign opening and closing, and connection expiry, are **time-derived** from `opens_at` / `closes_at` / `access_expires_at` in the `*_v` views, so there's no `CampaignOpened` or `ConnectionExpired` event. `EmployeeErased` is **not in phase 1** (C3, ADR-016).
 
@@ -771,7 +771,7 @@ The stored `messaging.outbox.idempotency_key` is `<event_type>:` + the key parts
 
 The migration user owns every object; app users never own tables, so they can't `ALTER` or `DROP` (partition DDL is granted narrowly through `SECURITY DEFINER` maintenance functions owned by `amplify_migrate`).
 
-**As built (M3, V001–V010; later scripts below):** roles are created `NOLOGIN` with no password; the migrate runner (connected as the bootstrap admin) runs every script after V001 as `SET LOCAL ROLE amplify_migrate` and then sets the app role passwords from secrets. Enums are `text` + `CHECK`. `*_v` views are `security_invoker`, so the grants above apply through them; `sharing.share_request_v` leaves out `commentary`, and `amplify_readonly` gets a column grant on `share_request` without it. `amplify_api` and `amplify_jobs` get `INSERT/SELECT` plus `UPDATE (status, status_changed_at, paid_at, coin_reference)` on the ledger, and only `amplify_jobs` can run the partition functions and `recognition.rebuild`.
+**As built (M3, V001–V010; later scripts below):** roles are created `NOLOGIN` with no password; the migrate runner (connected as the bootstrap admin) runs every script after V001 as `SET LOCAL ROLE amplify_migrate` and then sets the app role passwords from secrets. Enums are `text` + `CHECK`. `*_v` views are `security_invoker`, so the grants above apply through them; `sharing_share_request_v` leaves out `commentary`, and `amplify_readonly` gets a column grant on `share_request` without it. `amplify_api` and `amplify_jobs` get `INSERT/SELECT` plus `UPDATE (status, status_changed_at, paid_at, coin_reference)` on the ledger, and only `amplify_jobs` can run the partition functions and `recognition.rebuild`.
 
 **As built after M3 (V011–V014):**
 
@@ -780,20 +780,20 @@ The migration user owns every object; app users never own tables, so they can't 
 | `V011__announcement_thread_name.sql` | `announcement.chat_thread_name` (the thread Chat returns with each Club card, M6a). Recreates `announcement_v` to pick up the column and re-grants `SELECT` to the same roles as V008 |
 | `V012__recognition_lock_maintenance_timeout.sql` | `pg_advisory_xact_lock(1634561133)` first in `apply_ledger_entry`, `rerank`, `rebuild` (lock order above). `lock_timeout = 5s` on the six upkeep functions, so daily upkeep gives up instead of queueing every token and audit write behind an `ACCESS EXCLUSIVE` request; `run_partition_maintenance` takes advisory lock 1634561134 so two upkeep calls don't race. Owners and grants unchanged |
 | `V013__idle_timeout_dashboard_indexes.sql` | `ALTER ROLE amplify_api / amplify_jobs SET idle_in_transaction_session_timeout = '30s'` (runs as the bootstrap admin, before `SET LOCAL ROLE`), so a session the runtime leaves idle in a transaction releases its locks (R-13). Indexes `points_ledger (created_at)` and partial `share_request (failed_at) WHERE failed_at IS NOT NULL`, the two the planner used for the PO dashboard tiles (EXPLAIN in `docs/migrations/2026-10-17-v013-idle-timeout-dashboard-indexes.md`). `COMMENT ON FUNCTION` for the lock order |
-| `V014__point_actions_all_phases.sql` | `point_rule_action_check` and `points_ledger_action_check` also accept `REACTION`, `COMMENT`, `CHALLENGE_ENTRY` and `CHALLENGE_WINNER`, so the whole points table fits without a later schema change. Nothing awards them yet (likes and comments need Community Management; Challenge entry and winner are PO adjustments for now). `sharing.engagement.action` is unchanged. Seeds S005 to S007 price them (REACTION 1, COMMENT 1, CHALLENGE_ENTRY 10, CHALLENGE_WINNER 25 from 2026-10-19) and add `leaderboard.top_scope` |
+| `V014__point_actions_all_phases.sql` | `point_rule_action_check` and `points_ledger_action_check` also accept `REACTION`, `COMMENT`, `CHALLENGE_ENTRY` and `CHALLENGE_WINNER`, so the whole points table fits without a later schema change. Nothing awards them yet (likes and comments need Community Management; Challenge entry and winner are PO adjustments for now). `sharing_engagement.action` is unchanged. Seeds S005 to S007 price them (REACTION 1, COMMENT 1, CHALLENGE_ENTRY 10, CHALLENGE_WINNER 25 from 2026-10-19) and add `leaderboard.top_scope` |
 
 **As built after V014 (V015–V020):**
 
 | Script | What it changes |
 | --- | --- |
-| `V015__linkedin_consent.sql` | `connection.linkedin_consent`, the Link Me decision (`CONSENTED` or `DECLINED`) with the optional LinkedIn profile URL a person who declined typed. Private like the member URN: nothing for `amplify_readonly` |
+| `V015__linkedin_consent.sql` | `connection_linkedin_consent`, the Link Me decision (`CONSENTED` or `DECLINED`) with the optional LinkedIn profile URL a person who declined typed. Private like the member URN: nothing for `amplify_readonly` |
 | `V016__token_grace_one_day.sql` | `connection.token_grace_days` from 5 to 1 (ADR-002) on a database that still holds the old default; S008 does the same on a fresh one |
-| `V017__narrow_token_grants.sql` | least privilege on `connection.provider_token`: `amplify_api` INSERT, SELECT, DELETE; `amplify_jobs` SELECT, UPDATE, DELETE |
+| `V017__narrow_token_grants.sql` | least privilege on `connection_provider_token`: `amplify_api` INSERT, SELECT, DELETE; `amplify_jobs` SELECT, UPDATE, DELETE |
 | `V018__erase_employee_function.sql` | `identity.erase_employee(p_employee_id, p_actor, p_reason)`, the audited erase (ADR-040): connection, tokens, consent, idempotency keys, commentary and names go; the ledger, engagements, shares and audit rows stay under the pseudonymous id |
-| `V019__dev_post_link_http.sql` | `campaign.campaign.resource_url` also accepts the local stack's one http dev origin; the app's `campaignLinkOrigins` stays the production policy |
-| `V020__employee_alias.sql` | `identity.employee_alias`: a re-created Asgardeo account maps to the first employee id (ADR-041); `amplify_api` SELECT, INSERT, `amplify_jobs` and `amplify_readonly` SELECT |
+| `V019__dev_post_link_http.sql` | `campaign.resource_url` also accepts the local stack's one http dev origin; the app's `campaignLinkOrigins` stays the production policy |
+| `V020__employee_alias.sql` | `identity_employee_alias`: a re-created Asgardeo account maps to the first employee id (ADR-041); `amplify_api` SELECT, INSERT, `amplify_jobs` and `amplify_readonly` SELECT |
 
-Up to V010, no script changes a grant (V011 only re-grants the recreated view). V017 narrows the token grants and V020 grants the alias table, as listed above. **Proposed, not applied** (jobs-db review D4/D5, H3; waiting on a decision): `REVOKE DELETE ON messaging.outbox, sharing.share_request, sharing.engagement, sharing.engagement_verification, connection.member_connection FROM amplify_api, amplify_jobs`; `REVOKE INSERT, UPDATE ON messaging.idempotency_key FROM amplify_jobs`; `REVOKE DELETE ON connection.oauth_state FROM amplify_jobs`; `REVOKE TEMPORARY ON DATABASE <db> FROM PUBLIC`. The grants table above is still what's in the database.
+Up to V010, no script changes a grant (V011 only re-grants the recreated view). V017 narrows the token grants and V020 grants the alias table, as listed above. **Proposed, not applied** (jobs-db review D4/D5, H3; waiting on a decision): `REVOKE DELETE ON messaging_outbox, sharing_share_request, sharing_engagement, sharing_engagement_verification, connection_member_connection FROM amplify_api, amplify_jobs`; `REVOKE INSERT, UPDATE ON messaging_idempotency_key FROM amplify_jobs`; `REVOKE DELETE ON connection_oauth_state FROM amplify_jobs`; `REVOKE TEMPORARY ON DATABASE <db> FROM PUBLIC`. The grants table above is still what's in the database.
 
 ## Decisions from review (2026-10-16)
 
@@ -804,4 +804,4 @@ Up to V010, no script changes a grant (V011 only re-grants the recreated view). 
 | 3 | Comments / reactions | **Out of scope for phase 1**; decided later |
 | 4 | `engagement_metric` | **Future phase** (todo in the plan) |
 | 5 | Audit retention | **5 years**, monthly partitions (closed, B17) |
-| 6 | Erasure | **Deferred to a future phase** (C3, ADR-016). Future design: anonymize `identity.employee`. Pilot runs under a checklist exception |
+| 6 | Erasure | **Deferred to a future phase** (C3, ADR-016). Future design: anonymize `identity_employee`. Pilot runs under a checklist exception |

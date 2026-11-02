@@ -16,8 +16,8 @@
 
 // Leaver sweep (security review). Employees who left stay in Amplify, with a LinkedIn token and a place on the
 // leaderboard, until someone remembers. The daily maintenance run compares the people directory with
-// `identity.employee` and, in `ERASE` mode, erases anyone who is both gone from the directory and has not used Amplify
-// for `leaverGraceDays` (`identity.erase_employee`, which audits the call and keeps the pseudonymous ledger).
+// `identity_employee` and, in `ERASE` mode, erases anyone who is both gone from the directory and has not used Amplify
+// for `leaverGraceDays` (`identity_erase_employee`, which audits the call and keeps the pseudonymous ledger).
 //
 // It does nothing by default. Switch it on in stages: `DRY_RUN` reports who would be erased, `ERASE` erases. A directory
 // that answers with too few people, or a sweep that finds more leavers than `leaverMaxPerRun`, erases nobody and says why:

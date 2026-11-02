@@ -19,7 +19,7 @@ import amplify_common.types;
 
 import ballerina/time;
 
-# Derived campaign status (`campaign.campaign_v`). Never stored.
+# Derived campaign status (`campaign_v`). Never stored.
 public enum CampaignStatus {
     SCHEDULED,
     OPEN,
@@ -31,7 +31,7 @@ public enum CampaignStatus {
 public const int TITLE_MAX_LENGTH = 200;
 # Longest tag.
 public const int TAG_MAX_LENGTH = 50;
-# Longest summary (`campaign.campaign.summary` CHECK).
+# Longest summary (`campaign.summary` CHECK).
 public const int SUMMARY_MAX_LENGTH = 2000;
 # Default active window in days when `closesAt` isn't given (C7, `campaign.default_window_days`).
 public const int DEFAULT_WINDOW_DAYS = 30;
@@ -39,7 +39,7 @@ public const int DEFAULT_WINDOW_DAYS = 30;
 # Where a campaign's post link may point: LinkedIn only. Dev and demo environments add the mock's origin.
 public final string[] & readonly DEFAULT_POST_LINK_ORIGINS = ["https://www.linkedin.com", "https://linkedin.com"];
 
-# Campaign aggregate (`campaign.campaign` + `campaign.campaign_tag`): one WSO2 company-page resource to amplify.
+# Campaign aggregate (`campaign` + `campaign_tag`): one WSO2 company-page resource to amplify.
 public type Campaign record {|
     # UUIDv7
     string id;
@@ -59,7 +59,7 @@ public type Campaign record {|
     string? summary;
     # HTTPS image for the card
     string? imageUrl;
-    # `campaign.category.code`
+    # `campaign_category.code`
     string categoryCode;
     # Priority flag
     boolean isPriority;

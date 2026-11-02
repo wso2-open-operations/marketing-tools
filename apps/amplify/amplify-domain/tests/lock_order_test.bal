@@ -43,12 +43,12 @@ function testRecognitionLocksAreTakenInOrder() returns error? {
     int callSites = 0;
     foreach string path in files {
         string src = stripComments(check io:fileReadString(path));
-        foreach var span in re `recognition\.(apply_ledger_entry|rebuild|rerank)\s*\(`.findAll(src) {
+        foreach var span in re `recognition_(apply_ledger_entry|rebuild|rerank)\s*\(`.findAll(src) {
             int at = span.startIndex;
             int fnStart = src.lastIndexOf("function ", at) ?: 0;
             int? lockAt = src.lastIndexOf(LOCK_CALL, at);
             boolean ordered = lockAt is int && lockAt > fnStart;
-            test:assertTrue(ordered, string `${path}: a recognition.* call at offset ${at} isn't preceded by `
+            test:assertTrue(ordered, string `${path}: a recognition_* call at offset ${at} isn't preceded by `
                 + "store:lockRecognition in the same function (lock order: 4242101 before 1634561133)");
             callSites += 1;
         }
@@ -108,8 +108,8 @@ function stripComments(string src) returns string {
 @test:Config
 function testLockOrderScanIgnoresComments() {
     string src = stripComments("// see lockRecognition( below\nisolated function bad() {\n"
-        + "  _ = db->queryRow(`SELECT recognition.rebuild(3)`);\n}\n");
-    int at = <int>src.indexOf("recognition.rebuild(");
+        + "  _ = db->queryRow(`SELECT recognition_rebuild(3)`);\n}\n");
+    int at = <int>src.indexOf("recognition_rebuild(");
     int fnStart = src.lastIndexOf("function ", at) ?: 0;
     int? lockAt = src.lastIndexOf(LOCK_CALL, at);
     test:assertFalse(lockAt is int && lockAt > fnStart, "a comment naming the lock call doesn't count as taking it");
@@ -118,8 +118,8 @@ function testLockOrderScanIgnoresComments() {
 @test:Config
 function testLockOrderScanIgnoresTrailingComments() {
     string src = stripComments("isolated function bad() {\n"
-        + "  _ = db->queryRow(`SELECT recognition.rebuild(3)`); // lockRecognition( is called elsewhere\n}\n");
-    int at = <int>src.indexOf("recognition.rebuild(");
+        + "  _ = db->queryRow(`SELECT recognition_rebuild(3)`); // lockRecognition( is called elsewhere\n}\n");
+    int at = <int>src.indexOf("recognition_rebuild(");
     int fnStart = src.lastIndexOf("function ", at) ?: 0;
     int? lockAt = src.lastIndexOf(LOCK_CALL, at);
     test:assertFalse(lockAt is int && lockAt > fnStart, "a trailing `//` comment naming the lock call doesn't count");
@@ -129,8 +129,8 @@ function testLockOrderScanIgnoresTrailingComments() {
 function testLockOrderScanIgnoresStringLiterals() {
     string src = stripComments("isolated function bad() {\n"
         + "  string url = \"https://example.com/lockRecognition(\";\n"
-        + "  _ = db->queryRow(`SELECT recognition.rebuild(3)`);\n}\n");
-    int at = <int>src.indexOf("recognition.rebuild(");
+        + "  _ = db->queryRow(`SELECT recognition_rebuild(3)`);\n}\n");
+    int at = <int>src.indexOf("recognition_rebuild(");
     int fnStart = src.lastIndexOf("function ", at) ?: 0;
     int? lockAt = src.lastIndexOf(LOCK_CALL, at);
     test:assertFalse(lockAt is int && lockAt > fnStart,
@@ -140,8 +140,8 @@ function testLockOrderScanIgnoresStringLiterals() {
 @test:Config
 function testLockOrderScanFindsTheCallInsideATemplate() {
     string src = stripComments("isolated function ok() {\n  check store:lockRecognition(db);\n"
-        + "  _ = db->queryRow(`SELECT recognition.rebuild(3)`);\n}\n");
-    int at = <int>src.indexOf("recognition.rebuild(");
+        + "  _ = db->queryRow(`SELECT recognition_rebuild(3)`);\n}\n");
+    int at = <int>src.indexOf("recognition_rebuild(");
     int fnStart = src.lastIndexOf("function ", at) ?: 0;
     int? lockAt = src.lastIndexOf(LOCK_CALL, at);
     test:assertTrue(at > 0, "the SQL template is still scanned");
@@ -150,9 +150,9 @@ function testLockOrderScanFindsTheCallInsideATemplate() {
 
 @test:Config
 function testLockOrderScanCatchesAReversedCall() {
-    string reversed = "isolated function bad() {\n  _ = db->queryRow(`SELECT recognition.rebuild(3)`);\n"
+    string reversed = "isolated function bad() {\n  _ = db->queryRow(`SELECT recognition_rebuild(3)`);\n"
         + "  check store:lockRecognition(db);\n}\n";
-    int at = <int>reversed.indexOf("recognition.rebuild(");
+    int at = <int>reversed.indexOf("recognition_rebuild(");
     int fnStart = reversed.lastIndexOf("function ", at) ?: 0;
     int? lockAt = reversed.lastIndexOf(LOCK_CALL, at);
     test:assertFalse(lockAt is int && lockAt > fnStart, "a lock taken after the SQL call is reported");

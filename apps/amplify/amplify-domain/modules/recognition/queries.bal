@@ -145,14 +145,14 @@ public isolated function teamPage(postgresql:Client db, string periodKey, string
                 : ` ORDER BY team_rank, s.display_name, s.employee_id`;
     sql:ParameterizedQuery ranking = whole
         ? `COALESCE(s.rank, 0) AS team_rank,
-               (SELECT count(*) FROM recognition.standing c
+               (SELECT count(*) FROM recognition_standing c
                 WHERE c.period_key = ${periodKey} AND c.total_points > 0)::int AS total`
         : `(dense_rank() OVER (ORDER BY s.total_points DESC))::int AS team_rank,
                (count(*) OVER ())::int AS total`;
     stream<TeamRow, error?> rows = db->query(sql:queryConcat(`
         SELECT s.period_key, s.employee_id, s.display_name, s.email::text AS email, s.total_points, s.rank,
                s.previous_rank, s.points_to_next_rank, s.points_to_top_n, s.last_activity_at, `, ranking, `
-        FROM recognition.standing s `, cond, orderBy, ` LIMIT ${'limit} OFFSET ${offset}`));
+        FROM recognition_standing s `, cond, orderBy, ` LIMIT ${'limit} OFFSET ${offset}`));
     int total = 0;
     TeamEntry[] items = [];
     check from TeamRow r in rows
@@ -170,7 +170,7 @@ public isolated function teamPage(postgresql:Client db, string periodKey, string
         };
     if items.length() == 0 && offset > 0 {
         // Past the last page the window count is gone with the rows; the total still holds.
-        total = check db->queryRow(sql:queryConcat(`SELECT count(*)::int FROM recognition.standing s `, cond));
+        total = check db->queryRow(sql:queryConcat(`SELECT count(*)::int FROM recognition_standing s `, cond));
     }
     return {items, total};
 }
@@ -282,7 +282,7 @@ public isolated function rosterPage(postgresql:Client db, string periodKey, Rost
                    m.email::text AS email, COALESCE(s.total_points, 0) AS total_points, s.rank AS rank,
                    s.previous_rank AS previous_rank, s.last_activity_at AS last_activity_at
             FROM unnest(CAST(${emailArray} AS citext[]), CAST(${nameArray} AS text[])) AS m(email, name)
-            LEFT JOIN LATERAL (SELECT * FROM recognition.standing x WHERE x.email = m.email AND x.period_key = ${periodKey}
+            LEFT JOIN LATERAL (SELECT * FROM recognition_standing x WHERE x.email = m.email AND x.period_key = ${periodKey}
                                ORDER BY x.total_points DESC, x.employee_id LIMIT 1) s ON true
         ), ranked AS (
             SELECT j.*, (dense_rank() OVER (ORDER BY j.total_points DESC))::int AS team_rank,
@@ -317,14 +317,14 @@ public isolated function rosterPage(postgresql:Client db, string periodKey, Rost
             WITH joined AS (
                 SELECT COALESCE(NULLIF(m.name, ''), s.display_name, m.email::text) AS display_name
                 FROM unnest(CAST(${emailArray} AS citext[]), CAST(${nameArray} AS text[])) AS m(email, name)
-                LEFT JOIN LATERAL (SELECT * FROM recognition.standing x WHERE x.email = m.email AND x.period_key = ${periodKey}
+                LEFT JOIN LATERAL (SELECT * FROM recognition_standing x WHERE x.email = m.email AND x.period_key = ${periodKey}
                                    ORDER BY x.total_points DESC, x.employee_id LIMIT 1) s ON true
             )
             SELECT count(*)::int FROM joined`, matching));
         active = check db->queryRow(`
             SELECT count(*)::int
             FROM unnest(CAST(${emailArray} AS citext[])) AS m(email)
-            JOIN recognition.standing s ON s.email = m.email AND s.period_key = ${periodKey} AND s.total_points > 0`);
+            JOIN recognition_standing s ON s.email = m.email AND s.period_key = ${periodKey} AND s.total_points > 0`);
     }
     return {items, total, activeCount: active};
 }
@@ -336,7 +336,7 @@ public isolated function rosterPage(postgresql:Client db, string periodKey, Rost
 # + return - The employee's email in `standing`, `()` if none, or an error
 public isolated function emailOf(postgresql:Client db, string employeeId) returns string|error? {
     string?|error email = db->queryRow(`
-        SELECT email::text FROM recognition.standing WHERE period_key = ${PERIOD_ALL} AND employee_id = ${employeeId}`);
+        SELECT email::text FROM recognition_standing WHERE period_key = ${PERIOD_ALL} AND employee_id = ${employeeId}`);
     if email is error {
         return store:isNoRows(email) ? () : email;
     }
@@ -353,7 +353,7 @@ public isolated function monthlyPointsOf(postgresql:Client db, string employeeId
         returns MonthPoints[]|error {
     stream<record {|string month; int points; int actions_count;|}, error?> rows = db->query(`
         SELECT to_char(month, 'YYYY-MM') AS month, points, actions_count
-        FROM recognition.employee_points_monthly WHERE employee_id = ${employeeId}
+        FROM recognition_employee_points_monthly WHERE employee_id = ${employeeId}
         ORDER BY month DESC LIMIT ${months}`);
     return from var r in rows
         select {month: r.month, points: r.points, actions: r.actions_count};
@@ -368,12 +368,12 @@ public isolated function monthlyPointsOf(postgresql:Client db, string employeeId
 public isolated function recognitionTotals(postgresql:Client db, string month, time:Utc now) returns RecognitionTotals|error {
     string since = time:utcToString(time:utcAddSeconds(now, -30d * 86400d));
     int monthTotal = check db->queryRow(`
-        SELECT COALESCE(sum(points), 0)::int FROM recognition.employee_points_monthly WHERE month = CAST(${month} AS date)`);
+        SELECT COALESCE(sum(points), 0)::int FROM recognition_employee_points_monthly WHERE month = CAST(${month} AS date)`);
     record {|int all_time; int with_points; int active;|} row = check db->queryRow(`
         SELECT COALESCE(sum(total_points), 0)::int AS all_time,
                count(*) FILTER (WHERE total_points > 0)::int AS with_points,
                count(*) FILTER (WHERE last_activity_at >= CAST(${since} AS timestamptz))::int AS active
-        FROM recognition.standing WHERE period_key = ${PERIOD_ALL}`);
+        FROM recognition_standing WHERE period_key = ${PERIOD_ALL}`);
     return {monthTotal, allTimeTotal: row.all_time, employeesWithPoints: row.with_points, activeLast30Days: row.active};
 }
 
@@ -387,7 +387,7 @@ public isolated function campaignNumbers(postgresql:Client db, string[] campaign
     stream<record {|string campaign_id; int reposters; int external_shares_approved; int points;|}, error?> rows =
         db->query(`
             SELECT campaign_id::text AS campaign_id, reposters, external_shares_approved, points
-            FROM recognition.campaign_participation WHERE campaign_id = ANY (CAST(${ids} AS uuid[]))`);
+            FROM recognition_campaign_participation WHERE campaign_id = ANY (CAST(${ids} AS uuid[]))`);
     map<CampaignNumbers> result = {};
     check from var r in rows
         do {
@@ -436,8 +436,8 @@ public isolated function monthlyTotals(postgresql:Client db, time:Utc monthStart
     |}, error?> rows = db->query(`
         SELECT l.employee_id, e.display_name, e.email::text AS email, sum(l.points)::int AS total_points,
                max(l.created_at) AS last_activity_at
-        FROM scoring.points_ledger l
-        LEFT JOIN identity.employee e ON e.employee_id = l.employee_id
+        FROM scoring_points_ledger l
+        LEFT JOIN identity_employee e ON e.employee_id = l.employee_id
         WHERE l.created_at >= CAST(${startTs} AS timestamptz) AND l.created_at < CAST(${endTs} AS timestamptz)
         GROUP BY l.employee_id, e.display_name, e.email
         HAVING sum(l.points) > 0`);

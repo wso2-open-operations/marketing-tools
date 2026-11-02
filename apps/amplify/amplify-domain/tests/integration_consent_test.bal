@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// The Link Me consent record against PostgreSQL (`connection.linkedin_consent`). The one piece of logic is the CASE in
+// The Link Me consent record against PostgreSQL (`connection_linkedin_consent`). The one piece of logic is the CASE in
 // `PgConsentRepository.save`: declining replaces the stored profile URL (with the new one, or with nothing), while
 // consenting keeps an earlier URL. The in-memory tests only cover `isProfileUrl`, so this pins the SQL.
 
@@ -32,7 +32,7 @@ type StoredConsent record {|
 
 function storedConsent(postgresql:Client db, string employeeId) returns StoredConsent|error {
     StoredConsent row = check db->queryRow(`
-        SELECT decision, profile_url, version FROM connection.linkedin_consent WHERE employee_id = ${employeeId}`);
+        SELECT decision, profile_url, version FROM connection_linkedin_consent WHERE employee_id = ${employeeId}`);
     return row;
 }
 
