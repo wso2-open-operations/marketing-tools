@@ -1,0 +1,297 @@
+# Amplify Backend (amplify-api). Choreo Service, Dockerfile buildpack.
+# Docker context: apps/amplify  |  Dockerfile: apps/amplify/amplify-api/Dockerfile
+# Choreo reads this file from <docker context>/.choreo/component.yaml, so every component has its own context
+# (ADR-027). Keep endpoints and env names in sync with apps/amplify/amplify-api/workload.yaml (scripts/check-descriptors.sh).
+# Console steps (connections, secrets, visibility): docs/runbooks/choreo-deploy.md.
+schemaVersion: "1.2"
+endpoints:
+  - name: amplify-api
+    displayName: Amplify Backend
+    service:
+      basePath: /
+      port: 9090
+    type: REST
+    networkVisibilities:
+      - Project
+    schemaFilePath: amplify-api/openapi.yaml
+dependencies:
+  # resourceRef values come from each connection's developer guide in the console; replace REPLACE_WITH_ID.
+  connectionReferences:
+    - name: amplify-jobs
+      resourceRef: service:/amplify/amplify-jobs/v1/REPLACE_WITH_ID/PROJECT
+    - name: amplify-scheduler
+      resourceRef: service:/amplify/amplify-scheduler/v1/REPLACE_WITH_ID/PROJECT
+configurations:
+  env:
+    - name: BAL_CONFIG_VAR_ENVIRONMENT
+      valueFrom:
+        configForm:
+          displayName: Environment (dev or prod; never local)
+          type: string
+    - name: BAL_CONFIG_VAR_GATEWAYJWKSURL
+      valueFrom:
+        configForm:
+          displayName: Gateway JWKS URL
+          type: string
+    - name: BAL_CONFIG_VAR_GATEWAYISSUER
+      valueFrom:
+        configForm:
+          displayName: Gateway JWT issuer
+          type: string
+    - name: BAL_CONFIG_VAR_GATEWAYAUDIENCES
+      valueFrom:
+        configForm:
+          displayName: Gateway JWT audiences (comma separated)
+          type: string
+    - name: BAL_CONFIG_VAR_INTERNALAPIKEY
+      valueFrom:
+        configForm:
+          displayName: Internal API key, full access to amplify-jobs (secret, at least 32 characters; the same value on both components)
+          type: secret
+    - name: BAL_CONFIG_VAR_SCHEDULERAPIKEY
+      valueFrom:
+        configForm:
+          displayName: Scheduler API key: amplify-jobs accepts it only for POST /runs and POST /maintenance/partitions; amplify-api sets it on the scheduler jobs. Must differ from the internal key (secret, at least 32 characters; the same value on both components)
+          type: secret
+    - name: BAL_CONFIG_VAR_DBHOST
+      valueFrom:
+        configForm:
+          displayName: DB host
+          type: string
+    - name: BAL_CONFIG_VAR_DBPORT
+      valueFrom:
+        configForm:
+          displayName: DB port
+          type: number
+    - name: BAL_CONFIG_VAR_DBNAME
+      valueFrom:
+        configForm:
+          displayName: DB name
+          type: string
+    - name: BAL_CONFIG_VAR_DBUSER
+      valueFrom:
+        configForm:
+          displayName: DB user
+          type: string
+    - name: BAL_CONFIG_VAR_DBPASSWORD
+      valueFrom:
+        configForm:
+          displayName: DB password
+          type: secret
+    # Managed Postgres CA (domain review H-1): mount the CA PEM as a Choreo file mount (console: Configs &
+    # Secrets > File Mount, e.g. /home/choreo/db-ca/ca.pem) and put that path here. dbSslMode defaults to
+    # VERIFY_FULL, which checks the server certificate against it and the host name.
+    - name: BAL_CONFIG_VAR_DBSSLROOTCERT
+      valueFrom:
+        configForm:
+          displayName: DB CA certificate file path (file mount)
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_JOBSURL
+      valueFrom:
+        connectionRef:
+          name: amplify-jobs
+          key: ServiceURL
+    - name: BAL_CONFIG_VAR_SCHEDULERURL
+      valueFrom:
+        connectionRef:
+          name: amplify-scheduler
+          key: ServiceURL
+    - name: BAL_CONFIG_VAR_SCHEDULERJOBSURL
+      valueFrom:
+        connectionRef:
+          name: amplify-jobs
+          key: ServiceURL
+    - name: BAL_CONFIG_VAR_CAMPAIGNLINKORIGINS
+      valueFrom:
+        configForm:
+          displayName: Allowed post-link origins (comma separated; prod = LinkedIn only, dev may add the mock's www URL)
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_ROSTERCACHESECONDS
+      valueFrom:
+        configForm:
+          displayName: Team roster cache TTL in seconds (default 86400 = 24 hours; leave empty for the default)
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_TOPBOARDCACHESECONDS
+      valueFrom:
+        configForm:
+          displayName: Celebrate top three cache TTL in seconds (default 7200 = 2 hours) (leave empty for the default)
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_HEADCOUNTCACHESECONDS
+      valueFrom:
+        configForm:
+          displayName: Employee count cache TTL in seconds (default 86400 = 24 hours) (leave empty for the default)
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_CANCAMPAIGNGROUPS
+      valueFrom:
+        configForm:
+          displayName: Asgardeo groups for campaigns (comma separated; default amplify_po,amplify_marketing; leave empty for the default)
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_CANDASHBOARDGROUPS
+      valueFrom:
+        configForm:
+          displayName: Asgardeo groups for dashboards (comma separated; default amplify_po,amplify_marketing,amplify_slt,amplify_admin; leave empty for the default)
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_CANEXPORTGROUPS
+      valueFrom:
+        configForm:
+          displayName: Asgardeo groups for dashboard CSV export (comma separated; default amplify_po,amplify_marketing,amplify_slt,amplify_admin; leave empty for the default)
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_CANREVIEWSHARESGROUPS
+      valueFrom:
+        configForm:
+          displayName: Asgardeo groups for external-share review (comma separated; default amplify_po; leave empty for the default)
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_CANPOINTRULESGROUPS
+      valueFrom:
+        configForm:
+          displayName: Asgardeo groups for point rules (comma separated; default amplify_po; leave empty for the default)
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_CANADJUSTPOINTSGROUPS
+      valueFrom:
+        configForm:
+          displayName: Asgardeo groups for adjust/reverse points (comma separated; default amplify_po; leave empty for the default)
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_CANPODASHBOARDGROUPS
+      valueFrom:
+        configForm:
+          displayName: Asgardeo groups for PO dashboard (comma separated; default amplify_po; leave empty for the default)
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_CANREPORTSGROUPS
+      valueFrom:
+        configForm:
+          displayName: Asgardeo groups for SLT reports (comma separated; default amplify_slt,amplify_po; leave empty for the default)
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_CANADMINGROUPS
+      valueFrom:
+        configForm:
+          displayName: Asgardeo groups for admin (comma separated; default amplify_admin; leave empty for the default)
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_SCORECARDTARGETCONNECTEDPCT
+      valueFrom:
+        configForm:
+          displayName: Scorecard: employees connected, % of headcount (default 25) (leave empty for the default)
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_SCORECARDMAXEXPIREDPCT
+      valueFrom:
+        configForm:
+          displayName: Scorecard: expired connections, % of connected, a ceiling (default 5) (leave empty for the default)
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_SCORECARDTARGETSHARESUCCESSPCT
+      valueFrom:
+        configForm:
+          displayName: Scorecard: share success rate, % (default 98) (leave empty for the default)
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_SCORECARDTARGETPRIORITYREACHPCT
+      valueFrom:
+        configForm:
+          displayName: Scorecard: a campaign reaches people at this % of connected (default 25) (leave empty for the default)
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_SCORECARDTARGETACTIVE30D
+      valueFrom:
+        configForm:
+          displayName: Scorecard: people active in the last 30 days (default 100) (leave empty for the default)
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_SCORECARDTARGETREPOSTSPERMONTH
+      valueFrom:
+        configForm:
+          displayName: Scorecard: reposts this calendar month (default 600) (leave empty for the default)
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_PEOPLEDIRECTORYURL
+      valueFrom:
+        configForm:
+          displayName: People directory URL (people-app GET /employees/basic-info)
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_PEOPLEDIRECTORYTOKENURL
+      valueFrom:
+        configForm:
+          displayName: People directory OAuth2 token URL
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_PEOPLEDIRECTORYCLIENTID
+      valueFrom:
+        configForm:
+          displayName: People directory client id
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_PEOPLEDIRECTORYCLIENTSECRET
+      valueFrom:
+        configForm:
+          displayName: People directory client secret
+          type: secret
+          required: false
+    - name: BAL_CONFIG_VAR_LINKEDINCLIENTID
+      valueFrom:
+        configForm:
+          displayName: LinkedIn client id
+          type: string
+    - name: BAL_CONFIG_VAR_LINKEDINCLIENTSECRET
+      valueFrom:
+        configForm:
+          displayName: LinkedIn client secret
+          type: secret
+    - name: BAL_CONFIG_VAR_LINKEDINREDIRECTURI
+      valueFrom:
+        configForm:
+          displayName: LinkedIn redirect URI (One WSO2 callback)
+          type: string
+    - name: BAL_CONFIG_VAR_LINKEDINAPIBASEURL
+      valueFrom:
+        configForm:
+          displayName: LinkedIn API base URL
+          type: string
+    - name: BAL_CONFIG_VAR_LINKEDINAUTHBASEURL
+      valueFrom:
+        configForm:
+          displayName: LinkedIn OAuth base URL
+          type: string
+    # The company page a registered post must belong to (default WSO2's page, urn:li:organization:1477).
+    - name: BAL_CONFIG_VAR_WSO2ORGANIZATIONURN
+      valueFrom:
+        configForm:
+          displayName: LinkedIn company page URN (urn:li:organization:<id>)
+          type: string
+          required: false
+    # ID-token validation on connect (off by default; turn on once a real LinkedIn app returns the ID token).
+    - name: BAL_CONFIG_VAR_LINKEDINIDTOKENVALIDATION
+      valueFrom:
+        configForm:
+          displayName: Validate the LinkedIn ID token on connect (true/false)
+          type: boolean
+          required: false
+    - name: BAL_CONFIG_VAR_LINKEDINNONCEMODE
+      valueFrom:
+        configForm:
+          displayName: OIDC nonce on connect, only with ID-token validation on - OFF, SEND (checked when LinkedIn echoes it) or REQUIRE (default OFF; leave empty for the default)
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_TOKENKEYS
+      valueFrom:
+        configForm:
+          displayName: Token keys keyId:base64Key[,...]
+          type: secret
+    - name: BAL_CONFIG_VAR_TOKENCURRENTKEYID
+      valueFrom:
+        configForm:
+          displayName: Current token key id
+          type: string

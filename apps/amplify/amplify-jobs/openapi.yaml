@@ -1,0 +1,185 @@
+openapi: 3.0.1
+info:
+  title: Amplify Jobs
+  version: 0.3.0
+  description: >-
+    Internal worker; Project visibility only, never published. The scheduler (akornatskyy/scheduler, ADR-026) and amplify-api
+    ("Save & Share Now") call these endpoints. ADR-003, ADR-025.
+security:
+  - InternalKey: []
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/HealthStatus"}
+  /ready:
+    get:
+      operationId: getReadiness
+      security: []
+      description: >-
+        Readiness. The body reports the database (breaker not open and `SELECT 1` answers) in `status`, `database` and
+        `breakers`; LinkedIn, Chat and the token keys are reported but not fatal, because a run defers those rows
+        (ADR-025). A database blip keeps the answer 200 while the database is configured, because Choreo stops routing
+        on any non-2xx readiness response; `POST /runs` answers the scheduler's retryable 503 instead.
+      responses:
+        "200":
+          description: In rotation (the body says whether the database answered)
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ReadyReport"}
+        "503":
+          description: The database is not configured, so the worker can never do its work
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ReadyReport"}
+  /runs:
+    post:
+      operationId: startRun
+      description: Runs the outbox once (announcements, sharing, scoring) and returns the run log. One run at a time across replicas.
+      parameters:
+        - {name: X-Correlation-ID, in: header, required: false, schema: {type: string}}
+      responses:
+        "200":
+          description: Run finished
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/RunReport"}
+        "202":
+          description: Another run is in progress (not a failure)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: {type: string, enum: [SKIPPED]}
+                  reason: {type: string, enum: [RUN_IN_PROGRESS]}
+        "503": {description: Database unavailable}
+        "500": {description: Run failed}
+  /maintenance/partitions:
+    post:
+      operationId: runPartitionMaintenance
+      description: >-
+        Daily upkeep (B10) plus expired Idempotency-Key purge (ADR-024). One pass at a time across replicas: a pass
+        that outlives the scheduler's 180 s deadline is not started again by its retry, which gets 202 `SKIPPED`
+        instead of a second pass.
+      responses:
+        "200":
+          description: Done
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MaintenanceReport"}
+        "202":
+          description: Another pass holds the maintenance lock (not a failure)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: {type: string, enum: [SKIPPED]}
+                  reason: {type: string, enum: [MAINTENANCE_IN_PROGRESS]}
+        "503": {description: Database unavailable}
+        "500": {description: Maintenance failed}
+  /maintenance/leavers:
+    post:
+      operationId: sweepLeavers
+      description: >-
+        Runs only the leaver sweep (the daily maintenance run includes it): employees missing from the people directory
+        who have not used Amplify for `leaverGraceDays`. `OFF` does nothing; `DRY_RUN` reports who would be erased
+        (pseudonymous ids only); `ERASE` erases them with `identity.erase_employee`. A directory that lists too few
+        people, or more leavers than `leaverMaxPerRun`, erases nobody. ADR-040.
+      responses:
+        "200": {description: What the sweep did}
+        "401": {description: Missing or wrong key}
+        "403": {description: Scheduler key on a route it may not call}
+        "503": {description: Database unavailable}
+  /maintenance/rebuild-recognition:
+    post:
+      operationId: rebuildRecognition
+      responses:
+        "200":
+          description: Rebuilt
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  standingVersion: {type: integer}
+        "503": {description: Database unavailable}
+        "500": {description: Rebuild failed}
+
+components:
+  securitySchemes:
+    InternalKey:
+      type: apiKey
+      in: header
+      name: X-Amplify-Internal-Key
+      description: >-
+        Two secrets (each at least 32 characters, different values). The internal key, held by amplify-api, opens
+        every route. The scheduler key, held by the scheduler's jobs, opens only POST /runs and
+        POST /maintenance/partitions; on any other route it is 403. Every call except the two probes needs one;
+        a missing or wrong key is 401. ADR-039.
+  schemas:
+    HealthStatus:
+      type: object
+      required: [component, status]
+      properties:
+        component: {type: string}
+        status: {type: string, enum: [UP, DOWN]}
+    ReadyReport:
+      type: object
+      required: [component, status, database, runInProgress, breakers]
+      properties:
+        component: {type: string}
+        status: {type: string, enum: [UP, DOWN]}
+        database: {type: string, enum: [UP, DOWN]}
+        runInProgress: {type: boolean}
+        breakers:
+          type: object
+          additionalProperties: {type: string}
+    RunReport:
+      type: object
+      properties:
+        runId: {type: string}
+        correlationId: {type: string, nullable: true}
+        startedAt: {type: string, format: date-time}
+        claimed: {type: integer}
+        succeeded: {type: integer}
+        retried: {type: integer}
+        deferred: {type: integer}
+        failed: {type: integer}
+        staleReleased: {type: integer}
+        linkedinPosts: {type: integer}
+        connections:
+          type: object
+          properties:
+            expiring: {type: integer}
+            needsReconnect: {type: integer}
+        breakers:
+          type: object
+          additionalProperties: {type: string, enum: [CLOSED, HALF_OPEN, OPEN, NOT_CONFIGURED]}
+        durationMs: {type: integer}
+    MaintenanceReport:
+      type: object
+      properties:
+        audit_partitions_created: {type: integer}
+        token_partitions_created: {type: integer}
+        token_partitions_dropped: {type: integer}
+        audit_partitions_dropped: {type: integer}
+        outbox_rows_purged: {type: integer}
+        oauth_states_swept: {type: integer}
+        idempotency_keys_purged: {type: integer}
+        token_rotation:
+          type: object
+          description: Key rotation step (provider_token rows re-sealed under the active key). Never fails the call.
+          required: [status, resealed, skipped, failed]
+          properties:
+            status: {type: string, enum: [DONE, PARTIAL, NOT_CONFIGURED, FAILED]}
+            resealed: {type: integer}
+            skipped: {type: integer}
+            failed: {type: integer}

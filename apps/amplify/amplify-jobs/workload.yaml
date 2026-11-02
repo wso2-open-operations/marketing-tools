@@ -1,0 +1,98 @@
+# OpenChoreo workload descriptor (M8c), read by `occ workload create --descriptor`. Type: deployment/service.
+# Same endpoints, ports and env names as apps/.choreo/component.yaml (scripts/check-descriptors.sh).
+# Choreo Project visibility -> `project`; Public -> `external`. Secrets: valueFrom.secretRef (SecretReference /
+# External Secrets); plain values come from the environment's ReleaseBinding/overrides.
+apiVersion: openchoreo.dev/v1alpha1
+metadata:
+  name: amplify-jobs
+endpoints:
+  - name: amplify-jobs
+    type: HTTP
+    port: 9091
+    schemaFile: openapi.yaml
+    visibility:
+      - project
+configurations:
+  env:
+    - name: BAL_CONFIG_VAR_DBHOST
+      value: ""
+    - name: BAL_CONFIG_VAR_DBPORT
+      value: ""
+    - name: BAL_CONFIG_VAR_DBNAME
+      value: ""
+    - name: BAL_CONFIG_VAR_DBUSER
+      value: ""
+    - name: BAL_CONFIG_VAR_DBPASSWORD
+      valueFrom:
+        secretRef:
+          name: amplify-jobs-secrets
+          key: BAL_CONFIG_VAR_DBPASSWORD
+    # Path of the managed Postgres CA PEM, mounted from a ConfigMap/Secret volume (domain review H-1).
+    - name: BAL_CONFIG_VAR_DBSSLROOTCERT
+      value: ""
+    - name: BAL_CONFIG_VAR_LINKEDINCLIENTID
+      value: ""
+    - name: BAL_CONFIG_VAR_LINKEDINAPIBASEURL
+      value: ""
+    - name: BAL_CONFIG_VAR_LINKEDINAUTHBASEURL
+      value: ""
+    - name: BAL_CONFIG_VAR_INTERNALAPIKEY
+      valueFrom:
+        secretRef:
+          name: amplify-jobs-secrets
+          key: BAL_CONFIG_VAR_INTERNALAPIKEY
+    - name: BAL_CONFIG_VAR_SCHEDULERAPIKEY
+      valueFrom:
+        secretRef:
+          name: amplify-jobs-secrets
+          key: BAL_CONFIG_VAR_SCHEDULERAPIKEY
+    - name: BAL_CONFIG_VAR_LEAVERSWEEPMODE
+      value: "OFF"
+    - name: BAL_CONFIG_VAR_PEOPLEDIRECTORYURL
+      value: ""
+    - name: BAL_CONFIG_VAR_PEOPLEDIRECTORYTOKENURL
+      value: ""
+    - name: BAL_CONFIG_VAR_PEOPLEDIRECTORYCLIENTID
+      value: ""
+    - name: BAL_CONFIG_VAR_PEOPLEDIRECTORYCLIENTSECRET
+      valueFrom:
+        secretRef:
+          name: amplify-jobs-secrets
+          key: BAL_CONFIG_VAR_PEOPLEDIRECTORYCLIENTSECRET
+    - name: BAL_CONFIG_VAR_TOKENKEYS
+      valueFrom:
+        secretRef:
+          name: amplify-jobs-secrets
+          key: BAL_CONFIG_VAR_TOKENKEYS
+    - name: BAL_CONFIG_VAR_TOKENCURRENTKEYID
+      value: ""
+    - name: BAL_CONFIG_VAR_CHATWEBHOOKURL
+      valueFrom:
+        secretRef:
+          name: amplify-jobs-secrets
+          key: BAL_CONFIG_VAR_CHATWEBHOOKURL
+    - name: BAL_CONFIG_VAR_CHATSPACE
+      value: ""
+    - name: BAL_CONFIG_VAR_CHATCARDAVATARURL
+      value: ""
+    - name: BAL_CONFIG_VAR_CHATDEFAULTIMAGEURL
+      value: ""
+    - name: BAL_CONFIG_VAR_SHAREPAGEBASEURL
+      value: ""
+    - name: BAL_CONFIG_VAR_NOVERANOTIFYURL
+      value: ""
+    - name: BAL_CONFIG_VAR_NOVERATOKENURL
+      value: ""
+    - name: BAL_CONFIG_VAR_NOVERACLIENTID
+      value: ""
+    - name: BAL_CONFIG_VAR_NOVERACLIENTSECRET
+      valueFrom:
+        secretRef:
+          name: amplify-jobs-secrets
+          key: BAL_CONFIG_VAR_NOVERACLIENTSECRET
+    - name: BAL_CONFIG_VAR_NOVERASCOPES
+      value: ""
+    - name: BAL_CONFIG_VAR_AMPLIFYONNOVERA
+      value: "true"
+    - name: BAL_CONFIG_VAR_AMPLIFYONWEBHOOK
+      value: "false"

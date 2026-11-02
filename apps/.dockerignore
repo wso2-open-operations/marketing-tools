@@ -1,0 +1,10 @@
+# Docker context for amplify-jobs (ADR-027): send only what its build stage copies. Everything else under apps/
+# (conference, registrant, the rest of amplify) stays out of the context.
+*
+!amplify/amplify-common
+!amplify/amplify-domain
+!amplify/amplify-jobs
+**/target
+**/generated
+**/Config.toml
+**/*.secret
