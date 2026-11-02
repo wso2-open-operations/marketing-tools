@@ -1,0 +1,58 @@
+# Amplify DB Migrate (amplify-database). Choreo Manual Task, Dockerfile buildpack. No endpoint.
+# Docker context: apps/amplify/amplify-database  |  Dockerfile: apps/amplify/amplify-database/Dockerfile
+# Choreo reads this file from <docker context>/.choreo/component.yaml, so every component has its own context
+# (ADR-027). Keep endpoints and env names in sync with apps/amplify/amplify-database/workload.yaml (scripts/check-descriptors.sh).
+# Console steps (connections, secrets, visibility): docs/runbooks/choreo-deploy.md.
+schemaVersion: "1.2"
+configurations:
+  env:
+    - name: BAL_CONFIG_VAR_DBHOST
+      valueFrom:
+        configForm:
+          displayName: DB host
+          type: string
+    - name: BAL_CONFIG_VAR_DBPORT
+      valueFrom:
+        configForm:
+          displayName: DB port
+          type: number
+    - name: BAL_CONFIG_VAR_DBNAME
+      valueFrom:
+        configForm:
+          displayName: DB name
+          type: string
+    - name: BAL_CONFIG_VAR_DBUSER
+      valueFrom:
+        configForm:
+          displayName: DB user
+          type: string
+    - name: BAL_CONFIG_VAR_DBPASSWORD
+      valueFrom:
+        configForm:
+          displayName: DB password
+          type: secret
+    # Managed Postgres CA: mount the CA PEM as a Choreo file mount (console: Configs & Secrets > File Mount,
+    # e.g. /home/choreo/db-ca/ca.pem) and put that path here. dbSslMode defaults to VERIFY_FULL, which checks
+    # the server certificate against it and the host name.
+    - name: BAL_CONFIG_VAR_DBSSLROOTCERT
+      valueFrom:
+        configForm:
+          displayName: DB CA certificate file path (file mount)
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_APIDBPASSWORD
+      valueFrom:
+        configForm:
+          displayName: amplify_api password
+          type: secret
+    - name: BAL_CONFIG_VAR_JOBSDBPASSWORD
+      valueFrom:
+        configForm:
+          displayName: amplify_jobs password
+          type: secret
+    - name: BAL_CONFIG_VAR_READONLYDBPASSWORD
+      valueFrom:
+        configForm:
+          displayName: amplify_readonly password
+          type: secret
+          required: false

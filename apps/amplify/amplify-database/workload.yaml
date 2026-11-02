@@ -1,0 +1,40 @@
+# OpenChoreo workload descriptor (M8c), read by `occ workload create --descriptor`. Type: job (manual).
+# Same endpoints, ports and env names as apps/amplify/amplify-database/.choreo/component.yaml (scripts/check-descriptors.sh).
+# Choreo Project visibility -> `project`; Public -> `external`. Secrets: valueFrom.secretRef (SecretReference /
+# External Secrets); plain values come from the environment's ReleaseBinding/overrides.
+apiVersion: openchoreo.dev/v1alpha1
+metadata:
+  name: amplify-database
+configurations:
+  env:
+    - name: BAL_CONFIG_VAR_DBHOST
+      value: ""
+    - name: BAL_CONFIG_VAR_DBPORT
+      value: ""
+    - name: BAL_CONFIG_VAR_DBNAME
+      value: ""
+    - name: BAL_CONFIG_VAR_DBUSER
+      value: ""
+    - name: BAL_CONFIG_VAR_DBPASSWORD
+      valueFrom:
+        secretRef:
+          name: amplify-database-secrets
+          key: BAL_CONFIG_VAR_DBPASSWORD
+    # Path of the managed Postgres CA PEM, mounted from a ConfigMap/Secret volume (dbSslMode defaults to VERIFY_FULL).
+    - name: BAL_CONFIG_VAR_DBSSLROOTCERT
+      value: ""
+    - name: BAL_CONFIG_VAR_APIDBPASSWORD
+      valueFrom:
+        secretRef:
+          name: amplify-database-secrets
+          key: BAL_CONFIG_VAR_APIDBPASSWORD
+    - name: BAL_CONFIG_VAR_JOBSDBPASSWORD
+      valueFrom:
+        secretRef:
+          name: amplify-database-secrets
+          key: BAL_CONFIG_VAR_JOBSDBPASSWORD
+    - name: BAL_CONFIG_VAR_READONLYDBPASSWORD
+      valueFrom:
+        secretRef:
+          name: amplify-database-secrets
+          key: BAL_CONFIG_VAR_READONLYDBPASSWORD
