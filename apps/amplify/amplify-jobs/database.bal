@@ -29,8 +29,8 @@ configurable string dbHost = "";
 configurable int dbPort = 5432;
 # Database name.
 configurable string dbName = "amplify";
-# The one database login every component shares (staging `amplify_stg_user`, production its own name).
-configurable string dbUser = "amplify_stg_user";
+# The one database login every component shares (set per environment in config).
+configurable string dbUser = "amplify";
 # DB password (Choreo secret).
 configurable string dbPassword = "";
 # Schema that holds the tables. Empty = the login user's name (the schema the DBA created for it).

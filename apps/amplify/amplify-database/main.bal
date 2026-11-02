@@ -38,9 +38,8 @@ configurable string dbHost = "localhost";
 configurable int dbPort = 5432;
 # Database name.
 configurable string dbName = "amplify";
-# Login user: the one database user Amplify gets (staging `amplify_stg_user`, production its own name; local
-# `amplify_local_user`). It owns every object and every component connects as it (ADR-043); see `checks/d3_single_user.sql`.
-configurable string dbUser = "amplify_local_user";
+# Login user: the one database user Amplify gets (set per environment in config). It owns every object and every component connects as it (ADR-043); see `checks/d3_single_user.sql`.
+configurable string dbUser = "amplify";
 # Login password (secret).
 configurable string dbPassword = "";
 # Schema every table lives in. Empty = the login user's name (the schema the DBA created for it). The scripts
