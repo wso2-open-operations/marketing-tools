@@ -192,7 +192,7 @@ Per environment (dev, prod), for each of the three components **[console]**:
 
 ## 13. People directory (team rosters)
 
-My Team and the Team page's team scope come from the HR Entity GraphQL service (ADR-019, ADR-045). Amplify Backend fetches the whole directory in pages, groups everyone by team under their business unit and keeps that index (teams and names; no houses yet) in memory for 24 hours (`ROSTERCACHESECONDS`, default 86400). Nothing is written to the database or the logs.
+My Team and the Team page's team scope come from the HR Entity GraphQL service (ADR-019, ADR-045). Amplify Backend fetches the whole directory in pages, groups everyone by sub-team (team when there's none) under their business unit and keeps that index (teams and names; no houses yet) in memory for 24 hours (`ROSTERCACHESECONDS`, default 86400). Nothing is written to the database or the logs.
 
 - **Someone moved team and still sees the old one.** Expected for up to 24 hours. To pick it up now, restart Amplify Backend; the next leaderboard read fetches the directory again.
 - **`teamStatus: NO_TEAM` for one person.** They aren't in the directory (only Active and Marked leaver employees are), their HR record has no team, or their Amplify email doesn't match their HR `workEmail`. Compare the two emails first.

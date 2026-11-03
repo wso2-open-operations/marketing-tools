@@ -81,7 +81,7 @@ final http:Client? jobsClient = check newBreakerClient(jobsUrl, jobsTimeoutSecon
 // ---- People directory: team rosters (D13, leaderboards.md) -----------------------------------------
 
 # The HR Entity GraphQL service's URL (the endpoint a GraphQL POST goes to). One paged query returns every
-# current employee with `workEmail`, names, `businessUnit` and `team`. Empty = not configured
+# current employee with `workEmail`, names, `businessUnit`, `team` and `subTeam`. Empty = not configured
 # (`teamStatus: UNAVAILABLE`).
 configurable string hrEntityBaseUrl = "";
 # HR Entity timeout, seconds, per page.
@@ -356,7 +356,7 @@ type Roster record {|
 |};
 
 # The fields of an HR Entity employee Amplify reads. Open: anything else the service returns is ignored and
-# never kept. `house` and `subTeam` are not asked of the service yet, so they stay empty.
+# never kept. `house` is not a field of the HR Entity, so it stays empty.
 type DirectoryRecord record {
     # Work email. Optional: one row without it (a contractor, a placeholder) is skipped, not a reason to
     # reject the whole directory.
@@ -552,7 +552,7 @@ isolated function directoryIndex(string? correlationId) returns (DirectoryIndex 
 
 # The query, one page of current employees. Only the fields Amplify uses are asked for.
 const string EMPLOYEES_QUERY = "query getEmployees($filter: EmployeeFilter!, $limit: Int, $offset: Int) { "
-        + "employees(filter: $filter, limit: $limit, offset: $offset) { workEmail firstName lastName businessUnit team } }";
+        + "employees(filter: $filter, limit: $limit, offset: $offset) { workEmail firstName lastName businessUnit team subTeam } }";
 
 # Most pages one directory read will ask for. A service that never runs dry cannot loop the caller forever.
 const int MAX_DIRECTORY_PAGES = 100;
@@ -568,11 +568,13 @@ isolated function fetchDirectory(string? correlationId) returns (DirectoryIndex 
     int offset = 0;
     foreach int _ in 0 ..< MAX_DIRECTORY_PAGES {
         DirectoryRecord[] page = check fetchDirectoryPage(c, headers, pageSize, offset);
-        records.push(...page);
-        if page.length() < pageSize {
+        // The end is an empty page, not a short one: the service may cap `limit` below what was asked for, and the
+        // next offset is what came back, so a capped page never skips or ends the read early.
+        if page.length() == 0 {
             return indexDirectory(records);
         }
-        offset += pageSize;
+        records.push(...page);
+        offset += page.length();
     }
     return error(string `People directory did not end within ${MAX_DIRECTORY_PAGES} pages`);
 }

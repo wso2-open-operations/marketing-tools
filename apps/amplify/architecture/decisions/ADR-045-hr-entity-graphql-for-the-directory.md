@@ -15,25 +15,25 @@ Entity GraphQL service is what service-to-service callers use for this.
 
 - **amplify-api and amplify-jobs read the HR Entity GraphQL service**, not people-app. The `employees(filter, limit,
   offset)` query is sent as a GraphQL POST over the existing HTTP client (circuit breaker, timeout, OAuth2
-  client credentials). It is paged (`hrEntityPageSize`, default 1000) and stops at a short page.
+  client credentials). It is paged (`hrEntityPageSize`, default 1000; the service's own default is 100, and it may cap larger asks). The read ends on an empty page and the next offset moves by the rows that came back, so a capped page never truncates the roster.
 - **Only the fields Amplify uses are asked for.** The api asks for `workEmail`, `firstName`, `lastName`,
-  `businessUnit` and `team`; the leaver sweep asks for `workEmail` only. Status, job band, manager and start date are
+  `businessUnit`, `team` and `subTeam`; the leaver sweep asks for `workEmail` only. Status, job band, manager and start date are
   never requested.
 - **Statuses:** `hrEntityStatuses`, default `Active` and `Marked leaver`. A person who has resigned still works here
   until their status is `Left`, so they stay on rosters and out of the sweep.
 - **Configuration** has the same shape as leave-app's: `hrEntityBaseUrl` and OAuth2 `tokenUrl`, `clientId`,
   `clientSecret` (`hrEntityTokenUrl`, `hrEntityClientId`, `hrEntityClientSecret`). Amplify gets its own client from
   People Operations; the code does not depend on which client is used.
-- **Team grouping** uses the entity's `team`. The entity query does not ask for a sub-team, so a roster is the
-  business unit and team, where people-app's directory split it by sub-team as well.
-- **House is not read.** It lives in people-app's database, and no entity query Amplify knows of returns it. The
-  house board and house counts stay in the API and answer empty until a later change adds the field.
+- **Team grouping** is unchanged: the sub-team, or the team when a person has none, under the business unit
+  (decided 2026-10-19). The entity's `Employee` has both `team` and `subTeam`.
+- **House is not read.** `Employee` has no house field (it lives in people-app's database). The house board and house
+  counts stay in the API and answer empty until the entity offers one.
 - **No other change to people-app.** PR #380's service-client path stays in people-app but Amplify no longer uses it.
 
 ## Consequences
 
 - The people-app interceptor change is no longer on Amplify's critical path.
-- Rosters are coarser (team, not sub-team) and carry no house until the entity offers them.
+- Rosters carry no house until the entity offers one.
 - The local stack's `people-stub` answers the same GraphQL query from `directory.json`, and still serves
   `GET /employees/basic-info` for One WSO2's photos.
 - `local/people-app-proto` exercised the people-app service-client path and no longer matches the config names.

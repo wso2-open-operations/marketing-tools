@@ -47,7 +47,7 @@ One file per decision, dated, short format (Status, Date, Context, Decision, Con
 | [ADR-039](ADR-039-internal-key-for-back-office-components.md) | An internal key (full access) and a scheduler key (`/runs` and partition maintenance only) protect amplify-jobs | Accepted (amended 2026-11-01) |
 | [ADR-040](ADR-040-erasure-leaver-sweep-and-token-grants.md) | One audited erase function, a leaver sweep, narrower token grants, outbox alerting | Accepted |
 | [ADR-044](ADR-044-postgresql-15-or-later.md) | PostgreSQL 15 or later; V001 installs `uuidv7()` before 18; audit "before" values without `RETURNING old.*` | Accepted |
-| [ADR-045](ADR-045-hr-entity-graphql-for-the-directory.md) | The HR Entity GraphQL service is the employee directory (paged, minimal fields); house and sub-team later | Accepted |
+| [ADR-045](ADR-045-hr-entity-graphql-for-the-directory.md) | The HR Entity GraphQL service is the employee directory (paged, minimal fields); house later | Accepted |
 
 ## D-number to ADR map (resolves audit B1)
 

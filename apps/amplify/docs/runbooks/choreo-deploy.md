@@ -55,7 +55,7 @@ After each build, confirm the endpoint Choreo shows matches the descriptor (name
 6. **C6 LinkedIn Mock** (dev only; never promote to prod). Endpoints: api `Project`, www `Public` (the browser follows the OAuth redirect). `CLIENTID`/`CLIENTSECRET` = made-up values matching Backend/Jobs in dev, `WWWBASEURL` = the www endpoint's public URL, `BAL_CONFIG_DATA` = `redirectUris = ["<dev One WSO2 callback>"]`. In dev, Backend `LINKEDINAUTHBASEURL` = the mock's **public** www URL (the authorization URL is shown to the browser).
 
 7. **C7 HR Entity access** (team rosters and the leaver sweep, ADR-045). No people-app change is needed.
-   1. People Operations issues Amplify its own client for the **HR Entity GraphQL service** (ask for read-only on `employees` and, if the service can scope it, only `workEmail`, `firstName`, `lastName`, `businessUnit` and `team`). Note the GraphQL URL, the token URL, the client id and the secret.
+   1. People Operations issues Amplify its own client for the **HR Entity GraphQL service** (ask for read-only on `employees` and, if the service can scope it, only `workEmail`, `firstName`, `lastName`, `businessUnit`, `team` and `subTeam`). Note the GraphQL URL, the token URL, the client id and the secret.
    2. Set C5's `HRENTITYBASEURL`, `HRENTITYTOKENURL`, `HRENTITYCLIENTID` and `HRENTITYCLIENTSECRET` (secret), and the same four on the Jobs component (the leaver sweep). Redeploy both.
    5. Check: `GET /leaderboard` as an employee shows `teamStatus: OK` and their sub-team. A 500 from people-app means the client id isn't listed or the claim is wrong; a 403 means the route isn't the directory.
 

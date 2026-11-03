@@ -201,12 +201,13 @@ isolated class ProductionLeaverPorts {
         string[] emails = [];
         int offset = 0;
         foreach int _ in 0 ..< MAX_DIRECTORY_PAGES {
-            string[] page = check directoryPage(c, pageSize, offset);
-            emails.push(...page);
-            if page.length() < pageSize {
+            DirectoryPage page = check directoryPage(c, pageSize, offset);
+            // The end is an empty page, not a short one: the service may cap `limit` below what was asked for.
+            if page.rows == 0 {
                 return emails;
             }
-            offset += pageSize;
+            emails.push(...page.emails);
+            offset += page.rows;
         }
         return error(string `People directory did not end within ${MAX_DIRECTORY_PAGES} pages`);
     }
@@ -244,14 +245,21 @@ const string EMPLOYEES_QUERY = "query getEmployees($filter: EmployeeFilter!, $li
 # Most pages one directory read will ask for.
 const int MAX_DIRECTORY_PAGES = 100;
 
+# One page of the HR Entity's employees.
+type DirectoryPage record {|
+    # Lower-case work emails (a row without one is skipped)
+    string[] emails;
+    # Rows the service returned, with or without an email: what the next offset moves by
+    int rows;
+|};
+
 # One page of the HR Entity's employees, as lower-case work emails.
 #
 # + c - HR Entity client
 # + pageSize - Rows asked for
 # + offset - Rows to skip
-# + return - The page's emails (rows without one are skipped, but still count toward the page), or an error that
-# never carries the response body (it names people)
-isolated function directoryPage(http:Client c, int pageSize, int offset) returns string[]|error {
+# + return - The page, or an error that never carries the response body (it names people)
+isolated function directoryPage(http:Client c, int pageSize, int offset) returns DirectoryPage|error {
     json body = {
         query: EMPLOYEES_QUERY,
         variables: {filter: {employeeStatus: hrEntityStatuses}, 'limit: pageSize, offset}
@@ -280,7 +288,7 @@ isolated function directoryPage(http:Client c, int pageSize, int offset) returns
             emails.push(email.trim().toLowerAscii());
         }
     }
-    return emails;
+    return {emails, rows: employees.length()};
 }
 
 # Checks the sweep settings at start-up: a mode that erases needs a directory, and the limits must make sense.
