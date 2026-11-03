@@ -234,6 +234,22 @@ isolated function checkRedirectUri(string uri, string env) returns error? {
     }
 }
 
+# Checks the privacy notice URL at start-up. It goes to the UI and becomes a link in the consent dialog, so a typo
+# or a `javascript:` value must never reach the page.
+#
+# + url - `privacyNoticeUrl`
+# + return - An error that stops startup, or `()` (empty means the dialog shows no link)
+isolated function checkPrivacyNoticeUrl(string url) returns error? {
+    string trimmed = url.trim();
+    if trimmed == "" {
+        return;
+    }
+    if !trimmed.startsWith("https://") || trimmed.length() > 2048 || trimmed.length() == "https://".length()
+            || re `[\s\\]`.find(trimmed) !is () {
+        return error("privacyNoticeUrl must be empty or an absolute https:// URL without spaces");
+    }
+}
+
 # Test seam: the configured LinkedIn redirect URI (what the authorize request and the token exchange carry).
 #
 # + return - The URI
@@ -356,7 +372,7 @@ type Roster record {|
 |};
 
 # The fields of an HR Entity employee Amplify reads. Open: anything else the service returns is ignored and
-# never kept. `house` and `subTeam` are not asked of the service yet, so they stay empty.
+# never kept. `house` is not asked of the service yet, so it stays empty.
 type DirectoryRecord record {
     # Work email. Optional: one row without it (a contractor, a placeholder) is skipped, not a reason to
     # reject the whole directory.
@@ -552,7 +568,7 @@ isolated function directoryIndex(string? correlationId) returns (DirectoryIndex 
 
 # The query, one page of current employees. Only the fields Amplify uses are asked for.
 const string EMPLOYEES_QUERY = "query getEmployees($filter: EmployeeFilter!, $limit: Int, $offset: Int) { "
-        + "employees(filter: $filter, limit: $limit, offset: $offset) { workEmail firstName lastName businessUnit team } }";
+        + "employees(filter: $filter, limit: $limit, offset: $offset) { workEmail firstName lastName businessUnit team subTeam } }";
 
 # Most pages one directory read will ask for. A service that never runs dry cannot loop the caller forever.
 const int MAX_DIRECTORY_PAGES = 100;

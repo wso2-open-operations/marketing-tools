@@ -186,10 +186,12 @@ isolated class ProductionLeaverPorts {
 
     private final postgresql:Client db;
     private final http:Client? directory;
+    private final string? correlationId;
 
-    isolated function init(postgresql:Client db, http:Client? directory) {
+    isolated function init(postgresql:Client db, http:Client? directory, string? correlationId = ()) {
         self.db = db;
         self.directory = directory;
+        self.correlationId = correlationId;
     }
 
     public isolated function directoryEmails() returns string[]|error {
@@ -198,17 +200,11 @@ isolated class ProductionLeaverPorts {
             return error("People directory is not configured");
         }
         int pageSize = hrEntityPageSize > 0 ? hrEntityPageSize : 1000;
-        string[] emails = [];
-        int offset = 0;
-        foreach int _ in 0 ..< MAX_DIRECTORY_PAGES {
-            string[] page = check directoryPage(c, pageSize, offset);
-            emails.push(...page);
-            if page.length() < pageSize {
-                return emails;
-            }
-            offset += pageSize;
-        }
-        return error(string `People directory did not end within ${MAX_DIRECTORY_PAGES} pages`);
+        final readonly & map<string> headers = resilience:correlationHeaders(self.correlationId).cloneReadOnly();
+        final http:Client directory = c;
+        return collectDirectoryEmails(pageSize,
+                isolated function(int size, int offset) returns [string[], int]|error =>
+                    directoryPage(directory, headers, size, offset));
     }
 
     public isolated function candidates(string[] emails, int graceDays, int 'limit) returns string[]|error =>
@@ -222,6 +218,28 @@ isolated class ProductionLeaverPorts {
             return result;
         }
     }
+}
+
+# Reads the directory page by page until a short page. The end is decided by the ROW count of a page, not by
+# how many rows had a work email: a full page with one email-less row must not look like the last page, or
+# everyone on later pages would look like a leaver.
+#
+# + pageSize - Rows asked for per page
+# + fetch - Reads one page (rows asked for, rows to skip): the emails found and the number of rows it held
+# + return - All emails, or an error (also when the directory does not end within `MAX_DIRECTORY_PAGES`)
+isolated function collectDirectoryEmails(int pageSize,
+        isolated function (int, int) returns [string[], int]|error fetch) returns string[]|error {
+    string[] emails = [];
+    int offset = 0;
+    foreach int _ in 0 ..< MAX_DIRECTORY_PAGES {
+        [string[], int] [pageEmails, rows] = check fetch(pageSize, offset);
+        emails.push(...pageEmails);
+        if rows < pageSize {
+            return emails;
+        }
+        offset += pageSize;
+    }
+    return error(string `People directory did not end within ${MAX_DIRECTORY_PAGES} pages`);
 }
 
 final http:Client? leaverDirectoryClient = check newDirectoryClient();
@@ -247,16 +265,18 @@ const int MAX_DIRECTORY_PAGES = 100;
 # One page of the HR Entity's employees, as lower-case work emails.
 #
 # + c - HR Entity client
+# + headers - Request headers (the correlation id)
 # + pageSize - Rows asked for
 # + offset - Rows to skip
-# + return - The page's emails (rows without one are skipped, but still count toward the page), or an error that
-# never carries the response body (it names people)
-isolated function directoryPage(http:Client c, int pageSize, int offset) returns string[]|error {
+# + return - The page's emails (rows without one are skipped) and the number of rows the page held, or an error
+# that never carries the response body (it names people)
+isolated function directoryPage(http:Client c, map<string> headers, int pageSize, int offset)
+        returns [string[], int]|error {
     json body = {
         query: EMPLOYEES_QUERY,
         variables: {filter: {employeeStatus: hrEntityStatuses}, 'limit: pageSize, offset}
     };
-    http:Response res = check c->post("", body);
+    http:Response res = check c->post("", body, headers);
     if res.statusCode != 200 {
         return error(string `People directory answered ${res.statusCode}`);
     }
@@ -280,7 +300,7 @@ isolated function directoryPage(http:Client c, int pageSize, int offset) returns
             emails.push(email.trim().toLowerAscii());
         }
     }
-    return emails;
+    return [emails, employees.length()];
 }
 
 # Checks the sweep settings at start-up: a mode that erases needs a directory, and the limits must make sense.
@@ -314,6 +334,7 @@ isolated function sweepConfig() returns SweepConfig => {
 # Runs the sweep against the real database and directory.
 #
 # + pg - Jobs database client
+# + correlationId - Trigger correlation id, sent to the HR Entity so a failing sweep can be traced there
 # + return - What it did
-isolated function runConfiguredSweep(postgresql:Client pg) returns LeaverSweepReport =>
-    sweepLeavers(new ProductionLeaverPorts(pg, leaverDirectoryClient), sweepConfig());
+isolated function runConfiguredSweep(postgresql:Client pg, string? correlationId = ()) returns LeaverSweepReport =>
+    sweepLeavers(new ProductionLeaverPorts(pg, leaverDirectoryClient, correlationId), sweepConfig());
