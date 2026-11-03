@@ -38,7 +38,7 @@ public type Rule record {|
 # The matrix. First match wins; a route that isn't here is denied (default deny).
 public final Rule[] & readonly ACTIVITY_MATRIX = [
     // Identity
-    {method: "GET", path: "/me", requires: EMPLOYEE, capability: "me.read", useCase: "Own row only; upserts identity.employee"},
+    {method: "GET", path: "/me", requires: EMPLOYEE, capability: "me.read", useCase: "Own row only; upserts identity_employee"},
     // S1 Campaign
     {method: "GET", path: "/campaigns", requires: EMPLOYEE, capability: "campaigns.read", useCase: "OPEN only (default window 14d); CAN_CAMPAIGN any status"},
     {method: "GET", path: "/campaigns/{id}", requires: EMPLOYEE, capability: "campaigns.read", useCase: "OPEN campaigns only, else 404; CAN_CAMPAIGN any status"},

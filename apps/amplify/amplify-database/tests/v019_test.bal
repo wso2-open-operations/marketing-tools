@@ -22,7 +22,7 @@ import ballerina/test;
 import ballerinax/postgresql;
 
 isolated function insertCampaignWithLink(postgresql:Client db, string urnId, string link) returns sql:ExecutionResult|sql:Error {
-    return db->execute(`INSERT INTO campaign.campaign (provider, resource_urn, resource_type, owner_urn, resource_url, title,
+    return db->execute(`INSERT INTO campaign (provider, resource_urn, resource_type, owner_urn, resource_url, title,
             category_code, opens_at, closes_at, created_by)
         VALUES ('linkedin', ${"urn:li:share:v019-" + urnId}, 'SHARE', 'urn:li:organization:1', ${link}, 'T', 'PRODUCT',
                 now(), now() + interval '1 day', 'po-1')`);
@@ -32,7 +32,7 @@ isolated function insertCampaignWithLink(postgresql:Client db, string urnId, str
 function testV019PostLinkAllowsHttpsAndTheDevOriginOnly() returns error? {
     postgresql:Client api = check apiClient();
     postgresql:Client admin = check adminClient(itDbName);
-    int applied = check admin->queryRow(`SELECT count(*)::int FROM public.schema_version
+    int applied = check admin->queryRow(`SELECT count(*)::int FROM schema_version
                                          WHERE version = 'V019__dev_post_link_http'`);
     test:assertEquals(applied, 1);
     check admin.close();

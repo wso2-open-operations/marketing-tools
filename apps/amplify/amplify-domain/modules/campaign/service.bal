@@ -21,7 +21,7 @@ import ballerina/time;
 
 // ---- Derived status -------------------------------------------------------------------------------
 
-# Campaign status from its facts and the clock, as `campaign.campaign_v` computes it.
+# Campaign status from its facts and the clock, as `campaign_v` computes it.
 #
 # + campaign - Campaign
 # + now - Current time
@@ -263,7 +263,7 @@ isolated function validTitle(string raw) returns string|types:DomainError {
     return title;
 }
 
-# Category codes are what `campaign.category.code` allows; anything else could never match a row.
+# Category codes are what `campaign_category.code` allows; anything else could never match a row.
 final readonly & string:RegExp CATEGORY_CODE_PATTERN = re `[A-Z][A-Z0-9_]{0,49}`;
 
 isolated function validCategory(string raw) returns string|types:DomainError {

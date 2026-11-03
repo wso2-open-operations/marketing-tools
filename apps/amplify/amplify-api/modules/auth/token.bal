@@ -199,6 +199,12 @@ public isolated class TokenVerifier {
         }
         anydata name = payload[self.config.nameClaim];
         anydata rolesValue = payload[self.config.rolesClaim];
+        if rolesValue is () && groupsWarning.due(nowSeconds, GROUPS_WARNING_INTERVAL_SECONDS) {
+            log:printWarn("The access token has no groups claim, so every caller is treated as a plain employee. If PO, "
+                + "Marketing, SLT or Admin users are being refused, add groups to the Access Token attributes of the "
+                + "Asgardeo application (docs/runbooks/identity-setup.md, Token requirements). Logged at most once every "
+                + "5 minutes per instance", groupsClaim = self.config.rolesClaim);
+        }
         string? displayName = ();
         if name is string {
             displayName = types:trimToNil(name);
@@ -207,6 +213,32 @@ public isolated class TokenVerifier {
         return {employeeId, email, displayName, roles, grants: grantsOf(roles, self.config.access), issuer: trustedIssuer};
     }
 }
+
+# Seconds between two "token has no groups claim" warnings. A plain employee legitimately has no groups, so the
+# warning would otherwise repeat on every request.
+const int GROUPS_WARNING_INTERVAL_SECONDS = 300;
+
+# Lets a warning through at most once per interval.
+public isolated class WarningThrottle {
+    private int lastAt = 0;
+
+    # Whether a warning is due now. Records the time when it is, so the next call inside the interval says no.
+    #
+    # + nowSeconds - Current time, seconds
+    # + intervalSeconds - Minimum seconds between two warnings
+    # + return - True when the caller should log
+    public isolated function due(int nowSeconds, int intervalSeconds) returns boolean {
+        lock {
+            if nowSeconds - self.lastAt >= intervalSeconds {
+                self.lastAt = nowSeconds;
+                return true;
+            }
+            return false;
+        }
+    }
+}
+
+final WarningThrottle groupsWarning = new;
 
 # Groups from the roles claim that the access configuration names. A missing claim means a plain employee
 # (no extra grant); other groups are dropped.

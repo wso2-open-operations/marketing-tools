@@ -41,14 +41,14 @@ function testRecreatedAccountIsAnAliasOfTheFirstEmployee() returns error? {
     test:assertEquals(r, {employeeId: first, aliased: true});
     // Idempotent: the same call again, one alias row, one audit row.
     test:assertEquals(check identity:resolveEmployee(repo, newSub, email), {employeeId: first, aliased: true});
-    test:assertEquals(check count(db, `SELECT count(*)::int FROM identity.employee_alias WHERE alias_sub = ${newSub}`), 1);
-    test:assertEquals(check count(db, `SELECT count(*)::int FROM audit.audit_log
+    test:assertEquals(check count(db, `SELECT count(*)::int FROM identity_employee_alias WHERE alias_sub = ${newSub}`), 1);
+    test:assertEquals(check count(db, `SELECT count(*)::int FROM audit_log
                                        WHERE action = 'EMPLOYEE_ALIASED' AND actor_id = ${newSub}`), 1);
     test:assertEquals(check repo.addAlias(newSub, "someone-else"), first, "the first mapping wins");
-    test:assertEquals(check count(db, `SELECT count(*)::int FROM identity.employee_alias WHERE alias_sub = ${newSub}`), 1);
+    test:assertEquals(check count(db, `SELECT count(*)::int FROM identity_employee_alias WHERE alias_sub = ${newSub}`), 1);
     // No second employee row, and the history still belongs to the first id.
     test:assertEquals(check repo.findById(newSub), ());
-    test:assertEquals(check count(db, `SELECT total_points FROM recognition.standing
+    test:assertEquals(check count(db, `SELECT total_points FROM recognition_standing
                                        WHERE period_key = 'ALL' AND employee_id = ${first}`), 30);
     test:assertEquals(check repo.findAlias(newSub), first);
     identity:Employee? byEmail = check repo.findByEmail(email.toUpperAscii());
@@ -61,5 +61,5 @@ function testRecreatedAccountIsAnAliasOfTheFirstEmployee() returns error? {
     if clash is types:DomainError {
         test:assertEquals(clash.detail().code, types:ERR_EMAIL_CONFLICT);
     }
-    test:assertEquals(check count(db, `SELECT count(*)::int FROM identity.employee_alias WHERE alias_sub = ${other}`), 0);
+    test:assertEquals(check count(db, `SELECT count(*)::int FROM identity_employee_alias WHERE alias_sub = ${other}`), 0);
 }

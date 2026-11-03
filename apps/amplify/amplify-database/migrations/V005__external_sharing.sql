@@ -16,9 +16,7 @@
 
 -- V005: S3 External Sharing, "My Campaign" (phase1-data-model › external_sharing, C4, C5, ADR-017).
 
-SET LOCAL ROLE amplify_migrate;
-
-CREATE TABLE external_sharing.external_share (
+CREATE TABLE external_sharing_external_share (
     id                     uuid        PRIMARY KEY DEFAULT uuidv7(),
     employee_id            text        NOT NULL,
     campaign_id            uuid,
@@ -49,16 +47,13 @@ CREATE TABLE external_sharing.external_share (
 );
 
 -- PO queue, and My Campaign.
-CREATE INDEX external_share_pending_idx ON external_sharing.external_share (created_at) WHERE decision IS NULL;
-CREATE INDEX external_share_employee_idx ON external_sharing.external_share (employee_id, created_at DESC);
+CREATE INDEX external_share_pending_idx ON external_sharing_external_share (created_at) WHERE decision IS NULL;
+CREATE INDEX external_share_employee_idx ON external_sharing_external_share (employee_id, created_at DESC);
 
-CREATE VIEW external_sharing.external_share_v WITH (security_invoker = true) AS
+CREATE VIEW external_sharing_external_share_v WITH (security_invoker = true) AS
 SELECT es.*,
        CASE WHEN es.decision IS NULL THEN 'PENDING'
             WHEN es.amplified_at IS NOT NULL THEN 'AMPLIFIED'
             ELSE es.decision END AS status
-FROM external_sharing.external_share es;
+FROM external_sharing_external_share es;
 
-GRANT SELECT, INSERT, UPDATE ON external_sharing.external_share TO amplify_api;
-GRANT SELECT ON external_sharing.external_share TO amplify_jobs, amplify_readonly;
-GRANT SELECT ON external_sharing.external_share_v TO amplify_api, amplify_jobs, amplify_readonly;

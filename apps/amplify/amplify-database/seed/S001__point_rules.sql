@@ -19,9 +19,7 @@
 -- SHARE / SHARE_COMMENTARY are the D5 fallback kinds (B4) and price like their REPOST twins.
 -- OWN_POST_AMPLIFIED is the total; the ledger top-up is OWN_POST_AMPLIFIED − OWN_POST (C4).
 
-SET LOCAL ROLE amplify_migrate;
-
-INSERT INTO scoring.point_rule (action, points, effective_from, created_by)
+INSERT INTO scoring_point_rule (action, points, effective_from, created_by)
 VALUES ('REPOST', 5, '1970-01-01T00:00:00Z', 'system'),
        ('REPOST_COMMENTARY', 12, '1970-01-01T00:00:00Z', 'system'),
        ('SHARE', 5, '1970-01-01T00:00:00Z', 'system'),

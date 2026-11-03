@@ -24,8 +24,6 @@
 -- plain-http link reaches this table, and the one origin listed here is a loopback address that no deployed
 -- user can reach. The check is the backstop, not the policy. `image_url` stays https only.
 
-SET LOCAL ROLE amplify_migrate;
-
-ALTER TABLE campaign.campaign DROP CONSTRAINT campaign_resource_url_check;
-ALTER TABLE campaign.campaign ADD CONSTRAINT campaign_resource_url_check
+ALTER TABLE campaign DROP CONSTRAINT campaign_resource_url_check;
+ALTER TABLE campaign ADD CONSTRAINT campaign_resource_url_check
     CHECK (resource_url LIKE 'https://%' OR resource_url LIKE 'http://localhost:19091/%');

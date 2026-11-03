@@ -15,7 +15,7 @@
 // under the License.
 
 // Repository integration tests against a migrated PostgreSQL 18 (group `integration`), run as the real
-// app roles (`amplify_api`, `amplify_jobs`). Off unless `AMPLIFY_IT=true`; the amplify-database
+// the one database login (ADR-043). Off unless `AMPLIFY_IT=true`; the amplify-database
 // integration tests create and migrate the database first (docs/migrations/README.md).
 // Ids are fresh UUIDv7s per run, so the tests can run again on the same database.
 
@@ -42,8 +42,9 @@ final boolean itEnabled = os:getEnv("AMPLIFY_IT") == "true";
 final string dbHost = envOr("AMPLIFY_IT_DB_HOST", "localhost");
 final int dbPort = checkpanic int:fromString(envOr("AMPLIFY_IT_DB_PORT", "5432"));
 final string dbName = envOr("AMPLIFY_IT_DB_NAME", "amplify_it");
-final string apiDbPassword = envOr("AMPLIFY_IT_API_PASSWORD", "it-api-password-00001");
-final string jobsDbPassword = envOr("AMPLIFY_IT_JOBS_PASSWORD", "it-jobs-password-0001");
+// The one database login every component uses (ADR-043); the database tests create it.
+final string loginUser = envOr("AMPLIFY_IT_LOGIN_USER", "amplify_it_user");
+final string loginPassword = envOr("AMPLIFY_IT_LOGIN_PASSWORD", "it-login-password-0001");
 final postgresql:SSLMode dbSslMode = os:getEnv("AMPLIFY_IT_DB_SSL") == "require" ? postgresql:REQUIRE : postgresql:DISABLE;
 
 function envOr(string name, string fallback) returns string {
@@ -57,9 +58,9 @@ function connect(string user, string password) returns postgresql:Client|error =
     store:newClient({host: dbHost, port: dbPort, database: dbName, user, password, sslMode: dbSslMode,
         maxOpenConnections: 3});
 
-function api() returns postgresql:Client|error => connect("amplify_api", apiDbPassword);
+function api() returns postgresql:Client|error => connect(loginUser, loginPassword);
 
-function jobs() returns postgresql:Client|error => connect("amplify_jobs", jobsDbPassword);
+function jobs() returns postgresql:Client|error => connect(loginUser, loginPassword);
 
 function uniq() returns string => types:newUuidV7().substring(24);
 
@@ -117,10 +118,10 @@ function testCampaignRoundTripOutboxAndAudit() returns error? {
     test:assertEquals(time:utcDiffSeconds(stored.closesAt, stored.opensAt), 30d * 86400d, "C7 default window");
 
     string key = "CampaignRegistered:" + c.id;
-    test:assertEquals(check count(db, `SELECT count(*)::int FROM messaging.outbox WHERE idempotency_key = ${key}`), 1);
-    test:assertEquals(check count(db, `SELECT count(*)::int FROM audit.audit_log
+    test:assertEquals(check count(db, `SELECT count(*)::int FROM messaging_outbox WHERE idempotency_key = ${key}`), 1);
+    test:assertEquals(check count(db, `SELECT count(*)::int FROM audit_log
                                        WHERE entity_id = ${c.id} AND actor_id = ${po}`), 1);
-    string status = check db->queryRow(`SELECT status FROM campaign.campaign_v WHERE id = CAST(${c.id} AS uuid)`);
+    string status = check db->queryRow(`SELECT status FROM campaign_v WHERE id = CAST(${c.id} AS uuid)`);
     test:assertEquals(status, "OPEN");
 
     // Same resource again: the unique key maps to the domain code.
@@ -135,7 +136,7 @@ function testCampaignRoundTripOutboxAndAudit() returns error? {
     assertCode(stale, types:ERR_VERSION_CONFLICT);
 
     campaign:Campaign archived = check campaign:archiveCampaign(repo, c.id, time:utcNow());
-    status = check db->queryRow(`SELECT status FROM campaign.campaign_v WHERE id = CAST(${archived.id} AS uuid)`);
+    status = check db->queryRow(`SELECT status FROM campaign_v WHERE id = CAST(${archived.id} AS uuid)`);
     test:assertEquals(status, "ARCHIVED");
     check db.close();
 }
@@ -152,10 +153,10 @@ function testFailedWriteRollsBackAggregateOutboxAndAudit() returns error? {
     error? result = (new campaign:PgCampaignRepository(db, poActor(po))).insert(bad,
             [campaign:campaignRegisteredEvent(bad, false)]);
     assertCheckViolation(result, "a tag that breaks the CHECK");
-    test:assertEquals(check count(db, `SELECT count(*)::int FROM campaign.campaign WHERE id = CAST(${bad.id} AS uuid)`), 0);
+    test:assertEquals(check count(db, `SELECT count(*)::int FROM campaign WHERE id = CAST(${bad.id} AS uuid)`), 0);
     string key = "CampaignRegistered:" + bad.id;
-    test:assertEquals(check count(db, `SELECT count(*)::int FROM messaging.outbox WHERE idempotency_key = ${key}`), 0);
-    test:assertEquals(check count(db, `SELECT count(*)::int FROM audit.audit_log WHERE entity_id = ${bad.id}`), 0);
+    test:assertEquals(check count(db, `SELECT count(*)::int FROM messaging_outbox WHERE idempotency_key = ${key}`), 0);
+    test:assertEquals(check count(db, `SELECT count(*)::int FROM audit_log WHERE entity_id = ${bad.id}`), 0);
     check db.close();
 }
 
@@ -191,7 +192,7 @@ function testConnectionWithEncryptedTokenAndReconnect() returns error? {
     connection:StoredToken moved = loaded.clone();
     moved.ownerId = "someone-else";
     test:assertTrue(connection:openToken(cipher, moved) is error);
-    test:assertEquals(check count(db, `SELECT count(*)::int FROM connection.provider_token
+    test:assertEquals(check count(db, `SELECT count(*)::int FROM connection_provider_token
                                        WHERE ciphertext = convert_to('plain-token-1', 'UTF8')`), 0, "never plaintext");
 
     // Reconnect: new token, old row deleted in the same transaction.
@@ -213,7 +214,7 @@ function testConnectionWithEncryptedTokenAndReconnect() returns error? {
     _ = check connection:removeConnection(repo, emp, time:utcNow());
     test:assertEquals(check connection:statusFromView(db, emp), connection:REMOVED);
     test:assertTrue(check tokens.find(connection:tokenRef(second)) is ());
-    test:assertEquals(check count(db, `SELECT count(*)::int FROM messaging.outbox
+    test:assertEquals(check count(db, `SELECT count(*)::int FROM messaging_outbox
                                        WHERE event_type = 'ConnectionRemoved' AND aggregate_id = ${emp}`), 1);
     test:assertEquals(c.version, 1);
     check db.close();
@@ -249,7 +250,7 @@ function testShareRequestRetryAndPublishByJobs() returns error? {
     check jobsRepo.update(failed, req.version, [sharing:repostFailedEvent(failed)]);
     // Backdate the first request as if it were 40 days old: the row can only be in this week's tile 7
     // window because the retry below queued it again now, not because of `requested_at`.
-    _ = check apiDb->execute(`UPDATE sharing.share_request SET requested_at = now() - interval '40 days'
+    _ = check apiDb->execute(`UPDATE sharing_share_request SET requested_at = now() - interval '40 days'
                               WHERE id = CAST(${req.id} AS uuid)`);
     time:Utc weekAgo = time:utcAddSeconds(time:utcNow(), -7d * 86400d);
     sharing:ShareHealth beforeRetry = check sharing:shareHealth(apiDb, weekAgo);
@@ -264,19 +265,19 @@ function testShareRequestRetryAndPublishByJobs() returns error? {
     sharing:PublishResult published = check sharing:markPublished(retried, "urn:li:share:" + uniq(), conn.memberUrn,
             types:newUuidV7(), time:utcNow());
     check jobsRepo.recordPublish(published, retried.version);
-    string status = check jobsDb->queryRow(`SELECT status FROM sharing.share_request_v WHERE id = CAST(${req.id} AS uuid)`);
+    string status = check jobsDb->queryRow(`SELECT status FROM sharing_share_request_v WHERE id = CAST(${req.id} AS uuid)`);
     test:assertEquals(status, "PUBLISHED");
     sharing:ShareRequest racedAfterPublish = check sharing:newShareRequest(snap, conn, {employeeId: emp, kind: types:REPOST},
             types:newUuidV7(), time:utcNow());
     assertCode(apiRepo.insert(racedAfterPublish, []), types:ERR_SHARE_ALREADY_PUBLISHED);
-    test:assertEquals(check count(jobsDb, `SELECT count(*)::int FROM sharing.share_request
+    test:assertEquals(check count(jobsDb, `SELECT count(*)::int FROM sharing_share_request
                                            WHERE id = CAST(${req.id} AS uuid) AND commentary IS NULL`), 1);
     string key = "EngagementRecorded:" + published.engagement.id;
-    test:assertEquals(check count(jobsDb, `SELECT count(*)::int FROM messaging.outbox WHERE idempotency_key = ${key}`), 1);
+    test:assertEquals(check count(jobsDb, `SELECT count(*)::int FROM messaging_outbox WHERE idempotency_key = ${key}`), 1);
     // Publishing twice is refused by the domain guard and the engagement keys.
     error? twice = jobsRepo.recordPublish(published, published.request.version);
     test:assertTrue(twice is error && store:isUniqueViolation(twice), "the engagement key refuses a second publish");
-    test:assertEquals(check count(jobsDb, `SELECT count(*)::int FROM messaging.outbox WHERE idempotency_key = ${key}`), 1,
+    test:assertEquals(check count(jobsDb, `SELECT count(*)::int FROM messaging_outbox WHERE idempotency_key = ${key}`), 1,
             "the refused second publish recorded nothing");
     check apiDb.close();
     check jobsDb.close();
@@ -299,13 +300,13 @@ function testExternalShareOneClaimPerUrlAndAmplifiedCheck() returns error? {
     assertCode(second, types:ERR_EVIDENCE_ALREADY_CLAIMED);
 
     // DB backstop (C4): amplified before approval breaks the CHECK.
-    sql:ExecutionResult|error early = db->execute(`UPDATE external_sharing.external_share SET amplified_at = now()
+    sql:ExecutionResult|error early = db->execute(`UPDATE external_sharing_external_share SET amplified_at = now()
                                                    WHERE id = CAST(${claim.id} AS uuid)`);
     assertCheckViolation(early, "amplified before approval breaks the CHECK");
 
     external_sharing:ExternalShare approved = check external_sharing:approveExternalShare(repo, claim.id, po, time:utcNow());
     _ = check external_sharing:amplifyExternalShare(repo, approved.id, po, time:utcNow());
-    string status = check db->queryRow(`SELECT status FROM external_sharing.external_share_v
+    string status = check db->queryRow(`SELECT status FROM external_sharing_external_share_v
                                         WHERE id = CAST(${claim.id} AS uuid)`);
     test:assertEquals(status, "AMPLIFIED");
     check db.close();
@@ -347,11 +348,11 @@ function testLedgerAppendUpdatesRecognitionInOneTransaction() returns error? {
     test:assertTrue(sa.rank < sb.rank);
     // The next better total on the shared board (other tests leave standings behind, so it isn't
     // necessarily `a`'s).
-    int nextBetter = check count(jobsDb, `SELECT min(total_points)::int FROM recognition.standing
+    int nextBetter = check count(jobsDb, `SELECT min(total_points)::int FROM recognition_standing
                                           WHERE period_key = 'ALL' AND total_points > ${sb.totalPoints}`);
     test:assertEquals(sb.pointsToNextRank, nextBetter - sb.totalPoints);
     test:assertTrue(sb.pointsToNextRank <= sa.totalPoints - sb.totalPoints);
-    int reposters = check count(jobsDb, `SELECT reposters FROM recognition.campaign_participation
+    int reposters = check count(jobsDb, `SELECT reposters FROM recognition_campaign_participation
                                          WHERE campaign_id = CAST(${campaignId} AS uuid)`);
     test:assertEquals(reposters, 2);
 
@@ -374,18 +375,16 @@ function testLedgerAppendUpdatesRecognitionInOneTransaction() returns error? {
     recognition:Standing? afterRev = check recognition:standingOf(apiDb, a);
     test:assertEquals(afterRev is () ? -1 : afterRev.totalPoints, 0);
     test:assertTrue(check recognition:standingVersion(apiDb) > versionBefore, "standing_version bumped");
-    reposters = check count(apiDb, `SELECT reposters FROM recognition.campaign_participation
+    reposters = check count(apiDb, `SELECT reposters FROM recognition_campaign_participation
                                     WHERE campaign_id = CAST(${campaignId} AS uuid)`);
     test:assertEquals(reposters, 1, "reversal takes the reposter back out");
 
-    // Settlement columns only; facts and PAID are refused.
+    // Settlement columns only; PAID is refused (a check constraint). There are no column grants any more (ADR-043),
+    // so the ledger's facts are protected by the code paths, not by the database.
     check apiLedger.updateSettlement(small.entry.reference, (), time:utcNow());
-    sql:ExecutionResult|error paid = apiDb->execute(`UPDATE scoring.points_ledger SET status = 'PAID', paid_at = now()
+    sql:ExecutionResult|error paid = apiDb->execute(`UPDATE scoring_points_ledger SET status = 'PAID', paid_at = now()
                                                     WHERE reference = ${small.entry.reference}`);
     test:assertTrue(paid is error, "no PAID in phase 1");
-    sql:ExecutionResult|error facts = apiDb->execute(`UPDATE scoring.points_ledger SET points = 99
-                                                     WHERE reference = ${small.entry.reference}`);
-    test:assertTrue(facts is error, "points are immutable (column grants)");
 
     // A full rebuild from the ledger gives the same totals.
     _ = check recognition:rebuild(jobsDb);
@@ -403,11 +402,7 @@ function testPartitionMaintenanceAsJobs() returns error? {
     store:MaintenanceResult _ = check store:runPartitionMaintenance(db);
     store:MaintenanceResult result = check store:runPartitionMaintenance(db);
     test:assertEquals(result.token_partitions_created, 0, "already 7 days ahead");
-    postgresql:Client apiDb = check api();
-    store:MaintenanceResult|error denied = store:runPartitionMaintenance(apiDb);
-    test:assertTrue(denied is error, "only amplify_jobs runs upkeep");
     check db.close();
-    check apiDb.close();
 }
 
 // A CHECK violation (SQLSTATE 23514) and nothing else: a dropped connection is an error too, and would pass a bare
@@ -451,7 +446,7 @@ function testPatchPostIdAndLinkInPostgres() returns error? {
     test:assertEquals(stored.resourceType, types:UGC_POST);
     test:assertEquals(stored.resourceUrl, "https://www.linkedin.com/feed/update/" + newUrn);
     test:assertEquals(stored.version, edited.version);
-    test:assertEquals(check count(db, `SELECT count(*)::int FROM audit.audit_log
+    test:assertEquals(check count(db, `SELECT count(*)::int FROM audit_log
             WHERE entity_id = ${c.id} AND action = 'CampaignUpdated' AND before->>'resourceUrn' = ${oldUrn}
               AND after->>'resourceUrn' = ${newUrn}`), 1);
     test:assertEquals(check repo.hasActivity(c.id, newUrn), false);
@@ -493,7 +488,7 @@ function testPatchPostIdFrozenByEachKindOfActivity() returns error? {
     // 2. engagement matched by the post id only (no campaign id on the row)
     campaign:Campaign withEngagement = check registerCampaign(db, po);
     string member = "urn:li:person:" + uniq();
-    _ = check db->execute(`INSERT INTO sharing.engagement (provider, provider_api, origin, target_resource_urn,
+    _ = check db->execute(`INSERT INTO sharing_engagement (provider, provider_api, origin, target_resource_urn,
             actor_member_urn, employee_id, action, occurred_at)
             VALUES ('linkedin', 'WEBHOOK', 'WEBHOOK', ${withEngagement.resourceUrn}, ${member}, ${emp}, 'REPOST', now())`);
     test:assertTrue(check repo.hasActivity(withEngagement.id, withEngagement.resourceUrn));
@@ -502,7 +497,7 @@ function testPatchPostIdFrozenByEachKindOfActivity() returns error? {
 
     // 3. external share matched by the post id only
     campaign:Campaign withClaim = check registerCampaign(db, po);
-    _ = check db->execute(`INSERT INTO external_sharing.external_share (employee_id, action, evidence_url,
+    _ = check db->execute(`INSERT INTO external_sharing_external_share (employee_id, action, evidence_url,
             evidence_url_submitted, evidence_host, provider, resource_urn, certified_at)
             VALUES (${emp}, 'OWN_POST', ${"https://medium.com/@it/" + uniq()}, 'https://medium.com/@it/x', 'medium.com',
                     'linkedin', ${withClaim.resourceUrn}, now())`);
@@ -524,7 +519,7 @@ function testPatchPostIdFrozenByEachKindOfActivity() returns error? {
     campaign:Campaign wantsNew = late.clone();
     wantsNew.resourceUrn = "urn:li:share:" + uniq();
     wantsNew.version = 2;
-    _ = check db->execute(`INSERT INTO sharing.engagement (provider, provider_api, origin, target_resource_urn,
+    _ = check db->execute(`INSERT INTO sharing_engagement (provider, provider_api, origin, target_resource_urn,
             actor_member_urn, employee_id, action, occurred_at)
             VALUES ('linkedin', 'WEBHOOK', 'WEBHOOK', ${late.resourceUrn}, ${member}, ${emp}, 'SHARE', now())`);
     assertCode(repo.update(wantsNew, 1), types:ERR_POST_HAS_ACTIVITY);

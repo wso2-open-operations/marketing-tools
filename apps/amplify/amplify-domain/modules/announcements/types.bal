@@ -16,14 +16,14 @@
 
 import ballerina/time;
 
-# Derived announcement status (`announcement.announcement_v`). Never stored.
+# Derived announcement status (`announcement_v`). Never stored.
 public enum AnnouncementStatus {
     QUEUED,
     SENT,
     FAILED
 }
 
-# Announcement aggregate (`announcement.announcement`): one Club card per campaign. PK = `campaignId`,
+# Announcement aggregate (`announcement`): one Club card per campaign. PK = `campaignId`,
 # so a campaign is announced exactly once.
 public type Announcement record {|
     # Campaign (PK)

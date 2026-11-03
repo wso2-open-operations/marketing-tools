@@ -15,7 +15,7 @@ flowchart LR
     SCH -->|"5: POST /runs, /maintenance/partitions<br/>no auth, Project network"| JOBS["amplify-jobs"]
     API -->|"5: POST /runs (shareNow, 3 s timeout)"| JOBS
     API -->|"4: OAuth code exchange, userinfo"| LI["LinkedIn"]
-    API -->|"7: outbox row, same transaction"| DB[("PostgreSQL<br/>messaging.outbox")]
+    API -->|"7: outbox row, same transaction"| DB[("PostgreSQL<br/>messaging_outbox")]
     JOBS -->|"7: claim SKIP LOCKED"| DB
     JOBS -->|"2: POST /internal/notifications<br/>client credentials · 202"| NV["Novera / po-agent"]
     NV -->|"DM card to every Novera user"| GC["Google Chat DMs"]
@@ -227,7 +227,7 @@ Code: [outbox.bal](../../amplify-domain/modules/store/outbox.bal), [events.bal](
 
 | # | Item | Verdict | Severity | Evidence and gap |
 |---|---|---|---|---|
-| 1 | Authentication | Pass | none | One database user per component. amplify_api and amplify_jobs hold the grants on `messaging.outbox`. I read the outbox grant, not every grant. |
+| 1 | Authentication | Pass | none | One database user per component. amplify_api and amplify_jobs hold the grants on `messaging_outbox`. I read the outbox grant, not every grant. |
 | 2 | Correlation ID | Pass | none | `correlation_id` is written by the producer. Jobs uses it or the run id and passes it to LinkedIn, Chat, Novera and the audit rows. |
 | 3 | Idempotency | Pass | none | `UNIQUE (idempotency_key)` with `ON CONFLICT DO NOTHING`. Keys are built from stable ids. Handlers re-read the aggregate before acting. Ledger references and the engagement key are the last line. |
 | 4 | Resolved identifiers | Pass | none | Events carry campaign, employee and share-request ids. Handlers re-read current state. |
@@ -244,7 +244,7 @@ Smaller: `FAILED` rows are never purged, and `DONE` rows are purged at 30 days. 
 
 | Where | What is stale |
 |---|---|
-| [ADR-009](../../architecture/decisions/ADR-009-people-data-from-one-wso2.md) | Says the UI enriches rows, the One WSO2 endpoint is "still to be found", and Amplify stores no people data. amplify-api now reads the directory itself (ADR-019, ADR-035) and keeps display name and email in `identity.employee`. |
+| [ADR-009](../../architecture/decisions/ADR-009-people-data-from-one-wso2.md) | Says the UI enriches rows, the One WSO2 endpoint is "still to be found", and Amplify stores no people data. amplify-api now reads the directory itself (ADR-019, ADR-035) and keeps display name and email in `identity_employee`. |
 | [ADR-019](../../architecture/decisions/ADR-019-leaderboard-team-visibility.md) | The status line still says it is waiting on the people-app change and a Choreo connection. |
 | [choreo-deploy C5](../runbooks/choreo-deploy.md) | "Left empty, My Team answers `UNAVAILABLE` and the rest works." Group boards, BU and house views and headcount now answer 503 without the directory. |
 | [operations §13](../runbooks/operations.md) and [resilience-targets](../runbooks/resilience-targets.md) | Cover My Team and the Team page only. No BU, house, headcount or dashboard rows. No Novera row. |

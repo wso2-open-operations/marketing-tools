@@ -40,6 +40,8 @@ configurations:
       value: ""
     - name: BAL_CONFIG_VAR_DBUSER
       value: ""
+    - name: BAL_CONFIG_VAR_DBSCHEMA
+      value: ""
     - name: BAL_CONFIG_VAR_DBPASSWORD
       valueFrom:
         secretRef:

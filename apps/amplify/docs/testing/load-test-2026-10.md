@@ -39,7 +39,7 @@ The proxy rate-limit half of the M11 load item isn't covered here: local Compose
 The first run (same data, same rate) gave p95 67 / 57 / 107 ms with p99 around 640 ms on all three endpoints. Three causes, all fixed in this milestone:
 
 1. **A WARN log with a full error stack on every leaderboard/team read.** With `rosterUrl` unset (D13 still open), `rosterStatus()` logged "Team roster unavailable" per request: 3,400 stack-trace log lines in three minutes. Now "not configured" is a known state, logged once at startup, and a real roster failure logs only the reason.
-2. **One settings query per request.** `loadSettings()` read `config.app_setting` every call. It now caches for `settingsCacheSeconds` (default 5 s; a save on the same replica drops the cache; other replicas see a change, kill switches included, within 5 s).
+2. **One settings query per request.** `loadSettings()` read `config_app_setting` every call. It now caches for `settingsCacheSeconds` (default 5 s; a save on the same replica drops the cache; other replicas see a change, kill switches included, within 5 s).
 3. **Two window functions over every standing for the company view.** `teamPage()` computed `dense_rank()` and `count(*) OVER ()` across all 1,000 rows. When there is no roster filter and no search, the team rank is the stored company rank, so the query now pages straight off `standing_rank_idx` (domain IT covers both paths).
 
 After (1) and (2), `/leaderboard` and `/me/points` dropped to p95 ~30 ms; the k6 warm-up was then lengthened from 10 s at 20 req/s to 30 s at the test rate, because the first measured seconds after a container start carried JIT warm-up.

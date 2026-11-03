@@ -40,7 +40,7 @@ public type EmployeeTotal record {|
     time:Utc? lastActivityAt;
 |};
 
-# One row of `recognition.standing`, ranks precomputed.
+# One row of `recognition_standing`, ranks precomputed.
 public type Standing record {|
     # `ALL`, `2026-10`, `2026-Q4`
     string periodKey;

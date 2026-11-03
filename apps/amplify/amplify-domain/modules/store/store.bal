@@ -37,6 +37,11 @@ public type DbConfig record {|
     string user;
     # Password (secret)
     string password;
+    # Schema that holds the tables, first on the `search_path` (then `public` for citext and pg_trgm). `()` =
+    # the server default
+    string? schema = ();
+    # `idle_in_transaction_session_timeout` in milliseconds, set with the schema (domain review H-3b)
+    int idleInTransactionTimeoutMs = 30000;
     # TLS mode. `VERIFY_FULL` (the default) checks the server certificate chain against `sslRootCert` and
     # the host name, as the deployment security checklist requires; `REQUIRE` encrypts without checking
     # who answers; `DISABLE` only for local Docker
@@ -65,8 +70,12 @@ public type DbConfig record {|
 #
 # + config - Settings
 # + return - The client, or an error
-public isolated function newClient(DbConfig config) returns postgresql:Client|sql:Error =>
-    new (host = config.host, username = config.user, password = config.password, database = config.database,
+public isolated function newClient(DbConfig config) returns postgresql:Client|sql:Error {
+    string|sql:Error database = databaseOf(config);
+    if database is sql:Error {
+        return database;
+    }
+    return new (host = config.host, username = config.user, password = config.password, database = database,
         port = config.port,
         options = {
             ssl: secureSocketOf(config),
@@ -81,6 +90,33 @@ public isolated function newClient(DbConfig config) returns postgresql:Client|sq
             connectionTimeout: config.poolAcquireTimeoutSeconds,
             validationTimeout: config.poolAcquireTimeoutSeconds < 2d ? config.poolAcquireTimeoutSeconds : 2
         });
+}
+
+# The database name with the JDBC `options` startup parameter appended, when a schema is configured:
+# `amplify?options=-c%20search_path%3D<schema>,public%20-c%20idle_in_transaction_session_timeout%3D30000`. The
+# server applies the settings before the first statement, on every pooled connection, so the tables resolve without
+# a schema name. The schema is a plain identifier (checked here); nothing else is spliced in.
+#
+# + config - Settings
+# + return - The database part of the JDBC URL, or an error for a schema that isn't a plain identifier
+public isolated function databaseOf(DbConfig config) returns string|sql:Error {
+    string? schema = types:trimToNil(config.schema);
+    if schema is () {
+        return config.database;
+    }
+    if !isPlainIdentifier(schema) {
+        return error sql:ApplicationError("dbSchema is not a plain identifier");
+    }
+    string options = string `-c search_path=${schema},public -c idle_in_transaction_session_timeout=${config.idleInTransactionTimeoutMs}`;
+    return string `${config.database}?options=${re ` `.replaceAll(re `=`.replaceAll(options, "%3D"), "%20")}`;
+}
+
+# Whether the text is a plain lower-case identifier (letters, digits, underscore; not starting with a digit).
+#
+# + value - Schema name
+# + return - True when safe to put in a startup option
+isolated function isPlainIdentifier(string value) returns boolean =>
+    re `[a-z_][a-z0-9_]{0,62}`.isFullMatch(value);
 
 # TLS settings for the driver: the mode, plus the CA file when the mode verifies the server.
 #
@@ -123,13 +159,13 @@ public isolated function isLocalHost(string host) returns boolean {
     return h == "localhost" || h.startsWith("127.") || h == "::1" || h == "[::1]" || !h.includes(".");
 }
 
-# Advisory lock key that serializes the re-rank of `recognition.standing` (one lock for the period
+# Advisory lock key that serializes the re-rank of `recognition_standing` (one lock for the period
 # `ALL`; distinct from the jobs run lock and the migrate lock).
 #
 # Lock order: two transaction-scoped advisory locks guard recognition writes, and they are always taken
 # in this order: (1) this app-level key `4242101`, taken here by `lockRecognition`, then (2) the SQL-level
-# key `1634561133`, taken inside `recognition.apply_ledger_entry` / `recognition.rebuild` /
-# `recognition.rerank` (V012; documented again on those functions by V013). Call `lockRecognition` before
+# key `1634561133`, taken inside `recognition_apply_ledger_entry` / `recognition_rebuild` /
+# `recognition_rerank` (V012; documented again on those functions by V013). Call `lockRecognition` before
 # any of those functions in the same transaction, never after: the reverse order can deadlock against a
 # writer that follows the rule. `tests/lock_order_test.bal` fails if a call site breaks it, and the
 # database IT checks that no SQL function takes `4242101`. Keep both locks.
@@ -148,7 +184,7 @@ public const int RECOGNITION_IDLE_TIMEOUT_MS = 5000;
 public const decimal RECOGNITION_LOCK_WAIT_SECONDS = 2;
 
 # Takes the transaction-scoped recognition lock. Every writer that re-ranks a period
-# (`recognition.apply_ledger_entry`, `recognition.rebuild`) takes it first, so two ledger appends can't
+# (`recognition_apply_ledger_entry`, `recognition_rebuild`) takes it first, so two ledger appends can't
 # deadlock in the re-rank UPDATE or store ranks computed without each other's row. Released at commit
 # or rollback.
 #

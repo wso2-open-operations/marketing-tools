@@ -17,8 +17,6 @@
 -- S007: leaderboard.top_scope (ADR-037): what the Celebrate top three and My position cover, WEEK or ALL.
 -- Existing values are never overwritten: an admin's change survives a re-seed.
 
-SET LOCAL ROLE amplify_migrate;
-
-INSERT INTO config.app_setting (key, value)
+INSERT INTO config_app_setting (key, value)
 VALUES ('leaderboard.top_scope', '"WEEK"')
 ON CONFLICT (key) DO NOTHING;

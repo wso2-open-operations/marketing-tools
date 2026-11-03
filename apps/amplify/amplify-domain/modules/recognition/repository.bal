@@ -47,7 +47,7 @@ public isolated function topStandings(postgresql:Client db, string periodKey = P
     stream<StandingRow, error?> rows = db->query(`
         SELECT period_key, employee_id, display_name, email::text AS email, total_points, rank, previous_rank,
                points_to_next_rank, points_to_top_n, last_activity_at
-        FROM recognition.standing
+        FROM recognition_standing
         WHERE period_key = ${periodKey} AND rank <= ${topN} AND total_points > 0
         ORDER BY rank, display_name, employee_id`);
     return from StandingRow r in rows
@@ -65,7 +65,7 @@ public isolated function standingOf(postgresql:Client db, string employeeId, str
     StandingRow|error row = db->queryRow(`
         SELECT period_key, employee_id, display_name, email::text AS email, total_points, rank, previous_rank,
                points_to_next_rank, points_to_top_n, last_activity_at
-        FROM recognition.standing WHERE period_key = ${periodKey} AND employee_id = ${employeeId}`);
+        FROM recognition_standing WHERE period_key = ${periodKey} AND employee_id = ${employeeId}`);
     if row is error {
         return store:isNoRows(row) ? () : row;
     }
@@ -83,7 +83,7 @@ public isolated function pointsByEmail(postgresql:Client db, string periodKey = 
         returns EmailPoints[]|error {
     stream<record {|string email; int total_points;|}, error?> rows = db->query(`
         SELECT lower(email::text) AS email, total_points
-        FROM recognition.standing WHERE period_key = ${periodKey} AND email IS NOT NULL`);
+        FROM recognition_standing WHERE period_key = ${periodKey} AND email IS NOT NULL`);
     return from var r in rows
         select {email: r.email, totalPoints: r.total_points};
 }
@@ -94,14 +94,14 @@ public isolated function pointsByEmail(postgresql:Client db, string periodKey = 
 # + periodKey - Period
 # + return - Version, 0 before the first award, or an error
 public isolated function standingVersion(postgresql:Client db, string periodKey = PERIOD_ALL) returns int|error {
-    int|error version = db->queryRow(`SELECT version FROM recognition.standing_version WHERE period_key = ${periodKey}`);
+    int|error version = db->queryRow(`SELECT version FROM recognition_standing_version WHERE period_key = ${periodKey}`);
     if version is error {
         return store:isNoRows(version) ? 0 : version;
     }
     return version;
 }
 
-# Recomputes every read model from the ledger (`recognition.rebuild`, amplify_jobs only).
+# Recomputes every read model from the ledger (`recognition_rebuild`, amplify_jobs only).
 #
 # + db - Client (`amplify_jobs`)
 # + topN - `leaderboard.top_n`
@@ -113,9 +113,9 @@ isolated function rebuildTx(postgresql:Client db, int topN) returns int|error {
     int version = 0;
     transaction {
         // Same lock as the ledger append (R-01): a rebuild never interleaves with a re-rank. Lock order:
-        // 4242101 here first, then recognition.rebuild takes 1634561133. Inside the gate: 2 s poll cap.
+        // 4242101 here first, then recognition_rebuild takes 1634561133. Inside the gate: 2 s poll cap.
         check store:lockRecognition(db);
-        version = check db->queryRow(`SELECT recognition.rebuild(CAST(${topN} AS int))`);
+        version = check db->queryRow(`SELECT recognition_rebuild(CAST(${topN} AS int))`);
         check commit;
     }
     return version;
