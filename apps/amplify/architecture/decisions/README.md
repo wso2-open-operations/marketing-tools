@@ -46,6 +46,9 @@ One file per decision, dated, short format (Status, Date, Context, Decision, Con
 | [ADR-038](ADR-038-group-based-access-by-capability.md) | Group-based access by capability; Asgardeo groups per capability from configuration, `GET /me` returns grants | Accepted |
 | [ADR-039](ADR-039-internal-key-for-back-office-components.md) | An internal key (full access) and a scheduler key (`/runs` and partition maintenance only) protect amplify-jobs | Accepted (amended 2026-11-01) |
 | [ADR-040](ADR-040-erasure-leaver-sweep-and-token-grants.md) | One audited erase function, a leaver sweep, narrower token grants, outbox alerting | Accepted |
+| [ADR-041](ADR-041-recreated-accounts-alias-the-first-employee-id.md) | A re-created Asgardeo account is an alias of the person's first employee id | Accepted (recommended default) |
+| [ADR-042](ADR-042-single-login-single-schema-group-roles.md) | One login user, one schema, group roles for access | Superseded by ADR-043 |
+| [ADR-043](ADR-043-single-login-single-schema-no-roles.md) | One login user, one schema, no database roles; V021 makes the ledger and audit log immutable | Accepted |
 | [ADR-044](ADR-044-postgresql-15-or-later.md) | PostgreSQL 15 or later; V001 installs `uuidv7()` before 18; audit "before" values without `RETURNING old.*` | Accepted |
 | [ADR-045](ADR-045-hr-entity-graphql-for-the-directory.md) | The HR Entity GraphQL service is the employee directory (paged, minimal fields); house and house id from hr_entity 1.1.1 behind `hrEntityIncludeHouse` (off by default) | Accepted |
 | [ADR-046](ADR-046-house-cache-and-house-service.md) | Houses are held in an in-memory cache (30-day expiry) in amplify-api next to the directory index, loaded by a house service; ids, names and assignments from the HR Entity directory read, image URL source undecided, not wired yet; never stored in Amplify's database | Proposed |
