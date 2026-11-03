@@ -24,11 +24,13 @@
 FROM ballerina/ballerina:2201.13.3@sha256:7cba1a3bcb3314e2444aa6823d332e79882437df512de71037c4b0607d39e019 AS build
 WORKDIR /home/ballerina
 COPY --chown=ballerina amplify-common amplify-common
-RUN cd amplify-common && bal pack && bal push --repository=local
 COPY --chown=ballerina amplify-domain amplify-domain
-RUN cd amplify-domain && bal pack && bal push --repository=local
 COPY --chown=ballerina amplify-api amplify-api
-RUN cd amplify-api && bal build
+# One RUN: Choreo's builder doesn't keep ~/.ballerina from one RUN step to the next, so a package pushed to the
+# local repository in one step is gone in the next ("Dependency version ... cannot be found in the local repository").
+RUN cd amplify-common && bal pack && bal push --repository=local \
+    && cd ../amplify-domain && bal pack && bal push --repository=local \
+    && cd ../amplify-api && bal build
 
 FROM eclipse-temurin:21-jre-alpine@sha256:51ab5e3302e7141ce665ca3ea85e8b5cd648eafbc3c0c90dd79d6537684e4555
 RUN addgroup -g 10014 choreo && adduser -D -H -u 10014 -G choreo choreouser
