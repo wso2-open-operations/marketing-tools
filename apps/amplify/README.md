@@ -73,7 +73,7 @@ make down    # stop and REMOVE volumes
 |---|---|---|
 | amplify-api | `127.0.0.1:9090` | Published directly (no gateway). Call it with a dev JWT: `curl -H "x-jwt-assertion: $(local/dev-jwt/mint-dev-jwt.sh token emp-1 ada@example.com amplify_po)" localhost:9090/me` (ADR-023, `environment=local` only) |
 | mock-linkedin | `127.0.0.1:19091` (www/OAuth only) | The browser follows the authorization redirect here; api port 9090 stays internal. One mock member signs in every time |
-| people-stub | `127.0.0.1:19092` | people-app directory stub (`GET /employees/basic-info`) for team rosters and One WSO2 photos/names. `make env` (and so `make up`) creates `local/people-stub/directory.json` from the example the first time (the real file is gitignored, so it never gets committed); edit it to add yourself. ThunderID users are keyed `<sub>@example.com` (the dev proxy's fallback when the token has no email) |
+| people-stub | `127.0.0.1:19092` | people directory stub (HR Entity `POST /graphql` for team rosters; `GET /employees/basic-info` for One WSO2 photos/names). `make env` (and so `make up`) creates `local/people-stub/directory.json` from the example the first time (the real file is gitignored, so it never gets committed); edit it to add yourself. ThunderID users are keyed `<sub>@example.com` (the dev proxy's fallback when the token has no email) |
 | postgres, amplify-db-migrate, amplify-jobs, scheduler, scheduler-db, chat-stub | none | Compose network only. Scheduler UI: `docker compose --env-file local/.env exec amplify-api wget -qO- http://scheduler:8080/jobs` |
 | apim (`make up PROFILE=apim`) | `127.0.0.1:9443`, `8243` | Optional WSO2 API Manager 4.7.0. **Pending the non-prod Asgardeo org** (key manager); steps in `compose.yaml`. Until then the default profile is the supported one |
 
@@ -96,12 +96,13 @@ Every setting is a Ballerina `configurable`, set through `BAL_CONFIG_VAR_<NAME>`
 | `JOBSURL`, `SCHEDULERJOBSURL` | ✓ | | | | `http://amplify-jobs:9091` (Choreo: jobs connection `ServiceURL`) |
 | `SCHEDULERURL` | ✓ | | | | `http://scheduler:8080` (Choreo: scheduler connection) |
 | `MINRUNINTERVALSECONDS`, `RECONCILEDELAYSECONDS` | ✓ | | | | 10, 5 (local only; defaults 60, 15) |
-| `PEOPLEDIRECTORYURL` | ✓ | | | | `http://people-stub:9096/employees/basic-info` (Choreo: unset until D13's service credential, `teamStatus: UNAVAILABLE`). people-app `GET /employees/basic-info`; directory results (teams, names, houses) cached 24 hours |
+| `HRENTITYBASEURL` | ✓ | ✓ | | | `http://people-stub:9096/graphql` (Choreo: unset until the HR Entity client is approved, `teamStatus: UNAVAILABLE`). HR Entity GraphQL `employees` query, paged; directory results (teams, names) cached 24 hours. House is not read yet |
 | `CAMPAIGNLINKORIGINS` | ✓ | | | | `https://www.linkedin.com,https://linkedin.com,http://localhost:19091` (Choreo prod: unset = LinkedIn only; dev may add the mock's public www URL). Origins a campaign's post link may use |
 | `ROSTERCACHESECONDS` | ✓ | | | | unset (default 86400 = 24 hours). TTL of the directory results (teams, names, houses): how long a team move or new hire takes to show without a restart. Only a successful read is kept; a failed refresh keeps serving the last result and asks again on the next call |
 | `HEADCOUNTCACHESECONDS` | ✓ | | | | unset (default 86400 = 24 hours). How long the employee count ("of N") reuses one directory read |
 | `SCORECARDTARGETCONNECTEDPCT`, `SCORECARDMAXEXPIREDPCT`, `SCORECARDTARGETSHARESUCCESSPCT`, `SCORECARDTARGETPRIORITYREACHPCT`, `SCORECARDTARGETACTIVE30D`, `SCORECARDTARGETREPOSTSPERMONTH` | ✓ | | | | unset (defaults 25, 5, 98, 25, 100, 600). The scorecard lines; local `.env` names are `SCORECARD_TARGET_CONNECTED_PCT` etc. |
-| `PEOPLEDIRECTORYTOKENURL`, `PEOPLEDIRECTORYCLIENTID`, `PEOPLEDIRECTORYCLIENTSECRET` | ✓ | | | | unset. OAuth2 client credentials for the people-app API (Choreo connection) |
+| `HRENTITYTOKENURL`, `HRENTITYCLIENTID`, `HRENTITYCLIENTSECRET` | ✓ | ✓ | | ✓ (secret) | unset. OAuth2 client credentials for the HR Entity service; same shape as leave-app's `oauthConfig` |
+| `HRENTITYPAGESIZE`, `HRENTITYSTATUSES` | ✓ | ✓ | | | unset (defaults 1000, `["Active","Marked leaver"]`) |
 | `LINKEDINCLIENTID` | ✓ | ✓ | | | `amplify-local` (mock) |
 | `LINKEDINCLIENTSECRET` | ✓ | | | ✓ | random, shared with the mock |
 | `LINKEDINREDIRECTURI` | ✓ | | | | `http://localhost:3000/amplify/connect/callback` |

@@ -10,7 +10,7 @@ Four repos ship for phase 1. Each step needs the ones above it.
 
 | # | Repo | What | Why it goes here |
 |---|---|---|---|
-| 1 | people-ops-suite | `people-app`: service-client access to `GET /employees/basic-info`, client id in `directoryClientIds` | Backend team rosters read it (C7). Without it My Team answers `UNAVAILABLE` and the rest works |
+| 1 | People Operations | HR Entity GraphQL: a client for Amplify (ADR-045) | Backend team rosters read it (C7). Without it My Team answers `UNAVAILABLE` and the rest works |
 | 1 | wso2-digital-agents | `po-agent` (Novera): optional `imageUrl` and button on `POST /internal/notifications` | Amplify's Novera client-credentials application must be subscribed to its API, and the rich card needs the change live |
 | 2 | marketing-tools | `apps/amplify`: sections B to E below | Needs 1 for rosters and Novera cards |
 | 3 | one-wso2 | Amplify UI (`webapp/src/features/amplify`) | Calls the API proxy from step 2 and hosts the LinkedIn callback page |
@@ -51,14 +51,12 @@ After each build, confirm the endpoint Choreo shows matches the descriptor (name
 2. **C2 Amplify Jobs** (Project visibility only). `INTERNALAPIKEY` (full access) and `SCHEDULERAPIKEY` (only `POST /runs` and `POST /maintenance/partitions`): each a secret of at least 32 characters (`openssl rand -hex 24`), **different values**, each the **same value** on Amplify Backend (C5) and here, one pair per environment (ADR-039). Without both Jobs does not start; the Backend needs the internal key when `JOBSURL` is set and the scheduler key when `SCHEDULERURL` is set. DB: user `amplify_jobs` + its password. `TOKENKEYS` (`keyId:base64Key`, `openssl rand -base64 32`, one per environment, never shared dev↔prod) + `TOKENCURRENTKEYID`. Chat: `CHATWEBHOOKURL` secret (dev = test space, prod = WSO2 Club; see `google-chat-webhook.md`), `CHATSPACE` (`dev-test` / `club`), `CHATCARDAVATARURL` and `CHATDEFAULTIMAGEURL` (both optional; the default image is a public HTTPS PNG/JPEG pinned to a commit, see `google-chat-webhook.md` section C), `SHAREPAGEBASEURL` (the One WSO2 Celebrate page, e.g. `https://one.wso2.com/amplify/celebrate`; the card button adds `?share=<campaignId>`). LinkedIn: dev = LinkedIn Mock URLs + mock client id; prod = `https://api.linkedin.com`, `https://www.linkedin.com` + prod app client id. **Never** set `CHATALLOWINSECUREHTTP`.
 3. **C3 Amplify Scheduler** (Project visibility only, no auth upstream, never published, never behind the proxy). Secret `DSN` = `postgres://<user>:<pw>@<host>:<port>/scheduler?sslmode=require` (B3).
 4. **C4 Connections from Amplify Backend.** Backend > Connections > create `amplify-jobs` (to Amplify Jobs, Project) and `amplify-scheduler` (to Amplify Scheduler, Project). Open each connection's developer guide and copy its `resourceRef` into `apps/amplify/.choreo/component.yaml` (marketing-tools repo) (replace `REPLACE_WITH_ID`), commit, push. Both `BAL_CONFIG_VAR_JOBSURL` and `BAL_CONFIG_VAR_SCHEDULERJOBSURL` read the jobs connection's `ServiceURL`.
-5. **C5 Amplify Backend** (endpoint `Project`, schema `amplify-api/openapi.yaml`). `ENVIRONMENT` = `dev` or `prod` (**never `local`**; that and `DEVLOCALJWTENABLED` stay unset, ADR-023). `INTERNALAPIKEY` = the same secret as Jobs (C2); the Backend sends it on its own calls to Jobs. `SCHEDULERAPIKEY` = the scheduler secret, the same as Jobs; the Backend sets it (not the internal key) as a header on the jobs it registers with the scheduler (ADR-039). `GATEWAYJWKSURL` / `GATEWAYISSUER` / `GATEWAYAUDIENCES` from the Choreo gateway's backend JWT (identity-setup runbook). DB user `amplify_api`. LinkedIn client id/secret (secret), redirect URI = the One WSO2 callback page for that environment. Same `TOKENKEYS` as Jobs in that environment. Team rosters: `PEOPLEDIRECTORYURL`, `PEOPLEDIRECTORYTOKENURL`, `PEOPLEDIRECTORYCLIENTID` and `PEOPLEDIRECTORYCLIENTSECRET` (secret) from the people-app connection (C7). Left empty, My Team answers `UNAVAILABLE` and the rest works.
+5. **C5 Amplify Backend** (endpoint `Project`, schema `amplify-api/openapi.yaml`). `ENVIRONMENT` = `dev` or `prod` (**never `local`**; that and `DEVLOCALJWTENABLED` stay unset, ADR-023). `INTERNALAPIKEY` = the same secret as Jobs (C2); the Backend sends it on its own calls to Jobs. `SCHEDULERAPIKEY` = the scheduler secret, the same as Jobs; the Backend sets it (not the internal key) as a header on the jobs it registers with the scheduler (ADR-039). `GATEWAYJWKSURL` / `GATEWAYISSUER` / `GATEWAYAUDIENCES` from the Choreo gateway's backend JWT (identity-setup runbook). DB user `amplify_api`. LinkedIn client id/secret (secret), redirect URI = the One WSO2 callback page for that environment. Same `TOKENKEYS` as Jobs in that environment. Team rosters: `HRENTITYBASEURL`, `HRENTITYTOKENURL`, `HRENTITYCLIENTID` and `HRENTITYCLIENTSECRET` (secret) from the HR Entity client (C7). Left empty, My Team answers `UNAVAILABLE` and the rest works.
 6. **C6 LinkedIn Mock** (dev only; never promote to prod). Endpoints: api `Project`, www `Public` (the browser follows the OAuth redirect). `CLIENTID`/`CLIENTSECRET` = made-up values matching Backend/Jobs in dev, `WWWBASEURL` = the www endpoint's public URL, `BAL_CONFIG_DATA` = `redirectUris = ["<dev One WSO2 callback>"]`. In dev, Backend `LINKEDINAUTHBASEURL` = the mock's **public** www URL (the authorization URL is shown to the browser).
 
-7. **C7 People directory connection** (team rosters, ADR-019). Needs the people-app service-client change merged and deployed first (people-ops-suite PR).
-   1. Amplify Backend > Connections > create a connection to the **people-app** API (another project, so Organization visibility). It issues OAuth2 client credentials; note the client id, secret and token URL.
-   2. Call people-app through it once with those credentials and decode the `x-jwt-assertion` people-app receives (people-app logs, or a temporary echo). **Confirm two claims:** which one carries the client id (people-app default `azp`), and which one marks the token as issued to an application, with its value (default `aut` = `APPLICATION`). If they differ, people-app's `clientIdClaim`, `applicationClaim` and `applicationValue` must change to match (threat model AMP-R5).
-   3. People-app team, per environment: add the client id to `[people.authorization.serviceClients] directoryClientIds` and redeploy people-app. Only `GET /employees/basic-info` opens to it.
-   4. Set C5's `PEOPLEDIRECTORYURL` (the connection's service URL + `/employees/basic-info`), `PEOPLEDIRECTORYTOKENURL`, `PEOPLEDIRECTORYCLIENTID` and `PEOPLEDIRECTORYCLIENTSECRET` (secret). Redeploy the Backend.
+7. **C7 HR Entity access** (team rosters and the leaver sweep, ADR-045). No people-app change is needed.
+   1. People Operations issues Amplify its own client for the **HR Entity GraphQL service** (ask for read-only on `employees` and, if the service can scope it, only `workEmail`, `firstName`, `lastName`, `businessUnit` and `team`). Note the GraphQL URL, the token URL, the client id and the secret.
+   2. Set C5's `HRENTITYBASEURL`, `HRENTITYTOKENURL`, `HRENTITYCLIENTID` and `HRENTITYCLIENTSECRET` (secret), and the same four on the Jobs component (the leaver sweep). Redeploy both.
    5. Check: `GET /leaderboard` as an employee shows `teamStatus: OK` and their sub-team. A 500 from people-app means the client id isn't listed or the claim is wrong; a 403 means the route isn't the directory.
 
 ## D. API Proxy (console only)
@@ -114,10 +112,10 @@ Same names in two components (`DBHOST`, `DBPORT`, `DBNAME`, `DBUSER`, `DBPASSWOR
 | `SCORECARDTARGETPRIORITYREACHPCT` | cfg | O | `25` | Leave empty (default 25) |
 | `SCORECARDTARGETACTIVE30D` | cfg | O | `100` | Leave empty (default 100) |
 | `SCORECARDTARGETREPOSTSPERMONTH` | cfg | O | `600` | Leave empty (default 600) |
-| `PEOPLEDIRECTORYURL` | cfg | O | | TBD, from the people-app connection (C7) + `/employees/basic-info` |
-| `PEOPLEDIRECTORYTOKENURL` | cfg | O | | TBD (C7) |
-| `PEOPLEDIRECTORYCLIENTID` | cfg | O | | TBD (C7) |
-| `PEOPLEDIRECTORYCLIENTSECRET` | secret | O | | TBD (C7) |
+| `HRENTITYBASEURL` | cfg | O | | TBD, the HR Entity GraphQL URL (C7) |
+| `HRENTITYTOKENURL` | cfg | O | | TBD (C7) |
+| `HRENTITYCLIENTID` | cfg | O | | TBD (C7) |
+| `HRENTITYCLIENTSECRET` | secret | O | | TBD (C7) |
 | `LINKEDINCLIENTID` | cfg | R | `amplify-local` (mock) | TBD, from the LinkedIn app owner |
 | `LINKEDINCLIENTSECRET` | secret | R | | TBD, from the LinkedIn app owner |
 | `LINKEDINREDIRECTURI` | cfg | R | `http://localhost:3000/amplify/connect/callback` | TBD, the prod One WSO2 callback page |
@@ -169,10 +167,10 @@ Same names in two components (`DBHOST`, `DBPORT`, `DBNAME`, `DBUSER`, `DBPASSWOR
 | `INTERNALAPIKEY` | secret | R | | Ops-generated, at least 32 characters, the same value as the Backend (C5) |
 | `SCHEDULERAPIKEY` | secret | R | | Ops-generated, at least 32 characters, different from the internal key; accepted only for `POST /runs` and `POST /maintenance/partitions`; the same value as the Backend |
 | `LEAVERSWEEPMODE` | cfg | O | `OFF` | `OFF`, `DRY_RUN` or `ERASE`. Start with `DRY_RUN` (ADR-040) |
-| `PEOPLEDIRECTORYURL` | cfg | O | | People directory URL for the leaver sweep, the full `GET .../employees/basic-info` |
-| `PEOPLEDIRECTORYTOKENURL` | cfg | O | | People directory OAuth token URL |
-| `PEOPLEDIRECTORYCLIENTID` | cfg | O | | People directory client id |
-| `PEOPLEDIRECTORYCLIENTSECRET` | secret | O | | People directory client secret |
+| `HRENTITYBASEURL` | cfg | O | | HR Entity GraphQL URL for the leaver sweep |
+| `HRENTITYTOKENURL` | cfg | O | | HR Entity OAuth token URL |
+| `HRENTITYCLIENTID` | cfg | O | | HR Entity client id |
+| `HRENTITYCLIENTSECRET` | secret | O | | HR Entity client secret |
 
 ### G3. Amplify Scheduler
 

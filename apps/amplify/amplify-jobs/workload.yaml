@@ -50,17 +50,17 @@ configurations:
           key: BAL_CONFIG_VAR_SCHEDULERAPIKEY
     - name: BAL_CONFIG_VAR_LEAVERSWEEPMODE
       value: "OFF"
-    - name: BAL_CONFIG_VAR_PEOPLEDIRECTORYURL
+    - name: BAL_CONFIG_VAR_HRENTITYBASEURL
       value: ""
-    - name: BAL_CONFIG_VAR_PEOPLEDIRECTORYTOKENURL
+    - name: BAL_CONFIG_VAR_HRENTITYTOKENURL
       value: ""
-    - name: BAL_CONFIG_VAR_PEOPLEDIRECTORYCLIENTID
+    - name: BAL_CONFIG_VAR_HRENTITYCLIENTID
       value: ""
-    - name: BAL_CONFIG_VAR_PEOPLEDIRECTORYCLIENTSECRET
+    - name: BAL_CONFIG_VAR_HRENTITYCLIENTSECRET
       valueFrom:
         secretRef:
           name: amplify-jobs-secrets
-          key: BAL_CONFIG_VAR_PEOPLEDIRECTORYCLIENTSECRET
+          key: BAL_CONFIG_VAR_HRENTITYCLIENTSECRET
     - name: BAL_CONFIG_VAR_TOKENKEYS
       valueFrom:
         secretRef:
