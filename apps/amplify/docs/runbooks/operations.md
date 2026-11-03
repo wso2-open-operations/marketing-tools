@@ -201,6 +201,7 @@ My Team and the Team page's team scope come from the HR Entity GraphQL service (
   2. `People directory answered 401` or `403`: the HR Entity doesn't accept Amplify's client. Check the client id, secret and token URL with People Operations.
   3. `People directory answered with GraphQL errors`: the query asks for a field the service doesn't offer, or the client lacks scope for one. The log doesn't carry the service's message (it can name people); ask People Operations for the service log.
   4. `/ready` shows the `roster` breaker `OPEN`: the HR Entity or the gateway is down. It closes by itself after 30 s once they're back.
+- **A request is slow once, then fast.** The HR Entity is down: the first failed read retries (about 21 s at the defaults, `HRENTITYRETRY*`), then the breaker opens and the next calls fail at once for 30 s. Lower `HRENTITYRETRYCOUNT` to shorten it.
 - **A refresh fails after a good load.** Amplify keeps serving the old index and logs `People directory refresh failed; using the cached teams`. Nothing to do unless it lasts; teams just stop updating.
 - **Rotating the client secret.** New secret for the HR Entity client, update `HRENTITYCLIENTSECRET` (Backend and Jobs), redeploy both.
 

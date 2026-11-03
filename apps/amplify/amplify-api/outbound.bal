@@ -92,6 +92,15 @@ configurable string hrEntityTokenUrl = "";
 configurable string hrEntityClientId = "";
 # HR Entity client secret (Choreo secret).
 configurable string hrEntityClientSecret = "";
+# Retries after a failed HR Entity call (connection error, or a 500, 502, 503 or 504 answer). The same defaults as the
+# other apps that read the HR Entity (`retryConfig`: count 3, interval 3.0, backOffFactor 2.0, maxWaitInterval 20.0).
+configurable int hrEntityRetryCount = 3;
+# Seconds before the first retry.
+configurable decimal hrEntityRetryInterval = 3.0;
+# Each retry waits this many times longer than the one before.
+configurable float hrEntityRetryBackOffFactor = 2.0;
+# Longest wait between two retries, seconds.
+configurable decimal hrEntityRetryMaxWaitInterval = 20.0;
 # Rows asked for per page. The service answers a page at a time, so the whole company takes several calls.
 configurable int hrEntityPageSize = 1000;
 # Employee statuses the directory lists. `Marked leaver` stays in until the person is `Left`: they still work here.
@@ -106,7 +115,7 @@ configurable decimal rosterCacheSeconds = 86400;
 configurable decimal headcountCacheSeconds = 86400;
 
 final http:Client? peopleDirectoryClient = check newBreakerClient(hrEntityBaseUrl, hrEntityTimeoutSeconds,
-        hrEntityAuth());
+        hrEntityAuth(), hrEntityRetry());
 
 // ---- LinkedIn (S2) ------------------------------------------------------------------------------------
 
@@ -148,8 +157,8 @@ final linkedin:ProviderAdapter? linkedInAdapter = check newLinkedInAdapter();
 final crypto:TokenCipher? tokenCipher = check newTokenCipher();
 final linkedin:IdTokenValidator? idTokenValidator = check newIdTokenValidator();
 
-isolated function newBreakerClient(string url, decimal timeout, http:ClientAuthConfig? auth = ())
-        returns http:Client?|error {
+isolated function newBreakerClient(string url, decimal timeout, http:ClientAuthConfig? auth = (),
+        http:RetryConfig? retryCfg = ()) returns http:Client?|error {
     if url == "" {
         return ();
     }
@@ -165,8 +174,19 @@ isolated function newBreakerClient(string url, decimal timeout, http:ClientAuthC
     if auth is http:ClientAuthConfig {
         config.auth = auth;
     }
+    if retryCfg is http:RetryConfig {
+        config.retryConfig = retryCfg;
+    }
     return check new (url, config);
 }
+
+isolated function hrEntityRetry() returns http:RetryConfig => {
+    count: hrEntityRetryCount,
+    interval: hrEntityRetryInterval,
+    backOffFactor: hrEntityRetryBackOffFactor,
+    maxWaitInterval: hrEntityRetryMaxWaitInterval,
+    statusCodes: [500, 502, 503, 504]
+};
 
 isolated function hrEntityAuth() returns http:OAuth2ClientCredentialsGrantConfig? {
     if hrEntityTokenUrl == "" {

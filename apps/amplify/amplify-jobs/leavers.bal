@@ -63,6 +63,15 @@ configurable string hrEntityTokenUrl = "";
 configurable string hrEntityClientId = "";
 # HR Entity client secret (Choreo secret).
 configurable string hrEntityClientSecret = "";
+# Retries after a failed HR Entity call (connection error, or a 500, 502, 503 or 504 answer); the same settings and
+# defaults as amplify-api and the other apps that read the HR Entity.
+configurable int hrEntityRetryCount = 3;
+# Seconds before the first retry.
+configurable decimal hrEntityRetryInterval = 3.0;
+# Each retry waits this many times longer than the one before.
+configurable float hrEntityRetryBackOffFactor = 2.0;
+# Longest wait between two retries, seconds.
+configurable decimal hrEntityRetryMaxWaitInterval = 20.0;
 # Rows asked for per page.
 configurable int hrEntityPageSize = 1000;
 # Employee statuses the directory lists. `Marked leaver` stays in until the person is `Left`.
@@ -231,7 +240,16 @@ isolated function newDirectoryClient() returns http:Client?|error {
     if hrEntityBaseUrl.trim() == "" {
         return ();
     }
-    http:ClientConfiguration config = {timeout: hrEntityTimeoutSeconds};
+    http:ClientConfiguration config = {
+        timeout: hrEntityTimeoutSeconds,
+        retryConfig: {
+            count: hrEntityRetryCount,
+            interval: hrEntityRetryInterval,
+            backOffFactor: hrEntityRetryBackOffFactor,
+            maxWaitInterval: hrEntityRetryMaxWaitInterval,
+            statusCodes: [500, 502, 503, 504]
+        }
+    };
     if hrEntityTokenUrl.trim() != "" {
         config.auth = {tokenUrl: hrEntityTokenUrl, clientId: hrEntityClientId, clientSecret: hrEntityClientSecret};
     }

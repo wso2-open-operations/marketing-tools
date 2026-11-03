@@ -21,12 +21,19 @@ Entity GraphQL service is what service-to-service callers use for this.
   never requested.
 - **Statuses:** `hrEntityStatuses`, default `Active` and `Marked leaver`. A person who has resigned still works here
   until their status is `Left`, so they stay on rosters and out of the sweep.
+- **Retries** use the other HR Entity apps' settings and defaults: `count` 3, `interval` 3.0 s, `backOffFactor` 2.0, `maxWaitInterval` 20 s
+  (`hrEntityRetryCount`, `hrEntityRetryInterval`, `hrEntityRetryBackOffFactor`, `hrEntityRetryMaxWaitInterval`), on a connection
+  error or a 500, 502, 503 or 504. Ballerina cannot set a record configurable (`retryConfig`, `oauthConfig`) from an
+  environment variable, and Amplify configures everything that way, so these are flat names with the same fields and
+  values. In amplify-api the first failed read after an outage takes the whole retry time (about 21 s at the defaults),
+  then the circuit breaker opens and later calls fail at once for 30 s.
 - **Configuration** has the same shape as leave-app's: `hrEntityBaseUrl` and OAuth2 `tokenUrl`, `clientId`,
   `clientSecret` (`hrEntityTokenUrl`, `hrEntityClientId`, `hrEntityClientSecret`). Amplify gets its own client from
   People Operations; the code does not depend on which client is used.
 - **Team grouping** is unchanged: the sub-team, or the team when a person has none, under the business unit
   (decided 2026-10-19). The entity's `Employee` has both `team` and `subTeam`.
-- **House is not read.** `Employee` has no house field (it lives in people-app's database). The house board and house
+- **House is not read.** `Employee` has no house field. People-app keeps it in its own database (`house` table, `house_id` on
+  the employee, set at onboarding from the employee id) and does not read it from the HR Entity. The house board and house
   counts stay in the API and answer empty until the entity offers one.
 - **No other change to people-app.** PR #380's service-client path stays in people-app but Amplify no longer uses it.
 

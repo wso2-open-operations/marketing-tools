@@ -64,7 +64,7 @@ isolated function mockRosterConfigured() returns boolean {
 }
 
 # How the fake directory answers: `ok`, `down` (418, not a breaker status, so the breaker stays closed for
-# the other tests), `garbled` (a body that isn't a directory) or `gqlerror` (a GraphQL `errors` array).
+# the other tests), `unavailable` (503, which opens the breaker: only for a client of its own), `garbled` (a body that isn't a directory) or `gqlerror` (a GraphQL `errors` array).
 isolated string directoryMode = "ok";
 isolated int directoryFetches = 0;
 
@@ -131,6 +131,11 @@ service /people/graphql on jwksListener {
         if mode == "down" {
             http:Response res = new;
             res.statusCode = 418;
+            return res;
+        }
+        if mode == "unavailable" {
+            http:Response res = new;
+            res.statusCode = 503;
             return res;
         }
         if mode == "garbled" {
