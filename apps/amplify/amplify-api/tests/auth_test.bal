@@ -234,6 +234,10 @@ function testMeUpsertsEmployeeAndReportsCapabilities() returns error? {
     test:assertTrue(caps.indexOf("po.dashboard") is ());
     test:assertEquals(check body.linkedin.status, "NOT_CONNECTED");
     test:assertEquals(check body.linkedin.expiresAt, ());
+    // Deployment settings the UI used to read from its own config.js.
+    test:assertEquals(check body.config.linkedinOrgUrn, wso2OrganizationUrn);
+    test:assertEquals(check body.config.privacyNoticeUrl, privacyNoticeUrl.trim());
+    test:assertEquals(check body.config.postLinkOrigins, postLinkOrigins);
     test:assertTrue(fakeEmployees.findById("emp-0001") is record {});
 }
 

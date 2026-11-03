@@ -41,6 +41,9 @@ configurable string wso2OrganizationUrn = "urn:li:organization:1477";
 # dev and demo environments add the mock's www origin.
 configurable string campaignLinkOrigins = "https://www.linkedin.com,https://linkedin.com";
 
+# Privacy notice the LinkedIn consent dialog links to. Empty = the dialog shows no link.
+configurable string privacyNoticeUrl = "";
+
 final string[] & readonly postLinkOrigins = linkOrigins(campaignLinkOrigins);
 
 # Parses `campaignLinkOrigins`. Empty (an unset descriptor value arrives as "") means LinkedIn only, never

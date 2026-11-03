@@ -278,6 +278,13 @@ configurations:
           displayName: LinkedIn company page URN (urn:li:organization:<id>)
           type: string
           required: false
+    # Privacy notice the LinkedIn consent dialog links to; sent to the UI in GET /me (empty = no link).
+    - name: BAL_CONFIG_VAR_PRIVACYNOTICEURL
+      valueFrom:
+        configForm:
+          displayName: Privacy notice URL (shown in the LinkedIn consent dialog)
+          type: string
+          required: false
     # ID-token validation on connect (off by default; turn on once a real LinkedIn app returns the ID token).
     - name: BAL_CONFIG_VAR_LINKEDINIDTOKENVALIDATION
       valueFrom:

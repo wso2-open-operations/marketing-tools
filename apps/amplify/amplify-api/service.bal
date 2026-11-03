@@ -80,6 +80,16 @@ type MeLinkedIn record {|
     string? expiresAt;
 |};
 
+# `GET /me` deployment settings the UI needs, set per environment as Choreo configs (not UI config).
+type MeAppConfig record {|
+    # LinkedIn company page URN a registered post must belong to
+    string linkedinOrgUrn;
+    # Privacy notice URL for the LinkedIn consent dialog; empty when none is configured
+    string privacyNoticeUrl;
+    # Origins a post link may use (`scheme://host[:port]`, lowercase)
+    string[] postLinkOrigins;
+|};
+
 # `GET /me` response.
 type MeResponse record {|
     # Stored employee row
@@ -92,6 +102,8 @@ type MeResponse record {|
     string[] capabilities;
     # LinkedIn connection
     MeLinkedIn linkedin;
+    # Deployment settings for the UI
+    MeAppConfig config;
 |};
 
 # Refuses a request that declares a body past `MAX_REQUEST_BODY_BYTES` with problem details, before the payload is
@@ -205,7 +217,12 @@ service http:InterceptableService / on apiListener {
             roles: principal.roles,
             grants: principal.grants,
             capabilities: auth:capabilities(principal.grants),
-            linkedin: linkedInOf(linked, now)
+            linkedin: linkedInOf(linked, now),
+            config: {
+                linkedinOrgUrn: wso2OrganizationUrn,
+                privacyNoticeUrl: privacyNoticeUrl.trim(),
+                postLinkOrigins: postLinkOrigins
+            }
         };
         // An admin's capability list alone runs past 512 chars (M11b).
         return jsonBody(me.toJson());

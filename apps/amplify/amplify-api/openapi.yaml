@@ -1131,7 +1131,7 @@ components:
       description: "`NOT_CONFIGURED` = the dependency has no URL / client id in this deployment (gauge -1, ADR-028)"
     Me:
       type: object
-      required: [employee, roles, grants, capabilities, linkedin]
+      required: [employee, roles, grants, capabilities, linkedin, config]
       properties:
         employee:
           type: object
@@ -1155,6 +1155,14 @@ components:
           properties:
             status: {$ref: "#/components/schemas/ConnectionStatus"}
             expiresAt: {type: string, format: date-time, nullable: true}
+        config:
+          description: Deployment settings the UI needs (Choreo configs, not UI config)
+          type: object
+          required: [linkedinOrgUrn, privacyNoticeUrl, postLinkOrigins]
+          properties:
+            linkedinOrgUrn: {description: "LinkedIn company page a registered post must belong to (`wso2OrganizationUrn`)", type: string}
+            privacyNoticeUrl: {description: "Privacy notice for the consent dialog; empty = no link (`privacyNoticeUrl`)", type: string}
+            postLinkOrigins: {description: "Origins a post link may use (`campaignLinkOrigins`)", type: array, items: {type: string}}
     ConnectionStatus: {type: string, enum: [ACTIVE, EXPIRING, NEEDS_RECONNECT, REMOVED, NOT_CONNECTED]}
 
     CampaignStatus: {type: string, enum: [SCHEDULED, OPEN, CLOSED, ARCHIVED]}

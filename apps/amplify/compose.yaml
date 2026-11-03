@@ -103,6 +103,8 @@ services:
       BAL_CONFIG_VAR_LINKEDINNONCEMODE: ${LINKEDIN_NONCE_MODE:-OFF}
       # The company page posts must belong to. Default = WSO2's page; local/.env can point at a test page.
       BAL_CONFIG_VAR_WSO2ORGANIZATIONURN: ${WSO2_ORGANIZATION_URN:-urn:li:organization:1477}
+      # Privacy notice link in the LinkedIn consent dialog, sent to the UI in GET /me.
+      BAL_CONFIG_VAR_PRIVACYNOTICEURL: ${PRIVACY_NOTICE_URL:-https://wso2.com/privacy-policy}
       # Team rosters (D13) = people-stub by default: copy local/people-stub/directory.json.example to directory.json (gitignored) and edit it.
       BAL_CONFIG_VAR_PEOPLEDIRECTORYURL: ${PEOPLE_DIRECTORY_URL:-http://people-stub:9096/employees/basic-info}
       # Post links: LinkedIn, plus the mock's browser-facing origin for local demos.
