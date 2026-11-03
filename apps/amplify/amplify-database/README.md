@@ -1,6 +1,6 @@
 # amplify-database
 
-Amplify DB Migrate: the Choreo Manual Task (and Compose one-shot) that builds the Amplify PostgreSQL 18 database. It applies `migrations/` (`V###__name.sql`), then `seed/` (`S###__name.sql`), in order, one transaction per script, and records each in `public.schema_version` with a checksum. It also sets the app role passwords from secrets, then exits. A rerun is a no-op, a changed applied script stops the run (forward-only), a pending script that sorts below an already-applied version stops it too (no out-of-order), and `dryRun = true` connects but creates nothing (not even `public.schema_version`) and runs no script: it logs each script as pending, applied or changed, and fails on a changed one.
+Amplify DB Migrate: the Choreo Manual Task (and Compose one-shot) that builds the Amplify PostgreSQL database (15 or later). It applies `migrations/` (`V###__name.sql`), then `seed/` (`S###__name.sql`), in order, one transaction per script, and records each in `public.schema_version` with a checksum. It also sets the app role passwords from secrets, then exits. A rerun is a no-op, a changed applied script stops the run (forward-only), a pending script that sorts below an already-applied version stops it too (no out-of-order), and `dryRun = true` connects but creates nothing (not even `public.schema_version`) and runs no script: it logs each script as pending, applied or changed, and fails on a changed one.
 
 | Folder | What |
 | --- | --- |
@@ -8,7 +8,7 @@ Amplify DB Migrate: the Choreo Manual Task (and Compose one-shot) that builds th
 | `migrations/` | Forward-only schema scripts, `V001` to `V020` so far |
 | `seed/` | Idempotent seed data (`ON CONFLICT DO NOTHING`): point rules (S001, S005 pilot values, S006 all values), categories, app settings, scheduler settings, leaderboard top scope (S007, moved to MONTH by S009) and minimum points (S010), token grace (S008) (see `seed/README.md`) |
 | `checks/` | One-off checks such as `d2_extensions.sql` (run on each new server, plan D2) |
-| `tests/` | Unit tests plus the `integration` group: off unless `itEnabled = true`. It drops and recreates `itDbName` (default `amplify_it`) on a PostgreSQL 18 server, so never point it at a database you need (see `docs/migrations/README.md`) |
+| `tests/` | Unit tests plus the `integration` group: off unless `itEnabled = true`. It drops and recreates `itDbName` (default `amplify_it`) on a PostgreSQL 17 server, so never point it at a database you need (see `docs/migrations/README.md`) |
 
 Run from this folder: `bal build`, `bal test`, `bal run`. Rules for writing scripts: never edit an applied migration, no `?` in scripts (the JDBC driver reads it as a bind marker), enums are `text` plus `CHECK`, views are `security_invoker`, and maintenance functions are `SECURITY DEFINER` with a pinned `search_path`. Details: `CLAUDE.md` in this folder.
 
@@ -20,7 +20,7 @@ Run from this folder: `bal build`, `bal test`, `bal run`. Rules for writing scri
 
 Status: **Draft v2 for review** (2026-10-16)
 Builds on: [phase1-domains.md](../architecture/solution/Phase%201/phase1-domains.md) · Plan: [phase1-planned-todos.md](../docs/requirements/phase1-planned-todos.md) (M3)
-Database: **PostgreSQL 18** (Choreo-managed, Aiven), one database `amplify`.
+Database: **PostgreSQL 15 or later** (Choreo-managed, Aiven; staging runs 17, ADR-044), one database `amplify`.
 Audit mitigations applied 2026-10-16 ([requirements-map.md](../architecture/solution/Phase%201/requirements-map.md), Audit B–D). Phase labels follow the requirements-map [Other phases](../architecture/solution/Phase%201/requirements-map.md#other-phases-refine-later) table: "phase 2" means the Coin issuer and SLT reports; Community Management work is "future phase" (D5).
 
 ## Contents
@@ -55,7 +55,7 @@ Audit mitigations applied 2026-10-16 ([requirements-map.md](../architecture/solu
 10. **Read models are pre-built tables**, kept current in the same transaction as each ledger insert (jobs score pass, or `amplify-api` for PO decisions and corrections, B12), so One WSO2 reads are single indexed lookups. See [recognition](#recognition--s4-recognition-read-models).
 11. **Required extensions: `citext`** (`identity_employee.email`, `recognition_standing.email`) **and `pg_trgm`** (Team search). The M0 D2 check confirms both on a real Choreo database before M3 (B18). Portability rule: no other extension without an ADR. If either is missing, fall back to `text` + a `lower(email)` unique index, and `ILIKE` prefix search on a `lower(display_name)` btree index.
 
-**IDs:** every `uuid` key defaults to **`uuidv7()`**, the native function in **PostgreSQL 18**. UUIDv7 is time-ordered, so new rows append to the end of the B-tree (no random-insert page splits), and `ORDER BY id` is roughly creation order. If an environment is ever below PG 18, generate v7 in Ballerina instead; never mix in v4.
+**IDs:** every `uuid` key defaults to **`uuidv7()`**, the native function in **PostgreSQL 18**; V001 installs a compatible `uuidv7()` on older servers (ADR-044). UUIDv7 is time-ordered, so new rows append to the end of the B-tree (no random-insert page splits), and `ORDER BY id` is roughly creation order.
 
 **`text_array` in the diagrams = Postgres `text[]`** (a native array, not JSON). Mermaid doesn't allow `[]` in type names. Insert with `ARRAY['openid','profile','w_member_social']`; query with `'w_member_social' = ANY(scopes)`.
 

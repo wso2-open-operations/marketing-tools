@@ -10,7 +10,7 @@ The data model has to keep contexts liftable to separate services later and keep
 
 ## Decision
 
-PostgreSQL 18, `uuidv7()` keys, **no cross-context FKs** (virtual FKs documented), status **derived from fact timestamps**, provider-agnostic tables, pre-built recognition tables for a fast One WSO2.
+PostgreSQL 15 or later (ADR-044), `uuidv7()` keys, **no cross-context FKs** (virtual FKs documented), status **derived from fact timestamps**, provider-agnostic tables, pre-built recognition tables for a fast One WSO2.
 
 ## Consequences
 

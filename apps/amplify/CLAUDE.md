@@ -20,7 +20,7 @@ Ballerina backend for WSO2 Amplify phase 1. Three Ballerina deployables, the sch
 - `amplify-domain`: bounded contexts (domain + repository ports + PostgreSQL repositories) and `store` (client, outbox/audit writers), used by api and jobs (ADR-021).
 
 ## DB connections
-PostgreSQL 18, one schema per bounded context, one DB user per component (`amplify_migrate`, `amplify_api`, `amplify_jobs`, `amplify_readonly`). A context reads and writes only its own schema; no cross-context FKs (ADR-005). Exception by design: the ledger append applies the row to `recognition` in the same transaction (B12). Details: `architecture/solution/Phase 1/phase1-data-model.md`. Integration tests against Postgres 18: `docs/migrations/README.md`.
+PostgreSQL 15 or later (staging runs 17, ADR-044). One login user and one schema named after it, no roles; every table is `<context>_<name>` (ADR-043). Every component connects as that user. A context reads and writes only its own tables; no cross-context FKs (ADR-005). Exception by design: the ledger append applies the row to `recognition` in the same transaction (B12). Details: `architecture/solution/Phase 1/phase1-data-model.md`. Integration tests against Postgres 17: `docs/migrations/README.md`.
 
 ## Key patterns
 - Apache-2.0 WSO2 header on every `.bal`, `.sql`, `Dockerfile`.

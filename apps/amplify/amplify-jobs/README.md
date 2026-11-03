@@ -77,7 +77,7 @@ Publish `amplify_common`, then `amplify_domain`, to the local Ballerina reposito
 ```sh
 bal build
 bal test
-AMPLIFY_IT=true bal test --groups integration   # needs a migrated Postgres 18 and mock_linkedin
+AMPLIFY_IT=true bal test --groups integration   # needs a migrated Postgres 17 and mock_linkedin
 ```
 
 The listener port is the `port` setting (default 9091). Integration test setup: `docs/migrations/README.md`.

@@ -130,7 +130,7 @@ The scheduler is the pinned image `akorn/scheduler:1.7.8@sha256:07462c…`, UID 
 
 ## 8. Restore the database
 
-**Gap — no backup/restore automation in the repo.** The DB is a Choreo-managed PostgreSQL 18 on a plan **with backups** (Hobbyist has none) — [choreo-deploy.md](choreo-deploy.md) B1/B4. Confirm the plan has backups before the pilot.
+**Gap — no backup/restore automation in the repo.** The DB is a Choreo-managed PostgreSQL (15 or later) on a plan **with backups** (Hobbyist has none) — [choreo-deploy.md](choreo-deploy.md) B1/B4. Confirm the plan has backups before the pilot.
 
 1. Identify the restore target (latest good snapshot/PITR point) **[console, Aiven/Choreo]**.
 2. Restore into a **new** database or the dev instance first; verify schemas/rows (employees, campaigns, ledger, connections) and `SELECT version FROM public.schema_version ORDER BY version` (the last `V###` the snapshot had).
