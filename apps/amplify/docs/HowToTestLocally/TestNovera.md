@@ -189,7 +189,6 @@ The mock is off by default: nothing uses it until you start it and set these in 
 
 ```
 AMPLIFY_ON_NOVERA=true
-AMPLIFY_ON_WEBHOOK=false
 NOVERA_NOTIFY_URL=http://host.docker.internal:3003/internal/notifications
 NOVERA_TOKEN_URL=http://host.docker.internal:3003/token
 NOVERA_CLIENT_ID=mock

@@ -1,5 +1,7 @@
 # Integration boundary review: every Amplify system-to-system boundary
 
+> Superseded in part on 2026-11-03: Google Chat was replaced by Novera (ADR-047).
+
 Date: 2026-10-26 · Method: WSO2 Digital integration-boundary checklist (8 items), applied to each boundary · Replaces the scope of the 2026-10-19 review, which covered one boundary (amplify-api reading the people-app directory). The surface has grown since: house and BU boards, headcount, Novera, dashboards, CSV export, the scheduler.
 
 Code was read, not run. No Docker, no tests, no live calls. What I could not confirm is listed at the end.

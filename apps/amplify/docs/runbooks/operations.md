@@ -4,7 +4,7 @@ Operational procedures for the Amplify phase 1 pilot. Every procedure gives the 
 
 Owner: Developer. Escalation: PO team for product impact, WSO2 platform for Choreo/Aiven.
 
-**Companion runbooks** (linked, not duplicated): [choreo-deploy.md](choreo-deploy.md) · [identity-setup.md](identity-setup.md) · [google-chat-webhook.md](google-chat-webhook.md) · [data-deletion-interim.md](data-deletion-interim.md) · [resilience-targets.md](resilience-targets.md) · checklist exception: data deletion.
+**Companion runbooks** (linked, not duplicated): [choreo-deploy.md](choreo-deploy.md) · [identity-setup.md](identity-setup.md) · [data-deletion-interim.md](data-deletion-interim.md) · [resilience-targets.md](resilience-targets.md) · checklist exception: data deletion.
 
 Paths: `apps/…` = `apps/amplify/…`. Local commands run from `apps/amplify/`. In Choreo the same work is a console action (no shell) — those steps are marked **[console]**.
 
@@ -88,15 +88,15 @@ The LinkedIn developer app has one client id/secret; it is stored in Choreo secr
 4. Smoke test: connect (real account in non-prod), share a campaign, confirm `POST /rest/posts` succeeds. Watch the run log `breakers` for `linkedinOAuth`/`linkedinApi`.
 5. A `401` on share revokes the connection (`NEEDS_RECONNECT`) — after a secret change, affected users reconnect.
 
-## 4. Rotate the Google Chat webhook
+## 4. Rotate the Novera client secret
 
-Full procedure: [google-chat-webhook.md](google-chat-webhook.md). Summary:
+Novera is the only channel that announces new posts (ADR-047).
 
-1. Chat space **[console]**: create a new incoming webhook ("Amplify").
-2. Update the `CHATWEBHOOKURL` secret **[console]**, redeploy `amplify-jobs`.
-3. Verify: `Save & Share Now` on a test campaign → card posts to the space.
-4. **Delete the old webhook** (delete first if the old URL leaked).
-5. A `404` on every card means the webhook was deleted — rotate. The URL is a bearer secret: never logged, never in `announcement.last_error`.
+1. Regenerate the secret of Amplify's application subscribed to Novera's API **[console]**.
+2. Update the `NOVERACLIENTSECRET` secret on `amplify-jobs` **[console]** and redeploy it.
+3. Verify: `Save & Share Now` on a test campaign → Novera answers 202 and the announcement is `SENT`.
+4. **Revoke the old secret** (revoke first if it leaked).
+5. A `401` or `403` from Novera on every announcement means the secret or the subscription is wrong. The rows retry (not failed) until it is fixed. The secret is never logged and never in `announcement.last_error`.
 
 ## 5. Bump `LinkedIn-Version`
 
@@ -156,15 +156,15 @@ Key points: Remove Connection deletes tokens at once; the interim process anonym
 1. Pause sharing: `PUT /admin/settings` `{"sharing.enabled":false}` (admin). API returns 409 `FEATURE_DISABLED` on new shares; `amplify-jobs` **defers** pending `RepostRequested` rows (not lost).
 2. Pause announcements: `{"announcements.enabled":false}` — `retryAnnouncement` 409; jobs defer `CampaignRegistered` rows.
 3. Resume by setting `true`. Settings cache is ~5 s, so the change takes effect within ~5 s on each replica (a local save invalidates that replica's cache; others pick it up within `settingsCacheSeconds`).
-4. Use when: LinkedIn outage storm, Chat spam, or a PO request to stop the pilot's posting.
+4. Use when: LinkedIn outage storm, duplicate Novera announcements, or a PO request to stop the pilot's posting.
 
 ## 11. Routine monitoring
 
 - **Run log:** each `POST /runs` returns a `RunReport` (`amplify-jobs/run.bal:29`): `claimed/succeeded/retried/deferred/failed`, `linkedinPosts`, `connections`, `breakers`, `durationMs`. Health of the pipeline is "failed=0 and deferred small".
 - **Duplicate publish:** if a post went out but the employee's engagement for that target was already recorded (an earlier round), the share settles `PUBLISHED` on the existing engagement (row note "published; engagement already recorded"), with no second engagement or award. If no engagement of that employee matches, the share fails `PROVIDER_REJECTED` with `DUPLICATE_ENGAGEMENT`. Either way it never sits in `QUEUED` (ADR-025 amendment). A few `DUPLICATE_ENGAGEMENT` failures are worth a look but need no action; the employee can't be paid twice.
-- **Readiness:** `GET /ready` → `database`, `breakers`. api: DB + JWKS gate readiness; jobs/roster (people directory)/LinkedIn (incl. `linkedinIdTokenJwks`) are reported, not fatal. jobs: DB gates; LinkedIn/Chat breakers and `runInProgress` are reported. Repeated pool timeouts ("Connection is not available") open the DB breaker, so a leaked pool fails readiness and the replica gets restarted.
+- **Readiness:** `GET /ready` → `database`, `breakers`. api: DB + JWKS gate readiness; jobs/roster (people directory)/LinkedIn (incl. `linkedinIdTokenJwks`) are reported, not fatal. jobs: DB gates; LinkedIn/Novera breakers and `runInProgress` are reported. Repeated pool timeouts ("Connection is not available") open the DB breaker, so a leaked pool fails readiness and the replica gets restarted.
 - **Breakers:** `amplify_breaker_state{component,dependency}` gauge (0=closed, 1=half-open, 2=open, -1=unknown) — exported on `/ready`, viewed in Choreo metrics.
-- **Outbox backlog:** gauges `amplify_outbox_pending`, `amplify_outbox_failed` and `amplify_outbox_oldest_pending_seconds` (-1 when nothing is pending), and an `outbox` block on amplify-jobs' `GET /ready` (`pending`, `inProgress`, `failed`, `oldestPendingSeconds`, `alerting`). **Alert when `amplify_outbox_oldest_pending_seconds` is over 3600** (`outboxAlertSeconds`) **or `amplify_outbox_failed` is above 0.** A row that waits that long means Novera, the Chat webhook or LinkedIn is unconfigured or down and every retry is deferring; nothing else reports it. Jobs also logs `Outbox backlog needs attention` (at most every 5 minutes) with the numbers. Fix the dependency, then see section 1 for failed rows.
+- **Outbox backlog:** gauges `amplify_outbox_pending`, `amplify_outbox_failed` and `amplify_outbox_oldest_pending_seconds` (-1 when nothing is pending), and an `outbox` block on amplify-jobs' `GET /ready` (`pending`, `inProgress`, `failed`, `oldestPendingSeconds`, `alerting`). **Alert when `amplify_outbox_oldest_pending_seconds` is over 3600** (`outboxAlertSeconds`) **or `amplify_outbox_failed` is above 0.** A row that waits that long means Novera or LinkedIn is unconfigured or down and every retry is deferring; nothing else reports it. Jobs also logs `Outbox backlog needs attention` (at most every 5 minutes) with the numbers. Fix the dependency, then see section 1 for failed rows.
 - **Token partition runway:** gauge `amplify_token_partition_days_ahead` (days past today with a `provider_token` partition; -1 when unknown) and a `tokenPartitions` block on amplify-jobs' `GET /ready` (`daysAhead`, `alerting`). **Alert when it is below 3** (`tokenPartitionAlertDays`). The partitions are two weeks ahead (V009), jobs creates them at start-up and the daily maintenance run keeps them going; a connect on a day with no partition fails, so a falling number means the maintenance schedule is off or failing. Check the scheduler job `amplify-maintenance-partitions` and `POST /maintenance/partitions` on jobs; running it by hand restores the runway.
 - **Partition upkeep:** nightly `POST /maintenance/partitions`; each drop audits `PARTITION_DROPPED`; `oauth_state` swept by `connection.sweep_oauth_state()`. The response's `token_rotation` should read `DONE` (or `NOT_CONFIGURED` where no keys are set); `failed > 0` needs a look (§2).
 - **Sessions idle in transaction (alert, R-13).** On Ballerina 2201.13.x a runtime race can leave a session `idle in transaction` holding locks ([R-13 write-up](../reviews/2026-10-17-r13-transaction-race.md), [ADR-032](../../architecture/decisions/ADR-032-transaction-gate-ballerina-2201-13.md)). The transaction gate should stop it, and V013's 30 s `idle_in_transaction_session_timeout` on `amplify_api`/`amplify_jobs` ends such a session, so any hit means something got past both. Alert when this returns a row (run as the admin user, every few minutes):

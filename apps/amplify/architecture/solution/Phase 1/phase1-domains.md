@@ -8,7 +8,7 @@ Inputs: requirements doc, the phase 1 scope change, the One WSO2 webapp review, 
 ## Phase 1 Scope 
 ONE WSO2 app module, one Choreo project (the Amplify cell) fronted by an API proxy, two backend deployables (`amplify-api`, `amplify-jobs`) plus the scheduler (`akornatskyy/scheduler`, ADR-026) and one Postgres database. Employees connect LinkedIn once and share or repost WSO2 posts **through Amplify**, using the self-serve `w_member_social` permission. That needs no partner approval and costs nothing. Promotion done outside the app comes in as an **external share** (UI: "My Campaign"), reviewed by PO. 
 
-New posts are announced in the **WSO2 Club Group** Google Chat space by webhook. Points are **held in the ledger**.
+New posts are announced through **Novera**, the Google Chat assistant (ADR-047; the Club Chat space and its webhook were removed 2026-11-03). Points are **held in the ledger**.
 
 **Moved to later phases** (which phase: [requirements-map › Other phases](requirements-map.md#other-phases-refine-later)): the Amplify agent, classifier, LLM gateway, AMP and ThunderID; a separate queue service (phase 1 uses an outbox/jobs table in Postgres); engagement sync through the Community Management API (approval is still pending); the Coin issuer; HR Entity team and location sync; SLT reports; the employee data-deletion path (C3, ADR-016).
 
@@ -66,15 +66,15 @@ CORE        ┃     │  ┌─────────────────�
             ┃     ▼                                     ▼                                                        ┃
 SUPPORTING  ┃  ┌─────────────────────────┐  ┌──────────────────────────────┐                                     ┃
             ┃  │ ANNOUNCEMENTS     [S5]  │  │ RECOGNITION            [S4]  │                                     ┃
-            ┃  │ Club space cards        │  │ 3 leaderboards · my points   │                                     ┃
-            ┃  │ chat notifier in jobs   │  │ PO dashboard                 │                                     ┃
+            ┃  │ Novera post cards       │  │ 3 leaderboards · my points   │                                     ┃
+            ┃  │ notifier in jobs        │  │ PO dashboard                 │                                     ┃
             ┃  └────────────┬────────────┘  └──────────────────────────────┘                                     ┃
             ┗━━━━━━━━━━━━━━━┿━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-                            │ ACL: incoming webhook             S2 and C1 ──► LinkedIn (ACL: OAuth/OIDC, provider adapter)
+                            │ ACL: Novera client                S2 and C1 ──► LinkedIn (ACL: OAuth/OIDC, provider adapter)
             ┌───────────────▼──────────┐                         ┌──────────────────────────────────────────────┐
-EXTERNAL    │ GOOGLE CHAT   [EXTERNAL] │                         │ LINKEDIN                          [EXTERNAL] │
-            │ Club space               │                         │ Sign In with LinkedIn (OIDC: sub → person)   │
-            │ incoming webhook, cardsV2│                         │ Share on LinkedIn: POST /rest/posts          │
+EXTERNAL    │ NOVERA        [EXTERNAL] │                         │ LINKEDIN                          [EXTERNAL] │
+            │ Google Chat assistant    │                         │ Sign In with LinkedIn (OIDC: sub → person)   │
+            │ POST /internal/notif.    │                         │ Share on LinkedIn: POST /rest/posts          │
             └──────────────────────────┘                         │ self-serve · w_member_social · no approval   │
                                                                  └──────────────────────────────────────────────┘
 
@@ -96,8 +96,8 @@ C = core subdomain   S = supporting subdomain   OHS/PL = open host service + pub
 | LinkedIn Connection (S2) | Supporting | Consent plus a token vault. Needed for sharing, but not the differentiator |
 | External Sharing (S3) | Supporting | Intake for promotion Amplify can't see: an employee's own LinkedIn post, a Medium article, a blog. PO-reviewed |
 | Recognition (S4) | Supporting | Read models: leaderboard, my points, PO views |
-| Announcements (S5) | Supporting | Builds the Club card for a campaign. The webhook itself is generic |
-| SSO, Google Chat, LinkedIn | Generic / external | Used as they are, behind clear boundaries |
+| Announcements (S5) | Supporting | Builds the Novera announcement for a campaign. Novera itself is generic |
+| SSO, Novera, LinkedIn | Generic / external | Used as they are, behind clear boundaries |
 
 ## Bounded contexts
 
@@ -126,7 +126,7 @@ Privacy: the employee's commentary is held only until the job posts it, then cle
 
 | Aggregate | Key | Invariants |
 | --- | --- | --- |
-| `Campaign` | `(provider, resource_urn)` unique, any resource type | The resource must be on the WSO2 company page. Registered by `amplify_marketing` or `amplify_po` (A6, ADR-012). Category, tags, priority flag, active window (`closes_at` defaults to `opens_at` + `campaign.default_window_days`, 30; C7). Status `SCHEDULED / OPEN / CLOSED / ARCHIVED` is **derived** from `opens_at`, `closes_at`, `archived_at`. **Save** queues the Club announcement for the next jobs run; **Save & Share Now** queues it right away. Announced exactly once (outbox) |
+| `Campaign` | `(provider, resource_urn)` unique, any resource type | The resource must be on the WSO2 company page. Registered by `amplify_marketing` or `amplify_po` (A6, ADR-012). Category, tags, priority flag, active window (`closes_at` defaults to `opens_at` + `campaign.default_window_days`, 30; C7). Status `SCHEDULED / OPEN / CLOSED / ARCHIVED` is **derived** from `opens_at`, `closes_at`, `archived_at`. **Save** queues the Novera announcement for the next jobs run; **Save & Share Now** queues it right away. Announced exactly once (outbox) |
 
 ### S2 · LinkedIn Connection
 
@@ -158,7 +158,7 @@ Projections over the C2 ledger, stored as **pre-built tables** (`recognition.sta
 
 | Aggregate | Key | Invariants |
 | --- | --- | --- |
-| `Announcement` | outbox id, per campaign | One card per campaign to the Club space through the **incoming webhook**: image, title, summary, and an openLink button to the campaign's **share page in One WSO2** (webhooks can't take button clicks). Retries with backoff, then `FAILED`, shown in admin |
+| `Announcement` | outbox id, per campaign | One Novera notification per campaign (ADR-047): image, title, summary, and an Amplify button to the campaign's **share page in One WSO2** (`?share=<campaignId>`). Retries with backoff, then `FAILED`, shown in admin |
 
 ## Context map relationships
 
@@ -168,12 +168,12 @@ Projections over the C2 ledger, stored as **pre-built tables** (`recognition.sta
 | LinkedIn → S2 | **ACL** | OAuth 2.0 + OIDC (`openid profile w_member_social`) | Turns `sub` into a person URN and handles token expiry |
 | C1 → LinkedIn | **ACL** (provider adapter) | `POST /rest/posts`, version `202610` | Hides LinkedIn's post model behind the port. 202511 sunsets on 2026-11-16 |
 | S1 → C1 | Customer/Supplier | (none: C1 reads the derived `OPEN` status) | A post opens for sharing by its window; there's no `CampaignOpened` event (B9) |
-| S1 → S5 | Customer/Supplier | `CampaignRegistered` | S5 queues and sends the Club card, then records `CampaignAnnounced` (B8) |
+| S1 → S5 | Customer/Supplier | `CampaignRegistered` | S5 queues and sends the Novera notification, then records `CampaignAnnounced` (B8) |
 | S2 → C1 | Customer/Supplier | `ConnectionReady` / `ConnectionRevoked` / `ConnectionRemoved` | Reposts need an active connection |
 | C1 → C2 | Customer/Supplier | `EngagementRecorded` (`EngagementDeleted` future, ADR-018) | Auto-scored / reversed |
 | S3 → C2 | Customer/Supplier | `ExternalShareApproved` / `ExternalShareAmplified` | PO-allocated; T4 top-up |
 | C2 → S4 | Published events | `PointsAwarded/Adjusted/Reversed` | |
-| S5 → Google Chat | **ACL** | Incoming webhook, cardsV2 | |
+| S5 → Novera | **ACL** | `POST /internal/notifications`, client-credentials token | ADR-047 |
 | amplify-api → One WSO2 | **OHS + Published Language** | REST, OpenAPI 3, published through the API proxy at the cell edge | One WSO2 gates on `GET /me` capabilities and hides items a role doesn't allow |
 
 ## Domain events (outbox / jobs table)
@@ -194,10 +194,10 @@ Schema-qualified names: one Postgres schema per context. A module writes only to
 | S3 External Sharing | `amplify-api` (`/external-shares`, `/po/external-shares`) | `external_sharing.external_share` |
 | C2 Scoring | `amplify-api` (`/po/point-rules` A5, `/po/points`) + `amplify-jobs` score pass | `scoring.point_rule`, `scoring.points_ledger`, `audit.audit_log` |
 | S4 Recognition | `amplify-api` (`/leaderboard`, `/team`, `/me/points`, `/po/dashboard`) + `amplify-jobs` score pass (both write, B12) | `recognition.standing`, `recognition.standing_version`, `recognition.employee_points_monthly`, `recognition.campaign_participation` (pre-built tables) |
-| S5 Announcements | `amplify-jobs` chat notifier | `announcement.announcement`, `messaging.outbox` |
+| S5 Announcements | `amplify-jobs` announcement handler (Novera) | `announcement.announcement`, `messaging.outbox` |
 | (shared) | `amplify-api` | `identity.employee`, `config.app_setting` |
 
-Deployables: **One WSO2 Amplify module** (UI), **Amplify API Proxy** (cell ingress), **Amplify Backend** (`amplify-api`, Choreo service), **Amplify Jobs** (`amplify-jobs`, one worker that runs the provider adapters, the chat notifier and scoring), **Amplify Scheduler** (`amplify-scheduler`, the pinned `akorn/scheduler` image with its own Postgres database; it triggers runs and the daily `/maintenance/partitions` call: token partitions, audit partitions, outbox purge, B10; amplify-api pushes the schedules from admin settings, ADR-026). One Choreo-managed **Postgres**.
+Deployables: **One WSO2 Amplify module** (UI), **Amplify API Proxy** (cell ingress), **Amplify Backend** (`amplify-api`, Choreo service), **Amplify Jobs** (`amplify-jobs`, one worker that runs the provider adapters, the Novera announcement and scoring), **Amplify Scheduler** (`amplify-scheduler`, the pinned `akorn/scheduler` image with its own Postgres database; it triggers runs and the daily `/maintenance/partitions` call: token partitions, audit partitions, outbox purge, B10; amplify-api pushes the schedules from admin settings, ADR-026). One Choreo-managed **Postgres**.
 
 ## Ubiquitous language
 
@@ -209,7 +209,7 @@ Deployables: **One WSO2 Amplify module** (UI), **Amplify API Proxy** (cell ingre
 | External share | An employee's claim for an action Amplify didn't see, submitted from My Campaign. PO-reviewed. (Replaces the old "check-in" wording, D2) |
 | Own post | An external share for the employee's original WSO2-related post |
 | Points | Ledger credits. Held in phase 1; shown as points only, no Coin value |
-| Club space | The Google Chat space where new campaigns are announced |
+| Novera | The Google Chat assistant that announces new campaigns (ADR-047). The Club space is no longer used |
 | Run | One amplify-jobs pass: announce, publish shares, score |
 
 ## What changes from the Choreo L2
@@ -217,12 +217,12 @@ Deployables: **One WSO2 Amplify module** (UI), **Amplify API Proxy** (cell ingre
 | L2 element | Phase 1 |
 | --- | --- |
 | `amplify-agent`, Novera tools, Anthropic | Later phase |
-| 5 scheduled jobs, TypeScript | One Ballerina `amplify-jobs` worker (provider adapters + chat notifier + scoring), triggered by the scheduler (ADR-026) |
+| 5 scheduled jobs, TypeScript | One Ballerina `amplify-jobs` worker (provider adapters + Novera announcement + scoring), triggered by the scheduler (ADR-026) |
 | `post` | `campaign.campaign` |
 | `employee_link` | `connection.member_connection` + `identity.employee` |
 | `announcement_outbox` | `messaging.outbox` + `announcement.announcement` |
 | B5 engagement sync (Community Management API) | Later. Replaced by verified shares (C1) and external shares (S3) |
-| B7 announcements through Novera | Club space incoming webhook (S5) |
+| B7 announcements through Novera | Kept: Novera announces new posts in phase 1 (S5, ADR-047). The Club space webhook that replaced it earlier was removed 2026-11-03 |
 | B8 Coin issuer, `coin_issue` | Later. Points held in `points_ledger` |
 | B6 HR Entity, `org_dim` | Later. Team grouping for My Team comes from One WSO2's employee data instead (ADR-009) |
 | No member tokens (org-admin token only) | Member `w_member_social` tokens, encrypted in the token store |
@@ -234,8 +234,8 @@ Deployables: **One WSO2 Amplify module** (UI), **Amplify API Proxy** (cell ingre
 | --- | --- | --- |
 | 1 | **Prototype:** can a member token with `w_member_social` reshare an *organization* post (`reshareContext.parent`), or only create new posts that link to it? This decides whether REPOST is possible in-app or SHARE only. Both are in the enums already (B4), so either answer needs no migration | C1 |
 | 2 | ~~Do comments and reactions earn points?~~ **Decided:** out of scope for phase 1 (ADR-006); revisit later | S3, C2 |
-| 3 | 60-day reconnect: what reminder (Club card, One WSO2 banner) and how many days ahead? | S2 |
+| 3 | 60-day reconnect: what reminder (Novera message, One WSO2 banner) and how many days ahead? | S2 |
 | 4 | Removing the connection: keep earned points, or reverse them? | S2, C2 |
-| 5 | ~~Does the Club card's share link need the One WSO2 deep link to survive login?~~ **Answered:** yes, it survives. `AuthGuard` saves the path in sessionStorage before sign-in and restores it afterwards (`layouts/postLoginRedirect.ts`), within the same tab | S5 |
+| 5 | ~~Does the announcement card's share link need the One WSO2 deep link to survive login?~~ **Answered:** yes, it survives. `AuthGuard` saves the path in sessionStorage before sign-in and restores it afterwards (`layouts/postLoginRedirect.ts`), within the same tab | S5 |
 | 6 | Leaderboard period: all time, quarter, or campaign | S4 |
 | 7 | Token store: encryption key in a Choreo secret, rotated how often? Needs a security review (new sensitive data: member tokens). Retention: daily partitions dropped once every token in them is past expiry + 5-day grace (ADR-002). Audit log kept 5 years | S2 |

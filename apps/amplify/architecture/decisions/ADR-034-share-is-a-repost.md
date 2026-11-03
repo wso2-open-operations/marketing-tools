@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-20
+- **Superseded in part (2026-11-03):** Google Chat was replaced by Novera ([ADR-047](ADR-047-novera-replaces-google-chat.md)); the button that starts a share is on the Novera card, not a Club Chat card.
 - **Source:** plan M0 D5
 
 ## Context

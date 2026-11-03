@@ -5,7 +5,7 @@
 > - **TypeScript / Express → Ballerina.** `amplify-api`, `amplify-jobs` and `amplify-cron` are Ballerina (ADR-001).
 > - **Five Choreo Scheduled Tasks → one worker plus a cron trigger.** A single `amplify-jobs` worker drains the Postgres outbox (provider adapters, chat notifier, scoring); `amplify-cron` triggers it, and "Save & Share Now" triggers it right away (ADR-003).
 > - **An API proxy sits at the cell edge** (ADR-004); this L2 has none.
-> - **Engagement sync (B5), Novera announcements (B7), the Coin issuer (B8), HR Entity `org_dim` (B6) and the agent** are all later phases. Phase 1 uses in-app shares through `w_member_social`, PO-reviewed external shares, a Google Chat incoming webhook, and points held in the ledger.
+> - **Engagement sync (B5), the Coin issuer (B8), HR Entity `org_dim` (B6) and the agent** are all later phases. Phase 1 uses in-app shares through `w_member_social`, PO-reviewed external shares, Novera announcements (B7, phase 1 since 2026-11-03, ADR-047; a Google Chat incoming webhook was used before that), and points held in the ledger.
 > - **Member tokens:** phase 1 stores encrypted `w_member_social` member tokens; this L2 assumed an org-admin token only.
 > - **Tables renamed and split** (`post` → `campaign.campaign`, `employee_link` → `connection.member_connection`, `submission` → `external_sharing.external_share`, …). See [phase1-data-model.md](../Phase%201/phase1-data-model.md).
 >

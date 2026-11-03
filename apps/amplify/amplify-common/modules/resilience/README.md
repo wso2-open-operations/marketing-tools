@@ -6,11 +6,11 @@ Resilience settings for outbound calls and the database, plus the gauges that re
 
 File: `modules/resilience/resilience.bal`.
 
-- `HttpResilience` is one dependency's settings: rolling window, bucket size, request volume threshold, failure ratio, reset time, breaker status codes (default 429, 500, 502, 503, 504), retry count and interval, and `maxActiveConnections` (a private pool per dependency, so a slow LinkedIn cannot starve Google Chat).
+- `HttpResilience` is one dependency's settings: rolling window, bucket size, request volume threshold, failure ratio, reset time, breaker status codes (default 429, 500, 502, 503, 504), retry count and interval, and `maxActiveConnections` (a private pool per dependency, so a slow LinkedIn cannot starve Novera).
 - `clientConfig(settings, timeoutSeconds)` returns an `http:ClientConfiguration` with the timeout, circuit breaker, retry and pool.
 - `breakerState(client)` returns `BreakerState` (`CLOSED`, `HALF_OPEN`, `OPEN`).
 - `correlationHeaders(correlationId)` and `CORRELATION_HEADER` (`X-Correlation-ID`).
-- `retryCount` stays 0 for calls that are not idempotent (`POST /rest/posts`, the Chat webhook). Those retry through the outbox.
+- `retryCount` stays 0 for calls that are not idempotent (`POST /rest/posts`, the Novera notification). Those retry through the outbox.
 
 ## Database breaker and retry
 
@@ -37,7 +37,7 @@ Nothing in this package. Uses `ballerina/http`, `ballerina/sql`, `ballerina/time
 ## Does not do
 
 - No config reading. Callers pass settings in (the values come from each component's Config.toml).
-- No wiring to a specific dependency. `linkedin` and `googlechat` use these types.
+- No wiring to a specific dependency. `linkedin` and the Novera client in `amplify-jobs` use these types.
 - No alert rules.
 
 ## Tests

@@ -17,7 +17,7 @@ after `__`. The runner is `../main.bal`; see `../README.md` for settings and how
 | V008 | `announcement` + view, `outbox`, `idempotency_key`, `audit_log` (monthly partitions), `app_setting` |
 | V009 | Partition upkeep (`SECURITY DEFINER`): create ahead, token drop rule, audit retention, outbox purge, `run_partition_maintenance()` |
 | V010 | Recognition upkeep: `apply_ledger_entry`, one-UPDATE `rerank`, `rebuild` |
-| V011 | `announcement.chat_thread_name` (thread Chat returned, M6a); `announcement_v` recreated |
+| V011 | `announcement.chat_thread_name` (thread Chat returned, M6a; unused since ADR-047); `announcement_v` recreated |
 | V012 | Recognition writers serialized (advisory lock in `apply_ledger_entry`/`rerank`/`rebuild`); upkeep functions `lock_timeout = 5s` + one upkeep at a time ([doc](../../docs/migrations/2026-10-17-v012-recognition-lock-maintenance-timeout.md)) |
 | V013 | dashboard indexes (the 30 s `idle_in_transaction_session_timeout` is sent as a startup option, ADR-043); dashboard indexes `points_ledger (created_at)`, `share_request (failed_at)`; lock-order comments on the V012 recognition functions ([doc](../../docs/migrations/2026-10-17-v013-idle-timeout-dashboard-indexes.md)) |
 | V014 | the `scoring_point_rule` and `scoring_points_ledger` action checks accept every action the platform prices: adds `REACTION`, `COMMENT`, `CHALLENGE_ENTRY`, `CHALLENGE_WINNER` (nothing awards them yet; later phases need no schema change) |

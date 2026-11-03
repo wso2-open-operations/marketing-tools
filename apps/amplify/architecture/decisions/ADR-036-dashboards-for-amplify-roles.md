@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-22
+- **Superseded in part (2026-11-03):** Google Chat was replaced by Novera ([ADR-047](ADR-047-novera-replaces-google-chat.md)); item 7 applies to the Novera announcement, not a Chat card.
 - **Source:** Lead Developer, 2026-10-22; boards agreed with the business team's review pending; builds on ADR-013 and ADR-035
 
 ## Context

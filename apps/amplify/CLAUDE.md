@@ -32,5 +32,5 @@ The PostgreSQL floor is in ADR-044; the version local and tests run is the image
 
 ## Cell rules
 - Ingress only through the API proxy; `amplify-jobs`, the scheduler and the DBs are never published.
-- Egress only to the declared endpoints, set per environment as config or secrets: LinkedIn (API and OAuth base URLs), Novera (its notifications URL and a client-credentials application, secret as a secret) and Google Chat (webhook URL as a secret; in prod it points at the WSO2 Club group chat space, in dev at a test space), people-app directory for team rosters.
+- Egress only to the declared endpoints, set per environment as config or secrets: LinkedIn (API and OAuth base URLs), Novera (its notifications URL and a client-credentials application, secret as a secret; the only announce channel, ADR-047), people-app directory for team rosters.
 - Containers run as `USER 10014`.

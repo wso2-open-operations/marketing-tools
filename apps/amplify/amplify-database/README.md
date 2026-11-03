@@ -734,10 +734,10 @@ erDiagram
     ANNOUNCEMENT["announcement (AR)"] {
         uuid campaign_id PK
         bigint outbox_id
-        text space "club or dev-test"
-        text thread_key "campaign-{id}"
-        text chat_message_name "returned by Chat"
-        text chat_thread_name "returned by Chat (V011)"
+        text space "novera (older rows: club or dev-test)"
+        text thread_key "idempotency key amplify:{campaignId} (older rows: campaign-{id})"
+        text chat_message_name "novera:{campaignId} marker"
+        text chat_thread_name "unused since ADR-047 (V011)"
         timestamptz queued_at
         timestamptz sent_at
         timestamptz failed_at
@@ -826,7 +826,7 @@ erDiagram
 
 | Event (outbox `event_type`) | Publisher | Producer writes | Consumer | Consumer writes | Idempotency key |
 | --- | --- | --- | --- | --- | --- |
-| `CampaignRegistered` | S1 (`amplify-api`, Save or Save & Share Now) | `campaign` | S5 chat notifier (jobs) | `announcement` (queued), then webhook | `campaign.id` |
+| `CampaignRegistered` | S1 (`amplify-api`, Save or Save & Share Now) | `campaign` | S5 announcement handler (jobs) | `announcement` (queued), then Novera notification (ADR-047) | `campaign.id` |
 | `CampaignAnnounced` | S5 (jobs) | `announcement` (`sent_at`) | — (admin view only) | — | `outbox.id` |
 | `ConnectionReady` | S2 (api, OAuth complete or reconnect) | `connection_member_connection`, `provider_token` | C1, channel banners | — | `member_urn` + `connected_at` |
 | `ConnectionRevoked` | S2 (jobs on a LinkedIn 401, or consent withdrawn) | `member_connection.revoked_at` | C1 | unpublished `share_request` rows: `failed_at`, `failure_reason = NEEDS_RECONNECT` | `member_urn` + `revoked_at` |
@@ -862,7 +862,7 @@ The migration user owns every object; app users never own tables, so they can't 
 
 | Script | What it changes |
 | --- | --- |
-| `V011__announcement_thread_name.sql` | `announcement.chat_thread_name` (the thread Chat returns with each Club card, M6a). Recreates `announcement_v` to pick up the column and re-grants `SELECT` to the same roles as V008 |
+| `V011__announcement_thread_name.sql` | `announcement.chat_thread_name` (the thread Chat returned with each Club card, M6a; unused since Google Chat was removed, ADR-047). Recreates `announcement_v` to pick up the column and re-grants `SELECT` to the same roles as V008 |
 | `V012__recognition_lock_maintenance_timeout.sql` | `pg_advisory_xact_lock(1634561133)` first in `apply_ledger_entry`, `rerank`, `rebuild` (lock order above). `lock_timeout = 5s` on the six upkeep functions, so daily upkeep gives up instead of queueing every token and audit write behind an `ACCESS EXCLUSIVE` request; `run_partition_maintenance` takes advisory lock 1634561134 so two upkeep calls don't race. Owners and grants unchanged |
 | `V013__idle_timeout_dashboard_indexes.sql` | `ALTER ROLE amplify_api / amplify_jobs SET idle_in_transaction_session_timeout = '30s'` (runs as the bootstrap admin, before `SET LOCAL ROLE`), so a session the runtime leaves idle in a transaction releases its locks (R-13). Indexes `points_ledger (created_at)` and partial `share_request (failed_at) WHERE failed_at IS NOT NULL`, the two the planner used for the PO dashboard tiles (EXPLAIN in `docs/migrations/2026-10-17-v013-idle-timeout-dashboard-indexes.md`). `COMMENT ON FUNCTION` for the lock order |
 | `V014__point_actions_all_phases.sql` | `point_rule_action_check` and `points_ledger_action_check` also accept `REACTION`, `COMMENT`, `CHALLENGE_ENTRY` and `CHALLENGE_WINNER`, so the whole points table fits without a later schema change. Nothing awards them yet (likes and comments need Community Management; Challenge entry and winner are PO adjustments for now). `sharing_engagement.action` is unchanged. Seeds S005 to S007 price them (REACTION 1, COMMENT 1, CHALLENGE_ENTRY 10, CHALLENGE_WINNER 25 from 2026-10-19) and add `leaderboard.top_scope` |

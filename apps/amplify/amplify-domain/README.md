@@ -53,15 +53,15 @@ CORE        ┃     │  ┌─────────────────�
             ┃     ▼                                     ▼                                                        ┃
 SUPPORTING  ┃  ┌─────────────────────────┐  ┌──────────────────────────────┐                                     ┃
             ┃  │ ANNOUNCEMENTS     [S5]  │  │ RECOGNITION            [S4]  │                                     ┃
-            ┃  │ Club space cards        │  │ 3 leaderboards · my points   │                                     ┃
-            ┃  │ chat notifier in jobs   │  │ PO dashboard                 │                                     ┃
+            ┃  │ Novera post cards       │  │ 3 leaderboards · my points   │                                     ┃
+            ┃  │ notifier in jobs        │  │ PO dashboard                 │                                     ┃
             ┃  └────────────┬────────────┘  └──────────────────────────────┘                                     ┃
             ┗━━━━━━━━━━━━━━━┿━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-                            │ ACL: incoming webhook             S2 and C1 ──► LinkedIn (ACL: OAuth/OIDC, provider adapter)
+                            │ ACL: Novera client                S2 and C1 ──► LinkedIn (ACL: OAuth/OIDC, provider adapter)
             ┌───────────────▼──────────┐                         ┌──────────────────────────────────────────────┐
-EXTERNAL    │ GOOGLE CHAT   [EXTERNAL] │                         │ LINKEDIN                          [EXTERNAL] │
-            │ Club space               │                         │ Sign In with LinkedIn (OIDC: sub → person)   │
-            │ incoming webhook, cardsV2│                         │ Share on LinkedIn: POST /rest/posts          │
+EXTERNAL    │ NOVERA        [EXTERNAL] │                         │ LINKEDIN                          [EXTERNAL] │
+            │ Google Chat assistant    │                         │ Sign In with LinkedIn (OIDC: sub → person)   │
+            │ POST /internal/notif.    │                         │ Share on LinkedIn: POST /rest/posts          │
             └──────────────────────────┘                         │ self-serve · w_member_social · no approval   │
                                                                  └──────────────────────────────────────────────┘
 
@@ -85,7 +85,7 @@ All contexts share one database schema. Table and view names carry the context a
 | S2 LinkedIn Connection | Supporting | [`connection`](modules/connection/README.md) | `connection_` | OAuth consent, the encrypted token vault (daily partitions), 60-day expiry, remove connection |
 | S3 External Sharing | Supporting | [`external_sharing`](modules/external_sharing/README.md) | `external_sharing_` | Evidence-URL claims for actions outside Amplify, PO review |
 | S4 Recognition | Supporting | [`recognition`](modules/recognition/README.md) | `recognition_` | Pre-built leaderboard, team, my-points and PO dashboard tables, rebuildable from the ledger |
-| S5 Announcements | Supporting | [`announcements`](modules/announcements/README.md) | `announcement` | The Club chat card for a campaign, sent once |
+| S5 Announcements | Supporting | [`announcements`](modules/announcements/README.md) | `announcement` | The Novera announcement for a campaign, sent once (ADR-047) |
 | Shared | | [`identity`](modules/identity/README.md), [`store`](modules/store/README.md) | `identity_`, `messaging_`, `audit_`, `config_` | Employee directory snapshot; the client, outbox and audit writers, SQL error mapping, partition upkeep |
 | Read only | | [`reporting`](modules/reporting/README.md) | none | Dashboard aggregates (ADR-036). Reads other contexts' views, writes nothing |
 

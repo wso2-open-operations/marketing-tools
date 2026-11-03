@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-16
+- **Superseded in part (2026-11-03):** Google Chat was replaced by Novera ([ADR-047](ADR-047-novera-replaces-google-chat.md)); read "Chat webhook" and "Chat" below as the Novera notification. Items and amendments otherwise stand.
 - **Source:** plan M6, M9; ADR-003, ADR-018, ADR-024
 
 ## Context

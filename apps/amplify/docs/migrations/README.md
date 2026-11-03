@@ -44,7 +44,7 @@ BAL_CONFIG_VAR_ITENABLED=true BAL_CONFIG_VAR_DBPORT=55432 BAL_CONFIG_VAR_DBPASSW
 cd ../amplify-domain
 AMPLIFY_IT=true AMPLIFY_IT_DB_PORT=55432 bal test --groups integration
 
-# 3. The Run (M6): mock_linkedin on 19190/19191 as LinkedIn, an in-test Chat stub on 9298.
+# 3. The Run (M6): mock_linkedin on 19190/19191 as LinkedIn.
 cat > /tmp/mock-it.toml <<'TOML'
 [wso2.mock_linkedin]
 apiPort = 19190
@@ -63,7 +63,7 @@ pkill -f mock_linkedin
 docker rm -f amplify-pg17
 ```
 
-Step 3 registers a campaign (card to the stub, threaded `campaign-{id}`), connects through the mock OAuth
+Step 3 registers a campaign (announcement to the Novera stub, with `Idempotency-Key: amplify:{id}`), connects through the mock OAuth
 flow and seals the token into today's partition, shares, then checks publish → engagement → points →
 standing, correlation ids in audit, rerun safety (no second post, card or ledger row), one run across
 replicas (advisory lock), stale-lock release and the `Idempotency-Key` purge. `bal run` of the mock rewrites

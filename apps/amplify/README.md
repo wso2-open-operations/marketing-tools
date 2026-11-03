@@ -13,13 +13,13 @@ apps/amplify/
 ├── compose.yaml · Makefile       # full local stack (M8a): make up / seed / e2e / down
 ├── .choreo/component.yaml        # Choreo descriptor of amplify-api (its Docker context is this folder, ADR-027); jobs' is ../.choreo/component.yaml (context `apps`)
 ├── .dockerignore · .gitignore
-├── amplify-common/           # shared library (ADR-020): types, events, crypto, linkedin, googlechat
+├── amplify-common/           # shared library (ADR-020): types, events, crypto, linkedin, resilience
 ├── amplify-domain/           # shared library (ADR-021): bounded contexts + PostgreSQL repositories + store
 ├── amplify-api/              # published API (behind the API proxy): /health, /ready
 ├── amplify-jobs/             # worker: POST /runs, POST /maintenance/partitions, POST /maintenance/rebuild-recognition, /health
 ├── amplify-scheduler/        # pinned akorn/scheduler image (UID 10014): calls amplify-jobs on schedule (ADR-026)
 ├── amplify-database/         # Amplify DB Migrate runner + migrations/ + seed/ + checks/
-├── local/                        # .env.example, dev-jwt/ (ADR-023), chat-stub/
+├── local/                        # .env.example, dev-jwt/ (ADR-023), novera-mock/
 ├── scripts/                      # test-all.sh, e2e-local.sh, load-test.sh (+ load/), check-descriptors.sh, check-logs-pii.sh, it-scheduler.sh, lint-openapi-names.sh
 └── docs/migrations/              # dated behavior/schema change notes
 ```
@@ -51,9 +51,9 @@ Needs Docker (Compose v2), `openssl`, `curl`, `jq`. From this folder:
 
 ```sh
 make up      # first run writes local/.env (random local-only secrets) and the dev JWT keys, builds, starts, waits for health
-make e2e     # scripts/e2e-local.sh: campaign -> scheduler Run -> Chat card -> mock OAuth -> share -> points -> leaderboard
+make e2e     # scripts/e2e-local.sh: campaign -> scheduler Run -> announcement -> mock OAuth -> share -> points -> leaderboard
 make seed    # rerun Amplify DB Migrate (migrations + seeds; idempotent)
-make logs    # follow all logs; `docker compose --env-file local/.env logs -f chat-stub` for cards
+make logs    # follow all logs; `docker compose --env-file local/.env logs -f amplify-jobs` for announcements
 make check   # descriptor drift check (Choreo component.yaml vs workload.yaml vs Dockerfile vs compose) + log hygiene (scripts/check-logs-pii.sh)
 ```
 
@@ -74,7 +74,7 @@ make down    # stop and REMOVE volumes
 | amplify-api | `127.0.0.1:9090` | Published directly (no gateway). Call it with a dev JWT: `curl -H "x-jwt-assertion: $(local/dev-jwt/mint-dev-jwt.sh token emp-1 ada@example.com amplify_po)" localhost:9090/me` (ADR-023, `environment=local` only) |
 | mock-linkedin | `127.0.0.1:19091` (www/OAuth only) | The browser follows the authorization redirect here; api port 9090 stays internal. One mock member signs in every time |
 | people-stub | `127.0.0.1:19092` | people directory stub (HR Entity `POST /graphql` for team rosters; `GET /employees/basic-info` for One WSO2 photos/names). `make env` (and so `make up`) creates `local/people-stub/directory.json` from the example the first time (the real file is gitignored, so it never gets committed); edit it to add yourself. ThunderID users are keyed `<sub>@example.com` (the dev proxy's fallback when the token has no email) |
-| postgres, amplify-db-migrate, amplify-jobs, scheduler, scheduler-db, chat-stub | none | Compose network only. Scheduler UI: `docker compose --env-file local/.env exec amplify-api wget -qO- http://scheduler:8080/jobs` |
+| postgres, amplify-db-migrate, amplify-jobs, scheduler, scheduler-db | none | Compose network only. Scheduler UI: `docker compose --env-file local/.env exec amplify-api wget -qO- http://scheduler:8080/jobs` |
 | apim (`make up PROFILE=apim`) | `127.0.0.1:9443`, `8243` | Optional WSO2 API Manager 4.7.0. **Pending the non-prod Asgardeo org** (key manager); steps in `compose.yaml`. Until then the default profile is the supported one |
 
 To point a local One WSO2 at it, use `http://localhost:9090` with a dev JWT forwarded as `x-jwt-assertion`, and `LINKEDIN_REDIRECT_URI` (default `http://localhost:3000/amplify/connect/callback`) as its callback page.
@@ -113,12 +113,11 @@ Every setting is a Ballerina `configurable`, set through `BAL_CONFIG_VAR_<NAME>`
 | `LINKEDINIDTOKENVALIDATION` | ✓ | | | | `false` (`LINKEDIN_ID_TOKEN_VALIDATION`; the mock issues no ID token). `LINKEDINJWKSURL` / `LINKEDINOIDCISSUER` default to LinkedIn's |
 | `LINKEDINNONCEMODE` | ✓ | | | | `OFF` (`LINKEDIN_NONCE_MODE`). OIDC nonce on connect, only with `LINKEDINIDTOKENVALIDATION=true`: `SEND` puts it on the authorize URL and checks it when the ID token carries one (logs `nonce not echoed` otherwise), `REQUIRE` refuses a token without the same nonce. LinkedIn documents neither a nonce parameter nor a nonce claim, so stay at `SEND` until a real app is seen to echo it |
 | `TOKENKEYS`, `TOKENCURRENTKEYID` | ✓ | ✓ | | ✓ (keys) | `local-1:<random base64 32 bytes>`, `local-1` |
-| `CHATWEBHOOKURL` | | ✓ | | ✓ | chat-stub URL (or the dev test space) |
-| `CHATSPACE`, `CHATCARDAVATARURL`, `SHAREPAGEBASEURL` | | ✓ | | | `dev-test`, empty, One WSO2 Celebrate page |
-| `CHATALLOWINSECUREHTTP` | | ✓ | | | `true` (local only, plain-http stub) |
-| `AMPLIFYONNOVERA`, `AMPLIFYONWEBHOOK` | | ✓ | | | `true`, `false` (`AMPLIFY_ON_NOVERA`, `AMPLIFY_ON_WEBHOOK`): which channels announce a campaign. Novera is primary, the webhook best effort |
+| `SHAREPAGEBASEURL` | | ✓ | | | One WSO2 Celebrate page. The card icon and default image URLs are also in `amplify-jobs/config.bal` |
+| `AMPLIFYONNOVERA` | | ✓ | | | `true` (`AMPLIFY_ON_NOVERA`). Novera is the only channel that announces a campaign (ADR-047) |
 | `NOVERANOTIFYURL`, `NOVERATOKENURL`, `NOVERACLIENTID`, `NOVERASCOPES` | | ✓ | | | empty (Novera's `POST /internal/notifications` through its Choreo gateway, the token endpoint, the subscribed application, optional scopes) |
 | `NOVERACLIENTSECRET` | | ✓ | | ✓ | empty (that application's secret) |
+| `NOVERAALLOWINSECUREHTTP` | | ✓ | | | unset. `true` only to try `local/novera-mock` over plain http; never in Choreo |
 
 Scheduler: `DSN` (secret, its own database/user). Mock LinkedIn: `LISTENERHOST=0.0.0.0`, `WWWBASEURL`, `CLIENTID`, `CLIENTSECRET` (secret), and `BAL_CONFIG_DATA` for `redirectUris`. Tuning knobs with safe defaults (run batch sizes, timeouts, breakers, LinkedIn ceilings) are in each component's `config.bal`; set them the same way when needed.
 

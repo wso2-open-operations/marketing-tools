@@ -27,7 +27,7 @@ Both jobs send the scheduler key in `X-Amplify-Internal-Key`. That key opens onl
 
 The main worker pass. Each call does one synchronous Run: it releases stale locks, claims a batch of outbox events (`FOR UPDATE SKIP LOCKED`) and settles each one as done, retry, defer or failed. It returns the run log. The events handled:
 
-- `CampaignRegistered` announces the campaign (Novera, and the Club card when the webhook is on).
+- `CampaignRegistered` announces the campaign through Novera (ADR-047).
 - `RepostRequested` makes the LinkedIn repost.
 - `EngagementRecorded` awards points.
 

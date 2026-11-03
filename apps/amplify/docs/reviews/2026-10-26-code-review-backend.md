@@ -1,5 +1,7 @@
 # Code review: Amplify backend (2026-10-26)
 
+> Superseded in part on 2026-11-03: Google Chat was replaced by Novera (ADR-047).
+
 Reviewer: Claude (agent), for Developer Bechtel. Branch `main` of the marketing-tools fork at `e1620d9`, plus the uncommitted working tree.
 
 ## Scope

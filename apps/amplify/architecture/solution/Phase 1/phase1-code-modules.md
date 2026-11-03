@@ -9,12 +9,12 @@ Related: [phase1-solution-architecture.md](phase1-solution-architecture.md) (log
 | Module | What it is | Language | Unit tests | Integration tests | Total | Pass % |
 |---|---|---|---|---|---|---|
 | `amplify-api` | Published API behind the Choreo proxy | Ballerina | 84 | — | **84** | 100% |
-| `amplify-common` | Shared lib: types, crypto, resilience, LinkedIn/Chat adapters | Ballerina | 155 | — | **155** | 100% |
+| `amplify-common` | Shared lib: types, crypto, resilience, LinkedIn adapter (the Chat adapter was removed 2026-11-03, ADR-047) | Ballerina | 155 | — | **155** | 100% |
 | `amplify-domain` | Shared lib: bounded contexts, Postgres repositories, store | Ballerina | 95 | 28 | **123** | 100% |
 | `amplify-jobs` | HTTP-triggered worker (the Run, maintenance) | Ballerina | 54 | 5 | **59** | 100% |
 | `amplify-database` | Migrate runner plus 13 migrations (V001–V013) and seeds | Ballerina + SQL | 22 | 16 | **38** | 100% |
 | `amplify-scheduler` | Pinned akornatskyy/scheduler image plus history-retention SQL | Dockerfile + SQL (upstream image is Go) | — | 2 | **2** | 100% |
-| `chat-stub` (local) | Google Chat webhook stub for Compose | Ballerina | 2 | — | **2** | 100% |
+| `chat-stub` (local, removed 2026-11-03, ADR-047) | Google Chat webhook stub for Compose | Ballerina | 2 | — | **2** | 100% |
 | `people-stub` (local) | people-app directory stub for Compose (`GET /employees/basic-info`) | Ballerina | 2 | — | **2** | 100% |
 | people-app prototype (`local/people-app-proto`) | Real people-app behind a gateway stand-in; amplify-api reads it as a service client | Bash + Node + Ballerina | — | 11 checks | **11** | 100% |
 | people-app service clients (`projects/people-ops-suite`, PR) | Lets a listed service client read `GET /employees/basic-info` | Ballerina (2201.12.7) | 5 | — | **5** | 100% |
@@ -28,7 +28,7 @@ Counts from 2026-10-19: `TIERS="unit it scheduler" scripts/test-all.sh` (465 pas
 
 ## How the bricks stack (build time)
 
-Each brick may only depend on the bricks below it. The two shared libraries are versioned Ballerina packages (`amplify_common` 0.6.0, `amplify_domain` 0.2.0, distribution 2201.13.3). Locally they're published to the local Ballerina repository. Each Dockerfile packs them inside its own build stage, so a clean checkout builds (ADR-020, ADR-021, ADR-027).
+Each brick may only depend on the bricks below it. The two shared libraries are versioned Ballerina packages; each version and the distribution are in its `Ballerina.toml`. Locally they're published to the local Ballerina repository. Each Dockerfile packs them inside its own build stage, so a clean checkout builds (ADR-020, ADR-021, ADR-027).
 
 ```mermaid
 flowchart BT
@@ -36,10 +36,10 @@ flowchart BT
         DB["<b>amplify-database</b><br/>V001–V013 migrations · seeds · migrate runner<br/><i>Ballerina + SQL · no package deps</i>"]
     end
     subgraph L1["② Foundation brick"]
-        COMMON["<b>amplify_common</b> 0.6.0<br/>types · events · crypto · resilience · linkedin · googlechat<br/><i>Ballerina</i>"]
+        COMMON["<b>amplify_common</b><br/>types · events · crypto · resilience · linkedin<br/><i>Ballerina</i>"]
     end
     subgraph L2["③ Domain brick"]
-        DOMAIN["<b>amplify_domain</b> 0.2.0<br/>store · identity · campaign · connection · sharing ·<br/>external_sharing · scoring · recognition · announcements<br/><i>Ballerina</i>"]
+        DOMAIN["<b>amplify_domain</b><br/>store · identity · campaign · connection · sharing ·<br/>external_sharing · scoring · recognition · announcements<br/><i>Ballerina</i>"]
     end
     subgraph L3["④ Deployable bricks"]
         API["<b>amplify-api</b><br/>HTTP layer · modules: auth · scheduler · utils<br/><i>Ballerina</i>"]
@@ -72,10 +72,10 @@ A solid arrow is a package dependency (`[[dependency]]` in `Ballerina.toml`). A 
 | Brick | Depends on | Owns | Never does |
 |---|---|---|---|
 | `amplify-database` | nothing | Schemas, roles and column grants, partition functions, views, seeds; forward-only `V###__*.sql` | Run at request time. It's a one-shot Manual Task / Compose job |
-| `amplify_common` | stdlib only | Value objects, ledger references (ADR-029), event shapes, AES-256-GCM token cipher, breakers and retry, LinkedIn adapter and ID-token validator, Google Chat card builder and client | Touch the database |
+| `amplify_common` | stdlib only | Value objects, ledger references (ADR-029), event shapes, AES-256-GCM token cipher, breakers and retry, LinkedIn adapter and ID-token validator | Touch the database |
 | `amplify_domain` | `amplify_common` | One module per bounded context: domain rules, repository ports, Postgres repositories. `store` holds the client, outbox and audit writers, and the process-wide transaction gate (ADR-032) | Speak HTTP |
-| `amplify-api` | common + domain | Resources, JWT verification and activity matrix (`modules/auth`), idempotency, problem details, scheduler sync (`modules/scheduler`) | Post to LinkedIn or Chat; that's the jobs' work |
-| `amplify-jobs` | common + domain | The Run (outbox drain → LinkedIn shares, Chat announcements, scoring), partition upkeep, token key rotation, recognition rebuild | Run on its own timer (ADR-003); the scheduler triggers it |
+| `amplify-api` | common + domain | Resources, JWT verification and activity matrix (`modules/auth`), idempotency, problem details, scheduler sync (`modules/scheduler`) | Post to LinkedIn or Novera; that's the jobs' work |
+| `amplify-jobs` | common + domain | The Run (outbox drain → LinkedIn shares, Novera announcements, scoring), partition upkeep, token key rotation, recognition rebuild | Run on its own timer (ADR-003); the scheduler triggers it |
 | One WSO2 module | `openapi.yaml` (contract) | Rail, role gate (`GET /me`), screens, idempotency keys, LinkedIn consent popup | Hold roles of its own; the backend's `/me` and `actions` decide |
 
 ### The domain brick, opened up
@@ -127,7 +127,7 @@ flowchart LR
         MIG["amplify-database<br/>(migrate, one-shot)"]
     end
     LI["LinkedIn<br/>OAuth · Posts API"]
-    GC["Google Chat<br/>webhook"]
+    GC["Novera<br/>POST /internal/notifications"]
     ROSTER["people-app directory<br/>(via Choreo gateway)"]
 
     BROWSER --> UI
@@ -155,7 +155,7 @@ flowchart LR
 | Timer | scheduler → jobs | `POST /runs` (300 s deadline), `POST /maintenance/partitions` | Jobs' run lock: one run at a time |
 | Data | api, jobs, migrate → Postgres | SQL, one DB role per component | Column-level grants, `VERIFY_FULL` TLS by default, transaction gate (ADR-032) |
 | LinkedIn | api → LinkedIn (connect); jobs → LinkedIn (post) | OAuth code exchange, userinfo, `/rest/posts` | Breakers, per-run and per-day ceilings, tokens encrypted at rest |
-| Chat | jobs → Google Chat | Campaign announcement cards | Webhook URL is a secret; plain HTTP only to an exact loopback host |
+| Novera | jobs → Novera (Choreo gateway) | Campaign announcement cards (ADR-047) | Client-credentials token, client secret is a secret; HTTPS only, plain HTTP only with `noveraAllowInsecureHttp` for the local mock |
 | Roster | api → people-app (`GET /employees/basic-info`) | Team membership for My Team (sub-team, else team) | OAuth2 client credentials; people-app allows the client on that route only; breaker; index cached 3 days; `teamStatus` degrades instead of failing |
 | Photos and names | UI → people-app | Leaderboard photos and full names | The user's own token; falls back to amplify-api's name and initials |
 
@@ -166,7 +166,7 @@ Locally, Compose swaps the outside bricks for stand-ins with the same interface,
 | Real brick | Local stand-in | Used by |
 |---|---|---|
 | LinkedIn | `mock_linkedin` (`apps/amplify/linkedin/apps/mock_linkedin`) | Compose, jobs integration tests, e2e |
-| Google Chat | `chat-stub` (`local/chat-stub`) | Compose; jobs tests use an in-test stub |
+| Novera | `novera-mock` (`local/novera-mock`, run by hand) | Local try-out (docs/HowToTestLocally/TestNovera.md); jobs tests use an in-test fake |
 | Asgardeo + API proxy | dev-only signed JWT (`local/dev-jwt`, ADR-023, `ENVIRONMENT=local` only) | Compose, e2e |
 | Managed Postgres | `postgres:17` container | Compose, integration tests |
 | people-app directory | `people-stub` (`local/people-stub`, edit `directory.json`); or the real people-app via `local/people-app-proto` | Compose; a local One WSO2 for photos |

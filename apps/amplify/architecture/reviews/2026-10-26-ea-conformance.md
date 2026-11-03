@@ -1,5 +1,7 @@
 # EA conformance review: Amplify phase 1 (2026-10-26)
 
+> Superseded in part on 2026-11-03: Google Chat was replaced by Novera (ADR-047).
+
 Method: WSO2 Agentic Enterprise Architecture conformance checklist (May 2026 revision), the same checklist as the 19 Oct review. This pass reads the design as it is now, so I read the ADRs and the code, not only the SAD. Scope: [phase1-solution-architecture.md](../solution/Phase%201/phase1-solution-architecture.md), ADR-034 to ADR-037, the Novera egress in `amplify-jobs`, the `amplify-api` dashboards and leaderboards, the people-app service-client read, the threat model v0.3 and the Novera notifications route in `po-agent`.
 
 **Headline.** The cell kept its shape while the design moved. One proxy still fronts everything, the activity matrix still denies by default, and the new dashboards slot into it as one more audience (`DASHBOARD_READERS`) with no side door. The Novera announcement reuses the outbox, so it gets persist-first, retry with backoff and a terminal `FAILED` for free. Credit to the team: the late changes (ADR-034 to ADR-037) each came with tests and an ADR.

@@ -40,7 +40,7 @@ None. `campaign.bal` holds `MODULE`.
 
 ## Does not do
 
-- No Club card and no announcement state (`announcements` does that).
+- No Novera card and no announcement state (`announcements` does that).
 - No share or scoring logic.
 - No image upload (the campaign holds image URLs only).
 

@@ -25,13 +25,13 @@ One file per decision, dated, short format (Status, Date, Context, Decision, Con
 | [ADR-017](ADR-017-one-claim-per-url.md) | One external-share claim per URL | Accepted |
 | [ADR-018](ADR-018-share-verification-and-metrics-need-community-management.md) | Share verification and share metrics wait for Community Management | Accepted |
 | [ADR-019](ADR-019-leaderboard-team-visibility.md) | Team page visibility and server-side team roster | Accepted (roster = people-app directory, 2026-10-19); ranks and points visibility superseded by ADR-035 |
-| [ADR-020](ADR-020-amplify-common-local-package.md) | Shared code in `amplify_common` from the local Ballerina repository | Accepted for phase 1 (B19 resolved by ADR-021) |
+| [ADR-020](ADR-020-amplify-common-local-package.md) | Shared code in `amplify_common` from the local Ballerina repository | Accepted for phase 1 (B19 resolved by ADR-021); `googlechat` superseded by ADR-047 |
 | [ADR-021](ADR-021-amplify-domain-shared-contexts.md) | Bounded contexts and repositories in a shared `amplify_domain` package (B19) | Accepted for phase 1 |
 | [ADR-022](ADR-022-backend-jwt-verification-and-authz.md) | amplify-api verifies the backend JWT itself (JWKS cache + breaker) and enforces the activity matrix in code | Accepted for phase 1 |
 | [ADR-023](ADR-023-dev-local-jwt.md) | Dev-only switch to accept locally signed JWTs (local Docker only) | Accepted (local only) |
 | [ADR-024](ADR-024-amplify-api-m5-boundaries.md) | amplify-api M5 boundary choices: S3→C2 unit of work, idempotency keys, degraded dependencies | Accepted |
-| [ADR-025](ADR-025-jobs-run-delivery-and-resilience.md) | amplify-jobs Run: synchronous `/runs`, one run via advisory lock, outbox retry not HTTP retry, deferral, breakers + bulkheads | Accepted (amended 2026-10-17) |
-| [ADR-026](ADR-026-akornatskyy-scheduler.md) | `akornatskyy/scheduler` replaces amplify-cron and the Choreo Scheduled Task; amplify-api pushes schedule settings to it | Accepted (amended 2026-10-17) |
+| [ADR-025](ADR-025-jobs-run-delivery-and-resilience.md) | amplify-jobs Run: synchronous `/runs`, one run via advisory lock, outbox retry not HTTP retry, deferral, breakers + bulkheads | Accepted (amended 2026-10-17); Chat webhook parts superseded by ADR-047 |
+| [ADR-026](ADR-026-akornatskyy-scheduler.md) | `akornatskyy/scheduler` replaces amplify-cron and the Choreo Scheduled Task; amplify-api pushes schedule settings to it | Accepted (amended 2026-10-17); Chat breaker superseded by ADR-047 |
 | [ADR-027](ADR-027-per-component-docker-contexts.md) | One Docker context per component (Choreo reads `<context>/.choreo/component.yaml`); shared packages built inside the image; jobs on its own ancestor context `apps` | Accepted (amended 2026-10-30, 2026-11-01) |
 | [ADR-028](ADR-028-database-breaker-and-breaker-metrics.md) | Database circuit breaker (`DbBreaker` in front of each pool), read-only transient retry, `amplify_breaker_state` gauge, log hygiene check | Accepted (amended 2026-10-17) |
 | [ADR-029](ADR-029-ledger-reference-encoding.md) | Ledger reference encoding: deterministic base64url (`AMP-`/`ADJ-`/`REV-`), append-only, 47-char award (C1) | Accepted for phase 1 (re-check with wso2-coin) |
@@ -39,9 +39,9 @@ One file per decision, dated, short format (Status, Date, Context, Decision, Con
 | [ADR-031](ADR-031-job-use-cases-live-in-amplify-domain.md) | Job use cases live in shared `amplify_domain`, not an api module or a jobs copy (B19, as built) | Accepted for phase 1 |
 | [ADR-032](ADR-032-transaction-gate-ballerina-2201-13.md) | Process-wide transaction gate on Ballerina 2201.13.x (R-13): every `transaction` block runs through `store:inTransaction`; remove after the 2201.14.1+ upgrade | Accepted (interim) |
 | [ADR-033](ADR-033-amplify-lives-in-marketing-tools.md) | Amplify backend lives in marketing-tools at `apps/amplify` (D12; supersedes ADR-030) | Accepted |
-| [ADR-034](ADR-034-share-is-a-repost.md) | The Amplify action is a REPOST of the campaign post; the D5 spike passed | Accepted |
-| [ADR-035](ADR-035-open-leaderboards-and-employee-count.md) | Open leaderboards by company, BU and team; employee count cached 7 days | Accepted |
-| [ADR-036](ADR-036-dashboards-for-amplify-roles.md) | Dashboards for the amplify_* roles, read from a reporting context | Accepted |
+| [ADR-034](ADR-034-share-is-a-repost.md) | The Amplify action is a REPOST of the campaign post; the D5 spike passed | Accepted; Chat card button superseded by ADR-047 |
+| [ADR-035](ADR-035-open-leaderboards-and-employee-count.md) | Open leaderboards by company, BU and team; employee count cached 7 days | Accepted; Chat card status reads as Novera status (ADR-047) |
+| [ADR-036](ADR-036-dashboards-for-amplify-roles.md) | Dashboards for the amplify_* roles, read from a reporting context | Accepted; Chat card status reads as Novera status (ADR-047) |
 | [ADR-037](ADR-037-celebrate-top-three-this-week.md) | Celebrate top three and My position are for this month, cached 2 hours | Accepted |
 | [ADR-038](ADR-038-group-based-access-by-capability.md) | Group-based access by capability; Asgardeo groups per capability from configuration, `GET /me` returns grants | Accepted |
 | [ADR-039](ADR-039-internal-key-for-back-office-components.md) | An internal key (full access) and a scheduler key (`/runs` and partition maintenance only) protect amplify-jobs | Accepted (amended 2026-11-01) |
@@ -52,6 +52,7 @@ One file per decision, dated, short format (Status, Date, Context, Decision, Con
 | [ADR-044](ADR-044-postgresql-15-or-later.md) | PostgreSQL 15 or later; V001 installs `uuidv7()` before 18; audit "before" values without `RETURNING old.*` | Accepted |
 | [ADR-045](ADR-045-hr-entity-graphql-for-the-directory.md) | The HR Entity GraphQL service is the employee directory (paged, minimal fields); house and house id from hr_entity 1.1.1 behind `hrEntityIncludeHouse` (off by default) | Accepted |
 | [ADR-046](ADR-046-house-cache-and-house-service.md) | Houses are held in an in-memory cache (30-day expiry) in amplify-api next to the directory index, loaded by a house service; ids, names and assignments from the HR Entity directory read, image URL source undecided, not wired yet; never stored in Amplify's database | Proposed |
+| [ADR-047](ADR-047-novera-replaces-google-chat.md) | Novera replaces the Club Chat space as the only channel that announces new posts, in phase 1; Google Chat code, webhook secret, stub and kill switch removed | Accepted |
 
 ## D-number to ADR map (resolves audit B1)
 
