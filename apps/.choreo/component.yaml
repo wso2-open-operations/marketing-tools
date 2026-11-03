@@ -83,6 +83,12 @@ configurations:
           displayName: Leaver sweep: OFF (default), DRY_RUN or ERASE. Start with DRY_RUN; see ADR-040
           type: string
           required: false
+    - name: BAL_CONFIG_VAR_DBSCHEMA
+      valueFrom:
+        configForm:
+          displayName: DB schema (empty = the login user name)
+          type: string
+          required: false
     - name: BAL_CONFIG_VAR_HRENTITYBASEURL
       valueFrom:
         configForm:
