@@ -10,7 +10,7 @@ Depends on `amplify_common` (publish that first). Publish to the local repositor
 bal pack && bal push --repository=local
 ```
 
-Integration tests (group `integration`) need a migrated PostgreSQL 18; see `docs/migrations/README.md`.
+Integration tests (group `integration`) need a migrated PostgreSQL 17; see `docs/migrations/README.md`.
 
 ## Domain map
 

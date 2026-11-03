@@ -31,14 +31,14 @@ order only, so a late-arriving `V0NN` must be renumbered above the highest appli
 script. It logs each script as `pending`, `applied` or `changed` and fails when any is `changed`, so it doubles
 as a checksum check before a deploy. Roles and passwords are not touched.
 
-Local: `make up` runs it once before api/jobs start; `make seed` reruns it (compose pins `postgres:18`).
+Local: `make up` runs it once before api/jobs start; `make seed` reruns it (compose pins `postgres:17`).
 
-## Integration tests (PostgreSQL 18)
+## Integration tests (PostgreSQL 17)
 
 `bal test` without a database passes: the `integration` group returns early unless enabled.
 
 ```sh
-docker run -d --name amplify-pg18 -e POSTGRES_PASSWORD=postgres -p 55432:5432 postgres:18
+docker run -d --name amplify-pg17 -e POSTGRES_PASSWORD=postgres -p 55432:5432 postgres:17
 
 # 1. Runner: drops/creates `amplify_it`, migrates fresh, reruns (idempotent), checksum guard, partition tests.
 cd amplify-database

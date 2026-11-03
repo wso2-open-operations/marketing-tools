@@ -34,7 +34,7 @@ cd ../amplify-domain && bal pack && bal push --repository=local
 cd ../amplify-api && bal build && bal test
 ```
 
-Database: migrations, seeds and the integration-test recipe against PostgreSQL 18 are in [docs/migrations/README.md](docs/migrations/README.md).
+Database: migrations, seeds and the integration-test recipe against PostgreSQL 17 are in [docs/migrations/README.md](docs/migrations/README.md).
 
 Docker images build from a clean checkout (the shared packages are packed inside the build stage). Each component has its own Docker context, because Choreo reads `<context>/.choreo/component.yaml` ([ADR-027](architecture/decisions/ADR-027-per-component-docker-contexts.md)):
 
@@ -67,7 +67,7 @@ make load-test  # k6 (Docker image) against the running stack: 1k employees / 50
 make down    # stop and REMOVE volumes
 ```
 
-`make test-all` (stack down) runs every tier and removes what it starts: unit tests of every package, the integration tests on a throwaway `postgres:18` with `mock_linkedin` (including Postgres stopped mid-run), the scheduler IT and the Compose e2e.
+`make test-all` (stack down) runs every tier and removes what it starts: unit tests of every package, the integration tests on a throwaway `postgres:17` with `mock_linkedin` (including Postgres stopped mid-run), the scheduler IT and the Compose e2e.
 
 | Service | Host port | Notes |
 |---|---|---|
