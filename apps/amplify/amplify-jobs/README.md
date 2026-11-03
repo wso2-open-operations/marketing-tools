@@ -103,13 +103,13 @@ All are `configurable`. In Choreo they arrive as `BAL_CONFIG_VAR_*` (see `worklo
 | Token keys | `tokenKeys` (secret), `tokenCurrentKeyId` | `config.bal` |
 | Alerts | `outboxAlertSeconds`, `outboxBacklogCacheSeconds`, `outboxAlertLogIntervalSeconds`, `tokenPartitionAlertDays` | `backlog.bal`, `partitions.bal` |
 | Leaver sweep | `leaverSweepMode`, `leaverGraceDays`, `leaverMinDirectorySize`, `leaverMaxPerRun`, `leaverMaxPercent` | `leavers.bal` |
-| HR Entity directory | `hrEntityBaseUrl`, `hrEntityTimeoutSeconds`, `hrEntityTokenUrl`, `hrEntityClientId`, `hrEntityClientSecret` (secret), `hrEntityPageSize` (1000), `hrEntityStatuses` (`Active`, `Marked leaver`) | `leavers.bal` |
+| HR Entity directory | `hrEntityBaseUrl`, `hrEntityTimeoutSeconds`, `hrEntityTokenUrl`, `hrEntityClientId`, `hrEntityClientSecret` (secret), `hrEntityPageSize` (1000), `hrEntityRetryCount` / `hrEntityRetryInterval` / `hrEntityRetryBackOffFactor` / `hrEntityRetryMaxWaitInterval` (3 / 3.0 / 2.0 / 20.0), `hrEntityStatuses` (`Active`, `Marked leaver`) | `leavers.bal` |
 
 Start-up check (`validateRunConfig` in `ready.bal`): `runLockLeaseSeconds` must exceed `runMaxSeconds` plus the longest external call. Otherwise the next run could release a row that is still being handled, and a LinkedIn post could go out twice.
 
 Run defaults: backoff doubles from 30 s up to 3600 s with equal jitter (half fixed, half random). Rows still unhandled when `runMaxSeconds` runs out go back untouched. Google Chat is limited to one message per second.
 
-The HR Entity client has a timeout and an optional OAuth2 client-credentials token (an empty `hrEntityTokenUrl` sends no auth header, for local stubs). It has no retry or breaker settings. A read stops at a short page, with at most 100 pages.
+The HR Entity client has a timeout and an optional OAuth2 client-credentials token (an empty `hrEntityTokenUrl` sends no auth header, for local stubs). It retries on a connection error or a 500, 502, 503 or 504 (`hrEntityRetryCount` 3, `hrEntityRetryInterval` 3.0 s, `hrEntityRetryBackOffFactor` 2.0, `hrEntityRetryMaxWaitInterval` 20 s, the same as the other apps that read the HR Entity). It has no breaker. A read ends on an empty page, with at most 100 pages.
 
 ## Safety rules
 

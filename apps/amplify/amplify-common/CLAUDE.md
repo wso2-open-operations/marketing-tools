@@ -14,7 +14,7 @@ Default module (`PRODUCT`) plus exported modules:
 - `googlechat`: cardsV2 Club card builder + incoming-webhook client.
 - `crypto`: `TokenCipher` (AES-256-GCM via javax.crypto, random 96-bit nonce, AAD `token_id|owner_id|provider`, key ring by `key_id`; `reseal` moves an old-key row to `activeKeyId()`).
 - `resilience`: `HttpResilience` (breaker, retry, private pool per dependency), `clientConfig`, `breakerState`, `correlationHeaders` (M6/M9, ADR-025); `DbBreaker`, `isTransientDbError`, `TransientDbRetry`, `exportBreakerStates` gauge (M9, ADR-028).
-The outbox writer lives in `amplify_domain.store` (ADR-021). New modules need a `[[package.modules]]` entry with `export = true`. Current version 0.6.0 (consumers pin it in their `[[dependency]]`; bump both together). Tests use stub ports 18210-18213 (keep test ports in 18200-18299).
+The outbox writer lives in `amplify_domain.store` (ADR-021). New modules need a `[[package.modules]]` entry with `export = true`. Current version 0.7.0 (consumers pin it in their `[[dependency]]`; bump both together). Tests use stub ports 18210-18213 (keep test ports in 18200-18299).
 
 ## Key patterns
 No DB access to context schemas and no service code here. Domain logic stays in the owning context module. Never log tokens, commentary or the webhook URL; provider errors carry only status and codes.
