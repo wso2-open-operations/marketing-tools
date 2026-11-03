@@ -56,7 +56,7 @@ function init() returns error? {
         log:printWarn(tls);
     }
     if !rosterConfigured() {
-        log:printInfo("People directory not configured (peopleDirectoryUrl empty): My Team answers UNAVAILABLE");
+        log:printInfo("People directory not configured (hrEntityBaseUrl empty): My Team answers UNAVAILABLE");
     }
     // Converge the scheduler jobs to the settings in the background (ADR-026).
     _ = start reconcileAtStartup();

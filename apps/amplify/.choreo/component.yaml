@@ -222,28 +222,28 @@ configurations:
           displayName: Scorecard: reposts this calendar month (default 600) (leave empty for the default)
           type: string
           required: false
-    - name: BAL_CONFIG_VAR_PEOPLEDIRECTORYURL
+    - name: BAL_CONFIG_VAR_HRENTITYBASEURL
       valueFrom:
         configForm:
-          displayName: People directory URL (people-app GET /employees/basic-info)
+          displayName: HR Entity GraphQL URL
           type: string
           required: false
-    - name: BAL_CONFIG_VAR_PEOPLEDIRECTORYTOKENURL
+    - name: BAL_CONFIG_VAR_HRENTITYTOKENURL
       valueFrom:
         configForm:
-          displayName: People directory OAuth2 token URL
+          displayName: HR Entity OAuth2 token URL
           type: string
           required: false
-    - name: BAL_CONFIG_VAR_PEOPLEDIRECTORYCLIENTID
+    - name: BAL_CONFIG_VAR_HRENTITYCLIENTID
       valueFrom:
         configForm:
-          displayName: People directory client id
+          displayName: HR Entity client id
           type: string
           required: false
-    - name: BAL_CONFIG_VAR_PEOPLEDIRECTORYCLIENTSECRET
+    - name: BAL_CONFIG_VAR_HRENTITYCLIENTSECRET
       valueFrom:
         configForm:
-          displayName: People directory client secret
+          displayName: HR Entity client secret
           type: secret
           required: false
     - name: BAL_CONFIG_VAR_LINKEDINCLIENTID

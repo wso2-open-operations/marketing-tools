@@ -80,20 +80,23 @@ final http:Client? jobsClient = check newBreakerClient(jobsUrl, jobsTimeoutSecon
 
 // ---- People directory: team rosters (D13, leaderboards.md) -----------------------------------------
 
-# people-app's employee directory, the full `GET .../employees/basic-info` URL (the same source One WSO2's
-# Org Chart reads). One call returns every current employee with `workEmail`, `team` and `subTeam`.
-# Empty = not configured (`teamStatus: UNAVAILABLE`).
-configurable string peopleDirectoryUrl = "";
-# Directory timeout, seconds. One response for the whole company, so longer than the other calls.
-configurable decimal peopleDirectoryTimeoutSeconds = 10;
-# OAuth2 client credentials for the directory's API (the Choreo connection's token URL and keys).
-# Empty token URL = no auth header (local stubs only).
-configurable string peopleDirectoryTokenUrl = "";
-# Directory client id (Choreo connection consumer key).
-configurable string peopleDirectoryClientId = "";
-# Directory client secret (Choreo secret).
-configurable string peopleDirectoryClientSecret = "";
-# How long the directory results (teams, names, houses) are reused, seconds (default 24 hours). Memory
+# The HR Entity GraphQL service's URL (the endpoint a GraphQL POST goes to). One paged query returns every
+# current employee with `workEmail`, names, `businessUnit` and `team`. Empty = not configured
+# (`teamStatus: UNAVAILABLE`).
+configurable string hrEntityBaseUrl = "";
+# HR Entity timeout, seconds, per page.
+configurable decimal hrEntityTimeoutSeconds = 10;
+# OAuth2 client credentials for the HR Entity service. Empty token URL = no auth header (local stubs only).
+configurable string hrEntityTokenUrl = "";
+# HR Entity client id.
+configurable string hrEntityClientId = "";
+# HR Entity client secret (Choreo secret).
+configurable string hrEntityClientSecret = "";
+# Rows asked for per page. The service answers a page at a time, so the whole company takes several calls.
+configurable int hrEntityPageSize = 1000;
+# Employee statuses the directory lists. `Marked leaver` stays in until the person is `Left`: they still work here.
+configurable string[] hrEntityStatuses = ["Active", "Marked leaver"];
+# How long the directory results (teams, names) are reused, seconds (default 24 hours). Memory
 # only, never written to the database. Only a successful read is kept: a failed refresh keeps serving the
 # previous result and asks the directory again on the next call, so an outage is never cached.
 configurable decimal rosterCacheSeconds = 86400;
@@ -102,8 +105,8 @@ configurable decimal rosterCacheSeconds = 86400;
 # index has.
 configurable decimal headcountCacheSeconds = 86400;
 
-final http:Client? peopleDirectoryClient = check newBreakerClient(peopleDirectoryUrl, peopleDirectoryTimeoutSeconds,
-        peopleDirectoryAuth());
+final http:Client? peopleDirectoryClient = check newBreakerClient(hrEntityBaseUrl, hrEntityTimeoutSeconds,
+        hrEntityAuth());
 
 // ---- LinkedIn (S2) ------------------------------------------------------------------------------------
 
@@ -165,12 +168,11 @@ isolated function newBreakerClient(string url, decimal timeout, http:ClientAuthC
     return check new (url, config);
 }
 
-isolated function peopleDirectoryAuth() returns http:OAuth2ClientCredentialsGrantConfig? {
-    if peopleDirectoryTokenUrl == "" {
+isolated function hrEntityAuth() returns http:OAuth2ClientCredentialsGrantConfig? {
+    if hrEntityTokenUrl == "" {
         return ();
     }
-    return {tokenUrl: peopleDirectoryTokenUrl, clientId: peopleDirectoryClientId,
-        clientSecret: peopleDirectoryClientSecret};
+    return {tokenUrl: hrEntityTokenUrl, clientId: hrEntityClientId, clientSecret: hrEntityClientSecret};
 }
 
 isolated function newLinkedInAdapter() returns linkedin:ProviderAdapter?|error {
@@ -338,7 +340,7 @@ isolated function sendTrigger(http:Client c, string path, string? correlationId)
 
 # Whether the people directory is configured (test seam).
 #
-# + return - True when `peopleDirectoryUrl` is set
+# + return - True when `hrEntityBaseUrl` is set
 isolated function rosterConfigured() returns boolean => peopleDirectoryClient !is ();
 
 # A team roster.
@@ -353,8 +355,8 @@ type Roster record {|
     map<string> names = {};
 |};
 
-# The fields of a directory row Amplify reads. Open: the row carries more (names, photo, manager), which
-# is ignored and never kept.
+# The fields of an HR Entity employee Amplify reads. Open: anything else the service returns is ignored and
+# never kept. `house` and `subTeam` are not asked of the service yet, so they stay empty.
 type DirectoryRecord record {
     # Work email. Optional: one row without it (a contractor, a placeholder) is skipped, not a reason to
     # reject the whole directory.
@@ -548,23 +550,69 @@ isolated function directoryIndex(string? correlationId) returns (DirectoryIndex 
     return fresh;
 }
 
+# The query, one page of current employees. Only the fields Amplify uses are asked for.
+const string EMPLOYEES_QUERY = "query getEmployees($filter: EmployeeFilter!, $limit: Int, $offset: Int) { "
+        + "employees(filter: $filter, limit: $limit, offset: $offset) { workEmail firstName lastName businessUnit team } }";
+
+# Most pages one directory read will ask for. A service that never runs dry cannot loop the caller forever.
+const int MAX_DIRECTORY_PAGES = 100;
+
 isolated function fetchDirectory(string? correlationId) returns (DirectoryIndex & readonly)|error {
     http:Client? c = peopleDirectoryClient;
     if c is () {
         return error("People directory is not configured");
     }
+    int pageSize = hrEntityPageSize > 0 ? hrEntityPageSize : 1000;
     map<string> headers = correlationId is string ? {[CORRELATION_HEADER]: correlationId} : {};
-    http:Response res = check c->get("", headers);
+    DirectoryRecord[] records = [];
+    int offset = 0;
+    foreach int _ in 0 ..< MAX_DIRECTORY_PAGES {
+        DirectoryRecord[] page = check fetchDirectoryPage(c, headers, pageSize, offset);
+        records.push(...page);
+        if page.length() < pageSize {
+            return indexDirectory(records);
+        }
+        offset += pageSize;
+    }
+    return error(string `People directory did not end within ${MAX_DIRECTORY_PAGES} pages`);
+}
+
+# One page of the HR Entity's employees.
+#
+# + c - HR Entity client
+# + headers - Request headers
+# + pageSize - Rows asked for
+# + offset - Rows to skip
+# + return - The rows, or an error that never carries the response body (it names people)
+isolated function fetchDirectoryPage(http:Client c, map<string> headers, int pageSize, int offset)
+        returns DirectoryRecord[]|error {
+    json body = {
+        query: EMPLOYEES_QUERY,
+        variables: {filter: {employeeStatus: hrEntityStatuses}, 'limit: pageSize, offset}
+    };
+    http:Response res = check c->post("", body, headers);
     if res.statusCode != 200 {
         return error(string `People directory answered ${res.statusCode}`);
     }
     // The body names people: a parse error's message can echo it, so it never reaches the log.
     json|error payload = res.getJsonPayload();
-    DirectoryRecord[]|error records = payload is json ? payload.cloneWithType() : payload;
+    if payload is error || payload !is map<json> {
+        return error("People directory answered a malformed body");
+    }
+    json errors = payload["errors"];
+    if errors is json[] && errors.length() > 0 {
+        return error("People directory answered with GraphQL errors");
+    }
+    json data = payload["data"];
+    json employees = data is map<json> ? data["employees"] : ();
+    if employees !is json[] {
+        return error("People directory answered a malformed body");
+    }
+    DirectoryRecord[]|error records = employees.cloneWithType();
     if records is error {
         return error("People directory answered a malformed body");
     }
-    return indexDirectory(records);
+    return records;
 }
 
 // ---- Employee count (headcount) ------------------------------------------------------------------------

@@ -192,17 +192,17 @@ Per environment (dev, prod), for each of the three components **[console]**:
 
 ## 13. People directory (team rosters)
 
-My Team and the Team page's team scope come from people-app's `GET /employees/basic-info` (ADR-019). Amplify Backend fetches the whole directory once, groups everyone by sub-team (team when there's none) and keeps that index (teams, names and houses) in memory for 24 hours (`ROSTERCACHESECONDS`, default 86400). Nothing is written to the database or the logs.
+My Team and the Team page's team scope come from the HR Entity GraphQL service (ADR-019, ADR-045). Amplify Backend fetches the whole directory in pages, groups everyone by team under their business unit and keeps that index (teams and names; no houses yet) in memory for 24 hours (`ROSTERCACHESECONDS`, default 86400). Nothing is written to the database or the logs.
 
 - **Someone moved team and still sees the old one.** Expected for up to 24 hours. To pick it up now, restart Amplify Backend; the next leaderboard read fetches the directory again.
-- **`teamStatus: NO_TEAM` for one person.** They aren't in the directory (only Active and Marked leaver employees are), their people-app record has no team, or their Amplify email doesn't match their people-app `workEmail`. Compare the two emails first.
+- **`teamStatus: NO_TEAM` for one person.** They aren't in the directory (only Active and Marked leaver employees are), their HR record has no team, or their Amplify email doesn't match their HR `workEmail`. Compare the two emails first.
 - **`teamStatus: UNAVAILABLE` for everyone.** The directory has never loaded since the last start. Check, in order:
-  1. The Backend log for `People directory not configured`: the `PEOPLEDIRECTORY*` settings are empty (choreo-deploy C5/C7).
-  2. `People directory answered 500`: people-app doesn't recognise the client. Its `directoryClientIds` doesn't list Amplify's client id, or `clientIdClaim` names the wrong claim. People-app's log says "Malformed Invoker info object!".
-  3. `People directory answered 403`: the URL isn't `/employees/basic-info`.
-  4. `/ready` shows the `roster` breaker `OPEN`: people-app or the gateway is down. It closes by itself after 30 s once they're back.
+  1. The Backend log for `People directory not configured`: the `HRENTITY*` settings are empty (choreo-deploy C5/C7).
+  2. `People directory answered 401` or `403`: the HR Entity doesn't accept Amplify's client. Check the client id, secret and token URL with People Operations.
+  3. `People directory answered with GraphQL errors`: the query asks for a field the service doesn't offer, or the client lacks scope for one. The log doesn't carry the service's message (it can name people); ask People Operations for the service log.
+  4. `/ready` shows the `roster` breaker `OPEN`: the HR Entity or the gateway is down. It closes by itself after 30 s once they're back.
 - **A refresh fails after a good load.** Amplify keeps serving the old index and logs `People directory refresh failed; using the cached teams`. Nothing to do unless it lasts; teams just stop updating.
-- **Rotating the client secret.** New secret on the Choreo connection, update `PEOPLEDIRECTORYCLIENTSECRET`, redeploy the Backend. People-app needs no change: it lists the client id, not the secret.
+- **Rotating the client secret.** New secret for the HR Entity client, update `HRENTITYCLIENTSECRET` (Backend and Jobs), redeploy both.
 
 ## 14. Rotate the internal key and the scheduler key (ADR-039)
 

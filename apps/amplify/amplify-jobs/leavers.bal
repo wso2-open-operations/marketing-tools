@@ -53,16 +53,20 @@ configurable int leaverMaxPerRun = 10;
 # directory erase a handful of active people while Amplify is small; this one scales with the pilot.
 configurable int leaverMaxPercent = 10;
 
-# people-app's directory, the full `GET .../employees/basic-info` URL (the same one amplify-api reads).
-configurable string peopleDirectoryUrl = "";
-# Directory timeout, seconds.
-configurable decimal peopleDirectoryTimeoutSeconds = 10;
-# OAuth2 client credentials for the directory's API. Empty token URL = no auth header (local stubs only).
-configurable string peopleDirectoryTokenUrl = "";
-# Directory client id.
-configurable string peopleDirectoryClientId = "";
-# Directory client secret (Choreo secret).
-configurable string peopleDirectoryClientSecret = "";
+# The HR Entity GraphQL service's URL (the same one amplify-api reads).
+configurable string hrEntityBaseUrl = "";
+# HR Entity timeout, seconds, per page.
+configurable decimal hrEntityTimeoutSeconds = 10;
+# OAuth2 client credentials for the HR Entity service. Empty token URL = no auth header (local stubs only).
+configurable string hrEntityTokenUrl = "";
+# HR Entity client id.
+configurable string hrEntityClientId = "";
+# HR Entity client secret (Choreo secret).
+configurable string hrEntityClientSecret = "";
+# Rows asked for per page.
+configurable int hrEntityPageSize = 1000;
+# Employee statuses the directory lists. `Marked leaver` stays in until the person is `Left`.
+configurable string[] hrEntityStatuses = ["Active", "Marked leaver"];
 
 # What one sweep did. Ids are the pseudonymous `sub`, never emails.
 public type LeaverSweepReport record {|
@@ -193,23 +197,18 @@ isolated class ProductionLeaverPorts {
         if c is () {
             return error("People directory is not configured");
         }
-        http:Response res = check c->get("");
-        if res.statusCode != 200 {
-            return error(string `People directory answered ${res.statusCode}`);
-        }
-        // The body names people: a parse error's message can echo it, so it never reaches the log.
-        json|error payload = res.getJsonPayload();
-        if payload !is json[] {
-            return error("People directory answered a malformed body");
-        }
+        int pageSize = hrEntityPageSize > 0 ? hrEntityPageSize : 1000;
         string[] emails = [];
-        foreach json row in payload {
-            json|error email = row.workEmail;
-            if email is string && email.trim().length() > 0 {
-                emails.push(email.trim().toLowerAscii());
+        int offset = 0;
+        foreach int _ in 0 ..< MAX_DIRECTORY_PAGES {
+            string[] page = check directoryPage(c, pageSize, offset);
+            emails.push(...page);
+            if page.length() < pageSize {
+                return emails;
             }
+            offset += pageSize;
         }
-        return emails;
+        return error(string `People directory did not end within ${MAX_DIRECTORY_PAGES} pages`);
     }
 
     public isolated function candidates(string[] emails, int graceDays, int 'limit) returns string[]|error =>
@@ -228,25 +227,70 @@ isolated class ProductionLeaverPorts {
 final http:Client? leaverDirectoryClient = check newDirectoryClient();
 
 isolated function newDirectoryClient() returns http:Client?|error {
-    if peopleDirectoryUrl.trim() == "" {
+    if hrEntityBaseUrl.trim() == "" {
         return ();
     }
-    http:ClientConfiguration config = {timeout: peopleDirectoryTimeoutSeconds};
-    if peopleDirectoryTokenUrl.trim() != "" {
-        config.auth = {tokenUrl: peopleDirectoryTokenUrl, clientId: peopleDirectoryClientId,
-            clientSecret: peopleDirectoryClientSecret};
+    http:ClientConfiguration config = {timeout: hrEntityTimeoutSeconds};
+    if hrEntityTokenUrl.trim() != "" {
+        config.auth = {tokenUrl: hrEntityTokenUrl, clientId: hrEntityClientId, clientSecret: hrEntityClientSecret};
     }
-    return check new (peopleDirectoryUrl, config);
+    return check new (hrEntityBaseUrl, config);
+}
+
+# The query, one page of current employees. Only the work email is asked for: the sweep compares emails.
+const string EMPLOYEES_QUERY = "query getEmployees($filter: EmployeeFilter!, $limit: Int, $offset: Int) { "
+        + "employees(filter: $filter, limit: $limit, offset: $offset) { workEmail } }";
+
+# Most pages one directory read will ask for.
+const int MAX_DIRECTORY_PAGES = 100;
+
+# One page of the HR Entity's employees, as lower-case work emails.
+#
+# + c - HR Entity client
+# + pageSize - Rows asked for
+# + offset - Rows to skip
+# + return - The page's emails (rows without one are skipped, but still count toward the page), or an error that
+# never carries the response body (it names people)
+isolated function directoryPage(http:Client c, int pageSize, int offset) returns string[]|error {
+    json body = {
+        query: EMPLOYEES_QUERY,
+        variables: {filter: {employeeStatus: hrEntityStatuses}, 'limit: pageSize, offset}
+    };
+    http:Response res = check c->post("", body);
+    if res.statusCode != 200 {
+        return error(string `People directory answered ${res.statusCode}`);
+    }
+    json|error payload = res.getJsonPayload();
+    if payload is error || payload !is map<json> {
+        return error("People directory answered a malformed body");
+    }
+    json errors = payload["errors"];
+    if errors is json[] && errors.length() > 0 {
+        return error("People directory answered with GraphQL errors");
+    }
+    json data = payload["data"];
+    json employees = data is map<json> ? data["employees"] : ();
+    if employees !is json[] {
+        return error("People directory answered a malformed body");
+    }
+    string[] emails = [];
+    foreach json row in employees {
+        json|error email = row.workEmail;
+        if email is string && email.trim().length() > 0 {
+            emails.push(email.trim().toLowerAscii());
+        }
+    }
+    return emails;
 }
 
 # Checks the sweep settings at start-up: a mode that erases needs a directory, and the limits must make sense.
 #
 # + cfg - Settings
-# + directoryConfigured - Whether `peopleDirectoryUrl` is set
+# + directoryConfigured - Whether `hrEntityBaseUrl` is set
 # + return - An error naming the problem, or `()`
 isolated function validateSweepConfig(SweepConfig cfg, boolean directoryConfigured) returns error? {
     if cfg.mode != OFF && !directoryConfigured {
-        return error("leaverSweepMode is not OFF but peopleDirectoryUrl is empty: there is no directory to compare with");
+        return error("leaverSweepMode is not OFF but hrEntityBaseUrl is empty: there is no directory to compare with");
     }
     if cfg.graceDays < 1 || cfg.minDirectorySize < 1 || cfg.maxPerRun < 1 {
         return error("leaverGraceDays, leaverMinDirectorySize and leaverMaxPerRun must be at least 1");
