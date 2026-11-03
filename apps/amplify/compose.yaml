@@ -106,6 +106,8 @@ services:
       # Privacy notice link in the LinkedIn consent dialog, sent to the UI in GET /me.
       BAL_CONFIG_VAR_PRIVACYNOTICEURL: ${PRIVACY_NOTICE_URL:-https://wso2.com/privacy-policy}
       # Team rosters (D13) = people-stub's HR Entity GraphQL route by default: copy local/people-stub/directory.json.example to directory.json (gitignored) and edit it.
+      # House ids and names from the HR Entity (hr_entity 1.1.1+). The local stub answers them when its rows have them.
+      BAL_CONFIG_VAR_HRENTITYINCLUDEHOUSE: ${HR_ENTITY_INCLUDE_HOUSE:-false}
       BAL_CONFIG_VAR_HRENTITYBASEURL: ${HR_ENTITY_URL:-http://people-stub:9096/graphql}
       # Post links: LinkedIn, plus the mock's browser-facing origin for local demos.
       BAL_CONFIG_VAR_CAMPAIGNLINKORIGINS: ${CAMPAIGN_LINK_ORIGINS:-https://www.linkedin.com,https://linkedin.com,http://localhost:19091}

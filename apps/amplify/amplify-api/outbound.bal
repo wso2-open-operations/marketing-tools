@@ -380,7 +380,7 @@ type Roster record {|
 |};
 
 # The fields of an HR Entity employee Amplify reads. Open: anything else the service returns is ignored and
-# never kept. `house` is not a field of the HR Entity, so it stays empty.
+# never kept. `house` (the name) and `houseId` come only when `hrEntityIncludeHouse` is on.
 type DirectoryRecord record {
     # Work email. Optional: one row without it (a contractor, a placeholder) is skipped, not a reason to
     # reject the whole directory.

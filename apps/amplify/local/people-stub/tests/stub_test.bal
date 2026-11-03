@@ -48,3 +48,23 @@ function answersTheHrEntityQuery() returns error? {
     test:assertEquals(page.length(), 1, "one row per page");
     test:assertTrue(page[0].workEmail is string);
 }
+
+@test:Config
+function answersHouseOnlyWhenTheQueryAsksForIt() returns error? {
+    json without = {
+        query: "query getEmployees($filter: EmployeeFilter!, $limit: Int, $offset: Int) { employees { workEmail team } }",
+        variables: {filter: {employeeStatus: ["Active"]}, 'limit: 1, offset: 0}
+    };
+    json plainBody = check stubClient->post("/graphql", without);
+    json[] plain = <json[]>check plainBody.data.employees;
+    map<json> plainRow = <map<json>>plain[0];
+    test:assertFalse(plainRow.hasKey("house"), "no house unless asked");
+    json asking = {
+        query: "query getEmployees($filter: EmployeeFilter!, $limit: Int, $offset: Int) { employees { workEmail houseId house } }",
+        variables: {filter: {employeeStatus: ["Active"]}, 'limit: 1, offset: 0}
+    };
+    json houseBody = check stubClient->post("/graphql", asking);
+    json[] withHouse = <json[]>check houseBody.data.employees;
+    map<json> houseRow = <map<json>>withHouse[0];
+    test:assertTrue(houseRow.hasKey("house"), "house when asked");
+}
