@@ -4,7 +4,7 @@
 **Lifecycle:** SDLC for WSO2 Digital Team (9 stages, governance outputs and channels)
 **Phase source of truth:** "Amplify Requirements / Phase Breakdown" (screenshot, 2026-10-24). Older phase breakdowns in `CLAUDE.md`, the requirements map and the plan are superseded for this epic.
 **Status evidence:** git history and code as of 2026-10-24, and the [SDLC walk re-walk of 23 Oct](sdlc-checklist-walk.md) and the code change audit of 24 Oct
-**Updated 2026-11-03:** T4.3, T6.1, T6.4, F10.3 and FP12 (upstream merges of 2 Nov; the HR Entity directory, ADR-045). Other rows are as of 24 Oct; the plan ([phase1-planned-todos.md](phase1-planned-todos.md)) is the tracker.
+**Updated 2026-11-03:** T4.3, T6.1, T6.4, F10.3 and FP12 (upstream merges of 2 Nov; the HR Entity directory, ADR-045). Later the same day: R2, F2.1, F2.3, T6.2, T6.4, T8.1, new T8.4 (#1991), FP6, FP8 and the Club webhook decision (Novera replaces Google Chat, ADR-047). Other rows are as of 24 Oct; the plan ([phase1-planned-todos.md](phase1-planned-todos.md)) is the tracker.
 **Scripts:** two helper scripts built the 108 issues (run on 24 Oct) and regroup them by phase. Both dry-run by default; `--apply` changes GitHub. They live in the workspace repo, outside `projects/` (see the PR plan note on moving them).
 
 ---
@@ -149,9 +149,9 @@ Activities are the governance and delivery steps the 23 Oct re-walk found open. 
 | Key | Phase | Activity |
 | --- | --- | --- |
 | T6.1 | 1 | Open and merge the upstream people-app PR, and deploy it. Blocks My Team. Superseded 2026-11-03 (ADR-045): people-ops-suite #380 and #387 merged, then reverted by #388 and #389; My Team now waits on Amplify's HR Entity client (T6.4) |
-| T6.2 | 1 | Deploy in order: wso2-digital-agents `4b7d5ff`, marketing-tools `a3c7b7e`, one-wso2 `c63e051` |
+| T6.2 | 1 | Deploy in order: wso2-digital-agents `4b7d5ff`, marketing-tools `a3c7b7e`, one-wso2 `c63e051`. **(2026-11-03):** Novera is the only announce channel (ADR-047), so Novera (with `imageUrl`, `button` and the idempotency key) goes first in every environment (plan M6c) |
 | T6.3 | 1 | Write the rollback plan: backup restore and pinned image tags |
-| T6.4 | 1 | Set Choreo connections and secrets: people directory and Novera credentials. Since 2026-11-03 the directory is the HR Entity GraphQL service: get Amplify's client from People Operations and set `HRENTITY*` (ADR-045) |
+| T6.4 | 1 | Set Choreo connections and secrets: people directory and Novera credentials. Since 2026-11-03 the directory is the HR Entity GraphQL service: get Amplify's client from People Operations and set `HRENTITY*` (ADR-045). **(2026-11-03):** no Google Chat webhook secret (ADR-047); Novera needs a subscribed application per environment. Steps in plan D13 (HR Entity client) and M6c (Novera credentials) |
 | T6.5 | 1 | Get the production deployment approval by email, after T2.1 and T5.3 |
 
 ### Stage 7: UAT
@@ -166,9 +166,10 @@ Activities are the governance and delivery steps the 23 Oct re-walk found open. 
 
 | Key | Phase | Activity |
 | --- | --- | --- |
-| T8.1 | 1 | Send the go-live announcement by email and to the Chat space |
+| T8.1 | 1 | Send the go-live announcement by email and to the Chat space. **(2026-11-03):** through Novera, not the Club Chat space (ADR-047) |
 | T8.2 | 1 | Write the user guide and admin documentation, linking the runbooks |
 | T8.3 | 1 | Set up uptime checks (UptimeRobot or an internal monitor) |
+| T8.4 | 1 | Turn off preview for Amplify in One WSO2 ([#1991](https://github.com/wso2-enterprise/wso2-digital-team-project-management/issues/1991), added 2026-11-03): `amplify: true` in prod `config.js` for the pilot, then delete the `isPreviewEnabled("amplify")` gate after pilot feedback. Plan M7 |
 
 ### Stage 9: Post-Production
 
@@ -185,7 +186,7 @@ Phases follow the screenshot phase table. Row 4 of the PO table is split in two,
 | Key | Phase | Requirement item | Used by |
 | --- | --- | --- | --- |
 | R1 | 1 | Publish: register official WSO2 LinkedIn posts with category and priority | Marketing, PO |
-| R2 | 1 | Publish: share new posts to Google Novera App | Marketing, PO |
+| R2 | 1 | Publish: share new posts to Google Novera App. **(2026-11-03):** Novera only; the requirements document's Club Chat space is dropped (ADR-047) | Marketing, PO |
 | R3 | 1 | Connect: link each employee's LinkedIn profile to their WSO2 account through SSO | Employees |
 | R4a | 1 | Track: record who reposted on each post | System |
 | R4b | 4 | Track: record who reacted, commented, reposted or reposted with commentary. Depends on LinkedIn Community API approval | System |
@@ -216,9 +217,9 @@ Status is written in the feature body. "Built, ahead of phase N" means the code 
 
 | Key | Feature | Status | Evidence |
 | --- | --- | --- | --- |
-| F2.1 | Novera announcement card: campaign image and Amplify button | Built, needs agents change deployed first | `novera.bal`; `buildNoveraNotification`; `56271f0`; agents `4b7d5ff` |
+| F2.1 | Novera announcement card: campaign image and Amplify button | Built, needs agents change deployed first. **(2026-11-03):** the only channel (ADR-047); open for phase 1: idempotency key, egress allow-list, credentials per environment, real DM test, delivery counts, runbook, threat model (plan M6c; MT-09 reversed) | `novera.bal`; `buildNoveraNotification`; `56271f0`; agents `4b7d5ff` |
 | F2.2 | Admin retry of failed announcements | Built | `/admin/announcements/{id}/retry` |
-| F2.3 | Local Chat stub and Novera mock | Built | `local/chat-stub`, `local/novera-mock` |
+| F2.3 | Local Chat stub and Novera mock | Built. **(2026-11-03):** `local/chat-stub` is removed with the webhook (ADR-047); `local/novera-mock` stays | `local/chat-stub`, `local/novera-mock` |
 
 ### R3: Connect LinkedIn through SSO (phase 1)
 
@@ -324,9 +325,9 @@ Not a PO requirement. This is the work every requirement item stands on. It sits
 | FP3 | API platform: OpenAPI contract, idempotency, security headers, JWKS cache, contract tests | Built | `openapi.yaml`; `c78e02d` |
 | FP4 | Jobs service and scheduler: run loop, handlers, sweeps and breakers | Built | `amplify-jobs`, `amplify-scheduler`; `053d6a7`, `ef50889` |
 | FP5 | Resilience: DB breaker, breaker metrics, log hygiene check, DB-down recovery | Built | `4162b99`, `cb5f4af` |
-| FP6 | Local stack: Docker Compose, end-to-end run, Chat, people and Novera stubs, dev proxy, LinkedIn mock | Built | `compose.yaml`; `local/*`; `b8947c4`, `37a6eba`, `fedb6e2` |
+| FP6 | Local stack: Docker Compose, end-to-end run, Chat, people and Novera stubs, dev proxy, LinkedIn mock | Built. **(2026-11-03):** Chat stub removed (ADR-047) | `compose.yaml`; `local/*`; `b8947c4`, `37a6eba`, `fedb6e2` |
 | FP7 | Choreo and OpenChoreo descriptors, clean-checkout Docker builds | Built, not deployed | `.choreo/component.yaml`, `workload.yaml`; `b8947c4` |
-| FP8 | Quality: deep reviews of four modules, R-13 transaction gate, load test, p95 fix | Built | `2d2a02f`, `e0eb224`, `d9dff7e`, `3258bfd`, `343e46a`, `ce35e10` |
+| FP8 | Quality: deep reviews of four modules, R-13 transaction gate, load test, p95 fix | Built. **(2026-11-03):** CI runs the quality gates and the database integration tests per pull request (marketing-tools #45, #55; upstream #247); stale "no CI" notes listed in plan M9 | `2d2a02f`, `e0eb224`, `d9dff7e`, `3258bfd`, `343e46a`, `ce35e10` |
 | FP9 | Security documents: threat model v0.3, deployment checklist, token and OAuth notes | Built as markdown, stale, `.docx` not generated | `1e30782` |
 | FP10 | Runbooks, test guide, 37 ADRs and module READMEs | Built | `1e30782`, `51aef1b`, `1a209f1` |
 | FP11 | Automatic submodule pointer bump (rolling PR) | Built | `bump-submodule-pointers.yml`; `9776cd7` |
@@ -347,7 +348,7 @@ Phases follow the screenshot, with the PO's confirmations of 24 Oct applied.
 | R7 PO edits | Phase 3 | Phase 3 | Unchanged. F7.1 to F7.3 are built ahead of phase 3 |
 | R6 Automatic scoring | Phase 3 | Phase 1 (PO updated the chart) | R6 and F6.1 to F6.4 are phase 1 and plain "Built". The phase 1 leaderboard (R10) ranks by points, so this closes the earlier conflict |
 | R11 Reports | Phase 2 | Phase 1 | R11 and F11.1 to F11.3 are phase 1 and plain "Built". F11.4 and F11.5 stay phase 2 |
-| Club webhook | Not in the table | Keep it off, useful for dev work | F2.1 keeps the code, off by default |
+| Club webhook | Not in the table | Keep it off, useful for dev work | F2.1 keeps the code, off by default. **Superseded (2026-11-03, ADR-047):** the webhook, `chat-stub` and the webhook flag are removed; Novera only |
 
 Still open:
 
