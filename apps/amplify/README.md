@@ -132,7 +132,7 @@ One switch in `local/.env`: **`LINKEDIN_USE_MOCK`**. `true` (the default) sends 
 | Client id and secret | `LINKEDIN_CLIENT_ID`, `LINKEDIN_CLIENT_SECRET` (made-up, shared with the mock) | `LINKEDIN_REAL_CLIENT_ID`, `LINKEDIN_REAL_CLIENT_SECRET` (your app; required) |
 | ID-token validation | off | on, unless `LINKEDIN_REAL_ID_TOKEN_VALIDATION=false` (checks `iss`, `aud`, `exp` and the signature against LinkedIn's JWKS) |
 | `LINKEDIN_REDIRECT_URI` | `http://localhost:3000/amplify/connect/callback` | exactly a redirect URI registered on your app |
-| `WSO2_ORGANIZATION_URN` | `urn:li:organization:1477` (WSO2's page) | the company page your test posts belong to, `urn:li:organization:<id>`; keep One WSO2's `ONE_WSO2_AMPLIFY_LINKEDIN_ORG_URN` in `public/config.js` the same |
+| `WSO2_ORGANIZATION_URN` | `urn:li:organization:1477` (WSO2's page) | the company page your test posts belong to, `urn:li:organization:<id>` (amplify-api sends it to One WSO2 in `GET /me`, so there is nothing to keep in sync) |
 
 Change the flag, then `scripts/compose.sh up -d --no-deps amplify-api amplify-jobs` (or `make up`) to apply it.
 
