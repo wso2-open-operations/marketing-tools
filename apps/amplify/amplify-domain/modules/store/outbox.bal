@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Outbox writer: every domain event becomes a `messaging.outbox` row in the producer's transaction
+// Outbox writer: every domain event becomes a `messaging_outbox` row in the producer's transaction
 // (phase1-data-model › Domain events). Call only inside a `transaction` block, with the same client as
 // the aggregate write, so aggregate + outbox + audit commit together.
 
@@ -35,7 +35,7 @@ public isolated transactional function writeOutbox(postgresql:Client db, events:
     foreach events:OutboxEvent event in outbox {
         string payload = event.payload.toJsonString();
         var result = check db->execute(`
-            INSERT INTO messaging.outbox (aggregate_type, aggregate_id, event_type, payload, idempotency_key,
+            INSERT INTO messaging_outbox (aggregate_type, aggregate_id, event_type, payload, idempotency_key,
                                           correlation_id)
             VALUES (${event.aggregateType}, ${event.aggregateId}, ${event.eventType}, CAST(${payload} AS jsonb),
                     ${event.idempotencyKey}, ${correlationId})
@@ -90,10 +90,10 @@ type OutboxDbRow record {|
 public isolated function claimOutbox(postgresql:Client db, string runId, int batchSize, int leaseSeconds)
         returns OutboxRow[]|error {
     stream<OutboxDbRow, error?> rows = db->query(`
-        UPDATE messaging.outbox o
+        UPDATE messaging_outbox o
         SET status = 'IN_PROGRESS', locked_by = ${runId},
             locked_until = now() + make_interval(secs => ${leaseSeconds}), attempts = o.attempts + 1
-        WHERE o.id IN (SELECT id FROM messaging.outbox
+        WHERE o.id IN (SELECT id FROM messaging_outbox
                        WHERE status = 'PENDING' AND next_attempt_at <= now()
                        ORDER BY id LIMIT ${batchSize}
                        FOR UPDATE SKIP LOCKED)
@@ -121,7 +121,7 @@ public isolated function claimOutbox(postgresql:Client db, string runId, int bat
 # + return - An error
 public isolated function completeOutbox(postgresql:Client db, int id, string runId) returns error? {
     _ = check db->execute(`
-        UPDATE messaging.outbox
+        UPDATE messaging_outbox
         SET status = 'DONE', processed_at = now(), locked_by = NULL, locked_until = NULL, last_error = NULL
         WHERE id = ${id} AND locked_by = ${runId}`);
 }
@@ -140,7 +140,7 @@ public isolated function retryOutbox(postgresql:Client db, int id, string runId,
         string? lastError, boolean countAttempt = true) returns error? {
     int giveBack = countAttempt ? 0 : 1;
     _ = check db->execute(`
-        UPDATE messaging.outbox
+        UPDATE messaging_outbox
         SET status = 'PENDING', next_attempt_at = now() + make_interval(secs => ${delaySeconds}),
             attempts = greatest(attempts - ${giveBack}, 0), locked_by = NULL, locked_until = NULL,
             last_error = ${truncate(lastError)}
@@ -156,7 +156,7 @@ public isolated function retryOutbox(postgresql:Client db, int id, string runId,
 # + return - An error
 public isolated function failOutbox(postgresql:Client db, int id, string runId, string lastError) returns error? {
     _ = check db->execute(`
-        UPDATE messaging.outbox
+        UPDATE messaging_outbox
         SET status = 'FAILED', locked_by = NULL, locked_until = NULL, last_error = ${truncate(lastError)}
         WHERE id = ${id} AND locked_by = ${runId}`);
 }
@@ -168,7 +168,7 @@ public isolated function failOutbox(postgresql:Client db, int id, string runId, 
 # + return - Rows released, or an error
 public isolated function releaseStaleLocks(postgresql:Client db) returns int|error {
     var result = check db->execute(`
-        UPDATE messaging.outbox
+        UPDATE messaging_outbox
         SET status = 'PENDING', locked_by = NULL, locked_until = NULL, next_attempt_at = now()
         WHERE status = 'IN_PROGRESS' AND locked_until < now()`);
     return result.affectedRowCount ?: 0;
@@ -179,7 +179,7 @@ public isolated function releaseStaleLocks(postgresql:Client db) returns int|err
 # + db - Client
 # + return - Rows deleted, or an error
 public isolated function purgeExpiredIdempotencyKeys(postgresql:Client db) returns int|error {
-    var result = check db->execute(`DELETE FROM messaging.idempotency_key WHERE expires_at < now()`);
+    var result = check db->execute(`DELETE FROM messaging_idempotency_key WHERE expires_at < now()`);
     return result.affectedRowCount ?: 0;
 }
 
@@ -209,11 +209,11 @@ public isolated function outboxBacklog(postgresql:Client db) returns OutboxBackl
                count(*) FILTER (WHERE status = 'IN_PROGRESS')::int AS in_progress,
                count(*) FILTER (WHERE status = 'FAILED')::int AS failed,
                (EXTRACT(EPOCH FROM (now() - min(created_at) FILTER (WHERE status = 'PENDING'))))::bigint::int AS oldest
-        FROM messaging.outbox WHERE status <> 'DONE'`);
+        FROM messaging_outbox WHERE status <> 'DONE'`);
     return {pending: row.pending, inProgress: row.in_progress, failed: row.failed, oldestPendingSeconds: row.oldest};
 }
 
-# How many days past today (UTC) have a `connection.provider_token` partition. The partitions are named
+# How many days past today (UTC) have a `connection_provider_token` partition. The partitions are named
 # `provider_token_pYYYYMMDD`; the newest one decides the runway.
 #
 # + db - Client
@@ -223,6 +223,6 @@ public isolated function tokenPartitionDaysAhead(postgresql:Client db) returns i
         SELECT (max(to_date(substr(c.relname, 17), 'YYYYMMDD')) - (now() AT TIME ZONE 'UTC')::date)::int AS ahead
         FROM pg_inherits i
         JOIN pg_class c ON c.oid = i.inhrelid
-        WHERE i.inhparent = 'connection.provider_token'::regclass AND c.relname ~ '^provider_token_p[0-9]{8}$'`);
+        WHERE i.inhparent = 'connection_provider_token'::regclass AND c.relname ~ '^provider_token_p[0-9]{8}$'`);
     return row.ahead;
 }

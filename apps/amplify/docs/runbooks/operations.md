@@ -25,7 +25,7 @@ Alert list that pairs with these procedures: [choreo-deploy.md](choreo-deploy.md
 
 ## 1. Reprocess FAILED outbox rows
 
-The outbox is `messaging.outbox`, status ∈ {`PENDING`,`IN_PROGRESS`,`DONE`,`FAILED`} (`amplify-database/migrations/V008__announcement_messaging_audit_config.sql:55`). Rows reach `FAILED` when `settle` sees a `FAIL` or `RETRY` past `maxAttempts=8` (`amplify-jobs/run.bal:197-210`; `amplify-jobs/config.bal`).
+The outbox is `messaging_outbox`, status ∈ {`PENDING`,`IN_PROGRESS`,`DONE`,`FAILED`} (`amplify-database/migrations/V008__announcement_messaging_audit_config.sql:55`). Rows reach `FAILED` when `settle` sees a `FAIL` or `RETRY` past `maxAttempts=8` (`amplify-jobs/run.bal:197-210`; `amplify-jobs/config.bal`).
 
 **Gap — there is no generic "reprocess FAILED outbox" endpoint.** The only built-in retry is per-announcement (below). A generic reprocess is a **manual SQL** step; ADR-025 (§Consequences) requires this runbook to say so.
 
@@ -33,7 +33,7 @@ The outbox is `messaging.outbox`, status ∈ {`PENDING`,`IN_PROGRESS`,`DONE`,`FA
 1. Find the id: the PO dashboard "Share health"/announcements view, or
    ```sql
    SELECT id, aggregate_id, event_type, attempts, last_error
-   FROM messaging.outbox
+   FROM messaging_outbox
    WHERE status='FAILED' AND event_type='CampaignRegistered'
    ORDER BY created_at DESC;
    ```
@@ -43,11 +43,11 @@ The outbox is `messaging.outbox`, status ∈ {`PENDING`,`IN_PROGRESS`,`DONE`,`FA
 1. Inspect first:
    ```sql
    SELECT event_type, count(*), max(last_error)
-   FROM messaging.outbox WHERE status='FAILED' GROUP BY event_type;
+   FROM messaging_outbox WHERE status='FAILED' GROUP BY event_type;
    ```
 2. Reset the rows you have decided to retry:
    ```sql
-   UPDATE messaging.outbox
+   UPDATE messaging_outbox
    SET status='PENDING', attempts=0, next_attempt_at=now(),
        locked_by=NULL, locked_until=NULL, last_error=NULL, processed_at=NULL
    WHERE status='FAILED' AND event_type='RepostRequested';   -- scope!
@@ -72,7 +72,7 @@ Keys live in the Choreo secret `TOKENKEYS` (`keyId:base64Key[,keyId:base64Key…
    - `NOT_CONFIGURED` / `FAILED`: token keys aren't set on jobs / the database refused. Fix that and rerun.
 4. Confirm nothing still needs the old key:
    ```sql
-   SELECT key_id, count(*) FROM connection.provider_token GROUP BY key_id;   -- must not list prod-1
+   SELECT key_id, count(*) FROM connection_provider_token GROUP BY key_id;   -- must not list prod-1
    ```
 5. Remove `prod-1` from `TOKENKEYS` **[console]** on both components and redeploy. (Always back the old secret value up somewhere safe first... a key removed too early makes every row it sealed unreadable, and those employees have to reconnect.)
 
@@ -111,7 +111,7 @@ The version is data: `LinkedIn-Version: 202610` (`amplify-common/modules/linkedi
 
 ## 6. Change the run schedule
 
-Settings `run.schedule` (default `@every 5m`, min `minRunIntervalSeconds=60`), `run.enabled`, `maintenance.schedule` (default `0 2 * * *` UTC) live in `config.app_setting` and are pushed to the scheduler by `amplify-api` (`amplify-api/scheduler_sync.bal`).
+Settings `run.schedule` (default `@every 5m`, min `minRunIntervalSeconds=60`), `run.enabled`, `maintenance.schedule` (default `0 2 * * *` UTC) live in `config_app_setting` and are pushed to the scheduler by `amplify-api` (`amplify-api/scheduler_sync.bal`).
 
 1. `PUT /admin/settings` (admin) with `{"run.schedule":"@every 10m"}` etc.
 2. The save commits, then `amplify-api` pushes to the scheduler (`changeSettings` → `touchesSchedule` → `syncScheduler`). The response carries `schedulerSync`.
@@ -130,7 +130,7 @@ The scheduler is the pinned image `akorn/scheduler:1.7.8@sha256:07462c…`, UID 
 
 ## 8. Restore the database
 
-**Gap — no backup/restore automation in the repo.** The DB is a Choreo-managed PostgreSQL 18 on a plan **with backups** (Hobbyist has none) — [choreo-deploy.md](choreo-deploy.md) B1/B4. Confirm the plan has backups before the pilot.
+**Gap — no backup/restore automation in the repo.** The DB is a Choreo-managed PostgreSQL (15 or later) on a plan **with backups** (Hobbyist has none) — [choreo-deploy.md](choreo-deploy.md) B1/B4. Confirm the plan has backups before the pilot.
 
 1. Identify the restore target (latest good snapshot/PITR point) **[console, Aiven/Choreo]**.
 2. Restore into a **new** database or the dev instance first; verify schemas/rows (employees, campaigns, ledger, connections) and `SELECT version FROM public.schema_version ORDER BY version` (the last `V###` the snapshot had).
@@ -138,7 +138,7 @@ The scheduler is the pinned image `akorn/scheduler:1.7.8@sha256:07462c…`, UID 
 4. Run **Amplify DB Migrate** against the restored database **[console: Manual Task; locally `make seed`]** — optionally first with `BAL_CONFIG_VAR_DRYRUN=true` to list what it will apply. It applies only the `V###`/`S###` scripts newer than the snapshot (checksums in `public.schema_version`; a changed applied script stops it), then re-sets the `amplify_api`/`amplify_jobs`/`amplify_readonly` passwords from the current secrets, so the services log in even if the snapshot carries older role passwords.
 5. Run partition upkeep once before re-enabling runs: `POST {jobs}/maintenance/partitions`. An old snapshot may lack today's token partition (created 7 days ahead) or this month's audit partition; until then OAuth connects and audit writes fail.
 6. Re-enable runs; verify `GET {jobs}/ready` and amplify-api `/ready` UP, then a manual `POST {jobs}/runs` drains the outbox. `IN_PROGRESS` rows from the snapshot are released as stale by that run (lease expired).
-7. **Double-post risk:** a share published after the snapshot point is `QUEUED` again in the restored data and its `RepostRequested` row is pending, so the run posts it to LinkedIn a second time (same risk class as ADR-025). For a restore older than a few minutes, list `sharing.share_request_v WHERE status = 'QUEUED' AND requested_at < <snapshot time>` and decide with the PO before re-enabling `sharing.enabled`.
+7. **Double-post risk:** a share published after the snapshot point is `QUEUED` again in the restored data and its `RepostRequested` row is pending, so the run posts it to LinkedIn a second time (same risk class as ADR-025). For a restore older than a few minutes, list `sharing_share_request_v WHERE status = 'QUEUED' AND requested_at < <snapshot time>` and decide with the PO before re-enabling `sharing.enabled`.
 8. Note: dropped token partitions survive in backups until **backup retention** ends — this is the true max time token ciphertext exists at rest.
 
 **Restore test (plan M3/B4, still to do):** restore one backup into dev once and record the result here.
@@ -192,17 +192,17 @@ Per environment (dev, prod), for each of the three components **[console]**:
 
 ## 13. People directory (team rosters)
 
-My Team and the Team page's team scope come from people-app's `GET /employees/basic-info` (ADR-019). Amplify Backend fetches the whole directory once, groups everyone by sub-team (team when there's none) and keeps that index (teams, names and houses) in memory for 24 hours (`ROSTERCACHESECONDS`, default 86400). Nothing is written to the database or the logs.
+My Team and the Team page's team scope come from the HR Entity GraphQL service (ADR-019, ADR-045). Amplify Backend fetches the whole directory in pages, groups everyone by team under their business unit and keeps that index (teams and names; no houses yet) in memory for 24 hours (`ROSTERCACHESECONDS`, default 86400). Nothing is written to the database or the logs.
 
 - **Someone moved team and still sees the old one.** Expected for up to 24 hours. To pick it up now, restart Amplify Backend; the next leaderboard read fetches the directory again.
-- **`teamStatus: NO_TEAM` for one person.** They aren't in the directory (only Active and Marked leaver employees are), their people-app record has no team, or their Amplify email doesn't match their people-app `workEmail`. Compare the two emails first.
+- **`teamStatus: NO_TEAM` for one person.** They aren't in the directory (only Active and Marked leaver employees are), their HR record has no team, or their Amplify email doesn't match their HR `workEmail`. Compare the two emails first.
 - **`teamStatus: UNAVAILABLE` for everyone.** The directory has never loaded since the last start. Check, in order:
-  1. The Backend log for `People directory not configured`: the `PEOPLEDIRECTORY*` settings are empty (choreo-deploy C5/C7).
-  2. `People directory answered 500`: people-app doesn't recognise the client. Its `directoryClientIds` doesn't list Amplify's client id, or `clientIdClaim` names the wrong claim. People-app's log says "Malformed Invoker info object!".
-  3. `People directory answered 403`: the URL isn't `/employees/basic-info`.
-  4. `/ready` shows the `roster` breaker `OPEN`: people-app or the gateway is down. It closes by itself after 30 s once they're back.
+  1. The Backend log for `People directory not configured`: the `HRENTITY*` settings are empty (choreo-deploy C5/C7).
+  2. `People directory answered 401` or `403`: the HR Entity doesn't accept Amplify's client. Check the client id, secret and token URL with People Operations.
+  3. `People directory answered with GraphQL errors`: the query asks for a field the service doesn't offer, or the client lacks scope for one. The log doesn't carry the service's message (it can name people); ask People Operations for the service log.
+  4. `/ready` shows the `roster` breaker `OPEN`: the HR Entity or the gateway is down. It closes by itself after 30 s once they're back.
 - **A refresh fails after a good load.** Amplify keeps serving the old index and logs `People directory refresh failed; using the cached teams`. Nothing to do unless it lasts; teams just stop updating.
-- **Rotating the client secret.** New secret on the Choreo connection, update `PEOPLEDIRECTORYCLIENTSECRET`, redeploy the Backend. People-app needs no change: it lists the client id, not the secret.
+- **Rotating the client secret.** New secret for the HR Entity client, update `HRENTITYCLIENTSECRET` (Backend and Jobs), redeploy both.
 
 ## 14. Rotate the internal key and the scheduler key (ADR-039)
 

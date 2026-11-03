@@ -47,7 +47,7 @@ isolated function dbGate() returns error? {
 
 // ---- People directory (team rosters) ------------------------------------------------------------
 
-# Pretends `peopleDirectoryUrl` is empty (the state before D13 closes).
+# Pretends `hrEntityBaseUrl` is empty (the state before D13 closes).
 isolated boolean rosterOff = false;
 
 function setRosterOff(boolean off) {
@@ -64,13 +64,13 @@ isolated function mockRosterConfigured() returns boolean {
 }
 
 # How the fake directory answers: `ok`, `down` (418, not a breaker status, so the breaker stays closed for
-# the other tests) or `garbled` (a body that isn't a directory).
+# the other tests), `garbled` (a body that isn't a directory) or `gqlerror` (a GraphQL `errors` array).
 isolated string directoryMode = "ok";
 isolated int directoryFetches = 0;
 
 # Sets the fake's answer and drops amplify-api's cached index, so the next read fetches again.
 #
-# + mode - `ok`, `down` or `garbled`
+# + mode - `ok`, `down`, `garbled` or `gqlerror`
 function setDirectory(string mode) {
     lock {
         directoryMode = mode;
@@ -113,8 +113,9 @@ function expireHeadcountCache() {
 
 final readonly & string[] RIVERS = ["rv-a@wso2.com", "rv-b@wso2.com", "rv+plus@wso2.com"];
 
-service /people/employees/basic\-info on jwksListener {
-    isolated resource function get .() returns json|http:Response {
+# The fake HR Entity GraphQL endpoint: answers the `employees` query the way the service does, a page at a time.
+service /people/graphql on jwksListener {
+    isolated resource function post .(@http:Payload json request) returns http:Response {
         string mode;
         lock {
             directoryFetches += 1;
@@ -128,13 +129,35 @@ service /people/employees/basic\-info on jwksListener {
             return res;
         }
         if mode == "garbled" {
-            return {teamName: "Rivers", members: [{name: "Bob Jones bob@wso2.com"}]};
+            return ok({teamName: "Rivers", members: [{name: "Bob Jones bob@wso2.com"}]});
+        }
+        if mode == "gqlerror" {
+            return ok({errors: [{message: "Bob Jones bob@wso2.com is not allowed"}], data: ()});
+        }
+        json variables = request is map<json> ? request["variables"] : ();
+        int 'limit = 1000;
+        int offset = 0;
+        if variables is map<json> {
+            json l = variables["limit"];
+            json o = variables["offset"];
+            'limit = l is int ? l : 1000;
+            offset = o is int ? o : 0;
         }
         json[] rows = from string m in RIVERS
-            select {workEmail: m.toUpperAscii(), firstName: "R", lastName: m.substring(0, 4), team: "Rivers", subTeam: (), businessUnit: "Water", house: "Oak"};
-        rows.push({workEmail: "rv-noteam@wso2.com", firstName: "N", team: (), subTeam: (), businessUnit: "Land"});
-        return rows;
+            select {workEmail: m.toUpperAscii(), firstName: "R", lastName: m.substring(0, 4), team: "Rivers", businessUnit: "Water"};
+        rows.push({workEmail: "rv-noteam@wso2.com", firstName: "N", team: (), businessUnit: "Land"});
+        int end = int:min(offset + 'limit, rows.length());
+        json[] page = offset >= rows.length() ? [] : rows.slice(offset, end);
+        return ok({data: {employees: page}});
     }
+}
+
+# A 200 answer, as a GraphQL service gives (a Ballerina POST resource would say 201).
+isolated function ok(json body) returns http:Response {
+    http:Response res = new;
+    res.statusCode = 200;
+    res.setJsonPayload(body);
+    return res;
 }
 
 // ---- Standings ---------------------------------------------------------------------------------

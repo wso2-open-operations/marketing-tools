@@ -19,7 +19,7 @@ import amplify_common.types;
 
 import ballerina/time;
 
-# Derived share status (`sharing.share_request_v`, B14). There is no `PENDING` share state.
+# Derived share status (`sharing_share_request_v`, B14). There is no `PENDING` share state.
 public enum ShareStatus {
     QUEUED,
     PUBLISHED,
@@ -29,7 +29,7 @@ public enum ShareStatus {
 # Longest commentary accepted (LinkedIn's post text limit).
 public const int COMMENTARY_MAX_LENGTH = 3000;
 
-# Share request aggregate (`sharing.share_request`): the command "Amplify, share this for me".
+# Share request aggregate (`sharing_share_request`): the command "Amplify, share this for me".
 # Unique per `(campaignId, employeeId)` in phase 1 (B3); a retry after `FAILED` reuses the row (C2, ADR-015).
 public type ShareRequest record {|
     # UUIDv7
@@ -66,7 +66,7 @@ public type ShareRequest record {|
     int version;
 |};
 
-# Engagement fact (`sharing.engagement`): what an employee did on a provider resource. Scoring reads these,
+# Engagement fact (`sharing_engagement`): what an employee did on a provider resource. Scoring reads these,
 # never share requests. Unique per `(provider, targetResourceUrn, employeeId, action)`.
 public type Engagement record {|
     # UUIDv7

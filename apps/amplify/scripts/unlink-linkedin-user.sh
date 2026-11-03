@@ -18,7 +18,7 @@
 #
 #   scripts/unlink-linkedin-user.sh <Developer Email>
 #
-# The employee id is the JWT `sub`, so it is looked up by email in the local database (identity.employee).
+# The employee id is the JWT `sub`, so it is looked up by email in the local database (identity_employee).
 # The user must have signed in to Amplify at least once. Works from any directory.
 # Expect "204 Removed". 404 = nothing linked, 409 = already removed.
 set -euo pipefail
@@ -32,7 +32,7 @@ fi
 
 # The email is passed to psql as a variable (:'email'), never pasted into the SQL text. The banner scripts/compose.sh
 # prints goes to stderr, so it is dropped here.
-ids="$(printf "select employee_id from identity.employee where lower(email) = lower(:'email');\n" |
+ids="$(printf "select employee_id from identity_employee where lower(email) = lower(:'email');\n" |
   scripts/compose.sh exec -T -e EMAIL="$email" postgres sh -c \
     'PGPASSWORD="$POSTGRES_PASSWORD" psql -U postgres -d amplify -At -v email="$EMAIL"' 2>/dev/null || true)"
 

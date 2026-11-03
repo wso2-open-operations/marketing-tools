@@ -16,7 +16,7 @@
 
 
 // `Idempotency-Key` on every POST (plan M5, integration-boundary item 3), stored in
-// `messaging.idempotency_key` per caller for 24 hours. A replay with the same request returns the stored
+// `messaging_idempotency_key` per caller for 24 hours. A replay with the same request returns the stored
 // status and body; a different request under the same key is 422; a repeat while the first still runs
 // is 409. 5xx outcomes aren't stored, so the caller can retry with the same key.
 

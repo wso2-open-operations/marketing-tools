@@ -25,30 +25,30 @@ import ballerinax/postgresql;
 function testReversalMustCarryTheActionOfTheRowItReverses() returns error? {
     postgresql:Client admin = check adminClient(itDbName);
     // Two originals: an adjustment that names an action, and one that does not.
-    _ = check admin->execute(`INSERT INTO scoring.points_ledger (reference, employee_id, source_type, action, points, actor_id, reason)
+    _ = check admin->execute(`INSERT INTO scoring_points_ledger (reference, employee_id, source_type, action, points, actor_id, reason)
         VALUES ('ADJ-rev-a', 'rev-1', 'ADJUSTMENT', 'SHARE', 5, 'po-1', 'with action'),
                ('ADJ-rev-b', 'rev-1', 'ADJUSTMENT', NULL, 5, 'po-1', 'no action')`);
 
-    sql:ExecutionResult|sql:Error wrong = admin->execute(`INSERT INTO scoring.points_ledger
+    sql:ExecutionResult|sql:Error wrong = admin->execute(`INSERT INTO scoring_points_ledger
             (reference, employee_id, source_type, action, points, reverses_reference, actor_id, reason)
         VALUES ('REV-rev-a-wrong', 'rev-1', 'REVERSAL', NULL, -5, 'ADJ-rev-a', 'po-1', 'x')`);
     test:assertTrue(wrong is sql:Error && wrong.message().includes("must carry the action"),
             "a reversal that drops the action is refused");
-    sql:ExecutionResult|sql:Error other = admin->execute(`INSERT INTO scoring.points_ledger
+    sql:ExecutionResult|sql:Error other = admin->execute(`INSERT INTO scoring_points_ledger
             (reference, employee_id, source_type, action, points, reverses_reference, actor_id, reason)
         VALUES ('REV-rev-a-other', 'rev-1', 'REVERSAL', 'REPOST', -5, 'ADJ-rev-a', 'po-1', 'x')`);
     test:assertTrue(other is sql:Error, "a reversal that names another action is refused");
-    sql:ExecutionResult|sql:Error invented = admin->execute(`INSERT INTO scoring.points_ledger
+    sql:ExecutionResult|sql:Error invented = admin->execute(`INSERT INTO scoring_points_ledger
             (reference, employee_id, source_type, action, points, reverses_reference, actor_id, reason)
         VALUES ('REV-rev-b-invented', 'rev-1', 'REVERSAL', 'SHARE', -5, 'ADJ-rev-b', 'po-1', 'x')`);
     test:assertTrue(invented is sql:Error, "a reversal of an action-less adjustment cannot invent one");
 
     // The matching reversals go in.
-    _ = check admin->execute(`INSERT INTO scoring.points_ledger
+    _ = check admin->execute(`INSERT INTO scoring_points_ledger
             (reference, employee_id, source_type, action, points, reverses_reference, actor_id, reason)
         VALUES ('REV-rev-a-ok', 'rev-1', 'REVERSAL', 'SHARE', -5, 'ADJ-rev-a', 'po-1', 'x'),
                ('REV-rev-b-ok', 'rev-1', 'REVERSAL', NULL, -5, 'ADJ-rev-b', 'po-1', 'x')`);
-    int total = check admin->queryRow(`SELECT count(*)::int FROM scoring.points_ledger WHERE employee_id = 'rev-1'`);
+    int total = check admin->queryRow(`SELECT count(*)::int FROM scoring_points_ledger WHERE employee_id = 'rev-1'`);
     test:assertEquals(total, 4);
     check admin.close();
 }

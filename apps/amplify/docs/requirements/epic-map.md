@@ -235,7 +235,7 @@ Status is written in the feature body. "Built, ahead of phase N" means the code 
 | --- | --- | --- | --- |
 | F4.1 | Repost through Amplify (`REPOST`) with idempotency key | Built | `amplify-domain` sharing; `ShareDialog.tsx`; `06e94f3a` |
 | F4.2 | Repost with personal commentary through Amplify (`REPOST_COMMENTARY`) | Built. In-app, so no Community API needed | `ShareDialog.tsx`, 3000-character cap; `f26c9912`, `37528e0` |
-| F4.3 | Engagement recording: one repost per campaign per employee, duplicate publish settles | Built | `sharing.engagement`; `32237bb`, `db4d9c5` |
+| F4.3 | Engagement recording: one repost per campaign per employee, duplicate publish settles | Built | `sharing_engagement`; `32237bb`, `db4d9c5` |
 | F4.4 | Read every LinkedIn copy-link form for post URLs | Built | `linkedinPost.ts`; `45657d03` |
 
 ### R4b: Reactions, comments and native reposts (phase 4)

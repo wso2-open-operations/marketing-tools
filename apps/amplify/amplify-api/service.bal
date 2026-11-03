@@ -56,7 +56,7 @@ function init() returns error? {
         log:printWarn(tls);
     }
     if !rosterConfigured() {
-        log:printInfo("People directory not configured (peopleDirectoryUrl empty): My Team answers UNAVAILABLE");
+        log:printInfo("People directory not configured (hrEntityBaseUrl empty): My Team answers UNAVAILABLE");
     }
     // Converge the scheduler jobs to the settings in the background (ADR-026).
     _ = start reconcileAtStartup();
@@ -80,6 +80,16 @@ type MeLinkedIn record {|
     string? expiresAt;
 |};
 
+# `GET /me` deployment settings the UI needs, set per environment as Choreo configs (not UI config).
+type MeAppConfig record {|
+    # LinkedIn company page URN a registered post must belong to
+    string linkedinOrgUrn;
+    # Privacy notice URL for the LinkedIn consent dialog; empty when none is configured
+    string privacyNoticeUrl;
+    # Origins a post link may use (`scheme://host[:port]`, lowercase)
+    string[] campaignLinkOrigins;
+|};
+
 # `GET /me` response.
 type MeResponse record {|
     # Stored employee row
@@ -92,6 +102,8 @@ type MeResponse record {|
     string[] capabilities;
     # LinkedIn connection
     MeLinkedIn linkedin;
+    # Deployment settings for the UI
+    MeAppConfig config;
 |};
 
 # Refuses a request that declares a body past `MAX_REQUEST_BODY_BYTES` with problem details, before the payload is
@@ -205,7 +217,12 @@ service http:InterceptableService / on apiListener {
             roles: principal.roles,
             grants: principal.grants,
             capabilities: auth:capabilities(principal.grants),
-            linkedin: linkedInOf(linked, now)
+            linkedin: linkedInOf(linked, now),
+            config: {
+                linkedinOrgUrn: wso2OrganizationUrn,
+                privacyNoticeUrl: privacyNoticeUrl.trim(),
+                campaignLinkOrigins: postLinkOrigins
+            }
         };
         // An admin's capability list alone runs past 512 chars (M11b).
         return jsonBody(me.toJson());
@@ -741,7 +758,7 @@ service http:InterceptableService / on apiListener {
     }
 }
 
-# Creates or refreshes the caller's `identity.employee` row from the token claims (claims, not
+# Creates or refreshes the caller's `identity_employee` row from the token claims (claims, not
 # userinfo: ADR-022).
 #
 # + principal - Verified caller

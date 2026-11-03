@@ -14,9 +14,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Local people-app directory stub (D13). Answers `GET /employees/basic-info` like people-app: every current
-// employee with name, photo, team and sub-team, from `directoryFile` (edit it; it's re-read on every call).
-// amplify-api reads it for team rosters; a local One WSO2 reads it for leaderboard photos and names (CORS).
+// Local people directory stub (D13). Two routes over one `directoryFile` (edit it; it's re-read on every call):
+// `POST /graphql` answers the HR Entity `employees(filter, limit, offset)` query, which amplify-api and amplify-jobs
+// read for team rosters and the leaver sweep; `GET /employees/basic-info` answers like people-app, which a local
+// One WSO2 reads for leaderboard photos and names (CORS).
 // No auth: never used outside the local stack and tests.
 
 import ballerina/http;
@@ -45,6 +46,44 @@ service / on stubListener {
         }
         log:printError("People stub can't read its directory", file = directoryFile);
         return <http:InternalServerError>{body: {message: "directory file is missing or not a JSON array"}};
+    }
+
+    # The HR Entity `employees` query: filters on `employeeStatus` and pages with `limit` / `offset`, as the service does.
+    resource function post graphql(@http:Payload json request) returns http:Response|http:InternalServerError {
+        json|error rows = io:fileReadJson(directoryFile);
+        if rows !is json[] {
+            log:printError("People stub can't read its directory", file = directoryFile);
+            return <http:InternalServerError>{body: {message: "directory file is missing or not a JSON array"}};
+        }
+        json variables = request is map<json> ? request["variables"] : ();
+        string[]? statuses = ();
+        int 'limit = 1000;
+        int offset = 0;
+        if variables is map<json> {
+            json f = variables["filter"];
+            json st = f is map<json> ? f["employeeStatus"] : ();
+            if st is json[] {
+                statuses = from json x in st where x is string select <string>x;
+            }
+            json l = variables["limit"];
+            json o = variables["offset"];
+            'limit = l is int ? l : 1000;
+            offset = o is int ? o : 0;
+        }
+        json[] listed = [];
+        foreach json row in rows {
+            json status = row is map<json> ? row["employeeStatus"] : ();
+            if statuses is string[] && (status !is string || statuses.indexOf(status) is ()) {
+                continue;
+            }
+            listed.push(row);
+        }
+        int end = int:min(offset + 'limit, listed.length());
+        json[] page = offset >= listed.length() ? [] : listed.slice(offset, end);
+        http:Response res = new;
+        res.statusCode = 200;
+        res.setJsonPayload({data: {employees: page}});
+        return res;
     }
 
     resource function get health() returns json => {status: "UP"};

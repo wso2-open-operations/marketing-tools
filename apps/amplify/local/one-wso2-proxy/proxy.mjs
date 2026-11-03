@@ -19,7 +19,7 @@
 //   One WSO2 (localhost:3000) --Bearer <ThunderID or Asgardeo token>--> :9089 --x-jwt-assertion <dev JWT>--> :9090
 //
 // - CORS for the One WSO2 dev server.
-// - Reads sub / email / groups from the incoming bearer WITHOUT verifying it (local only; amplify-api's dev
+// - Reads sub / email / groups from the incoming bearer (the ACCESS token; the id_token is never used) WITHOUT verifying it (local only; amplify-api's dev
 //   JWT mode is itself refused outside environment=local), then mints a dev JWT with mint-dev-jwt.sh.
 // - Role switch: put "po", "marketing", "employee" or "token" in ./role (default "token" = use the token's
 //   groups/roles claim). Takes effect on the next request; no restart.

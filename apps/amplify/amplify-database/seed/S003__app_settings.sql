@@ -17,9 +17,7 @@
 -- S003: app_setting defaults (phase1-data-model › infrastructure, leaderboards.md, po-dashboard.md).
 -- Existing values are never overwritten: an admin's change survives a re-seed.
 
-SET LOCAL ROLE amplify_migrate;
-
-INSERT INTO config.app_setting (key, value)
+INSERT INTO config_app_setting (key, value)
 VALUES ('leaderboard.top_n', '3'),                  -- B16
        ('team.visibility', '"TEAM"'),               -- ADR-019: TEAM or COMPANY
        ('campaign.default_window_days', '30'),      -- C7

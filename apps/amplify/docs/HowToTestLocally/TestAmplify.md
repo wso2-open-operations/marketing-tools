@@ -65,12 +65,11 @@ window.config = {
   ONE_WSO2_THEME: "wso2",
   ONE_WSO2_PEOPLE_BACKEND_URL: "http://localhost:19092",      // people-stub: photos and names
   ONE_WSO2_AMPLIFY_BACKEND_URL: "http://localhost:9089",      // the dev proxy
-  ONE_WSO2_AMPLIFY_LINKEDIN_ORG_URN: "urn:li:organization:1477",
-  // LinkedIn plus the mock: post links and the "Link me" redirect may only go to these origins.
-  ONE_WSO2_AMPLIFY_POST_LINK_ORIGINS: ["https://www.linkedin.com", "https://linkedin.com", "http://localhost:19091"],
   ONE_WSO2_PREVIEW_FEATURES: { amplify: true },
 };
 ```
+
+The LinkedIn company page, the privacy notice link and the allowed post-link origins come from amplify-api in `GET /me` (`WSO2_ORGANIZATION_URN`, `PRIVACY_NOTICE_URL`, `CAMPAIGN_LINK_ORIGINS` in `local/.env`), not from `config.js`.
 
 Then `npm run dev` in `webapp/` and open http://localhost:3000/amplify/celebrate. With the people backend set to the stub, other people-app screens (Me, Org Chart) show errors; that's expected.
 
@@ -125,5 +124,5 @@ make e2e                                     # against the running stack
 | New Post / Current Posts missing from the menu | Your token has no `amplify_po` / `amplify_marketing` in `groups` (the menu reads the id_token). Add the group at the IdP and sign in again |
 | "My position" shows someone else's numbers | Fixed 2026-10-19 (per-viewer ETag). If you see it, you're on an old amplify-api image: `make up` |
 | `MEMBER_ALREADY_LINKED` when linking | The mock's one LinkedIn member already belongs to another local employee (B13). Link as that user, or reset local data with `make down && make up` |
-| "Link me" does nothing, or New Post says "Paste the link to a post on LinkedIn" for a mock URL | The mock's origin (`http://localhost:19091`) isn't in `ONE_WSO2_AMPLIFY_POST_LINK_ORIGINS` (UI) or `CAMPAIGN_LINK_ORIGINS` (amplify-api; Compose includes it by default) |
+| "Link me" does nothing, or New Post says "Paste the link to a post on LinkedIn" for a mock URL | The mock's origin (`http://localhost:19091`) isn't in `CAMPAIGN_LINK_ORIGINS` (amplify-api, which sends the list to the UI in `GET /me`; Compose includes it by default) |
 | Celebrate shows "Amplify isn't connected yet" | `ONE_WSO2_AMPLIFY_BACKEND_URL` isn't set, or the `amplify` preview flag is off |

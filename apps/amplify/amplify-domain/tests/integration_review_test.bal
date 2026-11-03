@@ -46,8 +46,8 @@ isolated function adjustOnce(postgresql:Client db, string emp, int points) retur
 // computed from a snapshot without the other's row.
 @test:Config {groups: ["integration"], enable: itEnabled}
 function testConcurrentLedgerAppendsNeitherDeadlockNorMisrank() returns error? {
-    postgresql:Client db = check store:newClient({host: dbHost, port: dbPort, database: dbName, user: "amplify_api",
-        password: apiDbPassword, sslMode: dbSslMode, maxOpenConnections: 12});
+    postgresql:Client db = check store:newClient({host: dbHost, port: dbPort, database: dbName, user: loginUser,
+        password: loginPassword, sslMode: dbSslMode, maxOpenConnections: 12});
     string[] emps = [];
     foreach int i in 0 ..< 8 {
         emps.push(check newEmployee(db, "conc" + i.toString()));
@@ -87,7 +87,7 @@ function testConcurrentLedgerAppendsNeitherDeadlockNorMisrank() returns error? {
     int misranked = check count(db, `
         SELECT count(*)::int FROM (
             SELECT s.rank, dense_rank() OVER (ORDER BY s.total_points DESC)::int AS expected
-            FROM recognition.standing s WHERE s.period_key = 'ALL') r
+            FROM recognition_standing s WHERE s.period_key = 'ALL') r
         WHERE r.rank IS DISTINCT FROM r.expected`);
     test:assertEquals(misranked, 0, "stored ranks match the committed totals");
     // B12: each standing equals the sum of that employee's committed ledger rows (no lost or doubled
@@ -96,7 +96,7 @@ function testConcurrentLedgerAppendsNeitherDeadlockNorMisrank() returns error? {
     int ledgerTotal = 0;
     foreach int i in 0 ..< emps.length() {
         expectedTotal += (i + 1) * 21;
-        int ledger = check count(db, `SELECT COALESCE(sum(points), 0)::int FROM scoring.points_ledger
+        int ledger = check count(db, `SELECT COALESCE(sum(points), 0)::int FROM scoring_points_ledger
                                       WHERE employee_id = ${emps[i]}`);
         ledgerTotal += ledger;
         recognition:Standing? s = check recognition:standingOf(db, emps[i]);
@@ -122,8 +122,8 @@ isolated function approveAs(postgresql:Client db, string claimId, string po) ret
 // row exist. Also proves a row-lock wait between two transactions in one process completes.
 @test:Config {groups: ["integration"], enable: itEnabled}
 function testTwoWritersOneWinsTheOtherConflicts() returns error? {
-    postgresql:Client db = check store:newClient({host: dbHost, port: dbPort, database: dbName, user: "amplify_api",
-        password: apiDbPassword, sslMode: dbSslMode, maxOpenConnections: 6});
+    postgresql:Client db = check store:newClient({host: dbHost, port: dbPort, database: dbName, user: loginUser,
+        password: loginPassword, sslMode: dbSslMode, maxOpenConnections: 6});
     string emp = check newEmployee(db, "tw");
     string po1 = check newEmployee(db, "twpo1");
     string po2 = check newEmployee(db, "twpo2");
@@ -141,9 +141,9 @@ function testTwoWritersOneWinsTheOtherConflicts() returns error? {
         string code = loser.detail().code;
         test:assertTrue(code == types:ERR_VERSION_CONFLICT || code == types:ERR_NOT_PENDING, code);
     }
-    test:assertEquals(check count(db, `SELECT count(*)::int FROM messaging.outbox
+    test:assertEquals(check count(db, `SELECT count(*)::int FROM messaging_outbox
                                        WHERE event_type = 'ExternalShareApproved' AND aggregate_id = ${claim.id}`), 1);
-    test:assertEquals(check count(db, `SELECT count(*)::int FROM audit.audit_log
+    test:assertEquals(check count(db, `SELECT count(*)::int FROM audit_log
                                        WHERE entity_id = ${claim.id} AND action = 'ExternalShareApproved'`), 1);
     check db.close();
 }
@@ -159,9 +159,9 @@ function testAuditBeforeAfterAndVersionConflictRollsBack() returns error? {
     external_sharing:ExternalShare claim = check external_sharing:submitExternalShare(repo,
             {employeeId: emp, evidenceUrl: "https://medium.com/@ba/" + uniq(), certified: true}, time:utcNow());
     external_sharing:ExternalShare approved = check external_sharing:approveExternalShare(repo, claim.id, po, time:utcNow());
-    string before = check db->queryRow(`SELECT before::text FROM audit.audit_log
+    string before = check db->queryRow(`SELECT before::text FROM audit_log
                                         WHERE entity_id = ${claim.id} AND action = 'ExternalShareApproved'`);
-    string after = check db->queryRow(`SELECT after::text FROM audit.audit_log
+    string after = check db->queryRow(`SELECT after::text FROM audit_log
                                        WHERE entity_id = ${claim.id} AND action = 'ExternalShareApproved'`);
     test:assertEquals(check before.fromJsonString(), {status: "PENDING", version: 1});
     test:assertEquals(check after.fromJsonString(), {status: "APPROVED", version: 2});
@@ -170,16 +170,16 @@ function testAuditBeforeAfterAndVersionConflictRollsBack() returns error? {
     external_sharing:ExternalShare stale = check external_sharing:markAmplified(approved, time:utcNow());
     error? staleWrite = repo.update(stale, 1, [external_sharing:externalShareAmplifiedEvent(stale, po)]);
     assertCode(staleWrite, types:ERR_VERSION_CONFLICT);
-    test:assertEquals(check count(db, `SELECT count(*)::int FROM messaging.outbox
+    test:assertEquals(check count(db, `SELECT count(*)::int FROM messaging_outbox
                                        WHERE event_type = 'ExternalShareAmplified' AND aggregate_id = ${claim.id}`), 0);
-    test:assertEquals(check count(db, `SELECT count(*)::int FROM audit.audit_log
+    test:assertEquals(check count(db, `SELECT count(*)::int FROM audit_log
                                        WHERE entity_id = ${claim.id} AND action = 'ExternalShareAmplified'`), 0);
 
     // Campaign edit, share and connection updates record before too.
     campaign:Campaign c = check registerCampaign(db, po);
     _ = check campaign:updateCampaign(new campaign:PgCampaignRepository(db, poActor(po)), c.id, 1, {title: "After"},
             time:utcNow());
-    string cb = check db->queryRow(`SELECT before::text FROM audit.audit_log
+    string cb = check db->queryRow(`SELECT before::text FROM audit_log
                                     WHERE entity_id = ${c.id} AND action = 'CampaignUpdated'`);
     test:assertEquals(check cb.fromJsonString(), {version: 1, title: "Integration campaign", archived: false});
 
@@ -187,7 +187,7 @@ function testAuditBeforeAfterAndVersionConflictRollsBack() returns error? {
     scoring:PgLedgerRepository ledger = new (db, poActor(po));
     types:LedgerEntry adj = check scoring:adjustPoints(ledger, emp, 3, "IT audit", po, (), (), time:utcNow());
     check ledger.updateSettlement(adj.reference, (), time:utcNow());
-    string sb = check db->queryRow(`SELECT before::text FROM audit.audit_log
+    string sb = check db->queryRow(`SELECT before::text FROM audit_log
                                     WHERE entity_id = ${adj.reference} AND action = 'PointsSettlementChanged'`);
     test:assertEquals(check sb.fromJsonString(), {status: "HELD"});
     error? missing = ledger.updateSettlement("ADJ-" + types:newUuidV7(), (), time:utcNow());
@@ -198,7 +198,7 @@ function testAuditBeforeAfterAndVersionConflictRollsBack() returns error? {
     store:Actor admin = {actorId: "it-admin-" + uniq(), roles: ["amplify_admin"]};
     check store:updateSettings(db, admin, [{key: topN.key, value: topN.value, expectedVersion: topN.version}],
             time:utcNow());
-    string setBefore = check db->queryRow(`SELECT before::text FROM audit.audit_log
+    string setBefore = check db->queryRow(`SELECT before::text FROM audit_log
                                            WHERE actor_id = ${admin.actorId} AND action = 'SettingChanged'`);
     test:assertEquals(check setBefore.fromJsonString(), {value: topN.value});
     error? unknown = store:updateSettings(db, admin, [{key: "nope.missing", value: 1, expectedVersion: 1}],
@@ -223,7 +223,7 @@ function testPoCantAmplifyOwnClaim() returns error? {
             new external_sharing:PgExternalShareRepository(db, poActor(poClaimant)), rules, claim.id, poClaimant, (),
             time:utcNow(), new scoring:PgLedgerRepository(db, poActor(poClaimant)));
     assertCode(ownMark, types:ERR_SELF_REVIEW);
-    test:assertEquals(check count(db, `SELECT count(*)::int FROM scoring.points_ledger
+    test:assertEquals(check count(db, `SELECT count(*)::int FROM scoring_points_ledger
                                        WHERE employee_id = ${poClaimant} AND action = 'OWN_POST_AMPLIFIED'`), 0);
     check db.close();
 }
@@ -235,17 +235,17 @@ function testAnnouncementRequeueSkipsARowInProgress() returns error? {
     string po = check newEmployee(db, "annpo");
     campaign:Campaign c = check registerCampaign(db, po);
     string key = "CampaignRegistered:" + c.id;
-    _ = check db->execute(`UPDATE messaging.outbox SET status = 'IN_PROGRESS', locked_by = 'run-x',
+    _ = check db->execute(`UPDATE messaging_outbox SET status = 'IN_PROGRESS', locked_by = 'run-x',
                            locked_until = now() + interval '5 minutes' WHERE idempotency_key = ${key}`);
     announcements:PgAnnouncementRepository repo = new (db, poActor(po));
     error? busy = repo.requeue(c.id);
     assertCode(busy, types:ERR_ANNOUNCEMENT_NOT_FAILED);
-    string lockedBy = check db->queryRow(`SELECT locked_by FROM messaging.outbox WHERE idempotency_key = ${key}`);
+    string lockedBy = check db->queryRow(`SELECT locked_by FROM messaging_outbox WHERE idempotency_key = ${key}`);
     test:assertEquals(lockedBy, "run-x", "the running claim is untouched");
-    _ = check db->execute(`UPDATE messaging.outbox SET status = 'FAILED', locked_by = NULL, locked_until = NULL
+    _ = check db->execute(`UPDATE messaging_outbox SET status = 'FAILED', locked_by = NULL, locked_until = NULL
                            WHERE idempotency_key = ${key}`);
     check repo.requeue(c.id);
-    string status = check db->queryRow(`SELECT status FROM messaging.outbox WHERE idempotency_key = ${key}`);
+    string status = check db->queryRow(`SELECT status FROM messaging_outbox WHERE idempotency_key = ${key}`);
     test:assertEquals(status, "PENDING");
     assertCode(repo.requeue(types:newUuidV7()), types:ERR_NOT_FOUND);
     check db.close();
@@ -316,7 +316,7 @@ function testPagingGuardsAndTotalPastTheEnd() returns error? {
 
     external_sharing:ExternalSharePage review = check external_sharing:claimsForReview(db, (), -1, 0);
     test:assertTrue(review.items.length() <= 1);
-    int all = check count(db, `SELECT count(*)::int FROM external_sharing.external_share`);
+    int all = check count(db, `SELECT count(*)::int FROM external_sharing_external_share`);
     external_sharing:ExternalSharePage beyond = check external_sharing:claimsForReview(db, (), 100000, 50);
     test:assertEquals(beyond.total, all);
     check db.close();
@@ -328,20 +328,20 @@ function testRebuildUnderTheLockMatchesIncrementalTotals() returns error? {
     postgresql:Client db = check jobs();
     // Every employee's total, not just their sum: a rebuild that moved points between people would still sum alike.
     string before = check db->queryRow(`SELECT COALESCE(string_agg(employee_id || ':' || total_points::text, ',' ORDER BY employee_id), '')
-                                        FROM recognition.standing WHERE period_key = 'ALL'`);
+                                        FROM recognition_standing WHERE period_key = 'ALL'`);
     int version = check recognition:rebuild(db);
     test:assertTrue(version > 0);
     string after = check db->queryRow(`SELECT COALESCE(string_agg(employee_id || ':' || total_points::text, ',' ORDER BY employee_id), '')
-                                       FROM recognition.standing WHERE period_key = 'ALL'`);
+                                       FROM recognition_standing WHERE period_key = 'ALL'`);
     test:assertEquals(after, before, "a rebuild reproduces every employee's incremental total");
     check db.close();
 }
 
 isolated function probeTx(postgresql:Client db, string tag, int i) returns error? {
     transaction {
-        _ = check db->execute(`INSERT INTO messaging.outbox (aggregate_type, aggregate_id, event_type, payload, idempotency_key)
+        _ = check db->execute(`INSERT INTO messaging_outbox (aggregate_type, aggregate_id, event_type, payload, idempotency_key)
                                VALUES ('probe', ${tag}, 'Probe', CAST('{}' AS jsonb), ${tag + ":" + i.toString()})`);
-        _ = check db->execute(`INSERT INTO audit.audit_log (actor_id, action, entity_type, entity_id, outcome)
+        _ = check db->execute(`INSERT INTO audit_log (actor_id, action, entity_type, entity_id, outcome)
                                VALUES ('probe', 'Probe', 'probe', ${tag}, 'SUCCESS')`);
         check commit;
     }
@@ -354,8 +354,8 @@ isolated function probeTx(postgresql:Client db, string tag, int i) returns error
 // `AMPLIFY_IT=true bal test --groups runtime-probe`; it prints the counts and asserts nothing.
 @test:Config {groups: ["runtime-probe"], enable: itEnabled}
 function testRuntimeProbeConcurrentTransactions() returns error? {
-    postgresql:Client db = check store:newClient({host: dbHost, port: dbPort, database: dbName, user: "amplify_api",
-        password: apiDbPassword, sslMode: dbSslMode, maxOpenConnections: 12});
+    postgresql:Client db = check store:newClient({host: dbHost, port: dbPort, database: dbName, user: loginUser,
+        password: loginPassword, sslMode: dbSslMode, maxOpenConnections: 12});
     string tag = "probe-" + uniq();
     int errors = 0;
     string firstErr = "";
@@ -373,8 +373,8 @@ function testRuntimeProbeConcurrentTransactions() returns error? {
             }
         }
     }
-    int outbox = check count(db, `SELECT count(*)::int FROM messaging.outbox WHERE aggregate_id = ${tag}`);
-    int audit = check count(db, `SELECT count(*)::int FROM audit.audit_log WHERE entity_id = ${tag}`);
+    int outbox = check count(db, `SELECT count(*)::int FROM messaging_outbox WHERE aggregate_id = ${tag}`);
+    int audit = check count(db, `SELECT count(*)::int FROM audit_log WHERE entity_id = ${tag}`);
     io:println(string `PROBE errors=${errors} outbox=${outbox} audit=${audit} of 48 ${firstErr}`);
     check db.close();
 }
@@ -402,9 +402,9 @@ function testAnnouncementWriterQueueSendAndFail() returns error? {
     check writer.save(sent, [announcements:campaignAnnouncedEvent(sent)]);
     announcements:Announcement? reread = check reader.findByCampaign(sentId);
     test:assertEquals(reread is announcements:Announcement ? reread.chatThreadName : (), "spaces/x/threads/z");
-    test:assertEquals(check count(jobsDb, `SELECT count(*)::int FROM messaging.outbox
+    test:assertEquals(check count(jobsDb, `SELECT count(*)::int FROM messaging_outbox
                                            WHERE event_type = 'CampaignAnnounced' AND aggregate_id = ${sentId}`), 1);
-    test:assertEquals(check count(jobsDb, `SELECT count(*)::int FROM audit.audit_log
+    test:assertEquals(check count(jobsDb, `SELECT count(*)::int FROM audit_log
                                            WHERE entity_id = ${sentId} AND action = 'CampaignAnnounced'`), 1);
 
     string failedId = types:newUuidV7();

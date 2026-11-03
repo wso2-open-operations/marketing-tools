@@ -49,7 +49,7 @@ public type CampaignPage record {|
     int total;
 |};
 
-# A campaign category (`campaign.category`).
+# A campaign category (`campaign_category`).
 public type Category record {|
     # Code, for example `PRODUCT`
     string code;
@@ -102,7 +102,7 @@ public isolated function listCampaigns(postgresql:Client db, CampaignQuery query
     }
     string? tag = query.tag;
     if tag is string {
-        cond = sql:queryConcat(cond, ` AND EXISTS (SELECT 1 FROM campaign.campaign_tag t
+        cond = sql:queryConcat(cond, ` AND EXISTS (SELECT 1 FROM campaign_tag t
                                                      WHERE t.campaign_id = c.id AND t.tag = ${tag})`);
     }
     [int, int] [size, offset] = store:pageWindow(query.page, query.size, MAX_PAGE_SIZE);
@@ -111,9 +111,9 @@ public isolated function listCampaigns(postgresql:Client db, CampaignQuery query
                c.summary, c.image_url, c.category_code, c.is_priority, c.opens_at, c.closes_at, c.archived_at,
                c.created_by, c.created_at, c.updated_at, c.version,
                COALESCE((SELECT array_to_json(array_agg(t.tag ORDER BY t.tag))::text
-                         FROM campaign.campaign_tag t WHERE t.campaign_id = c.id), '[]') AS tags,
+                         FROM campaign_tag t WHERE t.campaign_id = c.id), '[]') AS tags,
                (count(*) OVER ())::int AS total
-        FROM campaign.campaign_v c `, cond, `
+        FROM campaign_v c `, cond, `
         ORDER BY c.is_priority DESC, c.opens_at DESC, c.id
         LIMIT ${size} OFFSET ${offset}`);
     stream<ListedRow, error?> rows = db->query(sqlQuery);
@@ -145,7 +145,7 @@ public isolated function listCampaigns(postgresql:Client db, CampaignQuery query
             });
         };
     if items.length() == 0 && offset > 0 {
-        int|error counted = db->queryRow(sql:queryConcat(`SELECT count(*)::int FROM campaign.campaign_v c `, cond));
+        int|error counted = db->queryRow(sql:queryConcat(`SELECT count(*)::int FROM campaign_v c `, cond));
         total = counted is int ? counted : 0;
     }
     return {items, total};
@@ -157,8 +157,8 @@ public isolated function listCampaigns(postgresql:Client db, CampaignQuery query
 # + return - Tags, or an error
 public isolated function listTags(postgresql:Client db) returns string[]|error {
     stream<record {|string tag;|}, error?> rows = db->query(`
-        SELECT DISTINCT t.tag FROM campaign.campaign_tag t
-        JOIN campaign.campaign c ON c.id = t.campaign_id
+        SELECT DISTINCT t.tag FROM campaign_tag t
+        JOIN campaign c ON c.id = t.campaign_id
         WHERE c.archived_at IS NULL
         ORDER BY t.tag`);
     return from var r in rows
@@ -171,7 +171,7 @@ public isolated function listTags(postgresql:Client db) returns string[]|error {
 # + return - Categories, or an error
 public isolated function listCategories(postgresql:Client db) returns Category[]|error {
     stream<record {|string code; string label; int sort_order;|}, error?> rows = db->query(`
-        SELECT code, label, sort_order FROM campaign.category WHERE active ORDER BY sort_order, label`);
+        SELECT code, label, sort_order FROM campaign_category WHERE active ORDER BY sort_order, label`);
     return from var r in rows
         select {code: r.code, label: r.label, sortOrder: r.sort_order};
 }
@@ -191,7 +191,7 @@ public isolated function dashboardCampaigns(postgresql:Client db, int recentDays
         SELECT c.id::text AS id, c.provider, c.resource_urn, c.resource_type, c.owner_urn, c.resource_url, c.title,
                c.summary, c.image_url, c.category_code, c.is_priority, c.opens_at, c.closes_at, c.archived_at,
                c.created_by, c.created_at, c.updated_at, c.version, '[]' AS tags, 0 AS total
-        FROM campaign.campaign_v c
+        FROM campaign_v c
         WHERE c.status = 'OPEN' OR (c.status = 'CLOSED' AND c.closes_at >= CAST(${since} AS timestamptz))
         ORDER BY c.is_priority DESC, c.opens_at DESC, c.id
         LIMIT ${'limit}`);

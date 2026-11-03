@@ -17,8 +17,6 @@
 -- S010: leaderboard.top_min_points: points needed in the month to qualify for the Celebrate top three (ADR-037).
 -- Existing values are never overwritten: an admin's change survives a re-seed.
 
-SET LOCAL ROLE amplify_migrate;
-
-INSERT INTO config.app_setting (key, value)
+INSERT INTO config_app_setting (key, value)
 VALUES ('leaderboard.top_min_points', '100')
 ON CONFLICT (key) DO NOTHING;

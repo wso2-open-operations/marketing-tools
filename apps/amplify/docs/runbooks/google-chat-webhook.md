@@ -41,7 +41,7 @@ The webhook URL is a plain **secret** on amplify-jobs, not a Choreo connection: 
 ## D. Verify
 
 - [ ] **D1** Create a test campaign in dev with "Save & Share Now". Within one run the card shows in the dev space: header with the avatar, image (the campaign's own when it is public HTTPS, else `chatDefaultImageUrl`), summary, **Amplify** button opening `{sharePageBaseUrl}?share={campaignId}` (Celebrate with that post's share dialog).
-- [ ] **D2** `announcement.announcement` row: `sent_at` set, `chat_message_name` and `chat_thread_name` filled. A second card for the same campaign (admin retry after a failure) lands in the same thread (`threadKey = campaign-{id}`, `REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD`).
+- [ ] **D2** `announcement` row: `sent_at` set, `chat_message_name` and `chat_thread_name` filled. A second card for the same campaign (admin retry after a failure) lands in the same thread (`threadKey = campaign-{id}`, `REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD`).
 - [ ] **D3** amplify-jobs logs show the run, never the URL: `grep -c 'token=' <logs>` = 0.
 
 ## E. Rotate (leaked URL, owner change, or yearly)

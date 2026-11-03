@@ -24,7 +24,7 @@ import amplify_domain.store;
 import ballerina/time;
 import ballerinax/postgresql;
 
-const string CONNECTION_TABLE = "connection.member_connection";
+const string CONNECTION_TABLE = "connection_member_connection";
 
 type ConnectionRow record {|
     string employee_id;
@@ -75,7 +75,7 @@ public isolated class PgConnectionRepository {
             SELECT employee_id, provider, member_urn, provider_api, array_to_json(scopes)::text AS scopes,
                    current_token_id::text AS current_token_id, current_token_issued_on::text AS current_token_issued_on,
                    access_expires_at, connected_at, revoked_at, removed_at, last_reminded_at, version
-            FROM connection.member_connection WHERE employee_id = ${employeeId} AND provider = ${provider}`);
+            FROM connection_member_connection WHERE employee_id = ${employeeId} AND provider = ${provider}`);
         return toConnection(row);
     }
 
@@ -84,7 +84,7 @@ public isolated class PgConnectionRepository {
             SELECT employee_id, provider, member_urn, provider_api, array_to_json(scopes)::text AS scopes,
                    current_token_id::text AS current_token_id, current_token_issued_on::text AS current_token_issued_on,
                    access_expires_at, connected_at, revoked_at, removed_at, last_reminded_at, version
-            FROM connection.member_connection WHERE provider = ${provider} AND member_urn = ${memberUrn}`);
+            FROM connection_member_connection WHERE provider = ${provider} AND member_urn = ${memberUrn}`);
         return toConnection(row);
     }
 
@@ -118,23 +118,32 @@ public isolated class PgConnectionRepository {
             }
             if expectedVersion is () {
                 _ = check self.db->execute(`
-                    INSERT INTO connection.member_connection (employee_id, provider, member_urn, provider_api, scopes,
+                    INSERT INTO connection_member_connection (employee_id, provider, member_urn, provider_api, scopes,
                         current_token_id, current_token_issued_on, access_expires_at, connected_at, revoked_at,
                         removed_at, last_reminded_at, version)
                     VALUES (${c.employeeId}, ${c.provider}, ${c.memberUrn}, ${c.providerApi}, CAST(${scopes} AS text[]),
                         CAST(${tokenId} AS uuid), CAST(${issuedOn} AS date), CAST(${store:ts(c.accessExpiresAt)} AS timestamptz), CAST(${store:ts(c.connectedAt)} AS timestamptz),
                         CAST(${store:ts(c.revokedAt)} AS timestamptz), CAST(${store:ts(c.removedAt)} AS timestamptz), CAST(${store:ts(c.lastRemindedAt)} AS timestamptz), ${c.version})`);
             } else {
+                // Read and lock the row in the same statement that changes it (`RETURNING old.*` needs PostgreSQL 18).
                 record {|string member_urn; int version; boolean revoked; boolean removed;|}|error old = self.db->queryRow(`
-                    UPDATE connection.member_connection
+                    WITH prev AS (
+                        SELECT employee_id, provider, member_urn AS old_member_urn, version AS old_version,
+                               revoked_at IS NOT NULL AS old_revoked, removed_at IS NOT NULL AS old_removed
+                        FROM connection_member_connection
+                        WHERE employee_id = ${c.employeeId} AND provider = ${c.provider} AND version = ${expectedVersion}
+                        FOR UPDATE)
+                    UPDATE connection_member_connection
                     SET member_urn = ${c.memberUrn}, provider_api = ${c.providerApi}, scopes = CAST(${scopes} AS text[]),
                         current_token_id = CAST(${tokenId} AS uuid), current_token_issued_on = CAST(${issuedOn} AS date),
                         access_expires_at = CAST(${store:ts(c.accessExpiresAt)} AS timestamptz), connected_at = CAST(${store:ts(c.connectedAt)} AS timestamptz),
                         revoked_at = CAST(${store:ts(c.revokedAt)} AS timestamptz), removed_at = CAST(${store:ts(c.removedAt)} AS timestamptz),
                         last_reminded_at = CAST(${store:ts(c.lastRemindedAt)} AS timestamptz), version = ${c.version}
-                    WHERE employee_id = ${c.employeeId} AND provider = ${c.provider} AND version = ${expectedVersion}
-                    RETURNING old.member_urn, old.version, old.revoked_at IS NOT NULL AS revoked,
-                              old.removed_at IS NOT NULL AS removed`);
+                    FROM prev
+                    WHERE connection_member_connection.employee_id = prev.employee_id
+                      AND connection_member_connection.provider = prev.provider
+                    RETURNING prev.old_member_urn AS member_urn, prev.old_version AS version, prev.old_revoked AS revoked,
+                              prev.old_removed AS removed`);
                 if old is error {
                     fail store:isNoRows(old) ? store:versionConflict("connection") : old;
                 }
@@ -144,7 +153,7 @@ public isolated class PgConnectionRepository {
             TokenRef? old = change.tokenToDelete;
             if old is TokenRef {
                 _ = check self.db->execute(`
-                    DELETE FROM connection.provider_token
+                    DELETE FROM connection_provider_token
                     WHERE token_id = CAST(${old.tokenId} AS uuid) AND issued_on = CAST(${old.issuedOn} AS date)`);
             }
             _ = check store:writeOutbox(self.db, change.outbox, self.actor.correlationId);
@@ -185,7 +194,7 @@ public isolated class PgTokenRepository {
         stream<TokenRow, error?> rows = self.db->query(`
             SELECT token_id::text AS token_id, issued_on::text AS issued_on, owner_type, owner_id, provider, token_kind,
                    ciphertext, nonce, key_id, expires_at
-            FROM connection.provider_token
+            FROM connection_provider_token
             WHERE key_id <> ${activeKeyId}
               AND (CAST(${afterDay} AS date) IS NULL
                    OR (issued_on, token_id) > (CAST(${afterDay} AS date), CAST(${afterId} AS uuid)))
@@ -209,7 +218,7 @@ public isolated class PgTokenRepository {
     # + return - True when the row was updated, false when it changed or vanished meanwhile, or an error
     public isolated function updateSeal(StoredToken old, crypto:SealedToken resealed) returns boolean|error {
         var result = check self.db->execute(`
-            UPDATE connection.provider_token
+            UPDATE connection_provider_token
             SET ciphertext = ${resealed.ciphertext}, nonce = ${resealed.nonce}, key_id = ${resealed.keyId}
             WHERE token_id = CAST(${old.tokenId} AS uuid) AND issued_on = CAST(${old.issuedOn} AS date)
               AND key_id = ${old.keyId}`);
@@ -220,7 +229,7 @@ public isolated class PgTokenRepository {
         TokenRow|error row = self.db->queryRow(`
             SELECT token_id::text AS token_id, issued_on::text AS issued_on, owner_type, owner_id, provider, token_kind,
                    ciphertext, nonce, key_id, expires_at
-            FROM connection.provider_token
+            FROM connection_provider_token
             WHERE token_id = CAST(${ref.tokenId} AS uuid) AND issued_on = CAST(${ref.issuedOn} AS date)`);
         if row is error {
             return store:isNoRows(row) ? () : row;
@@ -231,7 +240,7 @@ public isolated class PgTokenRepository {
 
 isolated function insertToken(postgresql:Client db, StoredToken token) returns error? {
     _ = check db->execute(`
-        INSERT INTO connection.provider_token (token_id, issued_on, owner_type, owner_id, provider, token_kind,
+        INSERT INTO connection_provider_token (token_id, issued_on, owner_type, owner_id, provider, token_kind,
                                                ciphertext, nonce, key_id, expires_at)
         VALUES (CAST(${token.tokenId} AS uuid), CAST(${token.issuedOn} AS date), ${token.ownerType},
                 ${token.ownerId}, ${token.provider}, ${token.tokenKind}, ${token.ciphertext}, ${token.nonce},
@@ -251,14 +260,14 @@ isolated function toStoredToken(TokenRow row) returns StoredToken|error => {
     expiresAt: row.expires_at
 };
 
-# Derived status as `connection.member_connection_v` computes it (the view also checks the token row).
+# Derived status as `connection_member_connection_v` computes it (the view also checks the token row).
 #
 # + db - Client
 # + employeeId - Employee
 # + return - `ACTIVE`, `EXPIRING`, `NEEDS_RECONNECT`, `REMOVED`, `()` if never connected, or an error
 public isolated function statusFromView(postgresql:Client db, types:EmployeeId employeeId) returns ConnectionStatus|error? {
     string|error status = db->queryRow(`
-        SELECT status FROM connection.member_connection_v WHERE employee_id = ${employeeId} AND provider = ${types:LINKEDIN}`);
+        SELECT status FROM connection_member_connection_v WHERE employee_id = ${employeeId} AND provider = ${types:LINKEDIN}`);
     if status is error {
         return store:isNoRows(status) ? () : status;
     }

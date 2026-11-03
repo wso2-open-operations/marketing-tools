@@ -71,7 +71,7 @@ Access groups (`BAL_CONFIG_VAR_CAN<CAPABILITY>GROUPS`; defaults in `amplify-api/
 
 - [ ] **C1** Set the keys above in dev.
 - [ ] **C2** Call `GET /me` through the proxy as each test user. Expect 200, `roles`, `grants` and `capabilities` matching [activity-matrix.md](../../architecture/solution/Phase%201/activity-matrix.md).
-- [ ] **C3** As the no-group user, call `GET /po/dashboard`: expect 403 `ROLE_NOT_PERMITTED` and an `audit.audit_log` row with `outcome = DENIED`.
+- [ ] **C3** As the no-group user, call `GET /po/dashboard`: expect 403 `ROLE_NOT_PERMITTED` and an `audit_log` row with `outcome = DENIED`.
 - [ ] **C4** If you get 401, the problem `code` says why: `TOKEN_ISSUER_INVALID` / `TOKEN_AUDIENCE_INVALID` → set log level DEBUG for `wso2/amplify_api.auth` once; it logs the received `iss` / `aud` (never the token). `TOKEN_CLAIMS_INVALID` → email or sub claim missing (A5/B2 or claim name). 503 `DEPENDENCY_UNAVAILABLE` → JWKS URL unreachable.
 - [ ] **C5** Repeat C1–C3 in prod with the prod org.
 

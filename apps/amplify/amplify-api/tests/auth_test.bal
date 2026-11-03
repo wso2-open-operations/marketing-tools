@@ -234,6 +234,10 @@ function testMeUpsertsEmployeeAndReportsCapabilities() returns error? {
     test:assertTrue(caps.indexOf("po.dashboard") is ());
     test:assertEquals(check body.linkedin.status, "NOT_CONNECTED");
     test:assertEquals(check body.linkedin.expiresAt, ());
+    // Deployment settings the UI used to read from its own config.js.
+    test:assertEquals(check body.config.linkedinOrgUrn, wso2OrganizationUrn);
+    test:assertEquals(check body.config.privacyNoticeUrl, privacyNoticeUrl.trim());
+    test:assertEquals(check body.config.campaignLinkOrigins, postLinkOrigins);
     test:assertTrue(fakeEmployees.findById("emp-0001") is record {});
 }
 
@@ -479,4 +483,16 @@ function testJwksUrlMustBeHttpsExceptOnALocalStack() {
     test:assertTrue(checkJwksUrl("local", "http://gw.example.com/jwks") is error);
     test:assertTrue(checkJwksUrl("local", "http://localhost.evil.example/jwks") is error);
     test:assertTrue(checkJwksUrl("prod", "") is error);
+}
+
+// A plain employee has no groups claim, so the "token has no groups" warning must not repeat on every request: it
+// goes out once, then not again until the interval has passed.
+@test:Config {}
+function testNoGroupsWarningIsThrottled() {
+    auth:WarningThrottle throttle = new;
+    test:assertTrue(throttle.due(1000, 300), "the first token without groups warns");
+    test:assertFalse(throttle.due(1001, 300), "the next request inside the interval does not");
+    test:assertFalse(throttle.due(1299, 300), "still inside the interval");
+    test:assertTrue(throttle.due(1300, 300), "the interval has passed, so it warns again");
+    test:assertFalse(throttle.due(1400, 300));
 }

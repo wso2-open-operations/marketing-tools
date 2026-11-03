@@ -58,7 +58,7 @@ type RunConfig record {|
     string? defaultImageUrl = ();
 |};
 
-# App settings a run reads once (`config.app_setting`).
+# App settings a run reads once (`config_app_setting`).
 type RunSettings record {|
     boolean sharingEnabled = true;
     boolean announcementsEnabled = true;

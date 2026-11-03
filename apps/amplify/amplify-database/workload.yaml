@@ -23,18 +23,5 @@ configurations:
     # Path of the managed Postgres CA PEM, mounted from a ConfigMap/Secret volume (dbSslMode defaults to VERIFY_FULL).
     - name: BAL_CONFIG_VAR_DBSSLROOTCERT
       value: ""
-    - name: BAL_CONFIG_VAR_APIDBPASSWORD
-      valueFrom:
-        secretRef:
-          name: amplify-database-secrets
-          key: BAL_CONFIG_VAR_APIDBPASSWORD
-    - name: BAL_CONFIG_VAR_JOBSDBPASSWORD
-      valueFrom:
-        secretRef:
-          name: amplify-database-secrets
-          key: BAL_CONFIG_VAR_JOBSDBPASSWORD
-    - name: BAL_CONFIG_VAR_READONLYDBPASSWORD
-      valueFrom:
-        secretRef:
-          name: amplify-database-secrets
-          key: BAL_CONFIG_VAR_READONLYDBPASSWORD
+    - name: BAL_CONFIG_VAR_DBSCHEMA
+      value: ""

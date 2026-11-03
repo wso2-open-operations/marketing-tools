@@ -14,13 +14,6 @@ endpoints:
     networkVisibilities:
       - Project
     schemaFilePath: amplify-api/openapi.yaml
-dependencies:
-  # resourceRef values come from each connection's developer guide in the console; replace REPLACE_WITH_ID.
-  connectionReferences:
-    - name: amplify-jobs
-      resourceRef: service:/amplify/amplify-jobs/v1/REPLACE_WITH_ID/PROJECT
-    - name: amplify-scheduler
-      resourceRef: service:/amplify/amplify-scheduler/v1/REPLACE_WITH_ID/PROJECT
 configurations:
   env:
     - name: BAL_CONFIG_VAR_ENVIRONMENT
@@ -71,13 +64,19 @@ configurations:
     - name: BAL_CONFIG_VAR_DBUSER
       valueFrom:
         configForm:
-          displayName: DB user
+          displayName: DB login user (shared by every component)
           type: string
     - name: BAL_CONFIG_VAR_DBPASSWORD
       valueFrom:
         configForm:
           displayName: DB password
           type: secret
+    - name: BAL_CONFIG_VAR_DBSCHEMA
+      valueFrom:
+        configForm:
+          displayName: DB schema (empty = the login user name)
+          type: string
+          required: false
     # Managed Postgres CA (domain review H-1): mount the CA PEM as a Choreo file mount (console: Configs &
     # Secrets > File Mount, e.g. /home/choreo/db-ca/ca.pem) and put that path here. dbSslMode defaults to
     # VERIFY_FULL, which checks the server certificate against it and the host name.
@@ -89,19 +88,20 @@ configurations:
           required: false
     - name: BAL_CONFIG_VAR_JOBSURL
       valueFrom:
-        connectionRef:
-          name: amplify-jobs
-          key: ServiceURL
+        configForm:
+          displayName: Amplify Jobs URL (the Jobs endpoint's Project URL)
+          type: string
     - name: BAL_CONFIG_VAR_SCHEDULERURL
       valueFrom:
-        connectionRef:
-          name: amplify-scheduler
-          key: ServiceURL
+        configForm:
+          displayName: Amplify Scheduler URL (the Scheduler endpoint's Project URL)
+          type: string
     - name: BAL_CONFIG_VAR_SCHEDULERJOBSURL
       valueFrom:
-        connectionRef:
-          name: amplify-jobs
-          key: ServiceURL
+        configForm:
+          displayName: Jobs URL as the scheduler reaches it (empty = Jobs URL)
+          type: string
+          required: false
     - name: BAL_CONFIG_VAR_CAMPAIGNLINKORIGINS
       valueFrom:
         configForm:
@@ -216,28 +216,28 @@ configurations:
           displayName: Scorecard: reposts this calendar month (default 600) (leave empty for the default)
           type: string
           required: false
-    - name: BAL_CONFIG_VAR_PEOPLEDIRECTORYURL
+    - name: BAL_CONFIG_VAR_HRENTITYBASEURL
       valueFrom:
         configForm:
-          displayName: People directory URL (people-app GET /employees/basic-info)
+          displayName: HR Entity GraphQL URL
           type: string
           required: false
-    - name: BAL_CONFIG_VAR_PEOPLEDIRECTORYTOKENURL
+    - name: BAL_CONFIG_VAR_HRENTITYTOKENURL
       valueFrom:
         configForm:
-          displayName: People directory OAuth2 token URL
+          displayName: HR Entity OAuth2 token URL
           type: string
           required: false
-    - name: BAL_CONFIG_VAR_PEOPLEDIRECTORYCLIENTID
+    - name: BAL_CONFIG_VAR_HRENTITYCLIENTID
       valueFrom:
         configForm:
-          displayName: People directory client id
+          displayName: HR Entity client id
           type: string
           required: false
-    - name: BAL_CONFIG_VAR_PEOPLEDIRECTORYCLIENTSECRET
+    - name: BAL_CONFIG_VAR_HRENTITYCLIENTSECRET
       valueFrom:
         configForm:
-          displayName: People directory client secret
+          displayName: HR Entity client secret
           type: secret
           required: false
     - name: BAL_CONFIG_VAR_LINKEDINCLIENTID
@@ -270,6 +270,13 @@ configurations:
       valueFrom:
         configForm:
           displayName: LinkedIn company page URN (urn:li:organization:<id>)
+          type: string
+          required: false
+    # Privacy notice the LinkedIn consent dialog links to; sent to the UI in GET /me (empty = no link).
+    - name: BAL_CONFIG_VAR_PRIVACYNOTICEURL
+      valueFrom:
+        configForm:
+          displayName: Privacy notice URL (shown in the LinkedIn consent dialog)
           type: string
           required: false
     # ID-token validation on connect (off by default; turn on once a real LinkedIn app returns the ID token).

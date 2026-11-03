@@ -20,7 +20,7 @@ import amplify_domain.scoring;
 
 import ballerina/time;
 
-# Derived external share status (`external_sharing.external_share_v`). Never stored.
+# Derived external share status (`external_sharing_external_share_v`). Never stored.
 public enum ExternalShareStatus {
     PENDING,
     APPROVED,
@@ -36,7 +36,7 @@ public const DECISION_REJECTED = "REJECTED";
 # PO decision on a claim.
 public type Decision DECISION_APPROVED|DECISION_REJECTED;
 
-# External share aggregate (`external_sharing.external_share`, "My Campaign"): an employee's claim for
+# External share aggregate (`external_sharing_external_share`, "My Campaign"): an employee's claim for
 # promotion done outside Amplify. Unique per normalized `(evidenceUrl, action)` across all employees (C5).
 public type ExternalShare record {|
     # UUIDv7

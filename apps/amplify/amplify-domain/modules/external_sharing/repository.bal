@@ -25,7 +25,7 @@ import amplify_domain.store;
 import ballerina/time;
 import ballerinax/postgresql;
 
-const string EXTERNAL_SHARE_TABLE = "external_sharing.external_share";
+const string EXTERNAL_SHARE_TABLE = "external_sharing_external_share";
 
 type ExternalShareRow record {|
     string id;
@@ -69,13 +69,13 @@ public isolated class PgExternalShareRepository {
             SELECT id::text AS id, employee_id, campaign_id::text AS campaign_id, action, evidence_url,
                    evidence_url_submitted, evidence_host, provider, resource_urn, certified_at, decision, decided_by,
                    decided_at, decision_reason, amplified_at, created_at, version
-            FROM external_sharing.external_share WHERE id = CAST(${id} AS uuid)`);
+            FROM external_sharing_external_share WHERE id = CAST(${id} AS uuid)`);
         return toClaim(row);
     }
 
     public isolated function isClaimed(string normalizedUrl, types:ExternalAction action) returns boolean|error {
         boolean claimed = check self.db->queryRow(`
-            SELECT EXISTS (SELECT 1 FROM external_sharing.external_share
+            SELECT EXISTS (SELECT 1 FROM external_sharing_external_share
                            WHERE evidence_url = ${normalizedUrl} AND action = ${action})`);
         return claimed;
     }
@@ -129,13 +129,20 @@ public isolated class PgExternalShareRepository {
 
     private isolated transactional function updateRow(ExternalShare c, int expectedVersion, events:OutboxEvent[] outbox)
             returns error? {
-        // PostgreSQL 18 `RETURNING old.*`: the audit row records the state before the change too.
+        // The row is read and locked in the same statement that changes it, so the audit row records the state before the
+        // change on every PostgreSQL version (`RETURNING old.*` needs 18).
         record {|string? decision; time:Utc? amplified_at; int version;|}|error old = self.db->queryRow(`
-            UPDATE external_sharing.external_share
+            WITH prev AS (
+                SELECT id, decision AS old_decision, amplified_at AS old_amplified_at, version AS old_version
+                FROM external_sharing_external_share
+                WHERE id = CAST(${c.id} AS uuid) AND version = ${expectedVersion}
+                FOR UPDATE)
+            UPDATE external_sharing_external_share
             SET decision = ${c.decision}, decided_by = ${c.decidedBy}, decided_at = CAST(${store:ts(c.decidedAt)} AS timestamptz),
                 decision_reason = ${c.decisionReason}, amplified_at = CAST(${store:ts(c.amplifiedAt)} AS timestamptz), version = ${c.version}
-            WHERE id = CAST(${c.id} AS uuid) AND version = ${expectedVersion}
-            RETURNING old.decision, old.amplified_at, old.version`);
+            FROM prev
+            WHERE external_sharing_external_share.id = prev.id
+            RETURNING prev.old_decision AS decision, prev.old_amplified_at AS amplified_at, prev.old_version AS version`);
         if old is error {
             return store:isNoRows(old) ? store:versionConflict("external share") : old;
         }
@@ -152,7 +159,7 @@ public isolated class PgExternalShareRepository {
     private isolated function insertTx(ExternalShare c, events:OutboxEvent[] outbox) returns error? {
         transaction {
             _ = check self.db->execute(`
-                INSERT INTO external_sharing.external_share (id, employee_id, campaign_id, action, evidence_url,
+                INSERT INTO external_sharing_external_share (id, employee_id, campaign_id, action, evidence_url,
                     evidence_url_submitted, evidence_host, provider, resource_urn, certified_at, decision, decided_by,
                     decided_at, decision_reason, amplified_at, created_at, version)
                 VALUES (CAST(${c.id} AS uuid), ${c.employeeId}, CAST(${c.campaignId} AS uuid), ${c.action},

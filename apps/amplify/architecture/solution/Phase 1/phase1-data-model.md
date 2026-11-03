@@ -2,7 +2,7 @@
 
 Status: **Draft v2 for review** (2026-10-16)
 Builds on: [phase1-domains.md](phase1-domains.md) · Plan: [phase1-planned-todos.md](../../../docs/requirements/phase1-planned-todos.md) (M3)
-Database: **PostgreSQL 18** (Choreo-managed, Aiven), one database `amplify`.
+Database: **PostgreSQL 15 or later** (Choreo-managed, Aiven; staging runs 17, ADR-044), one database `amplify`.
 Audit mitigations applied 2026-10-16 ([requirements-map.md](requirements-map.md), Audit B–D). Phase labels follow the requirements-map [Other phases](requirements-map.md#other-phases-refine-later) table: "phase 2" means the Coin issuer and SLT reports; Community Management work is "future phase" (D5).
 
 ## Contents
@@ -37,7 +37,7 @@ Audit mitigations applied 2026-10-16 ([requirements-map.md](requirements-map.md)
 10. **Read models are pre-built tables**, kept current in the same transaction as each ledger insert (jobs score pass, or `amplify-api` for PO decisions and corrections, B12), so One WSO2 reads are single indexed lookups. See [recognition](#recognition--s4-recognition-read-models).
 11. **Required extensions: `citext`** (`identity.employee.email`, `recognition.standing.email`) **and `pg_trgm`** (Team search). The M0 D2 check confirms both on a real Choreo database before M3 (B18). Portability rule: no other extension without an ADR. If either is missing, fall back to `text` + a `lower(email)` unique index, and `ILIKE` prefix search on a `lower(display_name)` btree index.
 
-**IDs:** every `uuid` key defaults to **`uuidv7()`**, the native function in **PostgreSQL 18**. UUIDv7 is time-ordered, so new rows append to the end of the B-tree (no random-insert page splits), and `ORDER BY id` is roughly creation order. If an environment is ever below PG 18, generate v7 in Ballerina instead; never mix in v4.
+**IDs:** every `uuid` key defaults to **`uuidv7()`**, the native function in **PostgreSQL 18**; V001 installs a compatible `uuidv7()` on older servers (ADR-044). UUIDv7 is time-ordered, so new rows append to the end of the B-tree (no random-insert page splits), and `ORDER BY id` is roughly creation order.
 
 **`text_array` in the diagrams = Postgres `text[]`** (a native array, not JSON). Mermaid doesn't allow `[]` in type names. Insert with `ARRAY['openid','profile','w_member_social']`; query with `'w_member_social' = ANY(scopes)`.
 

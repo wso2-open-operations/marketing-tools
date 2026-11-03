@@ -15,7 +15,7 @@
 // under the License.
 
 
-// OAuth `state` for the S2 connect flow (`connection.oauth_state`, M5). A state is random, bound to one
+// OAuth `state` for the S2 connect flow (`connection_oauth_state`, M5). A state is random, bound to one
 // employee, valid for `oauthStateTtlSeconds` and usable once: `consume` deletes it in the same statement
 // that reads it, so a replayed callback finds nothing.
 
@@ -30,7 +30,7 @@ import ballerinax/postgresql;
 # the window without a code change; `consume` enforces it.
 configurable int oauthStateTtlSeconds = 600;
 
-# One pending connect (`connection.oauth_state`).
+# One pending connect (`connection_oauth_state`).
 public type OAuthState record {|
     # Random, 64 hex characters
     string state;
@@ -48,7 +48,7 @@ public type OAuthState record {|
     time:Utc expiresAt;
 |};
 
-# Persistence port for `connection.oauth_state`.
+# Persistence port for `connection_oauth_state`.
 public type OAuthStateRepository isolated object {
     # Stores a new state.
     #
@@ -140,7 +140,7 @@ public isolated class PgOAuthStateRepository {
 
     public isolated function issue(OAuthState s) returns error? {
         _ = check self.db->execute(`
-            INSERT INTO connection.oauth_state (state, employee_id, provider, provider_api, nonce, return_to,
+            INSERT INTO connection_oauth_state (state, employee_id, provider, provider_api, nonce, return_to,
                                                 pending_campaign_id, created_at, expires_at)
             VALUES (${s.state}, ${s.employeeId}, ${types:LINKEDIN}, ${types:SHARE_ON_LINKEDIN}, ${s.nonce},
                     ${s.returnTo}, CAST(${s.pendingCampaignId} AS uuid), CAST(${store:ts(s.createdAt)} AS timestamptz),
@@ -150,7 +150,7 @@ public isolated class PgOAuthStateRepository {
     public isolated function consume(string state, types:EmployeeId employeeId, time:Utc now) returns OAuthState|error? {
         // DELETE … RETURNING through queryRow: one statement reads and burns the state (single use).
         OAuthStateRow|error row = self.db->queryRow(`
-            DELETE FROM connection.oauth_state
+            DELETE FROM connection_oauth_state
             WHERE state = ${state} AND employee_id = ${employeeId}
               AND expires_at > CAST(${store:ts(now)} AS timestamptz)
             RETURNING state, employee_id, nonce, return_to, pending_campaign_id::text AS pending_campaign_id,
@@ -189,6 +189,6 @@ public isolated function connectionCounts(postgresql:Client db) returns Connecti
         SELECT count(*) FILTER (WHERE status = 'ACTIVE')::int AS active,
                count(*) FILTER (WHERE status = 'EXPIRING')::int AS expiring,
                count(*) FILTER (WHERE status = 'NEEDS_RECONNECT')::int AS "needsReconnect"
-        FROM connection.member_connection_v`);
+        FROM connection_member_connection_v`);
     return counts;
 }

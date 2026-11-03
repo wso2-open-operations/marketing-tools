@@ -122,7 +122,7 @@ flowchart LR
         API["amplify-api"]
         JOBS["amplify-jobs"]
         SCHED["amplify-scheduler"]
-        PG[("PostgreSQL 18<br/>Amplify DB")]
+        PG[("PostgreSQL 15+<br/>Amplify DB")]
         SDB[("Scheduler DB")]
         MIG["amplify-database<br/>(migrate, one-shot)"]
     end
@@ -168,7 +168,7 @@ Locally, Compose swaps the outside bricks for stand-ins with the same interface,
 | LinkedIn | `mock_linkedin` (`apps/amplify/linkedin/apps/mock_linkedin`) | Compose, jobs integration tests, e2e |
 | Google Chat | `chat-stub` (`local/chat-stub`) | Compose; jobs tests use an in-test stub |
 | Asgardeo + API proxy | dev-only signed JWT (`local/dev-jwt`, ADR-023, `ENVIRONMENT=local` only) | Compose, e2e |
-| Managed Postgres | `postgres:18` container | Compose, integration tests |
+| Managed Postgres | `postgres:17` container | Compose, integration tests |
 | people-app directory | `people-stub` (`local/people-stub`, edit `directory.json`); or the real people-app via `local/people-app-proto` | Compose; a local One WSO2 for photos |
 | Choreo API proxy in front of One WSO2's calls | dev proxy (`local/one-wso2-proxy`): swaps a ThunderID or Asgardeo token for a dev JWT | A local One WSO2 against the Compose stack |
 

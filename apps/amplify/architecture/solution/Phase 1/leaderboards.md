@@ -33,15 +33,15 @@ Shapes are in `amplify-api/openapi.yaml` (`LeaderboardPeople`, `LeaderboardGroup
 
 ## Team grouping (where "team" comes from)
 
-Amplify stores no org data (ADR-009). The team comes from **people-app's employee directory**, keyed by work email: the same source the One WSO2 UI reads for photos and names.
+Amplify stores no org data (ADR-009). The team comes from the **HR Entity GraphQL service** (ADR-045), keyed by work email. The One WSO2 UI reads photos and names from people-app.
 
-1. `amplify-api` resolves the viewer's team roster (member emails + team name) from people-app's employee directory (`GET /employees/basic-info`, the same source One WSO2's Org Chart reads), **server to server**, through a declared egress connection with a circuit breaker. The whole directory is fetched in one call and grouped by **sub-team**, falling back to **team** when a person has no sub-team (decided 2026-10-19), under the person's own `businessUnit` (ADR-035). The index is kept in memory for **3 days** (teams change, but rarely), **never written to the database**; a failed refresh keeps serving the last index.
+1. `amplify-api` resolves the viewer's team roster (member emails + team name) from the HR Entity GraphQL service (`employees` query, paged; ADR-045), **server to server**, through a declared egress connection with a circuit breaker. The whole directory is fetched in pages and grouped by **team** under the person's own `businessUnit` (ADR-035); the entity query does not ask for a sub-team yet, so the 2026-10-19 sub-team grouping returns when it does. The index is kept in memory for **3 days** (teams change, but rarely), **never written to the database**; a failed refresh keeps serving the last index.
 2. It ranks that set from `recognition.standing` (query below).
 3. The One WSO2 UI adds photos and full names per row from the same directory, with the user's own token (Org Chart's query, shared through React Query). If that fails, rows show amplify-api's display name and initials.
 
 Why server side: if the browser sent the list of emails, any employee could ask for anyone's points, and the visibility rule below would mean nothing.
 
-**How `amplify-api` gets in:** OAuth2 client credentials through a Choreo connection to people-app. people-app's interceptor used to refuse any token without a user email (500), so the people-ops-suite PR adds a service-client allow-list: a listed client may call `GET /employees/basic-info` and nothing else. Proven end to end locally (`apps/amplify/local/people-app-proto`, 11/11). Still open (plan M0 D13): merge it, create the connection, and confirm on a real gateway token which claim carries the client id (`azp` assumed). If people-app refused the change, the fallback would be the UI posting the roster emails **and** `team.visibility = COMPANY`, which needs PO agreement that points and rank aren't sensitive.
+**How `amplify-api` gets in:** OAuth2 client credentials against the HR Entity GraphQL service, with a client People Operations issues to Amplify (ADR-045). Same config shape as leave-app's. This replaces the people-app service-client route (people-ops-suite PR #380), which Amplify no longer calls.
 
 If the directory has never loaded and is down, or the breaker is open with nothing cached, `myTeam` comes back as `null` with `teamStatus: "UNAVAILABLE"`; the company and personal views still work.
 

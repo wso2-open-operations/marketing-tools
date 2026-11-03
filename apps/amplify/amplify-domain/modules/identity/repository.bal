@@ -44,7 +44,7 @@ public isolated class PgEmployeeRepository {
     public isolated function findById(types:EmployeeId employeeId) returns Employee|error? {
         EmployeeRow|error row = self.db->queryRow(`
             SELECT employee_id, email::text AS email, display_name, first_seen_at, last_seen_at
-            FROM identity.employee WHERE employee_id = ${employeeId}`);
+            FROM identity_employee WHERE employee_id = ${employeeId}`);
         if row is error {
             return store:isNoRows(row) ? () : row;
         }
@@ -60,7 +60,7 @@ public isolated class PgEmployeeRepository {
     public isolated function findByEmail(string email) returns Employee|error? {
         EmployeeRow|error row = self.db->queryRow(`
             SELECT employee_id, email::text AS email, display_name, first_seen_at, last_seen_at
-            FROM identity.employee WHERE email = CAST(${email} AS citext)`);
+            FROM identity_employee WHERE email = CAST(${email} AS citext)`);
         if row is error {
             return store:isNoRows(row) ? () : row;
         }
@@ -74,7 +74,7 @@ public isolated class PgEmployeeRepository {
     }
 
     public isolated function findAlias(string sub) returns types:EmployeeId|error? {
-        string|error id = self.db->queryRow(`SELECT employee_id FROM identity.employee_alias WHERE alias_sub = ${sub}`);
+        string|error id = self.db->queryRow(`SELECT employee_id FROM identity_employee_alias WHERE alias_sub = ${sub}`);
         if id is error {
             return store:isNoRows(id) ? () : id;
         }
@@ -86,22 +86,22 @@ public isolated class PgEmployeeRepository {
     public isolated function addAlias(string sub, types:EmployeeId employeeId) returns types:EmployeeId|error {
         _ = check self.db->execute(`
             WITH created AS (
-                INSERT INTO identity.employee_alias (alias_sub, employee_id) VALUES (${sub}, ${employeeId})
+                INSERT INTO identity_employee_alias (alias_sub, employee_id) VALUES (${sub}, ${employeeId})
                 ON CONFLICT (alias_sub) DO NOTHING RETURNING alias_sub, employee_id)
-            INSERT INTO audit.audit_log (actor_id, actor_roles, action, entity_type, entity_id, outcome, after)
+            INSERT INTO audit_log (actor_id, actor_roles, action, entity_type, entity_id, outcome, after)
             SELECT ${sub}, ARRAY['amplify_api']::text[], 'EMPLOYEE_ALIASED', 'employee', employee_id, 'SUCCESS',
                    jsonb_build_object('aliasSub', alias_sub, 'employeeId', employee_id)
             FROM created`);
-        string mapped = check self.db->queryRow(`SELECT employee_id FROM identity.employee_alias WHERE alias_sub = ${sub}`);
+        string mapped = check self.db->queryRow(`SELECT employee_id FROM identity_employee_alias WHERE alias_sub = ${sub}`);
         return mapped;
     }
 
     public isolated function upsert(Employee e) returns error? {
         _ = check self.db->execute(`
-            INSERT INTO identity.employee (employee_id, email, display_name, first_seen_at, last_seen_at)
+            INSERT INTO identity_employee (employee_id, email, display_name, first_seen_at, last_seen_at)
             VALUES (${e.employeeId}, ${e.email}, ${e.displayName}, CAST(${store:ts(e.firstSeenAt)} AS timestamptz), CAST(${store:ts(e.lastSeenAt)} AS timestamptz))
             ON CONFLICT (employee_id) DO UPDATE
                 SET email = EXCLUDED.email, display_name = EXCLUDED.display_name,
-                    last_seen_at = GREATEST(identity.employee.last_seen_at, EXCLUDED.last_seen_at)`);
+                    last_seen_at = GREATEST(identity_employee.last_seen_at, EXCLUDED.last_seen_at)`);
     }
 }

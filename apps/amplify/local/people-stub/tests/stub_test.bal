@@ -36,3 +36,15 @@ function allowsTheLocalOneWso2() returns error? {
     });
     test:assertEquals(res.getHeader("Access-Control-Allow-Origin"), "http://localhost:3000");
 }
+
+@test:Config
+function answersTheHrEntityQuery() returns error? {
+    json request = {
+        query: "query getEmployees($filter: EmployeeFilter!, $limit: Int, $offset: Int) { employees { workEmail } }",
+        variables: {filter: {employeeStatus: ["Active"]}, 'limit: 1, offset: 0}
+    };
+    json body = check stubClient->post("/graphql", request);
+    json[] page = <json[]>check body.data.employees;
+    test:assertEquals(page.length(), 1, "one row per page");
+    test:assertTrue(page[0].workEmail is string);
+}

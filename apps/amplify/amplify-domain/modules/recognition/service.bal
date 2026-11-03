@@ -17,7 +17,7 @@
 // Reference implementation of the re-rank step (M3 does it with one window-function UPDATE). Tests pin
 // the rules so the SQL can be checked against the same cases.
 
-# Ranks totals the way `recognition.standing` stores them: SQL dense rank by points (ties share a rank,
+# Ranks totals the way `recognition_standing` stores them: SQL dense rank by points (ties share a rank,
 # so the top N may hold more than N people), then name for a stable order.
 # `pointsToTopN` = points of the lowest-ranked person inside the top N − own points + 1, or 0 when already
 # in (leaderboards.md). `pointsToNextRank` = points of the next better rank − own points.

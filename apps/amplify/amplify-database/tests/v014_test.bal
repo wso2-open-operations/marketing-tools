@@ -32,20 +32,21 @@ function testEveryPointActionHasARuleInForce() returns error? {
         OWN_POST_AMPLIFIED: 25, REACTION: 1, COMMENT: 1, CHALLENGE_ENTRY: 10, CHALLENGE_WINNER: 25};
     foreach [string, int] [action, points] in expected.entries() {
         int inForce = check db->queryRow(`
-            SELECT points FROM scoring.point_rule WHERE action = ${action} AND effective_from <= now()
+            SELECT points FROM scoring_point_rule WHERE action = ${action} AND effective_from <= now()
             ORDER BY effective_from DESC LIMIT 1`);
         test:assertEquals(inForce, points, action);
     }
     // The ledger and the rule table both refuse an action that isn't in the table.
-    foreach string tbl in ["point_rule", "points_ledger"] {
+    foreach [string, string] [tbl, constraint] in [["scoring_point_rule", "point_rule_action_check"],
+            ["scoring_points_ledger", "points_ledger_action_check"]] {
         int constraints = check db->queryRow(`
             SELECT count(*)::int FROM pg_constraint
-            WHERE conrelid = ('scoring.' || ${tbl})::regclass AND conname = ${tbl + "_action_check"}
+            WHERE conrelid = ${tbl}::regclass AND conname = ${constraint}
               AND pg_get_constraintdef(oid) LIKE '%CHALLENGE_WINNER%'`);
         test:assertEquals(constraints, 1, tbl);
     }
     postgresql:Client api = check apiClient();
-    sql:ExecutionResult|sql:Error bogus = api->execute(`INSERT INTO scoring.point_rule (action, points, effective_from, created_by)
+    sql:ExecutionResult|sql:Error bogus = api->execute(`INSERT INTO scoring_point_rule (action, points, effective_from, created_by)
                               VALUES ('BOGUS', 1, now(), 'it')`);
     test:assertTrue(bogus is error, "an unpriced action is refused");
     check api.close();

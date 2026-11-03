@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 #
-# Scheduler integration test (ADR-026): starts postgres:18 + the pinned akorn/scheduler image (as UID 10014,
+# Scheduler integration test (ADR-026): starts postgres:17.11 + the pinned akorn/scheduler image (as UID 10014,
 # read-only) on a throwaway network, runs the amplify-api `scheduler-it` group (reconcile creates both jobs,
 # an admin interval change updates the job, the scheduler fires POST /runs at a stub amplify-jobs on the
 # host: `amplify-jobs` resolves to the host gateway, port 9598 as in tests/Config.toml), then removes
@@ -26,7 +26,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 SCHEDULER_IMAGE="${SCHEDULER_IMAGE:-akorn/scheduler:1.7.8@sha256:07462c0684245d5f8aaed8018e4594da3ba113d5b38bb6dffcc32403108d2cf6}"
 # Same Postgres pin as compose.yaml.
-PG_IMAGE="${PG_IMAGE:-postgres:18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336}"
+PG_IMAGE="${PG_IMAGE:-postgres:17.11@sha256:3b0cda93be7c8dba2ed484d19393d93845dc3dafb88973e248ba8e6d99d784e1}"
 NAME="amplify-it-sched-$$"
 PORT="${AMPLIFY_IT_SCHEDULER_PORT:-18080}"
 DB_PASSWORD="$(openssl rand -hex 16)"

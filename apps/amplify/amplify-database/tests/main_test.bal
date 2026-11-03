@@ -45,7 +45,7 @@ function testShippedScriptsAreWellFormed() returns error? {
     string[] migrations = check listMigrations("migrations");
     // What this slice ships (V001-V007); later slices add more, so this is a floor, not the full count.
     test:assertTrue(migrations.length() >= 7);
-    test:assertEquals(migrations[0], "V001__schemas_roles.sql");
+    test:assertEquals(migrations[0], "V001__schema_and_extensions.sql");
     string[] seeds = check listScripts("seed", SEED_FILE);
     test:assertTrue(seeds.length() >= 4);
     test:assertEquals(versionOf("V012__x.sql"), "V012__x");

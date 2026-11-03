@@ -26,20 +26,18 @@
 --    READ COMMITTED its statements then see that commit. Held to the end of the ledger transaction,
 --    which is short (one insert, one upsert, one UPDATE).
 -- 2. Partition upkeep can't stall the app. DETACH PARTITION and CREATE TABLE ... PARTITION OF take
---    ACCESS EXCLUSIVE on the parent (`audit.audit_log`, `connection.provider_token`) and hold it until
+--    ACCESS EXCLUSIVE on the parent (`audit_log`, `connection_provider_token`) and hold it until
 --    the whole upkeep commits. Behind a long reader that lock request queued forever, and every audit
 --    insert and token write queued behind it. `lock_timeout = 5s` on the upkeep functions makes the call
 --    fail cleanly instead (500 to the scheduler, which retries; partitions exist 7 days / 3 months ahead,
 --    so a missed day is harmless). `run_partition_maintenance` also takes an advisory lock, so two
 --    concurrent calls don't race on the same CREATE TABLE.
 --
--- Same signatures, owner (amplify_migrate) and grants: CREATE OR REPLACE and ALTER FUNCTION keep both.
-
-SET LOCAL ROLE amplify_migrate;
+-- Same signatures and owner: CREATE OR REPLACE and ALTER FUNCTION keep both.
 
 -- ---- 1. recognition: one writer at a time -------------------------------------------------------
 
-CREATE OR REPLACE FUNCTION recognition.rerank(p_period_key text, p_top_n int DEFAULT 3)
+CREATE OR REPLACE FUNCTION recognition_rerank(p_period_key text, p_top_n int DEFAULT 3)
     RETURNS bigint
     LANGUAGE plpgsql
 AS $fn$
@@ -54,7 +52,7 @@ BEGIN
     WITH ranked AS (
         SELECT s.employee_id, s.total_points,
                dense_rank() OVER (ORDER BY s.total_points DESC)::int AS new_rank
-        FROM recognition.standing s
+        FROM recognition_standing s
         WHERE s.period_key = p_period_key
     ), levels AS (
         SELECT DISTINCT new_rank, total_points FROM ranked
@@ -67,7 +65,7 @@ BEGIN
         FROM levels
         WHERE new_rank = LEAST(p_top_n, (SELECT max(new_rank) FROM levels))
     )
-    UPDATE recognition.standing s
+    UPDATE recognition_standing s
     SET rank                = r.new_rank,
         previous_rank       = CASE WHEN s.rank IS DISTINCT FROM r.new_rank THEN s.rank ELSE s.previous_rank END,
         points_to_next_rank = COALESCE(st.next_better_points - r.total_points, 0),
@@ -84,7 +82,7 @@ BEGIN
            OR s.points_to_top_n IS DISTINCT FROM CASE WHEN r.new_rank <= p_top_n THEN 0
                                                       ELSE (SELECT top_n_floor FROM floor_n) - r.total_points END);
 
-    INSERT INTO recognition.standing_version AS v (period_key, version, refreshed_at)
+    INSERT INTO recognition_standing_version AS v (period_key, version, refreshed_at)
     VALUES (p_period_key, 1, now())
     ON CONFLICT (period_key) DO UPDATE SET version = v.version + 1, refreshed_at = now()
     RETURNING v.version INTO v_version;
@@ -92,26 +90,26 @@ BEGIN
 END
 $fn$;
 
-CREATE OR REPLACE FUNCTION recognition.apply_ledger_entry(p_reference varchar, p_top_n int DEFAULT 3)
+CREATE OR REPLACE FUNCTION recognition_apply_ledger_entry(p_reference varchar, p_top_n int DEFAULT 3)
     RETURNS bigint
     LANGUAGE plpgsql
 AS $fn$
 DECLARE
-    r        scoring.points_ledger%ROWTYPE;
+    r        scoring_points_ledger%ROWTYPE;
     v_name   text;
     v_email  citext;
     v_delta  int;
 BEGIN
     -- One writer per period at a time (V012): see the header.
     PERFORM pg_advisory_xact_lock(1634561133);
-    SELECT * INTO r FROM scoring.points_ledger WHERE reference = p_reference;
+    SELECT * INTO r FROM scoring_points_ledger WHERE reference = p_reference;
     IF NOT FOUND THEN
         RAISE EXCEPTION 'Ledger entry % not found', p_reference;
     END IF;
-    SELECT e.display_name, e.email INTO v_name, v_email FROM identity.employee e WHERE e.employee_id = r.employee_id;
-    v_delta := recognition.action_delta(r.source_type, r.action);
+    SELECT e.display_name, e.email INTO v_name, v_email FROM identity_employee e WHERE e.employee_id = r.employee_id;
+    v_delta := recognition_action_delta(r.source_type, r.action);
 
-    INSERT INTO recognition.standing AS s (period_key, employee_id, display_name, email, total_points, actions_count,
+    INSERT INTO recognition_standing AS s (period_key, employee_id, display_name, email, total_points, actions_count,
                                            last_activity_at, updated_at)
     VALUES ('ALL', r.employee_id, COALESCE(v_name, r.employee_id), v_email, r.points, v_delta, r.created_at, now())
     ON CONFLICT (period_key, employee_id) DO UPDATE
@@ -122,13 +120,13 @@ BEGIN
             last_activity_at = GREATEST(s.last_activity_at, EXCLUDED.last_activity_at),
             updated_at       = now();
 
-    INSERT INTO recognition.employee_points_monthly AS m (employee_id, month, points, actions_count)
+    INSERT INTO recognition_employee_points_monthly AS m (employee_id, month, points, actions_count)
     VALUES (r.employee_id, date_trunc('month', r.created_at AT TIME ZONE 'UTC')::date, r.points, v_delta)
     ON CONFLICT (employee_id, month) DO UPDATE
         SET points = m.points + EXCLUDED.points, actions_count = m.actions_count + EXCLUDED.actions_count;
 
     IF r.campaign_id IS NOT NULL THEN
-        INSERT INTO recognition.campaign_participation AS c (campaign_id, reposters, external_shares_approved, points,
+        INSERT INTO recognition_campaign_participation AS c (campaign_id, reposters, external_shares_approved, points,
                                                              updated_at)
         VALUES (r.campaign_id,
                 CASE WHEN r.action IN ('REPOST', 'REPOST_COMMENTARY', 'SHARE', 'SHARE_COMMENTARY') THEN v_delta ELSE 0 END,
@@ -141,11 +139,11 @@ BEGIN
                 updated_at               = now();
     END IF;
 
-    RETURN recognition.rerank('ALL', p_top_n);
+    RETURN recognition_rerank('ALL', p_top_n);
 END
 $fn$;
 
-CREATE OR REPLACE FUNCTION recognition.rebuild(p_top_n int DEFAULT 3)
+CREATE OR REPLACE FUNCTION recognition_rebuild(p_top_n int DEFAULT 3)
     RETURNS bigint
     LANGUAGE plpgsql
 AS $fn$
@@ -155,17 +153,17 @@ BEGIN
     WITH totals AS (
         SELECT l.employee_id,
                sum(l.points)::int AS total_points,
-               sum(recognition.action_delta(l.source_type, l.action))::int AS actions_count,
+               sum(recognition_action_delta(l.source_type, l.action))::int AS actions_count,
                max(l.created_at) AS last_activity_at
-        FROM scoring.points_ledger l
+        FROM scoring_points_ledger l
         GROUP BY l.employee_id
     )
-    INSERT INTO recognition.standing AS s (period_key, employee_id, display_name, email, total_points, actions_count,
+    INSERT INTO recognition_standing AS s (period_key, employee_id, display_name, email, total_points, actions_count,
                                            last_activity_at, updated_at)
     SELECT 'ALL', t.employee_id, COALESCE(e.display_name, t.employee_id), e.email, t.total_points, t.actions_count,
            t.last_activity_at, now()
     FROM totals t
-    LEFT JOIN identity.employee e ON e.employee_id = t.employee_id
+    LEFT JOIN identity_employee e ON e.employee_id = t.employee_id
     ON CONFLICT (period_key, employee_id) DO UPDATE
         SET total_points     = EXCLUDED.total_points,
             actions_count    = EXCLUDED.actions_count,
@@ -174,40 +172,40 @@ BEGIN
             last_activity_at = EXCLUDED.last_activity_at,
             updated_at       = now();
 
-    DELETE FROM recognition.standing s
+    DELETE FROM recognition_standing s
     WHERE s.period_key = 'ALL'
-      AND NOT EXISTS (SELECT 1 FROM scoring.points_ledger l WHERE l.employee_id = s.employee_id);
+      AND NOT EXISTS (SELECT 1 FROM scoring_points_ledger l WHERE l.employee_id = s.employee_id);
 
-    DELETE FROM recognition.employee_points_monthly;
-    INSERT INTO recognition.employee_points_monthly (employee_id, month, points, actions_count)
+    DELETE FROM recognition_employee_points_monthly;
+    INSERT INTO recognition_employee_points_monthly (employee_id, month, points, actions_count)
     SELECT l.employee_id, date_trunc('month', l.created_at AT TIME ZONE 'UTC')::date,
-           sum(l.points)::int, sum(recognition.action_delta(l.source_type, l.action))::int
-    FROM scoring.points_ledger l
+           sum(l.points)::int, sum(recognition_action_delta(l.source_type, l.action))::int
+    FROM scoring_points_ledger l
     GROUP BY 1, 2;
 
-    DELETE FROM recognition.campaign_participation;
-    INSERT INTO recognition.campaign_participation (campaign_id, reposters, external_shares_approved, points, updated_at)
+    DELETE FROM recognition_campaign_participation;
+    INSERT INTO recognition_campaign_participation (campaign_id, reposters, external_shares_approved, points, updated_at)
     SELECT l.campaign_id,
            sum(CASE WHEN l.action IN ('REPOST', 'REPOST_COMMENTARY', 'SHARE', 'SHARE_COMMENTARY')
-                    THEN recognition.action_delta(l.source_type, l.action) ELSE 0 END)::int,
-           sum(CASE WHEN l.action = 'OWN_POST' THEN recognition.action_delta(l.source_type, l.action) ELSE 0 END)::int,
+                    THEN recognition_action_delta(l.source_type, l.action) ELSE 0 END)::int,
+           sum(CASE WHEN l.action = 'OWN_POST' THEN recognition_action_delta(l.source_type, l.action) ELSE 0 END)::int,
            sum(l.points)::int,
            now()
-    FROM scoring.points_ledger l
+    FROM scoring_points_ledger l
     WHERE l.campaign_id IS NOT NULL
     GROUP BY l.campaign_id;
 
-    RETURN recognition.rerank('ALL', p_top_n);
+    RETURN recognition_rerank('ALL', p_top_n);
 END
 $fn$;
 
 -- ---- 2. partition upkeep: bounded lock waits ------------------------------------------------------
 
-CREATE OR REPLACE FUNCTION messaging.run_partition_maintenance()
+CREATE OR REPLACE FUNCTION messaging_run_partition_maintenance()
     RETURNS jsonb
     LANGUAGE plpgsql
     SECURITY DEFINER
-    SET search_path = pg_catalog, pg_temp
+    SET search_path FROM CURRENT
 AS $fn$
 DECLARE
     v_result jsonb;
@@ -215,21 +213,21 @@ BEGIN
     -- One upkeep at a time (V012): a second caller waits at most lock_timeout, then fails cleanly.
     PERFORM pg_advisory_xact_lock(1634561134);
     v_result := jsonb_build_object(
-        'audit_partitions_created', audit.create_audit_partitions(3),
-        'token_partitions_created', connection.create_token_partitions(7),
+        'audit_partitions_created', audit_create_audit_partitions(3),
+        'token_partitions_created', connection_create_token_partitions(7),
         'token_partitions_dropped',
-            connection.drop_expired_token_partitions(config.int_setting('connection.token_grace_days', 5)),
+            connection_drop_expired_token_partitions(config_int_setting('connection.token_grace_days', 5)),
         'audit_partitions_dropped',
-            audit.drop_old_audit_partitions(config.int_setting('audit.retention_months', 60)),
-        'outbox_rows_purged', messaging.purge_done_outbox(30),
-        'oauth_states_swept', connection.sweep_oauth_state());
+            audit_drop_old_audit_partitions(config_int_setting('audit.retention_months', 60)),
+        'outbox_rows_purged', messaging_purge_done_outbox(30),
+        'oauth_states_swept', connection_sweep_oauth_state());
     RETURN v_result;
 END
 $fn$;
 
-ALTER FUNCTION messaging.run_partition_maintenance() SET lock_timeout = '5s';
-ALTER FUNCTION connection.create_token_partitions(int, date) SET lock_timeout = '5s';
-ALTER FUNCTION connection.drop_expired_token_partitions(int) SET lock_timeout = '5s';
-ALTER FUNCTION audit.create_audit_partitions(int, date) SET lock_timeout = '5s';
-ALTER FUNCTION audit.drop_old_audit_partitions(int) SET lock_timeout = '5s';
-ALTER FUNCTION messaging.purge_done_outbox(int) SET lock_timeout = '5s';
+ALTER FUNCTION messaging_run_partition_maintenance() SET lock_timeout = '5s';
+ALTER FUNCTION connection_create_token_partitions(int, date) SET lock_timeout = '5s';
+ALTER FUNCTION connection_drop_expired_token_partitions(int) SET lock_timeout = '5s';
+ALTER FUNCTION audit_create_audit_partitions(int, date) SET lock_timeout = '5s';
+ALTER FUNCTION audit_drop_old_audit_partitions(int) SET lock_timeout = '5s';
+ALTER FUNCTION messaging_purge_done_outbox(int) SET lock_timeout = '5s';

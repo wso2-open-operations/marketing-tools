@@ -28,7 +28,7 @@ configurable string migrationsDir = "migrations";
 # Folder holding the reference-data scripts, applied after the migrations.
 configurable string seedDir = "seed";
 # Connect and report each script as pending, applied or changed; apply nothing. Fails on a changed script or
-# a pending one that sorts below an applied one (out of order). Creates nothing either: `public.schema_version`
+# a pending one that sorts below an applied one (out of order). Creates nothing either: `schema_version`
 # is only read, and a database without it reports every script as pending.
 configurable boolean dryRun = false;
 
@@ -38,10 +38,13 @@ configurable string dbHost = "localhost";
 configurable int dbPort = 5432;
 # Database name.
 configurable string dbName = "amplify";
-# Bootstrap admin user (Choreo/Aiven `avnadmin`, local `postgres`). Needs CREATEROLE for V001.
-configurable string dbUser = "postgres";
-# Bootstrap admin password (secret).
+# Login user: the one database user Amplify gets (set per environment in config). It owns every object and every component connects as it (ADR-043); see `checks/d3_single_user.sql`.
+configurable string dbUser = "amplify";
+# Login password (secret).
 configurable string dbPassword = "";
+# Schema every table lives in. Empty = the login user's name (the schema the DBA created for it). The scripts
+# name no schema; the runner puts this one first on the `search_path`.
+configurable string dbSchema = "";
 # TLS mode. `VERIFY_FULL` (default) checks the server certificate against `dbSslRootCert` and the host
 # name, as the deployment security checklist requires (same default as amplify-api and amplify-jobs);
 # `DISABLE` only for local Docker.
@@ -49,13 +52,6 @@ configurable postgresql:SSLMode dbSslMode = DEFAULT_SSL_MODE;
 # PEM file with the CA that signs the managed Postgres certificate (Choreo file mount, set per environment
 # through `BAL_CONFIG_VAR_DBSSLROOTCERT`). Empty = the driver default `~/.postgresql/root.crt`.
 configurable string dbSslRootCert = "";
-
-# Login password for `amplify_api` (secret). Empty leaves the role as it is (NOLOGIN on first run).
-configurable string apiDbPassword = "";
-# Login password for `amplify_jobs` (secret).
-configurable string jobsDbPassword = "";
-# Login password for `amplify_readonly` (secret, phase 2 reports).
-configurable string readonlyDbPassword = "";
 
 final regexp:RegExp MIGRATION_FILE = re `V[0-9]{3}__[a-z0-9_]+\.sql`;
 final regexp:RegExp SEED_FILE = re `S[0-9]{3}__[a-z0-9_]+\.sql`;
@@ -66,8 +62,8 @@ const int MIGRATE_LOCK_KEY = 4242001;
 # TLS mode when `dbSslMode` is not configured: verify the server, like amplify-api and amplify-jobs.
 const postgresql:SSLMode DEFAULT_SSL_MODE = postgresql:VERIFY_FULL;
 
-# Oldest server the scripts run on: V002 uses `uuidv7()` (PostgreSQL 18).
-const int MIN_SERVER_VERSION_NUM = 180000;
+# Oldest server the scripts run on: the views use `security_invoker` (PostgreSQL 15).
+const int MIN_SERVER_VERSION_NUM = 150000;
 
 # Kind of a recorded script.
 public type ScriptKind "MIGRATION"|"SEED";
@@ -81,7 +77,7 @@ public type RunSummary record {|
 |};
 
 # Amplify DB Migrate: applies pending migrations, then seeds, each in its own transaction, records them in
-# `public.schema_version`, sets role passwords from secrets, and exits. Safe to rerun: applied scripts are
+# `schema_version`, and exits. Safe to rerun: applied scripts are
 # skipped, and a changed applied script stops the run (forward-only).
 #
 # + return - Error when a script fails, an applied script changed, or the database is unreachable
@@ -99,31 +95,23 @@ public function main() returns error? {
     }
     postgresql:Client db = check new (host = dbHost, username = dbUser, password = dbPassword, database = dbName,
         port = dbPort, options = {ssl: secureSocketOf(dbSslMode, dbSslRootCert), connectTimeout: 10},
-        connectionPool = {maxOpenConnections: 2, minIdleConnections: 0});
+        connectionPool = {maxOpenConnections: 1, minIdleConnections: 1});
+    string schema = dbSchema.trim() == "" ? dbUser : dbSchema.trim();
     if dryRun {
-        error? planned = dryRunReport(db, migrationsDir, seedDir);
+        error? planned = dryRunReport(db, migrationsDir, seedDir, schema);
         check db.close();
         if planned is error {
             log:printError("Dry run found a problem", planned);
         }
         return planned;
     }
-    RunSummary|error summary = migrate(db, migrationsDir, seedDir);
+    RunSummary|error summary = migrate(db, migrationsDir, seedDir, schema);
     if summary is error {
         log:printError("Migration run failed", summary);
         check db.close();
         return summary;
     }
-    error? passwords = setRolePasswords(db, {
-        amplify_api: apiDbPassword,
-        amplify_jobs: jobsDbPassword,
-        amplify_readonly: readonlyDbPassword
-    });
     check db.close();
-    if passwords is error {
-        log:printError("Setting role passwords failed", passwords);
-        return passwords;
-    }
     log:printInfo(string `Migration run done: ${summary.applied.length()} applied, ${summary.skipped} already current`);
 }
 
@@ -171,14 +159,16 @@ function isLocalHost(string host) returns boolean {
 
 # Applies every pending migration then every pending seed.
 #
-# + db - Client connected as the bootstrap admin
+# + db - Client connected as the login user (a pool of one connection: the schema is set on the session)
 # + migrationsPath - Migrations folder
 # + seedPath - Seed folder
+# + schema - Schema every table lives in
 # + return - What ran, or the first error
-public function migrate(postgresql:Client db, string migrationsPath, string seedPath) returns RunSummary|error {
+public function migrate(postgresql:Client db, string migrationsPath, string seedPath, string schema)
+        returns RunSummary|error {
+    check useSchema(db, schema, false);
     check checkServerVersion(db);
-    check ensureVersionTable(db);
-    check checkBootstrapRole(db);
+    check ensureVersionTable(db, schema);
     string[] migrations = check listMigrations(migrationsPath);
     string[] seeds = check listScripts(seedPath, SEED_FILE);
     map<string> recorded = check readRecorded(db);
@@ -188,29 +178,31 @@ public function migrate(postgresql:Client db, string migrationsPath, string seed
     }
     RunSummary summary = {applied: [], skipped: 0};
     foreach string script in migrations {
-        check applyScript(db, migrationsPath, script, "MIGRATION", summary);
+        check applyScript(db, migrationsPath, script, "MIGRATION", schema, summary);
     }
     foreach string script in seeds {
-        check applyScript(db, seedPath, script, "SEED", summary);
+        check applyScript(db, seedPath, script, "SEED", schema, summary);
     }
     return summary;
 }
 
-# Reports what a real run would do, without changing anything: connects, reads `public.schema_version` if it
+# Reports what a real run would do, without changing anything: connects, reads `schema_version` if it
 # exists (it is not created), logs each script as pending, applied or changed, and fails when an applied
 # script was changed or a pending script sorts below an applied one.
 #
-# + db - Client connected as the bootstrap admin
+# + db - Client connected as the login user
 # + migrationsPath - Migrations folder
 # + seedPath - Seed folder
+# + schema - Schema every table lives in
 # + return - An error naming every changed or out-of-order script, or a read error
-public function dryRunReport(postgresql:Client db, string migrationsPath, string seedPath) returns error? {
+public function dryRunReport(postgresql:Client db, string migrationsPath, string seedPath, string schema) returns error? {
+    check useSchema(db, schema, false);
     string[] migrations = check listMigrations(migrationsPath);
     string[] seeds = check listScripts(seedPath, SEED_FILE);
-    boolean exists = check db->queryRow(`SELECT to_regclass('public.schema_version') IS NOT NULL`);
+    boolean exists = check db->queryRow(`SELECT to_regclass('schema_version') IS NOT NULL`);
     map<string> recorded = exists ? check readRecorded(db) : {};
     if !exists {
-        log:printInfo("public.schema_version doesn't exist yet; every script is pending");
+        log:printInfo("schema_version doesn't exist yet; every script is pending");
     }
     string[] problems = [...findOutOfOrder(migrations, recorded), ...findOutOfOrder(seeds, recorded)];
     int pending = 0;
@@ -277,12 +269,12 @@ function findOutOfOrder(string[] scripts, map<string> recorded) returns string[]
 
 # Reads the recorded checksums.
 #
-# + db - Client connected as the bootstrap admin
+# + db - Client connected as the login user
 # + return - Version key to checksum, or an error
 function readRecorded(postgresql:Client db) returns map<string>|error {
     map<string> recorded = {};
     stream<record {|string version; string checksum;|}, sql:Error?> rows = db->query(
-        `SELECT version, checksum FROM public.schema_version`);
+        `SELECT version, checksum FROM schema_version`);
     check from record {|string version; string checksum;|} row in rows
         do {
             recorded[row.version] = row.checksum;
@@ -293,7 +285,7 @@ function readRecorded(postgresql:Client db) returns map<string>|error {
 # SHA-256 of a script, hex.
 #
 # + content - Script text
-# + return - Checksum as stored in `public.schema_version`
+# + return - Checksum as stored in `schema_version`
 function checksumOf(string content) returns string => crypto:hashSha256(content.toBytes()).toBase16();
 
 # Lists versioned migration scripts, sorted by version.
@@ -332,7 +324,7 @@ function listScripts(string dir, regexp:RegExp pattern) returns string[]|error {
     return sorted;
 }
 
-# Version key of a script: its name without `.sql`, for example `V001__schemas_roles`.
+# Version key of a script: its name without `.sql`, for example `V001__schema_and_extensions`.
 #
 # + script - File name
 # + return - Version key
@@ -341,45 +333,26 @@ function versionOf(string script) returns string => script.substring(0, script.l
 # Stops before any script runs when the server is older than the scripts need, instead of recording V001 and
 # failing on V002.
 #
-# + db - Client connected as the bootstrap admin
+# + db - Client connected as the login user
 # + return - An error when the server is too old or can't be asked
 function checkServerVersion(postgresql:Client db) returns error? {
     int versionNum = check db->queryRow(`SELECT current_setting('server_version_num')::int`);
     if versionNum < MIN_SERVER_VERSION_NUM {
-        return error(string `Amplify needs PostgreSQL 18 or later (uuidv7); the server reports version number ${versionNum}`);
+        return error(string `Amplify needs PostgreSQL 15 or later (security_invoker views); the server reports version number ${versionNum}`);
     }
 }
 
-# V001 grants `amplify_migrate` to whoever ran it, and later scripts `SET LOCAL ROLE amplify_migrate`. When the
-# bootstrap login has changed since (`dbUser` rotated), those scripts would fail with a bare "permission denied
-# to set role"; say why instead. Skipped on a fresh database, where V001 has not created the role yet.
-#
-# + db - Client connected as the bootstrap admin
-# + return - An error when V001 ran but this login can't switch to `amplify_migrate`
-function checkBootstrapRole(postgresql:Client db) returns error? {
-    boolean v001Recorded = check db->queryRow(
-            `SELECT EXISTS (SELECT 1 FROM public.schema_version WHERE version = 'V001__schemas_roles')`);
-    if !v001Recorded {
-        return;
-    }
-    boolean canSwitch = check db->queryRow(`SELECT pg_has_role(current_user, 'amplify_migrate', 'SET')`);
-    if !canSwitch {
-        return error("This login cannot SET ROLE amplify_migrate: V001 granted the role to the login that first ran "
-            + "it, and V001 is already recorded so it will not grant again. Run as that login, or grant it: "
-            + "GRANT amplify_migrate TO <this login> WITH SET TRUE");
-    }
-}
-
-# Creates `public.schema_version` once. Under the same advisory lock the scripts use, so two runners starting
+# Creates `schema_version` (in the schema) once. Under the same advisory lock the scripts use, so two runners starting
 # on an empty database can't race on the CREATE.
 #
-# + db - Client connected as the bootstrap admin
+# + db - Client connected as the login user
 # + return - An error on failure
-function ensureVersionTable(postgresql:Client db) returns error? {
+function ensureVersionTable(postgresql:Client db, string schema) returns error? {
     transaction {
         _ = check db->queryRow(`SELECT 1 FROM (SELECT pg_advisory_xact_lock(${MIGRATE_LOCK_KEY})) l`, int);
+        check useSchema(db, schema, true);
         _ = check db->execute(`
-            CREATE TABLE IF NOT EXISTS public.schema_version (
+            CREATE TABLE IF NOT EXISTS schema_version (
                 version      text        PRIMARY KEY,
                 kind         text        NOT NULL CHECK (kind IN ('MIGRATION', 'SEED')),
                 checksum     text        NOT NULL,
@@ -391,7 +364,7 @@ function ensureVersionTable(postgresql:Client db) returns error? {
     }
 }
 
-function applyScript(postgresql:Client db, string dir, string script, ScriptKind kind, RunSummary summary)
+function applyScript(postgresql:Client db, string dir, string script, ScriptKind kind, string schema, RunSummary summary)
         returns error? {
     string path = check file:joinPath(dir, script);
     string content = check io:fileReadString(path);
@@ -402,7 +375,8 @@ function applyScript(postgresql:Client db, string dir, string script, ScriptKind
     transaction {
         // Serialize concurrent runners; re-check after the lock so the loser of a race skips.
         _ = check db->queryRow(`SELECT 1 FROM (SELECT pg_advisory_xact_lock(${MIGRATE_LOCK_KEY})) l`, int);
-        string|sql:Error recorded = db->queryRow(`SELECT checksum FROM public.schema_version WHERE version = ${version}`);
+        check useSchema(db, schema, true);
+        string|sql:Error recorded = db->queryRow(`SELECT checksum FROM schema_version WHERE version = ${version}`);
         if recorded is string {
             if recorded != checksum {
                 fail error(string `${script} was changed after it was applied; add a new script instead (forward-only)`);
@@ -418,12 +392,9 @@ function applyScript(postgresql:Client db, string dir, string script, ScriptKind
                 fail error(string `${kind} ${script} failed: ${result.message()}`, result);
             }
             check result.close();
-            // Scripts switch to amplify_migrate with SET LOCAL ROLE; record the version as the runner.
-            sql:ProcedureCallResult reset = check db->call(`RESET ROLE`);
-            check reset.close();
             int elapsed = <int>(time:utcDiffSeconds(time:utcNow(), started) * 1000);
             _ = check db->execute(`
-                INSERT INTO public.schema_version (version, kind, checksum, execution_ms)
+                INSERT INTO schema_version (version, kind, checksum, execution_ms)
                 VALUES (${version}, ${kind}, ${checksum}, ${elapsed})`);
             applied = true;
         } else {
@@ -449,19 +420,22 @@ function scriptQuery(string content) returns sql:ParameterizedCallQuery {
     return query;
 }
 
-# Sets LOGIN passwords for the app roles. The password is a bind parameter; the database function
-# quotes it with format(%L). Empty secrets are skipped.
+
+# Puts the schema first on the `search_path`, so scripts and the version table need no schema name. The name is
+# bound and quoted by the database (`quote_ident`), never spliced into SQL. The check first, so a missing schema
+# says so instead of "no schema has been selected to create in".
 #
-# + db - Client connected as the bootstrap admin
-# + passwords - Role name to password
-# + return - An error on failure
-public function setRolePasswords(postgresql:Client db, map<string> passwords) returns error? {
-    foreach [string, string] [role, password] in passwords.entries() {
-        if password.length() == 0 {
-            log:printInfo(string `No password configured for ${role}; left unchanged`);
-            continue;
-        }
-        _ = check db->queryRow(`SELECT 1 FROM (SELECT public.amplify_set_login_password(${role}, ${password})) p`, int);
-        log:printInfo(string `Password set for ${role}`);
+# + db - Client connected as the login user
+# + schema - Schema every table lives in
+# + transactionOnly - False sets it for the session; true only for the current transaction
+# + return - An error when the schema does not exist or can't be set
+function useSchema(postgresql:Client db, string schema, boolean transactionOnly) returns error? {
+    boolean exists = check db->queryRow(`SELECT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = ${schema})`);
+    if !exists {
+        return error(string `Schema ${schema} does not exist: the DBA creates the schema named after the login user, `
+            + "or set dbSchema to one that exists");
     }
+    // pg_temp last, so a temporary table can't shadow a real one; public holds citext and pg_trgm.
+    _ = check db->queryRow(`SELECT 1 FROM (SELECT set_config('search_path',
+        quote_ident(${schema}) || ', public, pg_temp', ${transactionOnly})) s`, int);
 }

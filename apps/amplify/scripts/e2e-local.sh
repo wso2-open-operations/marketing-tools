@@ -53,7 +53,7 @@ EMP_EMAIL="e2e.employee@example.com"
 # theirs even after they disconnect (B13: unique member_urn, removed rows included). Then this run acts as
 # that employee: relinking your own member is allowed. Their shares and points get the e2e post's activity.
 holder=$("${COMPOSE[@]}" exec -T postgres sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -U postgres -d amplify -At -F "|" -c "
-  SELECT c.employee_id, e.email FROM connection.member_connection c JOIN identity.employee e USING (employee_id)
+  SELECT c.employee_id, e.email FROM connection_member_connection c JOIN identity_employee e USING (employee_id)
   WHERE c.employee_id <> '"'e2e-employee'"' LIMIT 1"' 2>/dev/null || true)
 if [[ -n "$holder" ]]; then
   IFS='|' read -r EMP_SUB EMP_EMAIL <<<"$holder"

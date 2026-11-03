@@ -48,7 +48,7 @@ Defaults (all `configurable`, see `config.bal`):
 
 There is no HTTP-level retry on LinkedIn posts or the Chat webhook, because a retry after a lost response could post twice. The outbox retries instead (ADR-025).
 
-Kill switches live in `config.app_setting`: `sharing.enabled` and `announcements.enabled`. Turning one off defers its rows. Nothing is lost.
+Kill switches live in `config_app_setting`: `sharing.enabled` and `announcements.enabled`. Turning one off defers its rows. Nothing is lost.
 
 ## Safety rules
 
@@ -77,7 +77,7 @@ Publish `amplify_common`, then `amplify_domain`, to the local Ballerina reposito
 ```sh
 bal build
 bal test
-AMPLIFY_IT=true bal test --groups integration   # needs a migrated Postgres 18 and mock_linkedin
+AMPLIFY_IT=true bal test --groups integration   # needs a migrated Postgres 17 and mock_linkedin
 ```
 
 The listener port is the `port` setting (default 9091). Integration test setup: `docs/migrations/README.md`.

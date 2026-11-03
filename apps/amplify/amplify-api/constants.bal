@@ -96,7 +96,7 @@ const string UNKNOWN_SETTING = "UNKNOWN_SETTING";
 # Setting value out of range.
 const string INVALID_SETTING = "INVALID_SETTING";
 
-// ---- M5: settings keys (config.app_setting) -------------------------------------------------------
+// ---- M5: settings keys (config_app_setting) -------------------------------------------------------
 
 const string SETTING_TOP_N = "leaderboard.top_n";
 const string SETTING_TOP_SCOPE = "leaderboard.top_scope";

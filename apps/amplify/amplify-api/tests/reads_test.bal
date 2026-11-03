@@ -131,7 +131,26 @@ function testLeaderboardRosterDegradation() returns error? {
     http:Response garbled = check send("GET", "/leaderboard", (), check rvToken("rv-a"));
     test:assertEquals(check (check garbled.getJsonPayload()).teamStatus, "UNAVAILABLE",
             "a malformed directory body degrades like an outage");
+    setDirectory("gqlerror");
+    http:Response gqlError = check send("GET", "/leaderboard", (), check rvToken("rv-a"));
+    test:assertEquals(check (check gqlError.getJsonPayload()).teamStatus, "UNAVAILABLE",
+            "a GraphQL errors answer degrades like an outage");
     setDirectory("ok");
+}
+
+@test:Config {groups: ["reads"]}
+function testDirectoryIsReadAPageAtATime() returns error? {
+    setDirectory("ok");
+    http:Client c = check new ("http://localhost:9591/people/graphql");
+    DirectoryRecord[] first = check fetchDirectoryPage(c, {}, 2, 0);
+    DirectoryRecord[] second = check fetchDirectoryPage(c, {}, 2, 2);
+    DirectoryRecord[] past = check fetchDirectoryPage(c, {}, 2, 10);
+    test:assertEquals(first.length(), 2);
+    test:assertEquals(second.length(), 2, "four rows in the fake: two pages of two");
+    test:assertEquals(past.length(), 0, "past the end is an empty page");
+    test:assertEquals(first[0].team, "Rivers");
+    test:assertEquals(first[0].businessUnit, "Water");
+    test:assertEquals(first[0].house, (), "house is not asked of the service");
 }
 
 @test:Config {groups: ["reads"]}
@@ -460,11 +479,7 @@ function testGroupBoardsRankTeamsAndBusinessUnits() returns error? {
 
     json houses = check (check send("GET", "/leaderboard/groups?by=HOUSE", (), token)).getJsonPayload();
     json[] houseEntries = <json[]>check houses.entries;
-    test:assertEquals(houseEntries.length(), 1, "only houses the directory names");
-    test:assertEquals(check houseEntries[0].name, "Oak");
-    test:assertEquals(check houseEntries[0].points, 450);
-    test:assertEquals(check houseEntries[0].participants, 2);
-    test:assertEquals(check houseEntries[0].headcount, 3);
+    test:assertEquals(houseEntries.length(), 0, "the HR Entity query does not ask for house yet");
 
     foreach string query in ["sort=bogus", "dir=sideways", "by=bogus", "period=ALLX", "by=BU&bu=Water", "by=HOUSE&bu=Water", "bu=" + "x".padEnd(101, "x")] {
         http:Response bad = check send("GET", "/leaderboard/groups?" + query, (), token);

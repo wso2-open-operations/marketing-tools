@@ -29,10 +29,12 @@ configurable string dbHost = "";
 configurable int dbPort = 5432;
 # Database name.
 configurable string dbName = "amplify";
-# DB user.
-configurable string dbUser = "amplify_jobs";
+# The one database login every component shares (set per environment in config).
+configurable string dbUser = "amplify";
 # DB password (Choreo secret).
 configurable string dbPassword = "";
+# Schema that holds the tables. Empty = the login user's name (the schema the DBA created for it).
+configurable string dbSchema = "";
 # TLS mode. `VERIFY_FULL` (default) checks the server certificate against `dbSslRootCert` and the host
 # name, as the deployment security checklist requires; `DISABLE` only for local Docker.
 configurable postgresql:SSLMode dbSslMode = postgresql:VERIFY_FULL;
@@ -190,6 +192,7 @@ isolated function dbConfig(int maxOpenConnections = 10, decimal maxConnectionLif
     database: dbName,
     user: dbUser,
     password: dbPassword,
+    schema: dbSchema.trim() == "" ? dbUser : dbSchema.trim(),
     sslMode: dbSslMode,
     sslRootCert: dbSslRootCert,
     maxOpenConnections,

@@ -244,7 +244,7 @@ function realPoolExhaustionTripsTheBreaker() returns error? {
         return;
     }
     postgresql:Client tiny = check store:newClient({host: itDbHost, port: itDbPort, database: itDbName,
-        user: "amplify_jobs", password: itJobsPassword, sslMode: postgresql:DISABLE, maxOpenConnections: 1,
+        user: itLoginUser, password: itLoginPassword, sslMode: postgresql:DISABLE, maxOpenConnections: 1,
         minIdleConnections: 0, poolAcquireTimeoutSeconds: 1});
     future<error?> holder = start holdConnection(tiny);
     runtime:sleep(0.5);
@@ -279,9 +279,9 @@ function testShareArticleCarriesTheCampaignTitleToLinkedIn() returns error? {
     if !itEnabled {
         return;
     }
-    postgresql:Client apiDb = check itConnect("amplify_api", itApiPassword);
-    postgresql:Client jobsDb = check itConnect("amplify_jobs", itJobsPassword);
-    postgresql:Client lockDb = check itConnect("amplify_jobs", itJobsPassword, 1);
+    postgresql:Client apiDb = check itConnect(itLoginUser, itLoginPassword);
+    postgresql:Client jobsDb = check itConnect(itLoginUser, itLoginPassword);
+    postgresql:Client lockDb = check itConnect(itLoginUser, itLoginPassword, 1);
     linkedin:LinkedInAdapter adapter = check new ({apiBaseUrl: mockApiUrl, authBaseUrl: mockWwwUrl,
         clientId: mockClientId, clientSecret: mockClientSecret, redirectUri: mockRedirectUri});
     Deps deps = check itDeps(jobsDb, lockDb, adapter);
@@ -305,7 +305,7 @@ function testShareArticleCarriesTheCampaignTitleToLinkedIn() returns error? {
 
     linkedin:TokenGrant grant = check mockAccessToken(adapter);
     linkedin:MemberProfile me = check adapter.userInfo(grant.accessToken);
-    _ = check jobsDb->execute(`DELETE FROM connection.member_connection WHERE member_urn = ${me.memberUrn}`);
+    _ = check jobsDb->execute(`DELETE FROM connection_member_connection WHERE member_urn = ${me.memberUrn}`);
     connection:StoredToken sealed = check connection:sealToken(check testCipher(), grant.accessToken, emp,
             time:utcAddSeconds(now, <decimal>grant.expiresInSeconds), now);
     _ = check connection:completeConnection(new connection:PgConnectionRepository(apiDb, {actorId: emp}), {
@@ -316,7 +316,7 @@ function testShareArticleCarriesTheCampaignTitleToLinkedIn() returns error? {
             {employeeId: emp, kind: types:SHARE_COMMENTARY, commentary: "Worth a read " + emp}, now);
     _ = check itRun(deps, "it-title-run");
 
-    test:assertEquals(check itCount(jobsDb, `SELECT count(*)::int FROM sharing.share_request_v
+    test:assertEquals(check itCount(jobsDb, `SELECT count(*)::int FROM sharing_share_request_v
             WHERE id = CAST(${share.id} AS uuid) AND status = 'PUBLISHED'`), 1,
             "published: the mock accepted the article (it refuses one without a title)");
     http:Client mock = check new (mockApiUrl);

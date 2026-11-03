@@ -16,7 +16,7 @@
 
 
 // Read side of C1 for the published API (M5): the employee's own shares and the PO share-health tile.
-// Reads the `sharing` views, and `messaging.outbox` for when the current request was actually queued.
+// Reads the `sharing` views, and `messaging_outbox` for when the current request was actually queued.
 // Commentary is never read here.
 
 import amplify_common.types;
@@ -81,7 +81,7 @@ public isolated function sharesOf(postgresql:Client db, types:EmployeeId employe
     stream<ShareViewRow, error?> rows = db->query(`
         SELECT id::text AS id, campaign_id::text AS campaign_id, kind, status, failure_reason, attempts, requested_at,
                published_at, failed_at
-        FROM sharing.share_request_v WHERE employee_id = ${employeeId}
+        FROM sharing_share_request_v WHERE employee_id = ${employeeId}
         ORDER BY requested_at DESC LIMIT ${'limit}`);
     return from ShareViewRow r in rows
         select {
@@ -110,15 +110,15 @@ public isolated function shareHealth(postgresql:Client db, time:Utc since) retur
     string sinceText = time:utcToString(since);
     record {|int queued; int published; int failed;|} totals = check db->queryRow(`
         SELECT count(*) FILTER (WHERE sr.status = 'QUEUED' AND EXISTS (
-                   SELECT 1 FROM messaging.outbox o
+                   SELECT 1 FROM messaging_outbox o
                    WHERE o.idempotency_key = 'RepostRequested:' || sr.id::text || ':' || sr.attempts::text
                      AND o.created_at >= CAST(${sinceText} AS timestamptz)))::int AS queued,
                count(*) FILTER (WHERE sr.published_at >= CAST(${sinceText} AS timestamptz))::int AS published,
                count(*) FILTER (WHERE sr.failed_at >= CAST(${sinceText} AS timestamptz))::int AS failed
-        FROM sharing.share_request_v sr`);
+        FROM sharing_share_request_v sr`);
     map<int> failedByReason = {NEEDS_RECONNECT: 0, PROVIDER_REJECTED: 0, RETRIES_EXHAUSTED: 0};
     stream<record {|string reason; int n;|}, error?> rows = db->query(`
-        SELECT failure_reason AS reason, count(*)::int AS n FROM sharing.share_request_v
+        SELECT failure_reason AS reason, count(*)::int AS n FROM sharing_share_request_v
         WHERE failed_at >= CAST(${sinceText} AS timestamptz) GROUP BY failure_reason`);
     check from var r in rows
         do {
