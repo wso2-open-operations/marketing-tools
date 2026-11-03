@@ -1,26 +1,26 @@
 # Database migrations and integration tests
 
 Schema source of truth: `architecture/solution/Phase 1/phase1-data-model.md`. Scripts:
-`amplify-database/migrations/` (V001–V020) and `seed/` (S001–S010). Per-migration notes:
+`amplify-database/migrations/` (V001–V021) and `seed/` (S001–S010). Per-migration notes:
 `2026-10-17-v012-recognition-lock-maintenance-timeout.md`, `2026-10-17-v013-idle-timeout-dashboard-indexes.md`,
-`2026-10-27-v014-point-actions-all-phases.md`. Runner: `amplify-database/main.bal`.
+`2026-10-27-v014-point-actions-all-phases.md`, `2026-11-03-adr-043-single-login-single-schema.md`. Runner: `amplify-database/main.bal`.
 
 ## Running the migrate runner
 
-The runner connects as the **bootstrap admin** (Choreo/Aiven `avnadmin`, local `postgres`), because V001
-creates the roles. Configurables (Choreo: secrets / env `BAL_CONFIG_VAR_*`):
+The runner connects as the **one login** that owns the database (ADR-043): it needs no bootstrap admin and
+creates no roles. It puts the schema first on the `search_path` (`dbSchema`, default the login name). Configurables
+(Choreo: secrets / env `BAL_CONFIG_VAR_*`):
 
 | Key | Meaning |
 | --- | --- |
 | `dbHost`, `dbPort`, `dbName`, `dbUser`, `dbSslMode` | Connection (`dbSslMode` defaults to `VERIFY_FULL`; `DISABLE` only locally) |
+| `dbSchema` | Schema the scripts run in. Empty = the login name. Must be a plain lower-case identifier |
 | `dbSslRootCert` | Managed Postgres CA PEM path (Choreo file mount, `BAL_CONFIG_VAR_DBSSLROOTCERT`, per environment). The runner warns at start-up when a remote server isn't verified |
-| `dbPassword` | Bootstrap admin password (secret) |
-| `apiDbPassword`, `jobsDbPassword`, `readonlyDbPassword` | Login passwords for the app roles (secrets, 16+ characters). Empty = leave the role as it is |
+| `dbPassword` | The login's password (secret) |
 | `migrationsDir`, `seedDir`, `dryRun` | Folders, and report-only mode (see below) |
 
-Role passwords never appear in a script. Roles are created `NOLOGIN`; after the scripts the runner calls
-`public.amplify_set_login_password(role, password)` with bind parameters, which quotes with `format(%L)`.
-`amplify_migrate` stays `NOLOGIN`: the runner reaches it through `SET LOCAL ROLE`.
+There are no role passwords. The first release on this design needs a fresh database; see
+`2026-11-03-adr-043-single-login-single-schema.md`.
 
 Each script runs in its own transaction under a transaction-level advisory lock, and is recorded in
 `public.schema_version` with a SHA-256 checksum. A rerun applies nothing; a changed applied script stops the run.
@@ -45,7 +45,7 @@ cd amplify-database
 BAL_CONFIG_VAR_ITENABLED=true BAL_CONFIG_VAR_DBPORT=55432 BAL_CONFIG_VAR_DBPASSWORD=postgres \
   BAL_CONFIG_VAR_DBSSLMODE=DISABLE bal test --groups integration
 
-# 2. Repositories and the M5 API flows (integration_m5_test.bal), as amplify_api / amplify_jobs against `amplify_it`.
+# 2. Repositories and the M5 API flows (integration_m5_test.bal), as the one login against `amplify_it` (the runner test creates it).
 cd ../amplify-domain
 AMPLIFY_IT=true AMPLIFY_IT_DB_PORT=55432 bal test --groups integration
 

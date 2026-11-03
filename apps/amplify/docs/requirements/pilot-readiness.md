@@ -68,7 +68,7 @@ Announcements go to the **WSO2 Club Group** Google Chat space (ADR-007, plan M6a
 
 ## 5. Success metrics
 
-Four metrics for the pilot. Compute from the Amplify schema (queries below run as `amplify_readonly`; PO can also read the dashboard tiles).
+Four metrics for the pilot. Compute from the Amplify schema (queries below run as the Amplify database login; PO can also read the dashboard tiles).
 
 | Metric | Definition | Source | Pilot target (to confirm with PO) |
 | --- | --- | --- | --- |

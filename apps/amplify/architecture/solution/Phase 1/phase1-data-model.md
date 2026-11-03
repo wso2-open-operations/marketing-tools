@@ -333,7 +333,7 @@ The token references are virtual **inside** the context on purpose: Postgres won
 | --- | --- |
 | One connection per employee per provider | PK `(employee_id, provider)` |
 | One employee per provider member | `UNIQUE (provider, member_urn)` |
-| Token never stored in plaintext | app encryption; `amplify_readonly` has no grant on `provider_token` |
+| Token never stored in plaintext | app encryption (no role separation since ADR-043) |
 | State single-use, short-lived | `DELETE … RETURNING` on use; jobs sweep expired rows |
 
 ## sharing — C1 Sharing (core)
@@ -751,28 +751,21 @@ The stored `messaging.outbox.idempotency_key` is `<event_type>:` + the key parts
 
 **Not events, on purpose:** campaign opening and closing, and connection expiry, are **time-derived** from `opens_at` / `closes_at` / `access_expires_at` in the `*_v` views, so there's no `CampaignOpened` or `ConnectionExpired` event. `EmployeeErased` is **not in phase 1** (C3, ADR-016).
 
-## Database users and grants
+## Database login and grants
 
-| DB user | `identity` | `campaign` | `connection` | `sharing` | `external_sharing` | `scoring` | `recognition` | `announcement` | `messaging` | `audit` | `config` |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `amplify_api` | rw | rw (no delete) | rw | rw | rw | insert/select + settlement columns | **rw** (B12) | select | rw | insert/select | rw |
-| `amplify_jobs` | select | select | rw + partition DDL on `provider_token` | rw | select | insert/select + settlement columns | rw | rw | rw | insert/select + partition DDL | select |
-| `amplify_migrate` | owner | owner | owner | owner | owner | owner | owner | owner | owner | owner | owner |
-| `amplify_readonly` (phase 2 SLT reports) | select | select | **none** | select (no `commentary`) | select | select | select | select | none | none | none |
+Since ADR-043 there is **one login** that owns the database, **one schema** (the login's name, `dbSchema` overrides),
+**no roles and no grants**. Every component (api, jobs, migrate) connects as that login, and every table is
+named `<context>_<name>`. A context reads and writes only its own tables (ADR-005); that is a convention the
+database doesn't enforce. The old `amplify_api`, `amplify_jobs`, `amplify_readonly` and `amplify_migrate` roles
+and the per-context grant matrix no longer exist.
 
-The migration user owns every object; app users never own tables, so they can't `ALTER` or `DROP` (partition DDL is granted narrowly through `SECURITY DEFINER` maintenance functions owned by `amplify_migrate`).
+What the database still enforces: V021 triggers keep the points ledger from being deleted or changed beyond its
+settlement columns, and keep the audit log from being updated or deleted. Partition maintenance runs through
+`SECURITY DEFINER` functions that pin the `search_path` with `SET search_path FROM CURRENT`. Enums are `text` +
+`CHECK`, and `*_v` views are `security_invoker`. `sharing_share_request_v` leaves out `commentary`.
 
-**As built (M3, V001–V010; later scripts below):** roles are created `NOLOGIN` with no password; the migrate runner (connected as the bootstrap admin) runs every script after V001 as `SET LOCAL ROLE amplify_migrate` and then sets the app role passwords from secrets. Enums are `text` + `CHECK`. `*_v` views are `security_invoker`, so the grants above apply through them; `sharing.share_request_v` leaves out `commentary`, and `amplify_readonly` gets a column grant on `share_request` without it. `amplify_api` and `amplify_jobs` get `INSERT/SELECT` plus `UPDATE (status, status_changed_at, paid_at, coin_reference)` on the ledger, and only `amplify_jobs` can run the partition functions and `recognition.rebuild`.
-
-**As built after M3 (V011–V013):**
-
-| Script | What it changes |
-| --- | --- |
-| `V011__announcement_thread_name.sql` | `announcement.chat_thread_name` (the thread Chat returns with each Club card, M6a). Recreates `announcement_v` to pick up the column and re-grants `SELECT` to the same roles as V008 |
-| `V012__recognition_lock_maintenance_timeout.sql` | `pg_advisory_xact_lock(1634561133)` first in `apply_ledger_entry`, `rerank`, `rebuild` (lock order above). `lock_timeout = 5s` on the six upkeep functions, so daily upkeep gives up instead of queueing every token and audit write behind an `ACCESS EXCLUSIVE` request; `run_partition_maintenance` takes advisory lock 1634561134 so two upkeep calls don't race. Owners and grants unchanged |
-| `V013__idle_timeout_dashboard_indexes.sql` | `ALTER ROLE amplify_api / amplify_jobs SET idle_in_transaction_session_timeout = '30s'` (runs as the bootstrap admin, before `SET LOCAL ROLE`), so a session the runtime leaves idle in a transaction releases its locks (R-13). Indexes `points_ledger (created_at)` and partial `share_request (failed_at) WHERE failed_at IS NOT NULL`, the two the planner used for the PO dashboard tiles (EXPLAIN in `docs/migrations/2026-10-17-v013-idle-timeout-dashboard-indexes.md`). `COMMENT ON FUNCTION` for the lock order |
-
-No script after V010 changes a grant (V011 only re-grants the recreated view). **Proposed, not applied** (jobs-db review D4/D5, H3; waiting on a decision): `REVOKE DELETE ON messaging.outbox, sharing.share_request, sharing.engagement, sharing.engagement_verification, connection.member_connection FROM amplify_api, amplify_jobs`; `REVOKE INSERT, UPDATE ON messaging.idempotency_key FROM amplify_jobs`; `REVOKE DELETE ON connection.oauth_state FROM amplify_jobs`; `REVOKE TEMPORARY ON DATABASE <db> FROM PUBLIC`. The grants table above is still what's in the database.
+The tables below describe V011-V020 as they were first written; where they name a role or a grant, read it as
+history. The scripts as they stand carry neither.
 
 ## Decisions from review (2026-10-16)
 
