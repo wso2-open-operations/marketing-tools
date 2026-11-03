@@ -237,7 +237,7 @@ function testMeUpsertsEmployeeAndReportsCapabilities() returns error? {
     // Deployment settings the UI used to read from its own config.js.
     test:assertEquals(check body.config.linkedinOrgUrn, wso2OrganizationUrn);
     test:assertEquals(check body.config.privacyNoticeUrl, privacyNoticeUrl.trim());
-    test:assertEquals(check body.config.postLinkOrigins, postLinkOrigins);
+    test:assertEquals(check body.config.campaignLinkOrigins, postLinkOrigins);
     test:assertTrue(fakeEmployees.findById("emp-0001") is record {});
 }
 

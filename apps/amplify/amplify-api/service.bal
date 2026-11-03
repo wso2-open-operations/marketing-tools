@@ -87,7 +87,7 @@ type MeAppConfig record {|
     # Privacy notice URL for the LinkedIn consent dialog; empty when none is configured
     string privacyNoticeUrl;
     # Origins a post link may use (`scheme://host[:port]`, lowercase)
-    string[] postLinkOrigins;
+    string[] campaignLinkOrigins;
 |};
 
 # `GET /me` response.
@@ -221,7 +221,7 @@ service http:InterceptableService / on apiListener {
             config: {
                 linkedinOrgUrn: wso2OrganizationUrn,
                 privacyNoticeUrl: privacyNoticeUrl.trim(),
-                postLinkOrigins: postLinkOrigins
+                campaignLinkOrigins: postLinkOrigins
             }
         };
         // An admin's capability list alone runs past 512 chars (M11b).

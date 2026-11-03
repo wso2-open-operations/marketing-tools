@@ -1158,11 +1158,11 @@ components:
         config:
           description: Deployment settings the UI needs (Choreo configs, not UI config)
           type: object
-          required: [linkedinOrgUrn, privacyNoticeUrl, postLinkOrigins]
+          required: [linkedinOrgUrn, privacyNoticeUrl, campaignLinkOrigins]
           properties:
             linkedinOrgUrn: {description: "LinkedIn company page a registered post must belong to (`wso2OrganizationUrn`)", type: string}
             privacyNoticeUrl: {description: "Privacy notice for the consent dialog; empty = no link (`privacyNoticeUrl`)", type: string}
-            postLinkOrigins: {description: "Origins a post link may use (`campaignLinkOrigins`)", type: array, items: {type: string}}
+            campaignLinkOrigins: {description: "Origins a campaign link may use (`campaignLinkOrigins`)", type: array, items: {type: string}}
     ConnectionStatus: {type: string, enum: [ACTIVE, EXPIRING, NEEDS_RECONNECT, REMOVED, NOT_CONNECTED]}
 
     CampaignStatus: {type: string, enum: [SCHEDULED, OPEN, CLOSED, ARCHIVED]}
