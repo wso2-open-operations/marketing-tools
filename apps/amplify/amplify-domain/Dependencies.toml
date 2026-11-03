@@ -241,6 +241,9 @@ dependencies = [
 	{org = "ballerina", name = "lang.value"},
 	{org = "ballerina", name = "observe"}
 ]
+modules = [
+	{org = "ballerina", packageName = "log", moduleName = "log"}
+]
 
 [[package]]
 org = "ballerina"
@@ -471,6 +474,7 @@ dependencies = [
 	{org = "ballerina", name = "lang.regexp"},
 	{org = "ballerina", name = "lang.runtime"},
 	{org = "ballerina", name = "lang.value"},
+	{org = "ballerina", name = "log"},
 	{org = "ballerina", name = "os"},
 	{org = "ballerina", name = "sql"},
 	{org = "ballerina", name = "test"},
@@ -488,6 +492,7 @@ modules = [
 	{org = "wso2", packageName = "amplify_domain", moduleName = "amplify_domain.campaign"},
 	{org = "wso2", packageName = "amplify_domain", moduleName = "amplify_domain.connection"},
 	{org = "wso2", packageName = "amplify_domain", moduleName = "amplify_domain.external_sharing"},
+	{org = "wso2", packageName = "amplify_domain", moduleName = "amplify_domain.house"},
 	{org = "wso2", packageName = "amplify_domain", moduleName = "amplify_domain.identity"},
 	{org = "wso2", packageName = "amplify_domain", moduleName = "amplify_domain.recognition"},
 	{org = "wso2", packageName = "amplify_domain", moduleName = "amplify_domain.reporting"},
