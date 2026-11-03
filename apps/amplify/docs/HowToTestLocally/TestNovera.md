@@ -212,9 +212,9 @@ What Amplify sends:
 | `body` | The campaign summary, or "A new post is ready to share." |
 | `iconUrl` | `GOOGLE_CHAT_AVATAR_URL`, when https |
 | `imageUrl` | The campaign image, else `GOOGLE_CHAT_DEFAULT_IMAGE_URL`, only when Chat can fetch it (public https; `localhost`, `.local`, `.internal` and plain http are dropped) |
-| `button` | `Amplify`, opening `AMPLIFY_SHARE_PAGE_BASE_URL?share=<campaignId>` |
+| `button` | `Amplify` (`CARD_BUTTON_TEXT`), opening `NOVERA_BUTTON_URL` with `{campaignId}` replaced, e.g. `https://one.wso2.com/amplify/celebrate?share=<campaignId>`. No default: with `NOVERA_BUTTON_URL` empty the announcement defers ("Novera button URL is not configured") |
 
-Novera answers 202 before it sends anything, so Amplify keeps no Chat message name. A 503, 429, 5xx or no answer is retried by the outbox; any other 4xx fails the announcement (a 400 usually means Novera isn't running the version with `imageUrl` and `button` yet). The token is requested on the first notification, not at start-up, so a Novera outage never stops amplify-jobs from starting.
+Novera answers 202 before it sends anything, so Amplify keeps no Chat message name. Novera does not dedupe on `Idempotency-Key`, so Amplify saves `attempted_at` before the call and never sends a card twice on its own (ADR-047). A token failure before the request, 401, 403, 429 or 503 is retried by the outbox. A timeout or connection reset after the request was sent, or a 500, 502, 504 or other 5xx, fails the announcement with `last_error` starting "Delivery unknown:" and is not retried; use the admin retry after checking the card did not arrive. Any other 4xx fails the announcement (a 400 usually means Novera isn't running the version with `imageUrl` and `button` yet). The token is requested on the first notification, not at start-up, so a Novera outage never stops amplify-jobs from starting.
 
 ### B. See the card in a browser
 

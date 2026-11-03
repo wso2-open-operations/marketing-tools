@@ -15,7 +15,7 @@ NOVERA_CLIENT_SECRET=mock
 NOVERA_ALLOW_INSECURE_HTTP=true
 ```
 
-`NOVERA_ALLOW_INSECURE_HTTP` maps to amplify-jobs `noveraAllowInsecureHttp`: local only, never set in Choreo. Then recreate the jobs container: `scripts/compose.sh up -d --build amplify-jobs` (not `make down`, which deletes local data).
+`NOVERA_ALLOW_INSECURE_HTTP` maps to amplify-jobs `noveraAllowInsecureHttp`: local only, never set in Choreo. `NOVERA_BUTTON_URL` maps to `noveraButtonUrl`, the card button URL template (must contain `{campaignId}`). Compose defaults it to `https://one.wso2.com/amplify/celebrate?share={campaignId}`; set it in `local/.env` to point the button elsewhere (http only with `NOVERA_ALLOW_INSECURE_HTTP`). Empty defers every announcement. Then recreate the jobs container: `scripts/compose.sh up -d --build amplify-jobs` (not `make down`, which deletes local data).
 
 The step-by-step is in `docs/HowToTestLocally/TestNovera.md`.
 

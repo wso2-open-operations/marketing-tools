@@ -1,6 +1,6 @@
 # Migrations
 
-Forward-only, versioned: `V001__schema_and_extensions.sql` … `V021__immutable_ledger_and_audit.sql`. Lowercase snake_case
+Forward-only, versioned: `V001__schema_and_extensions.sql` … `V022__announcement_attempted_at.sql`. Lowercase snake_case
 after `__`. The runner is `../main.bal`; see `../README.md` for settings and how a run works. Never edit an applied script (the runner compares checksums and stops); add a new version. One exception, once: V001-V020 and S001-S010 were rewritten for ADR-043 on 2026-11-02 and the dev database reinstalled.
 
 ## Scripts
@@ -28,6 +28,7 @@ after `__`. The runner is `../main.bal`; see `../README.md` for settings and how
 | V019 | `campaign.resource_url` check also accepts the local stack's one http dev origin, `http://localhost:19091/...` (the app's `campaignLinkOrigins` stays the production policy; `image_url` stays https only) |
 | V020 | `identity_employee_alias`: a re-created Asgardeo account (new `sub`, same email) maps to the person's first employee id, so history keeps one key (ADR-041) |
 | V021 | `scoring_points_ledger_guard` and `audit_log_guard` triggers: the ledger changes only its settlement columns and is never deleted; the audit log is never changed or deleted (ADR-043 compensating control) |
+| V022 | `announcement.attempted_at` (nullable `timestamptz`): saved before jobs calls Novera, so an attempt that may have reached Novera is never sent again automatically; the admin retry clears it (ADR-047) |
 
 ## Rules
 

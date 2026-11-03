@@ -65,7 +65,7 @@ Deployed by the One WSO2 team after the proxy is live. They need the proxy URL. 
 | Prod LinkedIn app client id and secret, redirect URI | LinkedIn app owner |
 | `NOVERANOTIFYURL`, `NOVERATOKENURL`, `NOVERACLIENTID`, `NOVERACLIENTSECRET` | Novera owner (prod gateway URL) and the application subscribed to Novera's API |
 | `NOVERADEFAULTIMAGEURL`, `NOVERAICONURL` (optional) | Repo; public HTTPS image pinned to a commit |
-| `SHAREPAGEBASEURL` | One WSO2 team (the prod Celebrate page) |
+| `NOVERABUTTONURL` (required; URL template with `{campaignId}`, https, e.g. `https://one.wso2.com/amplify/celebrate?share={campaignId}`) | One WSO2 team (the prod Celebrate page) |
 | Asgardeo setup, including **`groups`, `email` and `name` in the access token** (not only the id_token) and the `rolesClaim` / `emailClaim` / `nameClaim` names in the backend JWT | `identity-setup.md`, "Token requirements" |
 | Generated DB passwords (`APIDBPASSWORD`, `JOBSDBPASSWORD`, `READONLYDBPASSWORD`), `TOKENKEYS` | Ops generates and stores only in Choreo |
 
@@ -75,7 +75,7 @@ Deployed by the One WSO2 team after the proxy is live. They need the proxy URL. 
 2. The Backend startup log says `Scheduler sync ... SYNCED`.
 3. `GET /leaderboard` as an employee shows `teamStatus: OK` and their sub-team. A 500 from people-app means the client id isn't listed or the claim is wrong. A 403 means the route isn't the directory.
 4. `scripts/check-descriptors.sh` passes on the release commit, and no prod config has `ENVIRONMENT=local`, `DEVLOCALJWTENABLED`, `NOVERAALLOWINSECUREHTTP` or a LinkedIn Mock URL.
-5. Register one real post and confirm the Novera card, its image and its Amplify button.
+5. Register one real post and confirm the Novera card, its image and its Amplify button. The button opens the prod Celebrate page with that post's share dialog. Exactly one card arrives. If the announcement is deferred with "Novera button URL is not configured", `NOVERABUTTONURL` is missing on Jobs.
 
 ## Alerts to turn on (F)
 

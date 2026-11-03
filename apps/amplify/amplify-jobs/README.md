@@ -46,7 +46,7 @@ Handlers live in `handlers.bal`, one per event:
 
 | Outbox event | What it does |
 | --- | --- |
-| `CampaignRegistered` | Announces the campaign once through Novera (`POST /internal/notifications`, `novera.bal`), the only announce channel (ADR-047). The card is a post summary with an Amplify button that opens the One WSO2 Celebrate page at that post's share dialog (`?share=<campaignId>`). Waits if the post is not open yet, skips closed or archived ones, defers if `announcements.enabled` is off or Novera is not configured. A Novera outage retries through the outbox |
+| `CampaignRegistered` | Announces the campaign once through Novera (`POST /internal/notifications`, `novera.bal`), the only announce channel (ADR-047). The card is a post summary with an Amplify button that opens the One WSO2 Celebrate page at that post's share dialog. The button URL is `noveraButtonUrl` with `{campaignId}` filled in. Waits if the post is not open yet, skips closed or archived ones, defers if `announcements.enabled` is off, Novera is not configured, or `noveraButtonUrl` is empty. Saves `attempted_at` before the call, so a card is never sent twice automatically (table below) |
 | `RepostRequested` | Opens the employee's encrypted token in memory and calls `POST /rest/posts` as the employee, then records the published share and its engagement in one transaction. Clears the commentary once published. Never posts twice on a rerun (`PUBLISH_IN_FLIGHT` marker in `constants.bal`). A 401 revokes the connection (`NEEDS_RECONNECT`). A 429, 5xx or timeout retries. A 403 or other 4xx fails the share. A token on an old key is re-sealed on use, best effort |
 | `EngagementRecorded` | Looks up the point rule in force, appends one row to the points ledger (once per action per post per person) and updates the recognition tables in the same transaction |
 | `ExternalShareApproved`, `ExternalShareAmplified` | Nothing to do. amplify-api wrote the award when the PO decided (ADR-024). The row is marked done |
@@ -62,6 +62,23 @@ Each handler returns one of four outcomes (`outcome.bal`):
 | `FAIL` | Permanent failure | Marks the row `FAILED` |
 
 There is no HTTP-level retry on LinkedIn posts or Novera notifications, because a retry after a lost response could post twice. The outbox retries instead (ADR-025). Kill switches live in `config_app_setting`: `sharing.enabled` and `announcements.enabled`. Turning one off defers its rows. Nothing is lost.
+
+### Novera announcements: at most one card
+
+Novera does not dedupe on `Idempotency-Key`, so Amplify does (ADR-047). The handler saves `attempted_at` on the announcement before it calls Novera. The header `Idempotency-Key: amplify:<campaignId>` is still sent.
+
+| Situation | Handler result | Announcement |
+| --- | --- | --- |
+| Novera answers 202 or 200 | `DONE` | `SENT` |
+| Definitely not delivered: token endpoint or client build unreachable before any request, Novera connection refused or host unresolved, Novera breaker open, 401, 403, 429, 503 | `RETRY` (attempt counted) | Stays `QUEUED`, `attempted_at` cleared. `FAILED` after `maxAttempts` |
+| Rejected: any other 4xx | `FAIL` | `FAILED` |
+| Ambiguous: no response after the request was sent (timeout, connection reset), 500, 502, 504 or any 5xx except 503 | `FAIL`, no automatic retry | `FAILED`, `last_error` starts "Delivery unknown:" |
+| Row is `QUEUED` with `attempted_at` already set when the handler starts (a crash, or the `SENT` save failed after Novera accepted) | `FAIL`, nothing sent | `FAILED`, "Delivery unknown: an earlier attempt may have reached Novera; check Novera before retrying" |
+| `noveraButtonUrl` is empty | `DEFER` | Unchanged. Note "Novera button URL is not configured" |
+| The attempt marker can't be saved | `RETRY`, nothing sent | Unchanged |
+| Announcement already `FAILED` and the outbox row is past attempt 1 (its failure was saved but the row was not finished) | `FAIL`, nothing sent | Stays `FAILED`, waits for an admin retry |
+
+Only an admin sends again: `POST /admin/announcements/{id}/retry` resets the outbox row, and the next run clears `failed_at` and `attempted_at` (`retryAnnouncement`) and sends once. In the uncertain case a card may be missed, never duplicated. Runbook: `docs/runbooks/operations.md` ("An announcement shows Delivery unknown").
 
 Files: `run.bal`, `handlers.bal`, `outcome.bal`, `ports.bal`, `novera.bal`, `outbound.bal`.
 
@@ -98,14 +115,14 @@ All are `configurable`. In Choreo they arrive as `BAL_CONFIG_VAR_*` (see `worklo
 | Database | `dbHost` (empty gives 503), `dbPort`, `dbName`, `dbUser`, `dbPassword` (secret), `dbSchema` (default the user name), `dbSslMode` (default `VERIFY_FULL`), `dbSslRootCert`, `dbConnectTimeoutSeconds`, `dbPoolAcquireTimeoutSeconds`, `dbBreakerFailureThreshold`, `dbBreakerWindowSeconds`, `dbBreakerResetSeconds`, `dbMaintenanceSocketTimeoutSeconds`, `leaderboardTopN` | `database.bal` |
 | Run tuning | `runBatchSize` (25), `runMaxRows` (200), `runMaxSeconds` (240), `runLockLeaseSeconds` (300), `maxAttempts` (8), `backoffBaseSeconds` (30), `backoffMaxSeconds` (3600), `deferSeconds` (900) | `config.bal` |
 | LinkedIn | `linkedinApiBaseUrl`, `linkedinAuthBaseUrl`, `linkedinClientId` (empty defers sharing), `linkedinApiVersion`, `linkedinTimeoutSeconds`, `linkedinApiResilience`, `linkedinMaxPostsPerRun` (50), `linkedinMaxPostsPerDay` (1000) | `config.bal` |
-| Card | `sharePageBaseUrl`, plus the card icon and default image URLs (names in `config.bal`) | `config.bal` |
+| Card | `noveraButtonUrl` (env `NOVERABUTTONURL`): URL template for the card button, must contain `{campaignId}`, https only (http only with `noveraAllowInsecureHttp` on the local stack), no default; empty defers announcements. Plus the card icon and default image URLs (names in `config.bal`) | `config.bal` |
 | Novera | `amplifyOnNovera`, `noveraNotifyUrl`, `noveraTokenUrl`, `noveraClientId`, `noveraClientSecret` (secret), `noveraScopes`, `noveraTimeoutSeconds`, `noveraAllowInsecureHttp` | `config.bal` |
 | Token keys | `tokenKeys` (secret), `tokenCurrentKeyId` | `config.bal` |
 | Alerts | `outboxAlertSeconds`, `outboxBacklogCacheSeconds`, `outboxAlertLogIntervalSeconds`, `tokenPartitionAlertDays` | `backlog.bal`, `partitions.bal` |
 | Leaver sweep | `leaverSweepMode`, `leaverGraceDays`, `leaverMinDirectorySize`, `leaverMaxPerRun`, `leaverMaxPercent` | `leavers.bal` |
 | HR Entity directory | `hrEntityBaseUrl`, `hrEntityTimeoutSeconds`, `hrEntityTokenUrl`, `hrEntityClientId`, `hrEntityClientSecret` (secret), `hrEntityPageSize` (1000), `hrEntityRetryCount` / `hrEntityRetryInterval` / `hrEntityRetryBackOffFactor` / `hrEntityRetryMaxWaitInterval` (3 / 3.0 / 2.0 / 20.0), `hrEntityStatuses` (`Active`, `Marked leaver`) | `leavers.bal` |
 
-Start-up check (`validateRunConfig` in `ready.bal`): `runLockLeaseSeconds` must exceed `runMaxSeconds` plus the longest external call. Otherwise the next run could release a row that is still being handled, and a LinkedIn post could go out twice.
+Start-up checks: `noveraButtonUrl`, when set, must be a valid https URL that contains `{campaignId}` (http only with `noveraAllowInsecureHttp`). `validateRunConfig` in `ready.bal`: `runLockLeaseSeconds` must exceed `runMaxSeconds` plus the longest external call. Otherwise the next run could release a row that is still being handled, and a LinkedIn post could go out twice.
 
 Run defaults: backoff doubles from 30 s up to 3600 s with equal jitter (half fixed, half random). Rows still unhandled when `runMaxSeconds` runs out go back untouched.
 

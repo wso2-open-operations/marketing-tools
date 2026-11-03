@@ -75,7 +75,7 @@ Then `npm run dev` in `webapp/` and open http://localhost:3000/amplify/celebrate
 
 ## 6. Try the phase 1 flows
 
-1. **New Post** (PO or Marketing): paste a LinkedIn post URL (`/feed/update/urn:li:share:…` or a copy-link `/posts/…-activity-…`), headline, summary, category, priority. **Save & share now** starts a run; with `local/novera-mock` running and configured, the mock logs the Novera notification (see `TestNovera.md`). Without Novera configured the announcement defers.
+1. **New Post** (PO or Marketing): paste a LinkedIn post URL (`/feed/update/urn:li:share:…` or a copy-link `/posts/…-activity-…`), headline, summary, category, priority. **Save & share now** starts a run; with `local/novera-mock` running and configured, the mock logs the Novera notification (see `TestNovera.md`). Without Novera configured, or with `NOVERA_BUTTON_URL` empty in `local/.env`, the announcement defers.
 2. **Current Posts:** Update post edits the card fields; Create new post goes back to New Post.
 3. **Celebrate:** posts to amplify (priority first; gone once you've shared them all), top three, my position, team leaderboard.
 4. **Amplify** on a card: not linked → the "Link your LinkedIn account" popup → mock consent on :19091 → back on Celebrate with the share dialog open. Linked → the share dialog. The share posts on the next run (every 5 minutes, or `make e2e` style `POST /runs`), and points follow.

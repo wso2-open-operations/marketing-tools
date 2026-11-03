@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-16
-- **Superseded in part (2026-11-03):** Google Chat was replaced by Novera ([ADR-047](ADR-047-novera-replaces-google-chat.md)); read "Chat webhook" and "Chat" below as the Novera notification. Items and amendments otherwise stand.
+- **Superseded in part (2026-11-03):** Google Chat was replaced by Novera ([ADR-047](ADR-047-novera-replaces-google-chat.md)); read "Chat webhook" and "Chat" below as the Novera notification. The 2026-11-02 amendment ("a duplicate is better than a miss") is superseded by ADR-047's Amplify-side dedupe: Novera announcements are never sent again automatically after an ambiguous attempt. Items and other amendments otherwise stand.
 - **Source:** plan M6, M9; ADR-003, ADR-018, ADR-024
 
 ## Context
@@ -49,5 +49,7 @@ Checked against `amplify-jobs/handlers.bal` (`handleRepostRequested`) and `shari
 - **Timeouts retry (owner decision, 2026-11-01).** A timeout, dropped connection or 502/504 on the create call is `OUTCOME_UNKNOWN`: the adapter does not call it retryable because the post may be live. The handler now treats it like a 5xx anyway: the marker is cleared, the share stays `QUEUED`, the outbox row stays pending and retries with backoff, and the share fails `RETRIES_EXHAUSTED` on the last attempt. **Accepted window:** if LinkedIn took the post and only the answer was lost, the retry posts a second time (at most `maxAttempts` posts). That is ADR-025 item 5, and it is the price of "it stays in the outbox until sent". Before this change the share failed at once with `PROVIDER_REJECTED` / `OUTCOME_UNKNOWN`. Tests: `aTimeoutLeavesTheRowPendingAndTheRetryPostsOnce`, `aLostAnswerKeepsRetryingUntilTheLastAttemptThenFailsTheShare`.
 
 ## Amendment (2026-11-02): Novera notifications favour a duplicate over a miss
+
+**Superseded (2026-11-03)** by the Amplify-side dedupe in [ADR-047](ADR-047-novera-replaces-google-chat.md) (`attempted_at` marker, V022): Novera announcements now favour a miss over a duplicate. Text kept for history.
 
 If `saveAnnouncement` fails after Novera accepted the notification, the outbox retries the handler and Novera is notified again. The notification carries no id Novera could dedupe on. Owner decision: a duplicate announcement is better than a missed one, so the retry stands. A marker like the publish path's `PUBLISH_IN_FLIGHT` is not added.

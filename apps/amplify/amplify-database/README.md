@@ -43,7 +43,7 @@ All are `configurable` in `main.bal`. In Choreo they arrive as `BAL_CONFIG_VAR_*
 | Path | What |
 | --- | --- |
 | `main.bal` | The runner: script listing, version table, checksums, out-of-order check, dry run, TLS check, server version check |
-| `migrations/` | Forward-only schema scripts, `V001` to `V021` (`V017` is unused). See `migrations/README.md` |
+| `migrations/` | Forward-only schema scripts, `V001` to `V022` (`V017` is unused). See `migrations/README.md` |
 | `seed/` | Idempotent seed data, `S001` to `S010`. See `seed/README.md` |
 | `checks/` | One-off read-only checks, not run by the runner. See below |
 | `tests/` | Unit tests and the `integration` group. See below |
@@ -739,6 +739,7 @@ erDiagram
         text chat_message_name "novera:{campaignId} marker"
         text chat_thread_name "unused since ADR-047 (V011)"
         timestamptz queued_at
+        timestamptz attempted_at "set before the Novera call (V022)"
         timestamptz sent_at
         timestamptz failed_at
         text last_error
@@ -753,6 +754,8 @@ erDiagram
 | messaging | `outbox.id` | announcement | `announcement.outbox_id` |
 
 Derived status (`announcement_v`): `SENT` / `FAILED` / `QUEUED` from the timestamps. Failed rows feed the admin retry view.
+
+`attempted_at` (V022, nullable) is saved before jobs calls Novera. It does not change the derived status. A `QUEUED` row with `attempted_at` set is not sent again: jobs marks it `FAILED` with `last_error` starting "Delivery unknown:". The admin retry clears `failed_at` and `attempted_at` (ADR-047).
 
 ## messaging, audit, config — infrastructure
 
@@ -877,6 +880,7 @@ The migration user owns every object; app users never own tables, so they can't 
 | `V018__erase_employee_function.sql` | `identity.erase_employee(p_employee_id, p_actor, p_reason)`, the audited erase (ADR-040): connection, tokens, consent, idempotency keys, commentary and names go; the ledger, engagements, shares and audit rows stay under the pseudonymous id |
 | `V019__dev_post_link_http.sql` | `campaign.resource_url` also accepts the local stack's one http dev origin; the app's `campaignLinkOrigins` stays the production policy |
 | `V020__employee_alias.sql` | `identity_employee_alias`: a re-created Asgardeo account maps to the first employee id (ADR-041); `amplify_api` SELECT, INSERT, `amplify_jobs` and `amplify_readonly` SELECT |
+| `V022__announcement_attempted_at.sql` | nullable `announcement.attempted_at timestamptz`, the Novera attempt marker (ADR-047). Jobs saves it before the call; a row already attempted is never sent again automatically |
 
 Up to V010, no script changes a grant (V011 only re-grants the recreated view). V017 narrows the token grants and V020 grants the alias table, as listed above. **Proposed, not applied** (jobs-db review D4/D5, H3; waiting on a decision): `REVOKE DELETE ON messaging_outbox, sharing_share_request, sharing_engagement, sharing_engagement_verification, connection_member_connection FROM amplify_api, amplify_jobs`; `REVOKE INSERT, UPDATE ON messaging_idempotency_key FROM amplify_jobs`; `REVOKE DELETE ON connection_oauth_state FROM amplify_jobs`; `REVOKE TEMPORARY ON DATABASE <db> FROM PUBLIC`. The grants table above is still what's in the database.
 

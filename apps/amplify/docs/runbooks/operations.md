@@ -16,7 +16,7 @@ Paths: `apps/…` = `apps/amplify/…`. Local commands run from `apps/amplify/`.
 | Run now (manual) | `POST {jobs}/runs` (Project-only, header `X-Amplify-Internal-Key` with either key) or wait for the scheduler |
 | Maintenance now | `POST {jobs}/maintenance/partitions` (either key; also rotates token keys: `token_rotation` in the response) |
 | Scheduler sync now | `POST /admin/scheduler/sync` (admin) |
-| Retry one announcement | `POST /admin/announcements/{id}/retry` (admin) |
+| Retry one announcement | `POST /admin/announcements/{id}/retry` (admin). For "Delivery unknown" check Novera first (section 15) |
 | Kill switches | `PUT /admin/settings` `sharing.enabled` / `announcements.enabled` |
 | DB shell (local) | `docker compose exec postgres psql -U postgres -d amplify` |
 | Refresh team rosters now | Restart Amplify Backend (the people-directory index lives in memory, §13) |
@@ -37,7 +37,8 @@ The outbox is `messaging_outbox`, status ∈ {`PENDING`,`IN_PROGRESS`,`DONE`,`FA
    WHERE status='FAILED' AND event_type='CampaignRegistered'
    ORDER BY created_at DESC;
    ```
-2. `POST /admin/announcements/{campaignId}/retry` (admin token). This resets that row to `PENDING`/`attempts=0` and audits `AnnouncementRetried` (`amplify-domain/modules/announcements/repository.bal`, `requeue`).
+2. If `last_error` starts with `Delivery unknown:`, check Novera first (section 15): the card may already be out.
+3. `POST /admin/announcements/{campaignId}/retry` (admin token). This resets that row to `PENDING`/`attempts=0` (the next run clears the announcement's `failed_at` and `attempted_at` and sends once) and audits `AnnouncementRetried` (`amplify-domain/modules/announcements/repository.bal`, `requeue`).
 
 **1b. Manual reprocess of FAILED rows (gap — use with care).** Shape mirrors the announcement `requeue`; scope it by `event_type`/`aggregate_id` — **never reset all FAILED rows blindly** (some fail permanently).
 1. Inspect first:
@@ -156,7 +157,7 @@ Key points: Remove Connection deletes tokens at once; the interim process anonym
 1. Pause sharing: `PUT /admin/settings` `{"sharing.enabled":false}` (admin). API returns 409 `FEATURE_DISABLED` on new shares; `amplify-jobs` **defers** pending `RepostRequested` rows (not lost).
 2. Pause announcements: `{"announcements.enabled":false}` — `retryAnnouncement` 409; jobs defer `CampaignRegistered` rows.
 3. Resume by setting `true`. Settings cache is ~5 s, so the change takes effect within ~5 s on each replica (a local save invalidates that replica's cache; others pick it up within `settingsCacheSeconds`).
-4. Use when: LinkedIn outage storm, duplicate Novera announcements, or a PO request to stop the pilot's posting.
+4. Use when: LinkedIn outage storm, a Novera problem, or a PO request to stop the pilot's posting.
 
 ## 11. Routine monitoring
 
@@ -215,3 +216,36 @@ Two secrets guard amplify-jobs: `INTERNALAPIKEY` (full access; amplify-api's own
 3. **Then force a scheduler sync** so the registered jobs carry the new value: `POST /admin/scheduler/sync` (admin); the Backend also syncs at start-up. Check the response lists both jobs as `UPDATED`. Until then the scheduler still sends the old key and Jobs answers 401 (`Internal call refused` in the Jobs log, `keySent=true`).
 4. **Internal key:** set `INTERNALAPIKEY` on both and redeploy. No scheduler sync needed (the scheduler never holds it). "Save & Share Now" falls back to the scheduled run while the two disagree.
 5. A `403` in the Jobs log (`scheduler key on a route it may not call`) means something other than `/runs` or `/maintenance/partitions` was called with the scheduler key: check the job URIs in the scheduler.
+
+## 15. Novera announcements (ADR-047)
+
+Novera does not dedupe on `Idempotency-Key`. Amplify sends at most one card per campaign. Before the call, jobs saves `announcement.attempted_at`. Only an admin can send a card again.
+
+### An announcement shows "Delivery unknown"
+
+**What it means.** The announcement is `FAILED` and `last_error` starts with `Delivery unknown:`. Jobs sent the request but cannot tell whether Novera delivered the card. Causes: a timeout or a connection reset after the request was sent, Novera answered 500, 502, 504 or another 5xx except 503, or the row was already attempted when the handler started (a crash, or the `SENT` save failed after Novera accepted). The last case reads "Delivery unknown: an earlier attempt may have reached Novera; check Novera before retrying".
+
+**Why it is not retried automatically.** The card may already be in Chat. A retry could post it twice. The owner decided (2026-11-03) that a missed card is better than a duplicate, and an admin can see and fix a miss.
+
+1. Find the rows:
+   ```sql
+   SELECT campaign_id, attempted_at, failed_at, last_error
+   FROM announcement
+   WHERE failed_at IS NOT NULL AND last_error LIKE 'Delivery unknown:%'
+   ORDER BY failed_at DESC;
+   ```
+   The admin failed announcements list shows the same rows.
+2. Check whether the card arrived. Look in the Chat space or DMs that Novera posts to for a card with the campaign title around `attempted_at`. If you have access to Novera's logs, search for the notification with `Idempotency-Key: amplify:<campaignId>` or the correlation id from the jobs log.
+3. Decide:
+   - **The card arrived:** leave the row `FAILED`. Nothing else depends on it. Write the campaign id and "arrived, not resent" in the ops log.
+   - **The card did not arrive:** `POST /admin/announcements/{campaignId}/retry` (admin). The next run clears `failed_at` and `attempted_at` and sends once more.
+   - **You can't tell:** ask the PO. Retrying risks a duplicate; leaving it risks a miss.
+4. Many rows at once usually means Novera was down or slow. Fix that first, then work through the list.
+
+### Announcements are deferred: "Novera button URL is not configured"
+
+`noveraButtonUrl` (env `NOVERABUTTONURL`) is empty on Amplify Jobs. Jobs never sends a card without a button, so every `CampaignRegistered` row defers. Nothing is lost.
+
+1. Set `NOVERABUTTONURL` on Amplify Jobs, e.g. `https://one.wso2.com/amplify/celebrate?share={campaignId}`. It must contain `{campaignId}` and use https. Jobs does not start with an invalid value.
+2. Redeploy Jobs. The deferred rows go out on the next run (or `POST {jobs}/runs`).
+3. Verify: the announcement is `SENT` and the card button opens the post's share dialog.

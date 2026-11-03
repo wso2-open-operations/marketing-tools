@@ -645,6 +645,7 @@ erDiagram
         text chat_message_name "novera:{campaignId} marker"
         text chat_thread_name "unused since ADR-047 (V011)"
         timestamptz queued_at
+        timestamptz attempted_at "set before the Novera call (V022)"
         timestamptz sent_at
         timestamptz failed_at
         text last_error
@@ -658,7 +659,7 @@ erDiagram
 | campaign | `campaign.id` | announcement | `announcement.campaign_id` |
 | messaging | `outbox.id` | announcement | `announcement.outbox_id` |
 
-Derived status (`announcement_v`): `SENT` / `FAILED` / `QUEUED` from the timestamps. Failed rows feed the admin retry view.
+Derived status (`announcement_v`): `SENT` / `FAILED` / `QUEUED` from the timestamps. Failed rows feed the admin retry view. `attempted_at` (V022) marks a Novera call that may have gone out; a `QUEUED` row with it set is never sent again automatically (ADR-047).
 
 ## messaging, audit, config — infrastructure
 

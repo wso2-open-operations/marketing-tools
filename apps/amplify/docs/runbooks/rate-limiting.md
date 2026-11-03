@@ -64,7 +64,7 @@ Amplify touches three rate-limited surfaces. Two are limits we **meet** (LinkedI
 
 ### What Amplify does on a 429
 
-The announcement is retried by the outbox with backoff, up to the same 8 attempts, then `FAILED` with an admin retry (`/admin/announcements/{id}/retry`). A card goes out once per campaign, so volume is low: one notification per registered post.
+The announcement is retried by the outbox with backoff, up to the same 8 attempts, then `FAILED` with an admin retry (`/admin/announcements/{id}/retry`). A 429 proves nothing was delivered, so it is safe to retry (ADR-047). A card goes out at most once per campaign, so volume is low: one notification per registered post.
 
 To test locally, run `local/novera-mock` (see `docs/HowToTestLocally/TestNovera.md`).
 
