@@ -764,8 +764,18 @@ settlement columns, and keep the audit log from being updated or deleted. Partit
 `SECURITY DEFINER` functions that pin the `search_path` with `SET search_path FROM CURRENT`. Enums are `text` +
 `CHECK`, and `*_v` views are `security_invoker`. `sharing_share_request_v` leaves out `commentary`.
 
-The tables below describe V011-V020 as they were first written; where they name a role or a grant, read it as
-history. The scripts as they stand carry neither.
+The table below describes V011-V013 as first written; where it names a role or a grant, read it as history. The
+scripts as they stand carry neither.
+
+**As built after M3 (V011–V013):**
+
+| Script | What it changes |
+| --- | --- |
+| `V011__announcement_thread_name.sql` | `announcement.chat_thread_name` (the thread Chat returns with each Club card, M6a). Recreates `announcement_v` to pick up the column and re-grants `SELECT` to the same roles as V008 |
+| `V012__recognition_lock_maintenance_timeout.sql` | `pg_advisory_xact_lock(1634561133)` first in `apply_ledger_entry`, `rerank`, `rebuild` (lock order above). `lock_timeout = 5s` on the six upkeep functions, so daily upkeep gives up instead of queueing every token and audit write behind an `ACCESS EXCLUSIVE` request; `run_partition_maintenance` takes advisory lock 1634561134 so two upkeep calls don't race. Owners and grants unchanged |
+| `V013__idle_timeout_dashboard_indexes.sql` | `idle_in_transaction_session_timeout = '30s'` (set per connection in the JDBC options since ADR-043, not on a role), so a session the runtime leaves idle in a transaction releases its locks (R-13). Indexes `points_ledger (created_at)` and partial `share_request (failed_at) WHERE failed_at IS NOT NULL`, the two the planner used for the PO dashboard tiles (EXPLAIN in `docs/migrations/2026-10-17-v013-idle-timeout-dashboard-indexes.md`). `COMMENT ON FUNCTION` for the lock order |
+
+There are no grants to change since ADR-043. The review proposals about `REVOKE` on app roles (jobs-db review D4/D5, H3) no longer apply; V021 covers the ledger and the audit log, and `REVOKE TEMPORARY ON DATABASE <db> FROM PUBLIC` is a DBA decision.
 
 ## Decisions from review (2026-10-16)
 
