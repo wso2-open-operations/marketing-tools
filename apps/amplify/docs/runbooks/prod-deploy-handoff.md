@@ -20,11 +20,10 @@ Fill in before handing over:
 
 Four repos ship. Each step needs the ones above it. Steps 2 to 4 are all marketing-tools (`apps/amplify`).
 
-### Step 1: people-app and Novera (parallel)
+### Step 1: HR Entity and Novera (parallel)
 
-people-ops-suite (`people-app`):
-- The service-client change is deployed to prod.
-- Amplify Backend's client id is added to `directoryClientIds` after the Backend connection exists (step 3, item 5). Redeploy people-app after adding it.
+HR Entity (People Operations, ADR-045):
+- People Operations issues Amplify its own production client for the HR Entity GraphQL service (URL, token URL, client id, secret). No people-app change is needed.
 
 wso2-digital-agents (`po-agent`, Novera):
 - The imageUrl and button change on `POST /internal/notifications` (DA-01) is deployed to prod.
@@ -44,7 +43,7 @@ Check: both services are healthy in prod.
 1. DB Migrate (Manual Task). Run once for the first release, then after every release that adds a `V###` or `S###` script. The log must end with `Migration run done`.
 2. Amplify Jobs (Project visibility). Needs the Chat webhook, the LinkedIn prod URLs and client id, and `TOKENKEYS`.
 3. Amplify Scheduler (Project visibility, no auth upstream, never behind the proxy). Needs `DSN` for the `scheduler` database.
-4. Amplify Backend. Create the `amplify-jobs` and `amplify-scheduler` connections, and the people-app connection (C7). The `resourceRef` values go into `apps/amplify/.choreo/component.yaml` (replace `REPLACE_WITH_ID`) in a commit before the build. The gateway JWT values don't exist yet, so the first deploy runs without them and step 4 finishes the job.
+4. Amplify Backend. Set `JOBSURL` and `SCHEDULERURL` to the Project URLs of the Jobs and Scheduler endpoints (leave `SCHEDULERJOBSURL` empty), and the four `HRENTITY*` values from the HR Entity client (C7). These are plain settings, so nothing is committed before the build. The gateway JWT values don't exist yet, so the first deploy runs without them and step 4 finishes the job.
 5. Back to step 1: add the Backend's people-app client id to `directoryClientIds` and redeploy people-app.
 
 ### Step 4: API Proxy (D)

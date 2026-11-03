@@ -2,7 +2,7 @@
 
 Console steps that config-as-code can't do. The repo side is done: Dockerfiles, `.choreo/component.yaml` (schemaVersion 1.2) per component, `workload.yaml` for OpenChoreo, and `apps/amplify/scripts/check-descriptors.sh` to catch drift. Run the check before every Choreo change.
 
-Owner: a WSO2 Digital org admin in Choreo. Order matters: database first, then Jobs and Scheduler, then Backend (its connections point at them), then the API Proxy.
+Owner: a WSO2 Digital org admin in Choreo. Order matters: database first, then Jobs and Scheduler, then Backend (it needs their Project URLs), then the API Proxy.
 
 ## Deploy order across repos
 
@@ -50,7 +50,7 @@ After each build, confirm the endpoint Choreo shows matches the descriptor (name
 1. **C1 Amplify DB Migrate** (Manual Task). Config form: `BAL_CONFIG_VAR_DBHOST/DBPORT/DBNAME/DBUSER` from B1/B2, secrets `BAL_CONFIG_VAR_DBPASSWORD` (bootstrap admin), `APIDBPASSWORD`, `JOBSDBPASSWORD`, `READONLYDBPASSWORD` (generate, 16+ chars, store only in Choreo). Run it once per environment, then after every release that adds a `V###`/`S###` script. Check the log ends with `Migration run done`.
 2. **C2 Amplify Jobs** (Project visibility only). `INTERNALAPIKEY` (full access) and `SCHEDULERAPIKEY` (only `POST /runs` and `POST /maintenance/partitions`): each a secret of at least 32 characters (`openssl rand -hex 24`), **different values**, each the **same value** on Amplify Backend (C5) and here, one pair per environment (ADR-039). Without both Jobs does not start; the Backend needs the internal key when `JOBSURL` is set and the scheduler key when `SCHEDULERURL` is set. DB: user `amplify_jobs` + its password. `TOKENKEYS` (`keyId:base64Key`, `openssl rand -base64 32`, one per environment, never shared dev↔prod) + `TOKENCURRENTKEYID`. Chat: `CHATWEBHOOKURL` secret (dev = test space, prod = WSO2 Club; see `google-chat-webhook.md`), `CHATSPACE` (`dev-test` / `club`), `CHATCARDAVATARURL` and `CHATDEFAULTIMAGEURL` (both optional; the default image is a public HTTPS PNG/JPEG pinned to a commit, see `google-chat-webhook.md` section C), `SHAREPAGEBASEURL` (the One WSO2 Celebrate page, e.g. `https://one.wso2.com/amplify/celebrate`; the card button adds `?share=<campaignId>`). LinkedIn: dev = LinkedIn Mock URLs + mock client id; prod = `https://api.linkedin.com`, `https://www.linkedin.com` + prod app client id. **Never** set `CHATALLOWINSECUREHTTP`.
 3. **C3 Amplify Scheduler** (Project visibility only, no auth upstream, never published, never behind the proxy). Secret `DSN` = `postgres://<user>:<pw>@<host>:<port>/scheduler?sslmode=require` (B3).
-4. **C4 Connections from Amplify Backend.** Backend > Connections > create `amplify-jobs` (to Amplify Jobs, Project) and `amplify-scheduler` (to Amplify Scheduler, Project). Open each connection's developer guide and copy its `resourceRef` into `apps/amplify/.choreo/component.yaml` (marketing-tools repo) (replace `REPLACE_WITH_ID`), commit, push. Both `BAL_CONFIG_VAR_JOBSURL` and `BAL_CONFIG_VAR_SCHEDULERJOBSURL` read the jobs connection's `ServiceURL`.
+4. **C4 Jobs and Scheduler URLs for Amplify Backend.** Copy the **Project URL** of the Amplify Jobs endpoint and of the Amplify Scheduler endpoint (each component's overview) into the Backend's `BAL_CONFIG_VAR_JOBSURL` and `BAL_CONFIG_VAR_SCHEDULERURL`. Leave `BAL_CONFIG_VAR_SCHEDULERJOBSURL` empty: it then uses the Jobs URL. They are plain settings, not Choreo connections, so nothing is committed after the first deploy; Digital Operations sets the production values when promoting.
 5. **C5 Amplify Backend** (endpoint `Project`, schema `amplify-api/openapi.yaml`). `ENVIRONMENT` = `dev` or `prod` (**never `local`**; that and `DEVLOCALJWTENABLED` stay unset, ADR-023). `INTERNALAPIKEY` = the same secret as Jobs (C2); the Backend sends it on its own calls to Jobs. `SCHEDULERAPIKEY` = the scheduler secret, the same as Jobs; the Backend sets it (not the internal key) as a header on the jobs it registers with the scheduler (ADR-039). `GATEWAYJWKSURL` / `GATEWAYISSUER` / `GATEWAYAUDIENCES` from the Choreo gateway's backend JWT (identity-setup runbook). DB user `amplify_api`. LinkedIn client id/secret (secret), redirect URI = the One WSO2 callback page for that environment. Same `TOKENKEYS` as Jobs in that environment. Team rosters: `HRENTITYBASEURL`, `HRENTITYTOKENURL`, `HRENTITYCLIENTID` and `HRENTITYCLIENTSECRET` (secret) from the HR Entity client (C7). Left empty, My Team answers `UNAVAILABLE` and the rest works.
 6. **C6 LinkedIn Mock** (dev only; never promote to prod). Endpoints: api `Project`, www `Public` (the browser follows the OAuth redirect). `CLIENTID`/`CLIENTSECRET` = made-up values matching Backend/Jobs in dev, `WWWBASEURL` = the www endpoint's public URL, `BAL_CONFIG_DATA` = `redirectUris = ["<dev One WSO2 callback>"]`. In dev, Backend `LINKEDINAUTHBASEURL` = the mock's **public** www URL (the authorization URL is shown to the browser).
 
@@ -99,9 +99,9 @@ Same names in two components (`DBHOST`, `DBPORT`, `DBNAME`, `DBUSER`, `DBPASSWOR
 | `DBUSER` | cfg | R | | `amplify_api` |
 | `DBPASSWORD` | secret | R | | Ops-generated (`APIDBPASSWORD` from C1) |
 | `DBSSLROOTCERT` | cfg | O | | File-mount path of the managed Postgres CA PEM, e.g. `/home/choreo/db-ca/ca.pem`. TBD until mounted |
-| `JOBSURL` | conn | R | | `amplify-jobs` connection `ServiceURL` |
-| `SCHEDULERURL` | conn | R | | `amplify-scheduler` connection `ServiceURL` |
-| `SCHEDULERJOBSURL` | conn | R | | `amplify-jobs` connection `ServiceURL` |
+| `JOBSURL` | cfg | R | | The Jobs endpoint's Project URL (C4) |
+| `SCHEDULERURL` | cfg | R | | The Scheduler endpoint's Project URL (C4) |
+| `SCHEDULERJOBSURL` | cfg | O | | Empty: it then uses `JOBSURL` |
 | `CAMPAIGNLINKORIGINS` | cfg | O | | Leave empty (LinkedIn only: `https://www.linkedin.com,https://linkedin.com`). Dev may add the mock's www URL |
 | `ROSTERCACHESECONDS` | cfg | O | | Leave empty (default 259200) |
 | `TOPBOARDCACHESECONDS` | cfg | O | | Leave empty (default 7200) |
@@ -152,8 +152,8 @@ Same names in two components (`DBHOST`, `DBPORT`, `DBNAME`, `DBUSER`, `DBPASSWOR
 | `LINKEDINAUTHBASEURL` | cfg | R | mock www URL | `https://www.linkedin.com` |
 | `TOKENKEYS` | secret | R | | Same as Backend |
 | `TOKENCURRENTKEYID` | cfg | R | | Same as Backend |
-| `CHATWEBHOOKURL` | secret | R | dev test space webhook (Scott-only) | TBD, from the Club space owner |
-| `CHATSPACE` | cfg | R | `Amplify Demo` locally; `dev-test` in Choreo dev | `club` |
+| `CHATWEBHOOKURL` | secret | O | dev test space webhook (Scott-only) | TBD, from the Club space owner |
+| `CHATSPACE` | cfg | O | `Amplify Demo` locally; `dev-test` in Choreo dev | `club` |
 | `CHATCARDAVATARURL` | cfg | O | `https://fonts.gstatic.com/s/e/notoemoji/17.0/1f50a/72.png` | Same URL is fine; confirm |
 | `CHATDEFAULTIMAGEURL` | cfg | O | `https://raw.githubusercontent.com/BechtelCanDoIt/marketing-tools/5e5006aadd4a031021265342a20ff0fcda3102b7/apps/amplify/amplify-jobs/img/WSO2-Amplify-Poster-Default.png` (fork) | TBD, same file pinned to a commit in the WSO2-managed repo |
 | `SHAREPAGEBASEURL` | cfg | R | `https://one.wso2.com/amplify/celebrate` | TBD, the One WSO2 team confirms the prod Celebrate page |
