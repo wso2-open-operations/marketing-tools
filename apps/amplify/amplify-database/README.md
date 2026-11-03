@@ -1,18 +1,103 @@
 # amplify-database
 
-Amplify DB Migrate: the Choreo Manual Task (and Compose one-shot) that builds the Amplify PostgreSQL database (15 or later). It applies `migrations/` (`V###__name.sql`), then `seed/` (`S###__name.sql`), in order, one transaction per script, and records each in `public.schema_version` with a checksum. It also sets the app role passwords from secrets, then exits. A rerun is a no-op, a changed applied script stops the run (forward-only), a pending script that sorts below an already-applied version stops it too (no out-of-order), and `dryRun = true` connects but creates nothing (not even `public.schema_version`) and runs no script: it logs each script as pending, applied or changed, and fails on a changed one.
+Amplify DB Migrate: the migration runner that builds the Amplify PostgreSQL database. It is a Ballerina job (Choreo Manual Task, Compose one-shot), not a service. It has no endpoint.
 
-| Folder | What |
+## What it is and how it is triggered
+
+The runner starts, applies what is pending, and exits. Nothing calls it while it runs.
+
+- Compose: the `amplify-db-migrate` one-shot runs it before amplify-api and amplify-jobs start. `make seed` reruns it.
+- Choreo: run the Manual Task from the console on each deploy (`docs/runbooks/choreo-deploy.md`).
+
+It connects as the one Amplify login user (`dbUser`; staging `amplify_stg_user`) and puts one schema first on the `search_path` (`dbSchema`, default the user name). There are no roles: that user owns every object and every component connects as it (ADR-043). The DBA creates the login, the schema and the extensions before the first run (`local/db-init/10-amplify-dba-setup.sh` does it locally). The server must be PostgreSQL 15 or later; the runner checks this before any script runs (ADR-044).
+
+## What a run does
+
+1. Lists `migrations/` (`V###__snake_name.sql`), then `seed/` (`S###__snake_name.sql`). A `.sql` file whose name does not match, or two scripts with the same number, stop the run.
+2. Creates `schema_version` in the Amplify schema once (version, kind, SHA-256 checksum, `applied_at`, `applied_by`, `execution_ms`).
+3. Stops when a pending script sorts below an applied one. A late `V0NN` must be renumbered above the highest applied version.
+4. Applies each pending script in its own transaction, under a transaction-level advisory lock, and records it with its checksum.
+5. Stops when an applied script has changed on disk (forward-only). A rerun with nothing pending is a no-op.
+
+Never edit an applied script. Add a new version. A seed that must change after it was applied needs a new seed, and often a migration for databases that already hold the old value (see `seed/README.md`).
+
+Dry run (`dryRun = true`): connects, creates nothing (not even `schema_version`), runs no script. It logs each script as `PENDING`, `APPLIED` or `CHANGED` and fails on a changed or out-of-order script. Use it as a checksum check before a deploy.
+
+## Settings
+
+All are `configurable` in `main.bal`. In Choreo they arrive as `BAL_CONFIG_VAR_*` (`workload.yaml`, `.choreo/component.yaml`).
+
+| Setting | Default | What |
+| --- | --- | --- |
+| `dbHost`, `dbPort`, `dbName` | `localhost`, 5432, `amplify` | The server and database |
+| `dbUser` | `amplify` | The login user |
+| `dbPassword` | empty | The login password (secret) |
+| `dbSchema` | empty (the user name) | The schema every table lives in. It must exist |
+| `dbSslMode` | `VERIFY_FULL` | TLS mode. `DISABLE` only for local Compose and the integration tests. The runner warns at start-up when a remote host is not verified |
+| `dbSslRootCert` | empty | Path of the CA PEM (Choreo file mount, `BAL_CONFIG_VAR_DBSSLROOTCERT`) |
+| `migrationsDir`, `seedDir` | `migrations`, `seed` | Script folders |
+| `dryRun` | `false` | Report only |
+
+## Files
+
+| Path | What |
 | --- | --- |
-| `main.bal` | The runner |
-| `migrations/` | Forward-only schema scripts, `V001` to `V020` so far |
-| `seed/` | Idempotent seed data (`ON CONFLICT DO NOTHING`): point rules (S001, S005 pilot values, S006 all values), categories, app settings, scheduler settings, leaderboard top scope (S007, moved to MONTH by S009) and minimum points (S010), token grace (S008) (see `seed/README.md`) |
-| `checks/` | One-off checks such as `d2_extensions.sql` (run on each new server, plan D2) |
-| `tests/` | Unit tests plus the `integration` group: off unless `itEnabled = true`. It drops and recreates `itDbName` (default `amplify_it`) on a PostgreSQL 17 server, so never point it at a database you need (see `docs/migrations/README.md`) |
+| `main.bal` | The runner: script listing, version table, checksums, out-of-order check, dry run, TLS check, server version check |
+| `migrations/` | Forward-only schema scripts, `V001` to `V021` (`V017` is unused). See `migrations/README.md` |
+| `seed/` | Idempotent seed data, `S001` to `S010`. See `seed/README.md` |
+| `checks/` | One-off read-only checks, not run by the runner. See below |
+| `tests/` | Unit tests and the `integration` group. See below |
+| `Dockerfile` | Builds the jar on `ballerina/ballerina`, runs it on a JRE as UID 10014. Copies `migrations/` and `seed/` into the image |
+| `workload.yaml`, `.choreo/component.yaml` | Deploy descriptors (kept in step by `scripts/check-descriptors.sh`) |
+| `Ballerina.toml`, `Dependencies.toml`, `.dockerignore` | Package and build files |
+| `CLAUDE.md` | Rules for agents and maintainers |
 
-Run from this folder: `bal build`, `bal test`, `bal run`. Rules for writing scripts: never edit an applied migration, no `?` in scripts (the JDBC driver reads it as a bind marker), enums are `text` plus `CHECK`, views are `security_invoker`, and maintenance functions are `SECURITY DEFINER` with a pinned `search_path`. Details: `CLAUDE.md` in this folder.
+### checks/
+
+Run by hand, once per server or environment. The runner never runs them.
+
+- `d2_extensions.sql`: lists `citext`, `pg_trgm`, `pg_partman`, `pg_cron`, `pgaudit` and `SELECT version()`. `citext` and `pg_trgm` are required. Run on each new server (plan D2, `docs/runbooks/choreo-deploy.md`).
+- `d3_single_user.sql`: run as the login user. Checks that the schema named after the user exists and that the single login can run Amplify. Every row should say `OK`.
+
+### tests/
+
+- Unit tests: `main_test.bal` (listing, naming, duplicates, TLS warning, checksum, out-of-order).
+- `integration` group: `integration_test.bal` (fresh migrate, rerun, checksum guard, partitions), `invariants_test.bal`, `uuidv7_test.bal`, and one file per migration with behavior worth pinning: `v006_reversal_test.bal`, `v013_test.bal`, `v014_test.bal`, `v018_test.bal`, `v019_test.bal`, `v020_test.bal`, `v021_test.bal`. Off unless `itEnabled = true`. It drops and recreates the database `itDbName` (default `amplify_it`) through `itAdminUser`, so never point it at a database you need.
+- `tests/resources/`: fixture folders (`migrations/`, `duplicate/`, `misnamed/`) for the listing tests.
+
+## Build, run and test
+
+From this folder:
+
+```sh
+bal build
+bal test                                                  # unit tests; the integration group returns early
+BAL_CONFIG_VAR_ITENABLED=true BAL_CONFIG_VAR_DBPORT=55432 BAL_CONFIG_VAR_DBPASSWORD=postgres \
+  BAL_CONFIG_VAR_DBSSLMODE=DISABLE bal test --groups integration
+bal run                                                   # against the database the settings name
+```
+
+Integration setup (a throwaway PostgreSQL container, the other components' tests): `docs/migrations/README.md`.
+
+## Rules for scripts
+
+- Every `.sql` carries the Apache-2.0 header.
+- No script names a schema. The runner sets the `search_path`. Tables are named `<context>_<name>`.
+- No `?` in a script: the JDBC driver reads it as a bind marker.
+- Enums are `text` plus `CHECK`. Views are `security_invoker`.
+- Maintenance functions are `SECURITY DEFINER` with a pinned `search_path` and `format(%I)`.
+- No script creates a role, grants to one or switches to one (ADR-043).
+
+## What it does not do
+
+- It does not create roles, the login user, the schema or the extensions. The DBA does (V001 only checks that they exist, and installs `uuidv7()` on servers older than 18).
+- It does not run `checks/`.
+- It does not roll back an applied script. Fix forward with a new version.
+- It does not run again on its own. Something has to start it.
 
 > **The data model below is a copy** of [`architecture/solution/Phase 1/phase1-data-model.md`](../architecture/solution/Phase%201/phase1-data-model.md) (pasted 2026-10-21, relative links adjusted). That file is the source of truth. Change it first, then refresh this copy.
+>
+> **The grants and roles parts of the copy are out of date.** It still describes the `amplify_api`, `amplify_jobs`, `amplify_readonly` and `amplify_migrate` roles and a `V017` token-grant script. ADR-043 removed the roles (one login, one schema), and `V017` is unused. Trust `migrations/README.md` and the source file for those parts.
 
 ---
 

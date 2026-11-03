@@ -98,7 +98,7 @@ Every setting is a Ballerina `configurable`, set through `BAL_CONFIG_VAR_<NAME>`
 | `MINRUNINTERVALSECONDS`, `RECONCILEDELAYSECONDS` | ✓ | | | | 10, 5 (local only; defaults 60, 15) |
 | `HRENTITYBASEURL` | ✓ | ✓ | | | `http://people-stub:9096/graphql` (Choreo: unset until the HR Entity client is approved, `teamStatus: UNAVAILABLE`). HR Entity GraphQL `employees` query, paged; directory results (teams, names) cached 24 hours. House is not read yet |
 | `CAMPAIGNLINKORIGINS` | ✓ | | | | `https://www.linkedin.com,https://linkedin.com,http://localhost:19091` (Choreo prod: unset = LinkedIn only; dev may add the mock's public www URL). Origins a campaign's post link may use |
-| `ROSTERCACHESECONDS` | ✓ | | | | unset (default 86400 = 24 hours). TTL of the directory results (teams, names, houses): how long a team move or new hire takes to show without a restart. Only a successful read is kept; a failed refresh keeps serving the last result and asks again on the next call |
+| `ROSTERCACHESECONDS` | ✓ | | | | unset (default 86400 = 24 hours). TTL of the directory results (teams, business units, names; house is not read yet): how long a team move or new hire takes to show without a restart. Only a successful read is kept; a failed refresh keeps serving the last result and asks again on the next call |
 | `HEADCOUNTCACHESECONDS` | ✓ | | | | unset (default 86400 = 24 hours). How long the employee count ("of N") reuses one directory read |
 | `SCORECARDTARGETCONNECTEDPCT`, `SCORECARDMAXEXPIREDPCT`, `SCORECARDTARGETSHARESUCCESSPCT`, `SCORECARDTARGETPRIORITYREACHPCT`, `SCORECARDTARGETACTIVE30D`, `SCORECARDTARGETREPOSTSPERMONTH` | ✓ | | | | unset (defaults 25, 5, 98, 25, 100, 600). The scorecard lines; local `.env` names are `SCORECARD_TARGET_CONNECTED_PCT` etc. |
 | `HRENTITYTOKENURL`, `HRENTITYCLIENTID`, `HRENTITYCLIENTSECRET` | ✓ | ✓ | | ✓ (secret) | unset. OAuth2 client credentials for the HR Entity service; same shape as leave-app's `oauthConfig` |
@@ -157,6 +157,30 @@ Which tests use the mock:
 | amplify-domain | no LinkedIn calls |
 | amplify-jobs IT (`integration`, `db-down-it`) | **real `mock_linkedin`** on 19190/19191, started by `scripts/test-all.sh` |
 | e2e (`scripts/e2e-local.sh`) | **real `mock_linkedin`** in Compose: connect, share, publish |
+
+## Caches
+
+Every cache is in memory and per process. amplify-api and amplify-jobs each hold their own, and replicas of one component do not share them. None is stored in the database, and a restart empties them. The last column says what happens when the source is down.
+
+| # | Cache | Where it lives | Holds | Lifetime (setting) | Refresh or invalidation | When the source fails |
+|---|---|---|---|---|---|---|
+| 1 | Directory index (`directoryCache`) | [amplify-api/outbound.bal](amplify-api/outbound.bal) | Everyone from the HR Entity: team, business unit, display names (sub-team and house are not read yet, so they stay empty) | 24 h (`rosterCacheSeconds`) | Expires; the next call reloads it. Cache 2's refresh also reloads it | Keeps serving the old index; errors only if it was never loaded |
+| 2 | Headcount snapshot (`headcountCache`) | [amplify-api/outbound.bal](amplify-api/outbound.bal) | Employee counts by business unit, team and house | 24 h (`headcountCacheSeconds`) | Expires; its refresh is a fresh directory call and also reloads cache 1 | Keeps serving the last count; errors only if never counted |
+| 3 | Settings (`settingsCache`) | [amplify-api/settings.bal](amplify-api/settings.bal) | The settings row, kill switches included | 5 s (`settingsCacheSeconds`, 0 = off) | A save on this replica clears it and bumps a generation; other replicas see the change within 5 s. `SchedulerSync` reads the database directly | Nothing is served from a stale entry: the read fails with the database error |
+| 4 | Monthly totals, top board (`monthlyCache`) | [amplify-api/topboard.bal](amplify-api/topboard.bal) | Points per employee for the current month | 2 h (`topBoardCacheSeconds`) | Expires, or a new month; `dropMonthlyCache()` in tests | Serves the previous totals of the same month; errors if there are none |
+| 5 | Dashboard snapshot (`snapshotCache`) | [amplify-api/dashboard_data.bal](amplify-api/dashboard_data.bal) | Data for the five `amplify_*` boards (ADR-036) | 60 s (constant `SNAPSHOT_SECONDS`) | Expires | The read fails with the database error |
+| 6 | PO dashboard (`dashboardCache`) | [amplify-api/reads.bal](amplify-api/reads.bal) | Dashboard JSON per month, up to 24 months | 60 s (constant) | Expires; at 24 entries it is emptied | The read fails with the database error |
+| 7 | Resolved sub (`resolvedSubs`) | [amplify-api/identity_resolution.bal](amplify-api/identity_resolution.bal) | Token `sub` to employee id | 5 min (`identityCacheSeconds`), at most 20,000 entries | Expires; at the cap expired entries go, then all. A clash (`EMAIL_CONFLICT`) is never cached | The lookup fails with the database error |
+| 8 | Gateway JWKS (`JwksCache`) | [amplify-api/modules/auth/jwks.bal](amplify-api/modules/auth/jwks.bal) | Token signing keys | 1 h (`jwksRefreshSeconds`); at most one fetch per 30 s (`jwksMinRefreshIntervalSeconds`), also for an unknown key id | Age or an unknown `kid` | Keeps serving the last good keys, behind a circuit breaker; `KEYS_UNAVAILABLE` if it never had any |
+| 9 | Outbox backlog (amplify-jobs) | [amplify-jobs/backlog.bal](amplify-jobs/backlog.bal) | Pending-row count for `/ready` | 15 s (`outboxBacklogCacheSeconds`) | Expires | The read fails with the database error |
+| 10 | House cache (`HouseCache`, `HouseService`) | [amplify-api/house_cache.bal](amplify-api/house_cache.bal), [house_service.bal](amplify-api/house_service.bal), [house_types.bal](amplify-api/house_types.bal) | House by id (name, image URL), employee email to house id, house to members | 30 days per entry (`DEFAULT_HOUSE_TTL_SECONDS`) | `populate()` at start-up, `refresh()`, `refreshHouse(id)`, `removeHouse(id)`, `removeEmployee(email)` | A failed refresh keeps what is cached |
+
+Row 10 is new and not wired to any route yet ([ADR-046](architecture/decisions/ADR-046-house-cache-and-house-service.md)). It lives in `amplify-api` next to the directory index because it is the same kind of data about an employee. The HR Entity is expected to gain `house` and `house_id` (not released as of 2026-11-03), so assignments could then come from the same directory read. Where the house name and image come from is not decided. Until then it loads from a `HouseSource` (a static one for the local stack and tests).
+
+Two related things are not data caches:
+
+- HTTP caching on read routes. Responses are `Cache-Control: no-store` by default. `/leaderboard` is `private, max-age=30` with an ETag (`If-None-Match` gives a 304), and `/leaderboard/top` and `/po/dashboard` are `private, max-age=60`. This is the browser's copy, not the server's.
+- The denial-audit throttle (`denialBuckets` in [amplify-api/interceptors.bal](amplify-api/interceptors.bal)). A repeat of the same 401 or 403 inside `denialAuditWindowSeconds` (60 s) is counted, not written to `audit_log`, and the next row carries the count. It holds at most 1,024 keys.
 
 ## Docs
 

@@ -7,6 +7,10 @@ Use it to build and test Amplify without a real LinkedIn app, real members, or r
 Contract: [`w-member-social.openapi.yaml`](../../resources/openapi/openapi/w-member-social.openapi.yaml).
 Request and response types in `types.bal` are generated from it with `bal openapi`.
 
+## What it is and how it is triggered
+
+It runs by hand with `bal run`, or in the Compose stack as `mock-linkedin` (`LINKEDIN_USE_MOCK`, default on), where amplify-api and amplify-jobs reach it by service name on 9090 and 9091 and the browser on 19091. `amplify-jobs` integration tests start it on 19190 and 19191 (`docs/migrations/README.md`).
+
 ## Hosts
 
 The mock runs two listeners, one per LinkedIn host, so your app's base URLs swap cleanly.
@@ -14,7 +18,7 @@ The mock runs two listeners, one per LinkedIn host, so your app's base URLs swap
 | Real host | Mock | Serves |
 |---|---|---|
 | `https://api.linkedin.com` | `http://localhost:9090` | `/v2/userinfo`, `/rest/posts`, `/rest/images`, `/v2/ugcPosts`, `/v2/assets`, `/health` |
-| `https://www.linkedin.com` | `http://localhost:9091` | `/oauth/v2/authorization`, `/oauth/v2/accessToken`, `/dms-uploads/...` |
+| `https://www.linkedin.com` | `http://localhost:9091` | `/oauth/v2/authorization`, `/oauth/v2/accessToken`, `/oauth/v2/revoke`, `/dms-uploads/...` |
 
 ## Run
 
@@ -96,6 +100,8 @@ Validation that returns LinkedIn-style errors (`{"status", "message", "serviceEr
 - `413` for an upload body over `maxUploadBytes`. The body is read in chunks and refused as soon as it
   passes the limit, so an oversized upload is never held in memory in full.
 
+`POST /oauth/v2/revoke` revokes an access token (RFC 7009): client credentials in the form, `200` even for an unknown token.
+
 A body, header or query parameter that doesn't match the contract gets a generic `400`.
 The exact binding error goes to the debug log, not the caller.
 
@@ -124,3 +130,41 @@ machine or CI: the Choreo descriptor has no field for the flag, so a deployed mo
 - The legacy assets flow uses the same `/dms-uploads` upload host as `/rest/images`.
 - `CreateUgcPost` in `mock_types.bal` is written by hand because the OpenAPI tool fails on
   its dotted `com.linkedin.ugc.*` property names.
+
+## Settings
+
+All are `configurable` in `config.bal`. Local values go in `Config.toml` (copy `Config.toml.local`).
+
+| Setting | Default | What |
+| --- | --- | --- |
+| `listenerHost` | `localhost` | Interface both listeners bind to. `0.0.0.0` in a container |
+| `apiPort`, `wwwPort` | 9090, 9091 | The two listeners |
+| `wwwBaseUrl` | `http://localhost:9091` | Base of the upload URLs the mock hands out |
+| `clientId`, `clientSecret`, `redirectUris` | required | The OAuth client your app uses. Made-up values |
+| `tokenTtlSeconds`, `authorizationCodeTtlSeconds` | 5184000, 1800 | Token and code lifetime |
+| `memberDailyLimit`, `appDailyLimit` | 150, 100000 | Rate limits per UTC day |
+| `maxUploadBytes` | 10485760 | Largest image body |
+| `enableMockAdmin`, `mockAdminKey` | `false`, empty | The admin endpoints, and their key (32 or more characters) |
+| `member` | Avery Mock | The one member every authorization signs in as |
+
+## Files
+
+| File | What |
+| --- | --- |
+| `main.bal` | `GET /health` and the admin endpoints (`/mock/posts`, `/mock/reset`) |
+| `api_service.bal` | The API host: userinfo, `/rest/posts`, `/rest/images`, `/v2/ugcPosts`, `/v2/assets` |
+| `www_service.bal` | The www host: authorization, access token, revoke, `/dms-uploads` |
+| `interceptors.bal` | Correlation id, request checks, response headers, errors |
+| `config.bal`, `constants.bal` | Settings and constants |
+| `types.bal`, `mock_types.bal` | Types generated from the OpenAPI contract, and the hand-written ones |
+| `utils.bal` | Helpers |
+| `modules/store/store.bal` | The in-memory store: tokens, codes, posts, uploads, rate counters |
+| `tests/mock_linkedin_test.bal`, `tests/Config.toml` | Tests, on ports 19090 and 19091 |
+| `Dockerfile`, `workload.yaml`, `.choreo/component.yaml` | Container and deploy descriptors |
+| `Config.toml.local` | Template for local settings |
+
+## What it does not do
+
+- It does not read posts back (`GET /rest/posts`), because `w_member_social` alone cannot either.
+- It does not model reactions, comments or organization posts.
+- It does not keep state across restarts.
