@@ -14,13 +14,6 @@ endpoints:
     networkVisibilities:
       - Project
     schemaFilePath: amplify-api/openapi.yaml
-dependencies:
-  # resourceRef values come from each connection's developer guide in the console; replace REPLACE_WITH_ID.
-  connectionReferences:
-    - name: amplify-jobs
-      resourceRef: service:/amplify/amplify-jobs/v1/REPLACE_WITH_ID/PROJECT
-    - name: amplify-scheduler
-      resourceRef: service:/amplify/amplify-scheduler/v1/REPLACE_WITH_ID/PROJECT
 configurations:
   env:
     - name: BAL_CONFIG_VAR_ENVIRONMENT
@@ -93,21 +86,24 @@ configurations:
           displayName: DB CA certificate file path (file mount)
           type: string
           required: false
+    # Plain settings, not Choreo connections: copy each endpoint's Project URL from the console when deploying.
+    # Connections would need the endpoint ids in this file, so a second PR after Jobs and Scheduler exist.
     - name: BAL_CONFIG_VAR_JOBSURL
       valueFrom:
-        connectionRef:
-          name: amplify-jobs
-          key: ServiceURL
+        configForm:
+          displayName: Amplify Jobs URL (the Jobs endpoint's Project URL)
+          type: string
     - name: BAL_CONFIG_VAR_SCHEDULERURL
       valueFrom:
-        connectionRef:
-          name: amplify-scheduler
-          key: ServiceURL
+        configForm:
+          displayName: Amplify Scheduler URL (the Scheduler endpoint's Project URL)
+          type: string
     - name: BAL_CONFIG_VAR_SCHEDULERJOBSURL
       valueFrom:
-        connectionRef:
-          name: amplify-jobs
-          key: ServiceURL
+        configForm:
+          displayName: Jobs URL as the scheduler reaches it (empty = Jobs URL)
+          type: string
+          required: false
     - name: BAL_CONFIG_VAR_CAMPAIGNLINKORIGINS
       valueFrom:
         configForm:

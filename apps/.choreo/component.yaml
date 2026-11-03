@@ -128,11 +128,13 @@ configurations:
         configForm:
           displayName: Google Chat webhook URL
           type: secret
+          required: false
     - name: BAL_CONFIG_VAR_CHATSPACE
       valueFrom:
         configForm:
           displayName: Chat space label (club or dev-test)
           type: string
+          required: false
     - name: BAL_CONFIG_VAR_CHATCARDAVATARURL
       valueFrom:
         configForm:
