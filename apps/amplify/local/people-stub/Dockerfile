@@ -23,7 +23,7 @@ WORKDIR /home/ballerina
 COPY --chown=ballerina . people-stub
 RUN cd people-stub && bal build
 
-FROM eclipse-temurin:21-jre-alpine@sha256:51ab5e3302e7141ce665ca3ea85e8b5cd648eafbc3c0c90dd79d6537684e4555
+FROM eclipse-temurin:21-jre-alpine@sha256:82cf3d9ccbe1ed46252008d51b2f2329e6b9e8a2f4394c4bebefc3ea7f4b1372
 RUN addgroup -g 10014 choreo && adduser -D -H -u 10014 -G choreo choreouser
 WORKDIR /app
 COPY --from=build /home/ballerina/people-stub/target/bin/amplify_people_stub.jar app.jar
