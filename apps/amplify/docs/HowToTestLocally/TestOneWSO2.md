@@ -36,7 +36,7 @@ git switch -c feat/amplify upstream/main      # never work on main
 
 ## 3. Get an Asgardeo app for localhost
 
-The app asks for the scopes `openid email groups profile` (`src/config/authConfig.ts`). Backends check the **id_token** claims `email` and `groups`.
+The app asks for the scopes `openid email groups profile` (`src/config/authConfig.ts`). Backends read the **access token**: it must carry `email`, `name` and `groups` (see `docs/runbooks/identity-setup.md`, "Token requirements"). The id_token only drives what the One WSO2 menu shows, so a PO can see the PO menu while the API still treats them as a plain employee.
 
 Local identity is a **non-prod Asgardeo org**, not WSO2 Identity Server, because One WSO2 needs Asgardeo. There's no local IdP container.
 
@@ -45,7 +45,7 @@ Local identity is a **non-prod Asgardeo org**, not WSO2 Identity Server, because
 **Option B: your own free Asgardeo org,** if you need to control the users and groups yourself.
 1. Create an org at asgardeo.io, then go to **Applications → New → Single-Page Application**.
 2. **Authorized redirect URL:** `http://localhost:3000`. **Allowed origin:** `http://localhost:3000`. PKCE is on by default for SPAs, so leave it.
-3. **User attributes:** add `email`, and make **groups** a requested attribute so it ends up in the id_token.
+3. **User attributes:** add `email`, `name` and **groups**, and add the same three under **Access Token attributes** (Protocol tab). Without the second step the access token has the scope but no values.
 4. Create a test user. For Amplify, also create the role groups `amplify_po`, `amplify_marketing`, `amplify_slt` and `amplify_admin` (an ordinary employee has none of these), and create one test user per role, so you can test the role-gated screens.
 
 **Option C: ThunderID.** Set `ONE_WSO2_AUTH_WELL_KNOWN_URL` to ThunderID's discovery document as well as the base URL and client id. One WSO2 then signs in through `ThunderProvider` (`src/context/auth/ThunderProvider.tsx`), which hands the SDK that discovery URL; without it the SDK assumes Asgardeo's layout and rejects ThunderID's issuer. The client needs the `groups` scope and `http://localhost:3000` as redirect URL and allowed origin. ThunderID's access token carries no `email`; see [TestAmplify.md](TestAmplify.md) for how the local proxy handles that.
@@ -90,7 +90,7 @@ npm run dev          # http://localhost:3000
 
 1. Open http://localhost:3000. You're sent to Asgardeo, then back to the **Me** perspective.
 2. Deep links work. `AuthGuard` saves the URL you asked for in `sessionStorage.one_wso2_post_login_redirect` and returns you there after sign-in.
-3. In dev, an **auth** pill sits at the bottom right of every page. It decodes your id_token and access token. Use it to check that `email` and `groups` are present when a backend rejects you.
+3. In dev, an **auth** pill sits at the bottom right of every page. It decodes your id_token and access token. When a backend rejects you, check the **access token**: `email` and `groups` must be present there, not only in the id_token.
 4. Switch perspectives with the **waffle** (top right). The left rail shows only the active perspective's sections.
 5. Theme and light/dark mode are in the top bar. The live app defaults to the dark navy theme in the wireframes.
 
