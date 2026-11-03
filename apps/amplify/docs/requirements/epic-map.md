@@ -4,7 +4,7 @@
 **Lifecycle:** SDLC for WSO2 Digital Team (9 stages, governance outputs and channels)
 **Phase source of truth:** "Amplify Requirements / Phase Breakdown" (screenshot, 2026-10-24). Older phase breakdowns in `CLAUDE.md`, the requirements map and the plan are superseded for this epic.
 **Status evidence:** git history and code as of 2026-10-24, and the [SDLC walk re-walk of 23 Oct](sdlc-checklist-walk.md) and the code change audit of 24 Oct
-**Updated 2026-11-03:** T4.3, T6.1, T6.4, F10.3 and FP12 (upstream merges of 2 Nov; the HR Entity directory, ADR-045). Later the same day: R2, F2.1, F2.3, T6.2, T6.4, T8.1, new T8.4 (#1991), FP6, FP8 and the Club webhook decision (Novera replaces Google Chat, ADR-047). Other rows are as of 24 Oct; the plan ([phase1-planned-todos.md](phase1-planned-todos.md)) is the tracker.
+**Updated 2026-11-03:** T4.3, T6.1, T6.4, F10.3 and FP12 (upstream merges of 2 Nov; the HR Entity directory, ADR-045). Later the same day: R2, F2.1, F2.3, T6.2, T6.4, T8.1, new T8.4 (#1991), FP6, FP8 and the Club webhook decision (Novera replaces Google Chat, ADR-047). Later still: F2.1, F2.2 and T6.2 for the Novera owner decisions (Amplify-side dedupe, button URL setting, Amplify channel is Novera). Other rows are as of 24 Oct; the plan ([phase1-planned-todos.md](phase1-planned-todos.md)) is the tracker.
 **Scripts:** two helper scripts built the 108 issues (run on 24 Oct) and regroup them by phase. Both dry-run by default; `--apply` changes GitHub. They live in the workspace repo, outside `projects/` (see the PR plan note on moving them).
 
 ---
@@ -149,7 +149,7 @@ Activities are the governance and delivery steps the 23 Oct re-walk found open. 
 | Key | Phase | Activity |
 | --- | --- | --- |
 | T6.1 | 1 | Open and merge the upstream people-app PR, and deploy it. Blocks My Team. Superseded 2026-11-03 (ADR-045): people-ops-suite #380 and #387 merged, then reverted by #388 and #389; My Team now waits on Amplify's HR Entity client (T6.4) |
-| T6.2 | 1 | Deploy in order: wso2-digital-agents `4b7d5ff`, marketing-tools `a3c7b7e`, one-wso2 `c63e051`. **(2026-11-03):** Novera is the only announce channel (ADR-047), so Novera (with `imageUrl`, `button` and the idempotency key) goes first in every environment (plan M6c) |
+| T6.2 | 1 | Deploy in order: wso2-digital-agents `4b7d5ff`, marketing-tools `a3c7b7e`, one-wso2 `c63e051`. **(2026-11-03):** Novera is the only announce channel (ADR-047), so Novera (with `imageUrl` and `button`) goes first in every environment (plan M6c). **(2026-11-03):** Novera's idempotency key is no longer needed (Amplify dedupes); set `NOVERABUTTONURL` on Amplify Jobs |
 | T6.3 | 1 | Write the rollback plan: backup restore and pinned image tags |
 | T6.4 | 1 | Set Choreo connections and secrets: people directory and Novera credentials. Since 2026-11-03 the directory is the HR Entity GraphQL service: get Amplify's client from People Operations and set `HRENTITY*` (ADR-045). **(2026-11-03):** no Google Chat webhook secret (ADR-047); Novera needs a subscribed application per environment. Steps in plan D13 (HR Entity client) and M6c (Novera credentials) |
 | T6.5 | 1 | Get the production deployment approval by email, after T2.1 and T5.3 |
@@ -217,8 +217,8 @@ Status is written in the feature body. "Built, ahead of phase N" means the code 
 
 | Key | Feature | Status | Evidence |
 | --- | --- | --- | --- |
-| F2.1 | Novera announcement card: campaign image and Amplify button | Built, needs agents change deployed first. **(2026-11-03):** the only channel (ADR-047); open for phase 1: idempotency key, egress allow-list, credentials per environment, real DM test, delivery counts, runbook, threat model (plan M6c; MT-09 reversed) | `novera.bal`; `buildNoveraNotification`; `56271f0`; agents `4b7d5ff` |
-| F2.2 | Admin retry of failed announcements | Built | `/admin/announcements/{id}/retry` |
+| F2.1 | Novera announcement card: campaign image and Amplify button | Built, needs agents change deployed first. **(2026-11-03):** the only channel (ADR-047); open for phase 1: idempotency key, egress allow-list, credentials per environment, real DM test, delivery counts, runbook, threat model (plan M6c; MT-09 reversed). **(2026-11-03):** Novera will not dedupe, so the idempotency key is replaced by the Amplify-side dedupe (`attempted_at`, V022, "Delivery unknown" for ambiguous sends). New: the button URL per environment (`NOVERABUTTONURL`, a template with `{campaignId}`). "Amplify channel" means Novera itself (no dedicated space), and the button opening Celebrate's share dialog is intended (owner, questions closed) | `novera.bal`; `buildNoveraNotification`; `56271f0`; agents `4b7d5ff` |
+| F2.2 | Admin retry of failed announcements | Built. **(2026-11-03):** also the only way to resend after "Delivery unknown"; it must clear `attempted_at` (plan M6c dedupe item) | `/admin/announcements/{id}/retry` |
 | F2.3 | Local Chat stub and Novera mock | Built. **(2026-11-03):** `local/chat-stub` is removed with the webhook (ADR-047); `local/novera-mock` stays | `local/chat-stub`, `local/novera-mock` |
 
 ### R3: Connect LinkedIn through SSO (phase 1)
