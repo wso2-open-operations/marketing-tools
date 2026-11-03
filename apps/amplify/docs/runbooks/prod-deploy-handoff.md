@@ -67,7 +67,7 @@ Deployed by the One WSO2 team after the proxy is live. They need the proxy URL. 
 | `CHATWEBHOOKURL` for the WSO2 Club space (`CHATSPACE=club`) | Google Chat space owner (see `google-chat-webhook.md`) |
 | `CHATDEFAULTIMAGEURL`, `CHATCARDAVATARURL` (optional) | Repo; public HTTPS image pinned to a commit |
 | `SHAREPAGEBASEURL` | One WSO2 team (the prod Celebrate page) |
-| Asgardeo setup | `identity-setup.md` |
+| Asgardeo setup, including **`groups`, `email` and `name` in the access token** (not only the id_token) and the `rolesClaim` / `emailClaim` / `nameClaim` names in the backend JWT | `identity-setup.md`, "Token requirements" |
 | Generated DB passwords (`APIDBPASSWORD`, `JOBSDBPASSWORD`, `READONLYDBPASSWORD`), `TOKENKEYS` | Ops generates and stores only in Choreo |
 
 ## Verify before calling it done (E3)

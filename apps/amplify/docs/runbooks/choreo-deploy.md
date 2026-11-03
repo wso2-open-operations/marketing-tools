@@ -64,7 +64,7 @@ After each build, confirm the endpoint Choreo shows matches the descriptor (name
 ## D. API Proxy (console only)
 
 1. **D1 Spike first:** create an API Proxy targeting Amplify Backend's Project endpoint. If Choreo refuses a Project-visible target, set the Backend endpoint to `Organization` in `.choreo/component.yaml` and record it in an ADR (the proxy stays the only *published* API, ADR-004).
-2. **D2** Import `amplify-api/openapi.yaml`; access mode as One WSO2 needs (External if the SPA calls it from the browser). Key manager: Asgardeo (identity-setup runbook A3–A6). Per-resource scopes from the `x-access` in the spec; rate limits per resource (shares, external shares tighter than reads).
+2. **D2** Import `amplify-api/openapi.yaml`; access mode as One WSO2 needs (External if the SPA calls it from the browser). Key manager: Asgardeo (identity-setup runbook A3–A6). **Check the access token carries `groups`, `email` and `name` before testing anything else** (identity-setup, "Token requirements"): without `groups` every user is a plain employee and New Post, Current Posts and the dashboards refuse them. Per-resource scopes from the `x-access` in the spec; rate limits per resource (shares, external shares tighter than reads).
 3. **D3** Turn on backend JWT so the Backend gets `x-jwt-assertion`; copy its JWKS/issuer/audience into C5.
 4. **D4** Security headers at the proxy too if supported (`nosniff`, CSP `upgrade-insecure-requests`, HSTS).
 5. **D5 WAF / egress.** If the org uses egress control, allow-list only `api.linkedin.com`, `www.linkedin.com`, `chat.googleapis.com` and the people-app connection's gateway host for this project. Attach the org WAF policy to the proxy if one exists.
