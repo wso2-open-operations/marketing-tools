@@ -14,7 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Club space context: Google Chat announcements (schema `announcement`).
+// Announcements context: a new post announced through Novera, once per campaign (table `announcement`).
 // Domain model (M2): types.bal, service.bal, events.bal. PostgreSQL repository: repository.bal (M3).
 
 # Module name, used in log context.
@@ -22,6 +22,10 @@ public const string MODULE = "announcements";
 
 # Novera notification `source` for Amplify (1-40 lowercase letters, digits or hyphens).
 public const string NOVERA_SOURCE = "amplify";
+# Label stored on `announcement.space` for an announcement sent through Novera.
+public const string NOVERA_SPACE = "novera";
+# Label of the button on Novera's card.
+public const string CARD_BUTTON_TEXT = "Amplify";
 # Novera's limits for `title` and `body`, in characters.
 const int NOVERA_LINE_MAX = 300;
 const int NOVERA_BODY_MAX = 5000;

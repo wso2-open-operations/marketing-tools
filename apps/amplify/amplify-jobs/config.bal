@@ -15,7 +15,7 @@
 // under the License.
 
 // amplify-jobs configuration (Config.toml / `BAL_CONFIG_VAR_*`; secrets from Choreo). Run tuning, the
-// LinkedIn and Google Chat egress, and the token key ring.
+// LinkedIn and Novera egress, and the token key ring.
 
 import amplify_common.resilience;
 
@@ -57,29 +57,12 @@ configurable int linkedinMaxPostsPerRun = 50;
 # LinkedIn posts per UTC day across runs, counted from published shares (app daily limit budget).
 configurable int linkedinMaxPostsPerDay = 1000;
 
-// ---- Google Chat (M6a) -------------------------------------------------------------------------------
+// ---- Novera (Google Chat assistant): the one announcement channel (M6a) -----------------------------
 
-# Incoming webhook URL of the target space (Choreo secret; never logged). Empty = announcements deferred.
-# Local stack: points at the compose `chat-stub`; set `CHAT_WEBHOOK_URL` in local/.env to the dev test
-# space's webhook to see real cards instead (runbook docs/runbooks/google-chat-webhook.md).
-configurable string chatWebhookUrl = "";
-# Local stack only: accept a plain-http webhook URL (the compose `chat-stub`). Never set in Choreo.
-configurable boolean chatAllowInsecureHttp = false;
-# Public HTTPS Amplify avatar shown in the card header. Empty = header without an avatar.
-configurable string chatCardAvatarUrl = "";
-# Public HTTPS image (PNG or JPEG; Chat doesn't render SVG) for cards whose post has no image or an unusable one.
-# Chat fetches it anonymously, so it must be a stable, WSO2-controlled URL: host `img/WSO2-Amplify-Poster-Default.png`
-# in the WSO2 media/CDN bucket and set its URL here. Do not point this at raw.githubusercontent.com in a deployed
-# environment (an untracked third-party host, not a CDN, and it breaks if the fork or path moves). The file in this
-# folder is the source asset only. Empty = such cards go out without an image.
-configurable string chatDefaultImageUrl = "";
-# Announce shares through Novera (feat/amplify_on_novera). Read from `AMPLIFY_ON_NOVERA` in local/.env, default true.
-# Not acted on yet: the Novera sender does not exist, so nothing branches on this.
+# Announce new posts through Novera (`AMPLIFY_ON_NOVERA`, default true). The kill switch for this channel: false
+# leaves `CampaignRegistered` rows deferred (nothing is sent) until it is true again. `announcements.enabled` in
+# `config_app_setting` is the runtime switch for all announcements.
 configurable boolean amplifyOnNovera = true;
-# Announce shares through the Google Chat webhook above (`AMPLIFY_ON_WEBHOOK`, default false). Not acted on yet: the
-# webhook client is still built whenever `chatWebhookUrl` is set, so announcements keep flowing until Novera lands.
-configurable boolean amplifyOnWebhook = false;
-// ---- Novera (Google Chat assistant) ---------------------------------------------------------------
 
 # Novera's `POST /internal/notifications` URL (the Choreo gateway URL of Novera's API). Empty = Novera not configured.
 configurable string noveraNotifyUrl = "";
@@ -96,15 +79,16 @@ configurable decimal noveraTimeoutSeconds = 10;
 # Local stack only: accept a plain-http notify URL (the `local/novera-mock`). Never set in Choreo.
 configurable boolean noveraAllowInsecureHttp = false;
 
-# Space label stored on `announcement.space`: `club` or `dev-test`.
-configurable string chatSpace = "club";
-# Per-call timeout, seconds.
-configurable decimal chatTimeoutSeconds = 10;
-# Breaker, retry (keep 0, ADR-025) and pool for the webhook.
-configurable resilience:HttpResilience chatResilience = {};
-# Least time between two posts to the space, seconds (Chat quota: 1 request/second per space).
-configurable decimal chatMinIntervalSeconds = 1;
-# One WSO2 Celebrate page URL; the card button opens `<url>?share=<campaignId>`, which shows that post's share dialog.
+# Public HTTPS icon shown beside the title on Novera's card. Empty = no icon.
+configurable string noveraIconUrl = "";
+# Public HTTPS image (PNG or JPEG; Google Chat doesn't render SVG) for announcements whose post has no image or an
+# unusable one. Chat fetches it anonymously, so it must be a stable, WSO2-controlled URL: host
+# `img/WSO2-Amplify-Poster-Default.png` in the WSO2 media/CDN bucket and set its URL here. Do not point this at
+# raw.githubusercontent.com in a deployed environment (an untracked third-party host, not a CDN, and it breaks if
+# the fork or path moves). The file in this folder is the source asset only. Empty = such cards go out without an
+# image.
+configurable string noveraDefaultImageUrl = "";
+# One WSO2 Celebrate page URL; the Novera card's button opens `<url>?share=<campaignId>`, which shows that post's share dialog.
 configurable string sharePageBaseUrl = "https://one.wso2.com/amplify/celebrate";
 
 // ---- Token keys ----------------------------------------------------------------------------------------

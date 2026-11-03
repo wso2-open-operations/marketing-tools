@@ -39,7 +39,7 @@ function noveraTokenEndpointDownIsARetryableUnavailableNotAStartUpFailure() {
     test:assertTrue(built is NoveraClient);
     if built is NoveraClient {
         NoveraError? result = built.notify({'source: "amplify", title: "T", subtitle: "S", body: "B",
-            button: {url: "https://one.wso2.com", label: "Amplify"}}, ());
+            button: {url: "https://one.wso2.com", label: "Amplify"}}, "amplify:c1", ());
         test:assertTrue(result is NoveraError);
         if result is NoveraError {
             test:assertEquals(result.detail().code, "UNAVAILABLE");
@@ -51,13 +51,18 @@ function noveraTokenEndpointDownIsARetryableUnavailableNotAStartUpFailure() {
 // A Novera stand-in: a token endpoint and a notifications endpoint that answers whatever status the test sets.
 const int NOVERA_STUB_PORT = 18299;
 isolated int noveraStubStatus = 202;
+isolated string? noveraStubIdempotencyKey = ();
 
 listener http:Listener noveraStub = new (NOVERA_STUB_PORT);
 
 service / on noveraStub {
     isolated resource function post token() returns json => {access_token: "stub-token", token_type: "Bearer", expires_in: 3600};
 
-    isolated resource function post internal/notifications() returns http:Response {
+    isolated resource function post internal/notifications(http:Request req) returns http:Response {
+        string|http:HeaderNotFoundError key = req.getHeader("Idempotency-Key");
+        lock {
+            noveraStubIdempotencyKey = key is string ? key : ();
+        }
         http:Response res = new;
         lock {
             res.statusCode = noveraStubStatus;
@@ -76,7 +81,15 @@ function noveraAnswers(int status) returns NoveraError? {
         return noveraError("UNAVAILABLE", "client not built", (), false);
     }
     return novera.notify({'source: "amplify", title: "T", subtitle: "S", body: "B",
-        button: {url: "https://one.wso2.com", label: "Amplify"}}, ());
+        button: {url: "https://one.wso2.com", label: "Amplify"}}, "amplify:c1", ());
+}
+
+@test:Config
+function noveraGetsTheIdempotencyKeyAsAHeader() {
+    test:assertEquals(noveraAnswers(202), ());
+    lock {
+        test:assertEquals(noveraStubIdempotencyKey, "amplify:c1", "the key rides in a header, not the body");
+    }
 }
 
 @test:Config

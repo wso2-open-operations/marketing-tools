@@ -22,7 +22,7 @@
 #
 #   local/jmeter/run.sh                                 # all modules, 120 s, p95 target 50 ms
 #   MODULES="api domain" DURATION=300 local/jmeter/run.sh
-#   RUN_JOBS=1 local/jmeter/run.sh                      # also POST /runs (posts to LinkedIn and chat-stub)
+#   RUN_JOBS=1 local/jmeter/run.sh                      # also POST /runs (posts to LinkedIn, and to Novera when configured)
 #   SEED=0 local/jmeter/run.sh                          # keep the data you already have
 #   EXTRA_JMETER_ARGS="-Japi.threads=40" local/jmeter/run.sh
 #

@@ -17,8 +17,10 @@
 
 // PostgreSQL reads of `announcement` for the admin screen and dashboard (M5), and the admin retry.
 // `amplify_api` can only read `announcement`; the jobs worker owns its writes. A retry
-// re-queues the card's `CampaignRegistered` outbox row instead (ADR-024): the worker sends it again and
-// clears `failed_at` when the card goes out.
+// re-queues the announcement's `CampaignRegistered` outbox row instead (ADR-024): the worker sends it to Novera
+// again and clears `failed_at` when Novera accepts it.
+// Column names predate Novera: `thread_key` holds the idempotency key and `chat_message_name` the delivery marker.
+// `chat_thread_name` (V011, Club webhook threads) is no longer read or written; old rows keep their value.
 
 import amplify_common.events;
 import amplify_common.types;
@@ -36,7 +38,6 @@ type AnnouncementRow record {|
     string space;
     string thread_key;
     string? chat_message_name;
-    string? chat_thread_name;
     time:Utc queued_at;
     time:Utc? sent_at;
     time:Utc? failed_at;
@@ -58,7 +59,7 @@ public type AnnouncementRepository isolated object {
     # + return - Announcements, or an error
     public isolated function list(AnnouncementStatus? status, int 'limit) returns Announcement[]|error;
 
-    # Puts the card's `CampaignRegistered` outbox row back in the queue.
+    # Puts the announcement's `CampaignRegistered` outbox row back in the queue.
     #
     # + campaignId - Campaign
     # + return - `NOT_FOUND` when there is no outbox row, or another error
@@ -82,7 +83,7 @@ public isolated class PgAnnouncementRepository {
     public isolated function findByCampaign(string campaignId) returns Announcement|error? {
         AnnouncementRow|error row = self.db->queryRow(`
             SELECT campaign_id::text AS campaign_id, outbox_id, space, thread_key, chat_message_name,
-                   chat_thread_name, queued_at, sent_at, failed_at, last_error
+                   queued_at, sent_at, failed_at, last_error
             FROM announcement WHERE campaign_id = CAST(${campaignId} AS uuid)`);
         if row is error {
             return store:isNoRows(row) ? () : row;
@@ -94,7 +95,7 @@ public isolated class PgAnnouncementRepository {
         sql:ParameterizedQuery cond = status is () ? `` : `WHERE status = ${status}`;
         stream<AnnouncementRow, error?> rows = self.db->query(sql:queryConcat(`
             SELECT campaign_id::text AS campaign_id, outbox_id, space, thread_key, chat_message_name,
-                   chat_thread_name, queued_at, sent_at, failed_at, last_error
+                   queued_at, sent_at, failed_at, last_error
             FROM announcement_v `, cond, ` ORDER BY queued_at DESC LIMIT ${'limit}`));
         return from AnnouncementRow r in rows
             select toAnnouncement(r);
@@ -113,8 +114,8 @@ public isolated class PgAnnouncementRepository {
                 WHERE idempotency_key = ${key} AND status = 'FAILED'`);
             if result.affectedRowCount != 1 {
                 // Only a FAILED row is re-queued. An IN_PROGRESS row is held by a run right now (resetting its
-                // lock would let a second run send the card again), and a DONE or PENDING row must stay as it
-                // is: a second admin's Retry would otherwise send a card that already went out.
+                // lock would let a second run send it again), and a DONE or PENDING row must stay as it
+                // is: a second admin's Retry would otherwise send an announcement that already went out.
                 string|sql:Error state = self.db->queryRow(`
                     SELECT status FROM messaging_outbox WHERE idempotency_key = ${key}`);
                 if state is sql:NoRowsError {
@@ -155,12 +156,12 @@ public isolated class PgAnnouncementWriter {
         Announcement a = announcement;
         _ = check self.db->execute(`
             INSERT INTO announcement (campaign_id, outbox_id, space, thread_key, queued_at)
-            VALUES (CAST(${a.campaignId} AS uuid), ${a.outboxId}, ${a.space}, ${a.threadKey},
+            VALUES (CAST(${a.campaignId} AS uuid), ${a.outboxId}, ${a.space}, ${a.idempotencyKey},
                     CAST(${store:ts(a.queuedAt)} AS timestamptz))
             ON CONFLICT (campaign_id) DO NOTHING`);
     }
 
-    # Stores a sent or failed card with its events and an audit row, in one transaction.
+    # Stores a sent or failed announcement with its events and an audit row, in one transaction.
     #
     # + announcement - From `markSent` / `markFailed` / `retryAnnouncement`
     # + outbox - `CampaignAnnounced` when sent
@@ -176,7 +177,7 @@ public isolated class PgAnnouncementWriter {
         transaction {
             _ = check self.db->execute(`
                 UPDATE announcement
-                SET chat_message_name = ${a.chatMessageName}, chat_thread_name = ${a.chatThreadName},
+                SET chat_message_name = ${a.messageName},
                     sent_at = CAST(${store:ts(a.sentAt)} AS timestamptz),
                     failed_at = CAST(${store:ts(a.failedAt)} AS timestamptz), last_error = ${a.lastError}
                 WHERE campaign_id = CAST(${a.campaignId} AS uuid)`);
@@ -212,9 +213,8 @@ isolated function toAnnouncement(AnnouncementRow r) returns Announcement => {
     campaignId: r.campaign_id,
     outboxId: r.outbox_id,
     space: r.space,
-    threadKey: r.thread_key,
-    chatMessageName: r.chat_message_name,
-    chatThreadName: r.chat_thread_name,
+    idempotencyKey: r.thread_key,
+    messageName: r.chat_message_name,
     queuedAt: r.queued_at,
     sentAt: r.sent_at,
     failedAt: r.failed_at,

@@ -27,7 +27,7 @@ import ballerina/time;
 type World record {|
     MemRunStore queue;
     MemStore mem;
-    FakeChat chat;
+    FakeNovera novera;
     FakeLinkedIn linkedIn;
     crypto:TokenCipher cipher;
     Deps deps;
@@ -35,13 +35,13 @@ type World record {|
 
 function harness(boolean lockFree = true) returns World {
     MemRunStore queue = new;
-    FakeChat chat = new;
+    FakeNovera novera = new;
     FakeLinkedIn linkedIn = new;
     crypto:TokenCipher cipher = checkpanic testCipher();
     MemStore mem = new (queue);
     queue.attach(mem);
     mem.putRules(repostRule(time:utcNow()));
-    return {queue, mem, chat, linkedIn, cipher, deps: {runStore: queue, runLock: new MemLock(lockFree), chat,
+    return {queue, mem, novera, linkedIn, cipher, deps: {runStore: queue, runLock: new MemLock(lockFree), novera,
         linkedIn, cipher, config: TEST_CONFIG, breakers: noBreakers}};
 }
 
@@ -109,17 +109,19 @@ function campaignRegisteredSendsOneCardEvenWhenRedelivered() returns error? {
     w.mem.putCampaign(openCampaign(cid, time:utcNow()));
     int id = w.queue.enqueue(events:CAMPAIGN_REGISTERED, registered(cid), "corr-campaign");
     RunReport r = check run(w);
-    test:assertEquals(w.chat.postCount(), 1);
-    test:assertEquals(w.chat.correlation(), "corr-campaign", "correlation id reaches the Chat call");
+    test:assertEquals(w.novera.sent(), 1);
+    test:assertEquals(w.novera.correlation(), "corr-campaign", "correlation id reaches the Novera call");
+    test:assertEquals(w.novera.idempotencyKey(), "amplify:" + cid, "the same key goes out on every attempt");
     test:assertEquals(w.queue.statusOf(id)[0], "DONE");
     test:assertEquals(w.queue.countByType(events:CAMPAIGN_ANNOUNCED), 1);
     test:assertTrue(r.succeeded >= 1);
     var a = check w.mem.announcement(cid);
-    test:assertTrue(a !is () && a.sentAt !is () && a.threadKey == "campaign-" + cid);
+    test:assertTrue(a !is () && a.sentAt !is () && a.idempotencyKey == "amplify:" + cid
+        && a.messageName == "novera:" + cid && a.space == "novera");
 
     w.queue.redeliver(id);
     _ = check run(w);
-    test:assertEquals(w.chat.postCount(), 1, "rerun never posts a second card");
+    test:assertEquals(w.novera.sent(), 1, "rerun never announces twice");
 }
 
 @test:Config
@@ -127,7 +129,7 @@ function campaignRegisteredRetriesOn429AndFailsAfterMaxAttempts() returns error?
     World w = harness();
     string cid = types:newUuidV7();
     w.mem.putCampaign(openCampaign(cid, time:utcNow()));
-    w.chat.setMode("429");
+    w.novera.setMode("429");
     int id = w.queue.enqueue(events:CAMPAIGN_REGISTERED, registered(cid));
     RunReport first = check run(w);
     test:assertEquals(first.retried, 1);
@@ -141,7 +143,7 @@ function campaignRegisteredRetriesOn429AndFailsAfterMaxAttempts() returns error?
     test:assertTrue(a !is () && a.failedAt !is (), "announcement FAILED for the admin retry");
 
     // Admin retry re-queues the row; the next good send clears failed_at.
-    w.chat.setMode("ok");
+    w.novera.setMode("ok");
     w.queue.redeliver(id);
     _ = check run(w);
     var sent = check w.mem.announcement(cid);
@@ -164,7 +166,7 @@ function campaignRegisteredDefersWhenOffOrNotOpen() returns error? {
     int off = w.queue.enqueue(events:CAMPAIGN_REGISTERED, registered(now));
     _ = check run(w);
     test:assertEquals(w.queue.statusOf(off)[0], "PENDING");
-    test:assertEquals(w.chat.postCount(), 0);
+    test:assertEquals(w.novera.sent(), 0);
 }
 
 // ---- RepostRequested → EngagementRecorded → points ---------------------------------------------------
@@ -321,7 +323,7 @@ function twoConcurrentRunsRunOnce() returns error? {
     World w = harness();
     string cid = types:newUuidV7();
     w.mem.putCampaign(openCampaign(cid, time:utcNow()));
-    w.chat.setMode("ok", 1);
+    w.novera.setMode("ok", 1);
     _ = w.queue.enqueue(events:CAMPAIGN_REGISTERED, registered(cid));
     Deps deps = w.deps;
     future<RunReport|RunSkipped|error> first = start runOnce(deps);
@@ -330,7 +332,7 @@ function twoConcurrentRunsRunOnce() returns error? {
     test:assertTrue(second is RunSkipped, "the second caller is told a run is in progress");
     RunReport|RunSkipped|error firstResult = wait first;
     test:assertTrue(firstResult is RunReport);
-    test:assertEquals(w.chat.postCount(), 1);
+    test:assertEquals(w.novera.sent(), 1);
     // The flag is released: a later run works.
     test:assertTrue(runOnce(deps) is RunReport);
 }

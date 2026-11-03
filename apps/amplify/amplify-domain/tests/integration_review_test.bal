@@ -390,7 +390,7 @@ function testAnnouncementWriterQueueSendAndFail() returns error? {
     time:Utc now = time:utcNow();
     // Outbox ids feed the CampaignAnnounced idempotency key, so they must be unique per run.
     string sentId = types:newUuidV7();
-    announcements:Announcement queued = check announcements:queueAnnouncement((), sentId, check int:fromHexString(uniq()), "dev-test", now);
+    announcements:Announcement queued = check announcements:queueAnnouncement((), sentId, check int:fromHexString(uniq()), now);
     check writer.insertQueued(queued);
     check writer.insertQueued(queued);
     announcements:Announcement? stored = check reader.findByCampaign(sentId);
@@ -398,17 +398,18 @@ function testAnnouncementWriterQueueSendAndFail() returns error? {
         test:assertFail("announcement not stored");
     }
     test:assertEquals(announcements:announcementStatus(stored), announcements:QUEUED);
-    announcements:Announcement sent = check announcements:markSent(stored, "spaces/x/messages/y", now, "spaces/x/threads/z");
+    announcements:Announcement sent = check announcements:markSent(stored, "novera:" + sentId, now);
     check writer.save(sent, [announcements:campaignAnnouncedEvent(sent)]);
     announcements:Announcement? reread = check reader.findByCampaign(sentId);
-    test:assertEquals(reread is announcements:Announcement ? reread.chatThreadName : (), "spaces/x/threads/z");
+    test:assertEquals(reread is announcements:Announcement ? reread.messageName : (), "novera:" + sentId);
+    test:assertEquals(reread is announcements:Announcement ? reread.idempotencyKey : (), "amplify:" + sentId);
     test:assertEquals(check count(jobsDb, `SELECT count(*)::int FROM messaging_outbox
                                            WHERE event_type = 'CampaignAnnounced' AND aggregate_id = ${sentId}`), 1);
     test:assertEquals(check count(jobsDb, `SELECT count(*)::int FROM audit_log
                                            WHERE entity_id = ${sentId} AND action = 'CampaignAnnounced'`), 1);
 
     string failedId = types:newUuidV7();
-    announcements:Announcement q2 = check announcements:queueAnnouncement((), failedId, check int:fromHexString(uniq()), "dev-test", now);
+    announcements:Announcement q2 = check announcements:queueAnnouncement((), failedId, check int:fromHexString(uniq()), now);
     check writer.insertQueued(q2);
     check writer.save(check announcements:markFailed(q2, "HTTP 500", now), []);
     announcements:Announcement[] failed = check reader.list(announcements:FAILED, 50);

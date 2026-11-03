@@ -14,11 +14,15 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Novera, the Google Chat assistant (feat/amplify_on_novera). A campaign announcement goes to
-// `POST /internal/notifications`, and Novera sends it as a card to everyone who has a chat open with it.
+// Novera, the Google Chat assistant, is Amplify's one announcement channel (owner decision 2026-11-03: it replaced
+// the Club space webhook). A campaign announcement goes to `POST /internal/notifications`, and Novera sends it as a
+// card to everyone who has a chat open with it.
 // Mirrors the Today I Learned backend's novera client (cs-tools apps/today-i-learned/backend/internal/novera).
 // Novera answers 202 before it has sent anything, so there is no message name to keep. A 503 means Novera
 // couldn't get a Google token and sent nothing: retryable. No HTTP-level retry: the outbox retries (ADR-025).
+// Every attempt for a campaign carries the same `Idempotency-Key` header (`amplify:<campaignId>`). Novera ignores
+// it today (its body schema refuses unknown fields, so the key can't go in the body); once Novera honours the
+// header, a retry after a lost 202 or a failed save no longer re-broadcasts.
 
 import amplify_common.resilience;
 import amplify_domain.announcements;
@@ -38,10 +42,13 @@ type NoveraErrorDetail record {|
 
 type NoveraError distinct error<NoveraErrorDetail>;
 
+# Header that carries the announcement's idempotency key.
+const string IDEMPOTENCY_HEADER = "Idempotency-Key";
+
 # Port to Novera's notifications endpoint.
 type NoveraPort isolated object {
-    isolated function notify(announcements:NoveraNotification notification, string? correlationId)
-        returns NoveraError?;
+    isolated function notify(announcements:NoveraNotification notification, string idempotencyKey,
+            string? correlationId) returns NoveraError?;
     isolated function breaker() returns string;
 };
 
@@ -93,14 +100,15 @@ isolated class NoveraClient {
         self.settings = settings.cloneReadOnly();
     }
 
-    isolated function notify(announcements:NoveraNotification notification, string? correlationId)
-            returns NoveraError? {
+    isolated function notify(announcements:NoveraNotification notification, string idempotencyKey,
+            string? correlationId) returns NoveraError? {
         http:Client|error conn = self.connect();
         if conn is error {
             return noveraError("UNAVAILABLE", "Novera token endpoint unreachable", (), true);
         }
-        http:Response|http:ClientError response = conn->post(self.path, notification.toJson(),
-                resilience:correlationHeaders(correlationId));
+        map<string> headers = resilience:correlationHeaders(correlationId);
+        headers[IDEMPOTENCY_HEADER] = idempotencyKey;
+        http:Response|http:ClientError response = conn->post(self.path, notification.toJson(), headers);
         if response is http:ClientError {
             return noveraError("UNAVAILABLE", "Novera call failed: no response", (), true);
         }

@@ -14,16 +14,14 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Egress from amplify-jobs (declared Choreo connections only): LinkedIn REST API and the Google Chat
-// webhook. Each has its own pool, breaker and timeout (M9 bulkheads); neither retries at the HTTP level,
-// the outbox does (ADR-025).
+// Egress from amplify-jobs (declared Choreo connections only): LinkedIn REST API and Novera (its token endpoint
+// and `POST /internal/notifications`). Each has its own pool, breaker and timeout (M9 bulkheads); neither retries
+// at the HTTP level, the outbox does (ADR-025).
 
 import amplify_common.crypto;
-import amplify_common.googlechat;
 import amplify_common.linkedin;
 
 final linkedin:LinkedInAdapter? linkedInAdapter = check newLinkedInAdapter();
-final WebhookChat? webhookChat = check newWebhookChat();
 final NoveraClient? noveraClient = check newNoveraClient();
 final crypto:TokenCipher? tokenCipher = check newTokenCipher();
 
@@ -41,16 +39,6 @@ isolated function newLinkedInAdapter() returns linkedin:LinkedInAdapter?|error {
         timeoutSeconds: linkedinTimeoutSeconds,
         apiResilience: linkedinApiResilience
     });
-}
-
-isolated function newWebhookChat() returns WebhookChat?|error {
-    // AMPLIFY_ON_WEBHOOK off: no webhook client, so announcements never reach the space even if a URL is set.
-    if !amplifyOnWebhook || chatWebhookUrl.trim() == "" {
-        return ();
-    }
-    return new WebhookChat(check new googlechat:WebhookClient({webhookUrl: chatWebhookUrl,
-        allowInsecureHttp: chatAllowInsecureHttp, timeoutSeconds: chatTimeoutSeconds, resilience: chatResilience}),
-        chatSpace, chatMinIntervalSeconds);
 }
 
 isolated function newNoveraClient() returns NoveraClient?|error {
@@ -82,18 +70,16 @@ isolated function newTokenCipher() returns crypto:TokenCipher?|error {
     return check new crypto:TokenCipher(keys, tokenCurrentKeyId);
 }
 
-# Breaker states for the run log and the `amplify_breaker_state` gauge: database, LinkedIn API, Google
-# Chat (`NOT_CONFIGURED` when absent).
+# Breaker states for the run log and the `amplify_breaker_state` gauge: database, LinkedIn API, Novera
+# (`NOT_CONFIGURED` when absent).
 #
 # + return - State by dependency
 isolated function breakerStates() returns map<string> {
     linkedin:LinkedInAdapter? li = linkedInAdapter;
-    WebhookChat? chat = webhookChat;
     NoveraClient? novera = noveraClient;
     return {
         database: dbBreaker.state(),
         linkedinApi: li is () ? "NOT_CONFIGURED" : li.breakers()["api"] ?: "CLOSED",
-        googleChat: chat is () ? "NOT_CONFIGURED" : chat.breaker(),
         novera: novera is () ? "NOT_CONFIGURED" : novera.breaker()
     };
 }
@@ -106,7 +92,6 @@ isolated function breakerStates() returns map<string> {
 isolated function productionDeps(PgRunStore db, PgRunLock lockDb) returns Deps => {
     runStore: db,
     runLock: lockDb,
-    chat: webhookChat,
     novera: noveraClient,
     linkedIn: linkedInAdapter,
     cipher: tokenCipher,
@@ -126,7 +111,6 @@ isolated function runConfig() returns RunConfig => {
     linkedinMaxPostsPerRun,
     linkedinMaxPostsPerDay,
     sharePageBaseUrl,
-    chatSpace,
-    cardAvatarUrl: chatCardAvatarUrl.trim() == "" ? () : chatCardAvatarUrl.trim(),
-    defaultImageUrl: chatDefaultImageUrl.trim() == "" ? () : chatDefaultImageUrl.trim()
+    cardAvatarUrl: noveraIconUrl.trim() == "" ? () : noveraIconUrl.trim(),
+    defaultImageUrl: noveraDefaultImageUrl.trim() == "" ? () : noveraDefaultImageUrl.trim()
 };

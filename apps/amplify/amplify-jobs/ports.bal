@@ -19,7 +19,6 @@
 
 import amplify_common.crypto;
 import amplify_common.events;
-import amplify_common.googlechat;
 import amplify_common.linkedin;
 import amplify_common.types;
 import amplify_domain.announcements;
@@ -29,7 +28,6 @@ import amplify_domain.scoring;
 import amplify_domain.sharing;
 import amplify_domain.store;
 
-import ballerina/lang.runtime;
 import ballerina/log;
 import ballerina/time;
 import ballerinax/postgresql;
@@ -53,7 +51,6 @@ type RunConfig record {|
     int linkedinMaxPostsPerRun;
     int linkedinMaxPostsPerDay;
     string sharePageBaseUrl;
-    string chatSpace;
     string? cardAvatarUrl = ();
     string? defaultImageUrl = ();
 |};
@@ -118,21 +115,11 @@ type RunLock isolated object {
     isolated function release() returns error?;
 };
 
-# Port to the Club space.
-type ChatPort isolated object {
-    # Space label stored on the announcement
-    isolated function space() returns string;
-    isolated function post(json message, string threadKey, string? correlationId)
-        returns googlechat:ChatMessage|googlechat:ChatError;
-    isolated function breaker() returns string;
-};
-
 # Everything a run needs.
 type Deps record {|
     RunStore runStore;
     RunLock runLock;
-    ChatPort? chat;
-    NoveraPort? novera = ();
+    NoveraPort? novera;
     linkedin:ProviderAdapter? linkedIn;
     crypto:TokenCipher? cipher;
     RunConfig config;
@@ -265,39 +252,6 @@ isolated class PgRunLock {
             log:printWarn("Advisory lock was no longer held when the work finished");
         }
     }
-}
-
-# `ChatPort` over the webhook client, throttled to one post per `minIntervalSeconds` (the space quota is
-# shared by every webhook in the space).
-isolated class WebhookChat {
-    *ChatPort;
-
-    private final googlechat:WebhookClient webhook;
-    private final string spaceName;
-    private final decimal minIntervalSeconds;
-    private decimal lastPostAt = -1000;
-
-    isolated function init(googlechat:WebhookClient webhook, string spaceName, decimal minIntervalSeconds) {
-        self.webhook = webhook;
-        self.spaceName = spaceName;
-        self.minIntervalSeconds = minIntervalSeconds;
-    }
-
-    isolated function space() returns string => self.spaceName;
-
-    isolated function post(json message, string threadKey, string? correlationId)
-            returns googlechat:ChatMessage|googlechat:ChatError {
-        lock {
-            decimal waitSeconds = self.lastPostAt + self.minIntervalSeconds - time:monotonicNow();
-            if waitSeconds > 0d {
-                runtime:sleep(waitSeconds);
-            }
-            self.lastPostAt = time:monotonicNow();
-        }
-        return self.webhook.post(message.cloneReadOnly(), threadKey, correlationId);
-    }
-
-    isolated function breaker() returns string => self.webhook.breaker();
 }
 
 isolated function toRunSettings(store:Setting[] rows) returns RunSettings {

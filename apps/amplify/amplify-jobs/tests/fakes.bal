@@ -15,11 +15,10 @@
 // under the License.
 
 // In-memory fakes for the run's ports: an outbox queue with the same claim/lease/attempt rules as
-// `amplify_domain.store`, a store whose writes feed that queue, and scripted Chat and LinkedIn.
+// `amplify_domain.store`, a store whose writes feed that queue, and scripted Novera and LinkedIn.
 
 import amplify_common.crypto;
 import amplify_common.events;
-import amplify_common.googlechat;
 import amplify_common.linkedin;
 import amplify_common.types;
 import amplify_domain.announcements;
@@ -477,62 +476,6 @@ isolated class MemLock {
     }
 }
 
-isolated class FakeChat {
-    *ChatPort;
-
-    private string mode = "ok";
-    private int posts = 0;
-    private decimal delaySeconds = 0;
-    private string? lastCorrelationId = ();
-
-    isolated function setMode(string mode, decimal delaySeconds = 0) {
-        lock {
-            self.mode = mode;
-            self.delaySeconds = delaySeconds;
-        }
-    }
-
-    isolated function postCount() returns int {
-        lock {
-            return self.posts;
-        }
-    }
-
-    isolated function correlation() returns string? {
-        lock {
-            return self.lastCorrelationId;
-        }
-    }
-
-    isolated function space() returns string => "dev-test";
-
-    isolated function post(json message, string threadKey, string? correlationId)
-            returns googlechat:ChatMessage|googlechat:ChatError {
-        string mode;
-        decimal delay;
-        lock {
-            mode = self.mode;
-            delay = self.delaySeconds;
-            self.lastCorrelationId = correlationId;
-        }
-        if delay > 0d {
-            runtime:sleep(delay);
-        }
-        if mode == "429" {
-            return error googlechat:ChatError("rate limited", code = "RATE_LIMITED", httpStatus = 429, retryable = true);
-        }
-        if mode == "400" {
-            return error googlechat:ChatError("bad card", code = "REJECTED", httpStatus = 400, retryable = false);
-        }
-        lock {
-            self.posts += 1;
-            return {name: string `spaces/dev/messages/m${self.posts}`, threadName: "spaces/dev/threads/" + threadKey};
-        }
-    }
-
-    isolated function breaker() returns string => "CLOSED";
-}
-
 isolated class FakeLinkedIn {
     *linkedin:ProviderAdapter;
 
@@ -634,8 +577,7 @@ final RunConfig & readonly TEST_CONFIG = {
     deferSeconds: 900,
     linkedinMaxPostsPerRun: 50,
     linkedinMaxPostsPerDay: 1000,
-    sharePageBaseUrl: "https://one.wso2.com/amplify/celebrate",
-    chatSpace: "dev-test"
+    sharePageBaseUrl: "https://one.wso2.com/amplify/celebrate"
 };
 
 function testCipher() returns crypto:TokenCipher|error {
@@ -812,10 +754,16 @@ isolated class FakeNovera {
 
     private string mode = "ok";
     private int count = 0;
+    private decimal delaySeconds = 0;
+    private string? lastCorrelationId = ();
+    private string? lastIdempotencyKey = ();
 
-    isolated function setMode(string mode) {
+    # + mode - `ok`, `503` (retryable), `429` (retryable) or `400` (refused)
+    # + delaySeconds - Wait before answering
+    isolated function setMode(string mode, decimal delaySeconds = 0) {
         lock {
             self.mode = mode;
+            self.delaySeconds = delaySeconds;
         }
     }
 
@@ -825,11 +773,35 @@ isolated class FakeNovera {
         }
     }
 
-    isolated function notify(announcements:NoveraNotification notification, string? correlationId)
-            returns NoveraError? {
+    isolated function correlation() returns string? {
+        lock {
+            return self.lastCorrelationId;
+        }
+    }
+
+    isolated function idempotencyKey() returns string? {
+        lock {
+            return self.lastIdempotencyKey;
+        }
+    }
+
+    isolated function notify(announcements:NoveraNotification notification, string idempotencyKey,
+            string? correlationId) returns NoveraError? {
+        decimal delay;
+        lock {
+            delay = self.delaySeconds;
+            self.lastCorrelationId = correlationId;
+            self.lastIdempotencyKey = idempotencyKey;
+        }
+        if delay > 0d {
+            runtime:sleep(delay);
+        }
         lock {
             if self.mode == "503" {
                 return noveraError("UNAVAILABLE", "down", 503, true);
+            }
+            if self.mode == "429" {
+                return noveraError("RATE_LIMITED", "rate limited", 429, true);
             }
             if self.mode == "400" {
                 return noveraError("REJECTED", "bad", 400, false);

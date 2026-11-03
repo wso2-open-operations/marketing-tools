@@ -14,7 +14,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-import amplify_common.googlechat;
 import amplify_common.types;
 
 import ballerina/time;
@@ -33,25 +32,24 @@ public isolated function announcementStatus(Announcement announcement) returns A
     return QUEUED;
 }
 
-# Queues the Club card for a campaign. Announced exactly once: a second queue is refused.
+# Queues the Novera announcement for a campaign. Announced exactly once: a second queue is refused.
 #
 # + existing - Current announcement row, if any
 # + campaignId - Campaign
 # + outboxId - `CampaignRegistered` outbox id
-# + space - Target space
 # + now - Current time
 # + return - The queued announcement, or `ALREADY_ANNOUNCED`
-public isolated function queueAnnouncement(Announcement? existing, string campaignId, int outboxId, string space,
-        time:Utc now) returns Announcement|types:DomainError {
+public isolated function queueAnnouncement(Announcement? existing, string campaignId, int outboxId, time:Utc now)
+        returns Announcement|types:DomainError {
     if existing !is () {
         return types:domainError(types:ERR_ALREADY_ANNOUNCED, "This campaign was already announced");
     }
     return {
         campaignId,
         outboxId,
-        space,
-        threadKey: googlechat:threadKey(campaignId),
-        chatMessageName: (),
+        space: NOVERA_SPACE,
+        idempotencyKey: announcementKey(campaignId),
+        messageName: (),
         queuedAt: now,
         sentAt: (),
         failedAt: (),
@@ -59,25 +57,29 @@ public isolated function queueAnnouncement(Announcement? existing, string campai
     };
 }
 
-# Records a sent card.
+# The key Novera gets as `Idempotency-Key` for a campaign's announcement: the same on every retry.
+#
+# + campaignId - Campaign
+# + return - `amplify:{campaignId}`
+public isolated function announcementKey(string campaignId) returns string => NOVERA_SOURCE + ":" + campaignId;
+
+# Records an announcement Novera accepted.
 #
 # + announcement - Queued announcement
-# + chatMessageName - Name Chat returned
+# + messageName - Delivery marker (`novera:{campaignId}`)
 # + now - Current time
-# + chatThreadName - Thread name Chat returned, if any
 # + return - The sent announcement, or `ANNOUNCEMENT_NOT_QUEUED`
-public isolated function markSent(Announcement announcement, string chatMessageName, time:Utc now,
-        string? chatThreadName = ()) returns Announcement|types:DomainError {
+public isolated function markSent(Announcement announcement, string messageName, time:Utc now)
+        returns Announcement|types:DomainError {
     check ensureQueued(announcement);
     Announcement sent = announcement.clone();
     sent.sentAt = now;
-    sent.chatMessageName = chatMessageName;
-    sent.chatThreadName = chatThreadName;
+    sent.messageName = messageName;
     sent.lastError = ();
     return sent;
 }
 
-# Records a failed card after retries ran out.
+# Records a failed announcement (Novera refused it, or retries ran out).
 #
 # + announcement - Queued announcement
 # + lastError - Safe error text
@@ -92,7 +94,7 @@ public isolated function markFailed(Announcement announcement, string lastError,
     return failed;
 }
 
-# Admin retry (`POST /admin/announcements/{id}/retry`): only a `FAILED` card is re-queued.
+# Admin retry (`POST /admin/announcements/{id}/retry`): only a `FAILED` announcement is re-queued.
 #
 # + announcement - Failed announcement
 # + return - The re-queued announcement, or `ANNOUNCEMENT_NOT_FAILED`
@@ -103,30 +105,6 @@ public isolated function retryAnnouncement(Announcement announcement) returns An
     Announcement queued = announcement.clone();
     queued.failedAt = ();
     return queued;
-}
-
-# Builds the Club card: image, title, summary and an Amplify button that opens One WSO2's Celebrate page with
-# the campaign's share dialog (`?share=<campaignId>`).
-#
-# + campaign - Campaign fields
-# + sharePageBaseUrl - One WSO2 Celebrate page URL, for example `https://one.wso2.com/amplify/celebrate`
-# + avatarUrl - Public HTTPS Amplify avatar for the card header, or `()`
-# + defaultImageUrl - Public HTTPS image used when the campaign's own image is missing or unusable, or `()`
-# + return - cardsV2 JSON, or a domain error
-public isolated function buildCard(CampaignCardSource campaign, string sharePageBaseUrl, string? avatarUrl = (),
-        string? defaultImageUrl = ()) returns json|types:DomainError {
-    string base = sharePageBaseUrl.endsWith("/") ? sharePageBaseUrl.substring(0, sharePageBaseUrl.length() - 1)
-        : sharePageBaseUrl;
-    return googlechat:buildCampaignCard({
-        campaignId: campaign.campaignId,
-        title: campaign.title,
-        summary: campaign.summary,
-        imageUrl: campaign.imageUrl,
-        sharePageUrl: string `${base}${base.includes("?") ? "&" : "?"}share=${campaign.campaignId}`,
-        isPriority: campaign.isPriority,
-        avatarUrl,
-        defaultImageUrl
-    });
 }
 
 isolated function ensureQueued(Announcement announcement) returns types:DomainError? {
@@ -144,7 +122,7 @@ isolated function ensureQueued(Announcement announcement) returns types:DomainEr
 # + iconUrl - Icon beside the title, kept only when it is https
 # + defaultImageUrl - Picture used when the campaign's own image is missing or unusable (Chat fetches it, so it
 # must be public https)
-# + return - The notification: icon, title, subtitle, picture, summary and an Amplify button, like the Club card
+# + return - The notification: icon, title, subtitle, picture, summary and an Amplify button
 public isolated function buildNoveraNotification(CampaignCardSource campaign, string sharePageBaseUrl,
         string? iconUrl = (), string? defaultImageUrl = ()) returns NoveraNotification {
     string base = sharePageBaseUrl.endsWith("/") ? sharePageBaseUrl.substring(0, sharePageBaseUrl.length() - 1)
@@ -157,15 +135,15 @@ public isolated function buildNoveraNotification(CampaignCardSource campaign, st
         subtitle: campaign.isPriority ? "Amplify · Priority" : "Amplify",
         body: cutTo(body, NOVERA_BODY_MAX),
         button: {url: string `${base}${base.includes("?") ? "&" : "?"}share=${campaign.campaignId}`,
-            label: googlechat:CARD_BUTTON_TEXT}
+            label: CARD_BUTTON_TEXT}
     };
     if iconUrl is string && iconUrl.startsWith("https://") {
         n.iconUrl = iconUrl;
     }
     string? imageUrl = campaign.imageUrl;
-    if imageUrl is string && googlechat:isPublicHttpsUrl(imageUrl) {
+    if imageUrl is string && types:isPublicHttpsUrl(imageUrl) {
         n.imageUrl = imageUrl;
-    } else if defaultImageUrl is string && googlechat:isPublicHttpsUrl(defaultImageUrl) {
+    } else if defaultImageUrl is string && types:isPublicHttpsUrl(defaultImageUrl) {
         n.imageUrl = defaultImageUrl;
     }
     return n;

@@ -172,20 +172,12 @@ services:
       BAL_CONFIG_VAR_HRENTITYCLIENTSECRET: ${HR_ENTITY_CLIENT_SECRET:-}
       BAL_CONFIG_VAR_TOKENKEYS: ${TOKEN_ENCRYPTION_KEY_ID:?}:${TOKEN_ENCRYPTION_KEY:?}
       BAL_CONFIG_VAR_TOKENCURRENTKEYID: ${TOKEN_ENCRYPTION_KEY_ID:?}
-      # Google Chat (M6a). Default: chat-stub. "Send to dev space": GOOGLE_CHAT_WEBHOOK_URL = the dev test
-      # space's webhook (https) + GOOGLE_CHAT_SPACE=dev-test. Never the Club.
-      BAL_CONFIG_VAR_CHATWEBHOOKURL: ${GOOGLE_CHAT_WEBHOOK_URL:-http://chat-stub:9095/v1/spaces/local/messages?key=local&token=local}
-      BAL_CONFIG_VAR_CHATSPACE: ${GOOGLE_CHAT_SPACE:-dev-test}
-      # Lets only the plain-http stub URL through; a real webhook is https. Never set in Choreo.
-      BAL_CONFIG_VAR_CHATALLOWINSECUREHTTP: "true"
-      BAL_CONFIG_VAR_CHATCARDAVATARURL: ${GOOGLE_CHAT_AVATAR_URL:-}
-      BAL_CONFIG_VAR_CHATDEFAULTIMAGEURL: ${GOOGLE_CHAT_DEFAULT_IMAGE_URL:-}
       BAL_CONFIG_VAR_SHAREPAGEBASEURL: ${AMPLIFY_SHARE_PAGE_BASE_URL:-https://one.wso2.com/amplify/celebrate}
+      # Novera (Google Chat assistant), the one announcement channel: the Choreo gateway URL of its
+      # POST /internal/notifications and the client-credentials application subscribed to it. AMPLIFY_ON_NOVERA=false
+      # or empty settings = announcements defer. Local try-out: run local/novera-mock (node server.mjs, :3003) and see
+      # docs/HowToTestLocally/TestNovera.md.
       BAL_CONFIG_VAR_AMPLIFYONNOVERA: ${AMPLIFY_ON_NOVERA:-true}
-      BAL_CONFIG_VAR_AMPLIFYONWEBHOOK: ${AMPLIFY_ON_WEBHOOK:-false}
-      # Novera (Google Chat assistant): the Choreo gateway URL of its POST /internal/notifications and the
-      # client-credentials application subscribed to it. Empty = Novera not configured (announcements defer
-      # unless the webhook is on). Local try-out: run local/novera-mock (node server.mjs, :3003) and see docs/HowToTestLocally/TestNovera.md.
       BAL_CONFIG_VAR_NOVERANOTIFYURL: ${NOVERA_NOTIFY_URL:-}
       BAL_CONFIG_VAR_NOVERATOKENURL: ${NOVERA_TOKEN_URL:-}
       BAL_CONFIG_VAR_NOVERACLIENTID: ${NOVERA_CLIENT_ID:-}
@@ -193,13 +185,14 @@ services:
       BAL_CONFIG_VAR_NOVERASCOPES: ${NOVERA_SCOPES:-}
       # Local only: accept an http notify URL (local/novera-mock). Never set in Choreo.
       BAL_CONFIG_VAR_NOVERAALLOWINSECUREHTTP: ${NOVERA_ALLOW_INSECURE_HTTP:-false}
+      BAL_CONFIG_VAR_NOVERAICONURL: ${NOVERA_ICON_URL:-}
+      BAL_CONFIG_VAR_NOVERADEFAULTIMAGEURL: ${NOVERA_DEFAULT_IMAGE_URL:-}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:9091/ready >/dev/null"]
       interval: 5s
       retries: 30
     depends_on:
       amplify-db-migrate: {condition: service_completed_successfully}
-      chat-stub: {condition: service_started}
       mock-linkedin: {condition: service_started}
     networks: [internal]
 
@@ -277,14 +270,6 @@ services:
       retries: 30
     ports:
       - "127.0.0.1:19091:9091"
-    networks: [internal]
-
-  # Local Google Chat webhook stub (M6a): logs each card (docker compose logs -f chat-stub).
-  # GET /stub/messages, PUT /stub/status/{code}: docker compose exec chat-stub wget -qO- localhost:9095/stub/messages
-  chat-stub:
-    build:
-      context: local/chat-stub
-    read_only: true
     networks: [internal]
 
   # Local people-app directory stub (D13): GET /employees/basic-info from local/people-stub/directory.json

@@ -28,7 +28,7 @@ type ReadyReport record {|
     types:HealthState database;
     # True while a run holds this replica's in-process flag
     boolean runInProgress;
-    # Breaker state per dependency (reported, not fatal: LinkedIn and Chat outages only defer rows)
+    # Breaker state per dependency (reported, not fatal: LinkedIn and Novera outages only defer rows)
     map<string> breakers;
     # What the outbox holds; absent when the database is down or the backlog could not be read. Reported, not
     # fatal: `alerting` is the signal to page on (a row waiting longer than `outboxAlertSeconds`, or one that failed)
@@ -38,7 +38,7 @@ type ReadyReport record {|
     TokenPartitionReport tokenPartitions?;
 |};
 
-# Readiness from its inputs. Only the database gates it: without LinkedIn, Chat or the token keys the run
+# Readiness from its inputs. Only the database gates it: without LinkedIn, Novera or the token keys the run
 # still works and defers those rows (ADR-025), so they are reported, not fatal (as amplify-api's `/ready`).
 #
 # + databaseUp - Database breaker not open and the probe answered
@@ -108,13 +108,11 @@ isolated function validateRunConfig(RunConfig cfg, decimal longestCallSeconds) r
     }
 }
 
-# Longest external call one row can make: the LinkedIn timeout, or what a `CampaignRegistered` row does: the
-# Chat timeout plus its throttle wait and, with Novera on, the token fetch and the notify (each bounded by
-# the Novera timeout) before the best-effort Chat card.
+# Longest external call one row can make: the LinkedIn timeout, or what a `CampaignRegistered` row does with Novera
+# on: the token fetch and the notify, each bounded by the Novera timeout.
 #
 # + return - Seconds
 isolated function longestCallSeconds() returns decimal {
-    decimal chat = chatTimeoutSeconds + chatMinIntervalSeconds;
-    decimal registered = amplifyOnNovera ? 2d * noveraTimeoutSeconds + chat : chat;
+    decimal registered = amplifyOnNovera ? 2d * noveraTimeoutSeconds : 0d;
     return linkedinTimeoutSeconds > registered ? linkedinTimeoutSeconds : registered;
 }

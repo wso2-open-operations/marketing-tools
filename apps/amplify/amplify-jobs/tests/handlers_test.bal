@@ -62,77 +62,55 @@ function aPanicInsideARunReleasesTheFlagAndTheLock() returns error? {
 // ---- CampaignRegistered ----------------------------------------------------------------------------
 
 @test:Config
-function campaignRegisteredDefersWithoutAnyAnnouncementChannel() returns error? {
+function campaignRegisteredDefersWhenNoveraIsOffOrNotConfigured() returns error? {
     World w = harness();
-    w.deps.chat = ();
+    w.deps.novera = ();
     string cid = types:newUuidV7();
     w.mem.putCampaign(openCampaign(cid, time:utcNow()));
     int id = w.queue.enqueue(events:CAMPAIGN_REGISTERED, registered(cid));
     RunReport r = check run(w);
     test:assertEquals(r.deferred, 1);
-    test:assertEquals(w.queue.statusOf(id), ["PENDING", 0,
-        "no announcement channel: Novera and the Google Chat webhook are off or not configured"]);
+    test:assertEquals(w.queue.statusOf(id), ["PENDING", 0, "Novera is off or not configured"]);
 }
 
 @test:Config
-function campaignRegisteredThroughNoveraOnlySendsNoClubCard() returns error? {
+function campaignRegisteredIsAnnouncedThroughNovera() returns error? {
     World w = harness();
-    FakeNovera novera = new;
-    w.deps.chat = ();
-    w.deps.novera = novera;
     string cid = types:newUuidV7();
     w.mem.putCampaign(openCampaign(cid, time:utcNow()));
     int id = w.queue.enqueue(events:CAMPAIGN_REGISTERED, registered(cid));
     _ = check run(w);
-    test:assertEquals(novera.sent(), 1);
+    test:assertEquals(w.novera.sent(), 1);
     test:assertEquals(w.queue.statusOf(id)[0], "DONE");
     var a = check w.mem.announcement(cid);
     test:assertTrue(a !is () && a.space == "novera" && a.sentAt !is (), "announced, space labelled novera");
 }
 
 @test:Config
-function campaignRegisteredWithBothChannelsPostsOnceEachAndNoveraDrivesRetry() returns error? {
+function aNovera503RetriesWithTheSameIdempotencyKey() returns error? {
     World w = harness();
-    FakeNovera novera = new;
-    w.deps.novera = novera;
     string cid = types:newUuidV7();
     w.mem.putCampaign(openCampaign(cid, time:utcNow()));
     int id = w.queue.enqueue(events:CAMPAIGN_REGISTERED, registered(cid));
 
-    novera.setMode("503");
+    w.novera.setMode("503");
     RunReport retried = check run(w);
     test:assertEquals(retried.retried, 1, "a Novera 503 retries the row");
-    test:assertEquals(w.chat.postCount(), 0, "the webhook waits for Novera, so a retry cannot double-post it");
+    test:assertEquals(w.queue.statusOf(id)[0], "PENDING");
+    string? firstKey = w.novera.idempotencyKey();
 
-    novera.setMode("ok");
+    w.novera.setMode("ok");
     w.queue.makeAllDue();
     _ = check run(w);
-    test:assertEquals(novera.sent(), 1);
-    test:assertEquals(w.chat.postCount(), 1);
+    test:assertEquals(w.novera.sent(), 1);
+    test:assertEquals(w.novera.idempotencyKey(), firstKey, "a retry sends the key the first attempt sent");
     test:assertEquals(w.queue.statusOf(id)[0], "DONE");
-}
-
-@test:Config
-function aClubWebhookFailureAfterNoveraAcceptedDoesNotRetryTheAnnouncement() returns error? {
-    World w = harness();
-    FakeNovera novera = new;
-    w.deps.novera = novera;
-    w.chat.setMode("429");
-    string cid = types:newUuidV7();
-    w.mem.putCampaign(openCampaign(cid, time:utcNow()));
-    int id = w.queue.enqueue(events:CAMPAIGN_REGISTERED, registered(cid));
-    _ = check run(w);
-    test:assertEquals(novera.sent(), 1);
-    test:assertEquals(w.queue.statusOf(id)[0], "DONE", "no retry, so Novera never gets the same card twice");
 }
 
 @test:Config
 function aRefusedNoveraAnnouncementFailsWithoutRetry() returns error? {
     World w = harness();
-    FakeNovera novera = new;
-    novera.setMode("400");
-    w.deps.chat = ();
-    w.deps.novera = novera;
+    w.novera.setMode("400");
     string cid = types:newUuidV7();
     w.mem.putCampaign(openCampaign(cid, time:utcNow()));
     int id = w.queue.enqueue(events:CAMPAIGN_REGISTERED, registered(cid));
@@ -163,32 +141,11 @@ function campaignRegisteredForAMissingArchivedOrClosedCampaignIsDoneWithoutACard
 
     RunReport r = check run(w);
     test:assertEquals(r.succeeded, 3);
-    test:assertEquals(w.chat.postCount(), 0, "nothing is announced");
+    test:assertEquals(w.novera.sent(), 0, "nothing is announced");
     test:assertEquals(w.queue.statusOf(missing)[0], "DONE");
     test:assertEquals(w.queue.statusOf(archivedRow)[0], "DONE");
     test:assertEquals(w.queue.statusOf(closedRow)[0], "DONE");
 }
-
-@test:Config
-function campaignCardRejectedFailsTheAnnouncementWithoutAPost() returns error? {
-    World w = harness();
-    RunConfig cfg = {...TEST_CONFIG};
-    cfg.sharePageBaseUrl = "http://not-https.example";
-    w.deps.config = cfg;
-    string cid = types:newUuidV7();
-    w.mem.putCampaign(openCampaign(cid, time:utcNow()));
-    int id = w.queue.enqueue(events:CAMPAIGN_REGISTERED, registered(cid));
-    RunReport r = check run(w);
-    test:assertEquals(r.failed, 1);
-    test:assertEquals(w.chat.postCount(), 0);
-    [string, int, string?] [status, _, lastError] = w.queue.statusOf(id);
-    test:assertEquals(status, "FAILED");
-    test:assertTrue(lastError is string && lastError.startsWith("card rejected"));
-    var a = check w.mem.announcement(cid);
-    test:assertTrue(a !is () && a.failedAt !is (), "announcement FAILED, so the admin retry can re-queue it");
-}
-
-// ---- RepostRequested ---------------------------------------------------------------------------------
 
 @test:Config
 function repostDefersWhenSharingIsOffOrLinkedInIsNotConfigured() returns error? {
@@ -477,7 +434,7 @@ function rowsLeftWhenTheTimeBudgetIsSpentGoBackUntouched() returns error? {
     RunConfig cfg = {...TEST_CONFIG};
     cfg.maxSeconds = 1;
     w.deps.config = cfg;
-    w.chat.setMode("ok", 1.2);
+    w.novera.setMode("ok", 1.2);
     int[] ids = [];
     foreach int i in 0 ..< 3 {
         string cid = types:newUuidV7();

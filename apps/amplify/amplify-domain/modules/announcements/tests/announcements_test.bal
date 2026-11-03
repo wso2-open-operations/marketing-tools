@@ -31,18 +31,19 @@ isolated function code(any|error result) returns string {
 
 @test:Config
 function announcedExactlyOnce() returns error? {
-    Announcement a = check queueAnnouncement((), "c1", 42, "club", T0);
+    Announcement a = check queueAnnouncement((), "c1", 42, T0);
     test:assertEquals(announcementStatus(a), QUEUED);
-    test:assertEquals(a.threadKey, "campaign-c1");
-    test:assertEquals(code(queueAnnouncement(a, "c1", 43, "club", T0)), types:ERR_ALREADY_ANNOUNCED);
+    test:assertEquals(a.space, NOVERA_SPACE);
+    test:assertEquals(a.idempotencyKey, "amplify:c1", "the key Novera gets on every attempt");
+    test:assertEquals(code(queueAnnouncement(a, "c1", 43, T0)), types:ERR_ALREADY_ANNOUNCED);
 }
 
 @test:Config
 function sentFailedAndRetry() returns error? {
-    Announcement a = check queueAnnouncement((), "c1", 42, "club", T0);
-    Announcement sent = check markSent(a, "spaces/club/messages/m1", T0, "spaces/club/threads/t1");
+    Announcement a = check queueAnnouncement((), "c1", 42, T0);
+    Announcement sent = check markSent(a, "novera:c1", T0);
     test:assertEquals(announcementStatus(sent), SENT);
-    test:assertEquals(sent.chatThreadName, "spaces/club/threads/t1");
+    test:assertEquals(sent.messageName, "novera:c1");
     events:OutboxEvent event = campaignAnnouncedEvent(sent);
     test:assertEquals(event.idempotencyKey, "CampaignAnnounced:42");
     test:assertEquals(code(markSent(sent, "x", T0)), types:ERR_ANNOUNCEMENT_NOT_QUEUED);
@@ -58,29 +59,17 @@ function sentFailedAndRetry() returns error? {
 function announcedKeyIsUniqueWhenTheOutboxIdIsMissing() {
     // `outbox_id` is nullable: keying on a `?: 0` default would put every such announcement on
     // `CampaignAnnounced:0` and the unique index would silently drop all but the first.
-    Announcement one = {campaignId: "c1", outboxId: (), space: "club", threadKey: "campaign-c1",
-        chatMessageName: "spaces/club/messages/m1", queuedAt: T0, sentAt: T0, failedAt: (), lastError: ()};
-    Announcement two = {campaignId: "c2", outboxId: (), space: "club", threadKey: "campaign-c2",
-        chatMessageName: "spaces/club/messages/m2", queuedAt: T0, sentAt: T0, failedAt: (), lastError: ()};
+    Announcement one = {campaignId: "c1", outboxId: (), space: "novera", idempotencyKey: "amplify:c1",
+        messageName: "novera:c1", queuedAt: T0, sentAt: T0, failedAt: (), lastError: ()};
+    Announcement two = {campaignId: "c2", outboxId: (), space: "novera", idempotencyKey: "amplify:c2",
+        messageName: "novera:c2", queuedAt: T0, sentAt: T0, failedAt: (), lastError: ()};
     test:assertEquals(campaignAnnouncedEvent(one).idempotencyKey, "CampaignAnnounced:c1");
     test:assertEquals(campaignAnnouncedEvent(two).idempotencyKey, "CampaignAnnounced:c2");
     test:assertNotEquals(campaignAnnouncedEvent(one).idempotencyKey, campaignAnnouncedEvent(two).idempotencyKey);
     // A row that has its outbox id keeps the catalogue key.
-    Announcement keyed = {campaignId: "c3", outboxId: 7, space: "club", threadKey: "campaign-c3",
-        chatMessageName: "spaces/club/messages/m3", queuedAt: T0, sentAt: T0, failedAt: (), lastError: ()};
+    Announcement keyed = {campaignId: "c3", outboxId: 7, space: "novera", idempotencyKey: "amplify:c3",
+        messageName: "novera:c3", queuedAt: T0, sentAt: T0, failedAt: (), lastError: ()};
     test:assertEquals(campaignAnnouncedEvent(keyed).idempotencyKey, "CampaignAnnounced:7");
-}
-
-@test:Config
-function cardLinksToOneWso2SharePage() returns error? {
-    json card = check buildCard({campaignId: "c1", title: "T", summary: (), imageUrl: (), isPriority: false},
-            "https://one.wso2.com/amplify/celebrate/", "https://media.wso2.com/amplify-avatar.png");
-    json[] cards = <json[]>check card.cardsV2;
-    json[] sections = <json[]>check cards[0].card.sections;
-    json[] widgets = <json[]>check sections[0].widgets;
-    json[] buttons = <json[]>check widgets[0].buttonList.buttons;
-    test:assertEquals(check buttons[0].onClick.openLink.url, "https://one.wso2.com/amplify/celebrate?share=c1");
-    test:assertEquals(check cards[0].card.header.imageUrl, "https://media.wso2.com/amplify-avatar.png");
 }
 
 @test:Config

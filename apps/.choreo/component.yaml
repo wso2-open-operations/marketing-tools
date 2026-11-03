@@ -123,28 +123,16 @@ configurations:
         configForm:
           displayName: Current token key id
           type: string
-    - name: BAL_CONFIG_VAR_CHATWEBHOOKURL
+    - name: BAL_CONFIG_VAR_NOVERAICONURL
       valueFrom:
         configForm:
-          displayName: Google Chat webhook URL
-          type: secret
-          required: false
-    - name: BAL_CONFIG_VAR_CHATSPACE
-      valueFrom:
-        configForm:
-          displayName: Chat space label (club or dev-test)
+          displayName: Novera card icon URL (https)
           type: string
           required: false
-    - name: BAL_CONFIG_VAR_CHATCARDAVATARURL
+    - name: BAL_CONFIG_VAR_NOVERADEFAULTIMAGEURL
       valueFrom:
         configForm:
-          displayName: Chat card avatar URL (https)
-          type: string
-          required: false
-    - name: BAL_CONFIG_VAR_CHATDEFAULTIMAGEURL
-      valueFrom:
-        configForm:
-          displayName: Chat card default image URL (public https PNG/JPEG; used when a post has no usable image)
+          displayName: Novera card default image URL (public https PNG/JPEG; used when a post has no usable image)
           type: string
           required: false
     - name: BAL_CONFIG_VAR_SHAREPAGEBASEURL
@@ -185,12 +173,6 @@ configurations:
     - name: BAL_CONFIG_VAR_AMPLIFYONNOVERA
       valueFrom:
         configForm:
-          displayName: Announce shares through Novera (true or false; default true)
-          type: boolean
-          required: false
-    - name: BAL_CONFIG_VAR_AMPLIFYONWEBHOOK
-      valueFrom:
-        configForm:
-          displayName: Announce shares through the Google Chat webhook (true or false; default false)
+          displayName: Announce new posts through Novera (true or false; default true; false is the kill switch)
           type: boolean
           required: false
