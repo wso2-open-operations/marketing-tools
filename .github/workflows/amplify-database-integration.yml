@@ -11,10 +11,16 @@ permissions:
 
 jobs:
   integration:
+    # The oldest supported server (15), the one staging runs (17) and the newest (native uuidv7(), ADR-044).
+    strategy:
+      fail-fast: false
+      matrix:
+        pg: ["15", "17", "18"]
+    name: integration (PostgreSQL ${{ matrix.pg }})
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:18
+        image: postgres:${{ matrix.pg }}
         env:
           POSTGRES_PASSWORD: postgres
         ports:
