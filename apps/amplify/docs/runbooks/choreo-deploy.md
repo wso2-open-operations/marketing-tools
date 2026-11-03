@@ -55,9 +55,10 @@ After each build, confirm the endpoint Choreo shows matches the descriptor (name
 6. **C6 LinkedIn Mock** (dev only; never promote to prod). Endpoints: api `Project`, www `Public` (the browser follows the OAuth redirect). `CLIENTID`/`CLIENTSECRET` = made-up values matching Backend/Jobs in dev, `WWWBASEURL` = the www endpoint's public URL, `BAL_CONFIG_DATA` = `redirectUris = ["<dev One WSO2 callback>"]`. In dev, Backend `LINKEDINAUTHBASEURL` = the mock's **public** www URL (the authorization URL is shown to the browser).
 
 7. **C7 HR Entity access** (team rosters and the leaver sweep, ADR-045). No people-app change is needed.
-   1. People Operations issues Amplify its own client for the **HR Entity GraphQL service** (ask for read-only on `employees` and, if the service can scope it, only `workEmail`, `firstName`, `lastName`, `businessUnit`, `team` and `subTeam`). Note the GraphQL URL, the token URL, the client id and the secret.
+   1. People Operations issues Amplify its own client for the **HR Entity GraphQL service** (ask for read-only on `employees` and, if the service can scope it, only `workEmail`, `firstName`, `lastName`, `businessUnit`, `team` and `subTeam`, plus `houseId` and `house` for houses). Note the GraphQL URL, the token URL, the client id and the secret.
    2. Set C5's `HRENTITYBASEURL`, `HRENTITYTOKENURL`, `HRENTITYCLIENTID` and `HRENTITYCLIENTSECRET` (secret), and the same four on the Jobs component (the leaver sweep). Redeploy both.
-   5. Check: `GET /leaderboard` as an employee shows `teamStatus: OK` and their sub-team. A 500 from people-app means the client id isn't listed or the claim is wrong; a 403 means the route isn't the directory.
+   3. **Houses (2026-11-03).** Ask People Operations which `hr_entity` version the environment runs. Once it is 1.1.1 or later (digiops-hr #2005 adds `houseId` and `house`), set C5's `HRENTITYINCLUDEHOUSE` = `true` and redeploy. Leave it unset before that: an older service fails the whole read for the unknown fields and My Team answers `UNAVAILABLE`. Jobs does not need it.
+   4. Check: `GET /leaderboard` as an employee shows `teamStatus: OK` and their sub-team. A 401 or 403 in the Backend log (`People directory answered 401`) means the HR Entity does not accept the client; `People directory answered with GraphQL errors` right after turning on `HRENTITYINCLUDEHOUSE` means the service is older than 1.1.1 (set it back to unset). With houses on, `GET /leaderboard/groups?by=HOUSE` lists the houses.
 
 ## D. API Proxy (console only)
 
@@ -74,7 +75,7 @@ After each build, confirm the endpoint Choreo shows matches the descriptor (name
 1. **E1** First version **v1.0.0 from `main`**; no extra deployment tracks.
 2. **E2** Build once, promote the same image dev → prod. Only config and secrets differ per environment.
 3. **E3** Before promoting: run DB Migrate in prod, then deploy Jobs, Scheduler, Backend; check Backend `GET /ready` (via the proxy test console) and that the startup log says `Scheduler sync … SYNCED`.
-4. **E4** No CI workflow runs the quality gates yet (the marketing-tools repo has none), so nothing checks a PR automatically. Until one is added, run them by hand before every promotion: `make check` (descriptors, log PII, transaction gate), `scripts/lint-openapi-names.sh`, and `scripts/test-all.sh`. A workflow that runs all of them on every PR is still to be added.
+4. **E4** CI runs part of the quality gates on every pull request (marketing-tools #45 and #55, upstream #247). `.github/workflows/amplify-quality-gates.yml` runs on changes under `apps/amplify/`: the gate scripts' self-tests, `make check` (descriptors, log PII, transaction gate) and `scripts/lint-openapi-names.sh`. `.github/workflows/amplify-database-integration.yml` runs the `amplify-database` integration group on PostgreSQL 15, 17 and 18 when `amplify-database/` changes. CI does not run the other components' unit and integration tests, so run `scripts/test-all.sh` by hand before every promotion.
 
 ## F. Observability
 
@@ -116,6 +117,7 @@ Same names in two components (`DBHOST`, `DBPORT`, `DBNAME`, `DBUSER`, `DBPASSWOR
 | `HRENTITYTOKENURL` | cfg | O | | TBD (C7) |
 | `HRENTITYCLIENTID` | cfg | O | | TBD (C7) |
 | `HRENTITYCLIENTSECRET` | secret | O | | TBD (C7) |
+| `HRENTITYINCLUDEHOUSE` | cfg | O | `false` | Leave empty (default false) until the environment's HR Entity is 1.1.1 or later, then `true` (C7 step 3) |
 | `LINKEDINCLIENTID` | cfg | R | `amplify-local` (mock) | TBD, from the LinkedIn app owner |
 | `LINKEDINCLIENTSECRET` | secret | R | | TBD, from the LinkedIn app owner |
 | `LINKEDINREDIRECTURI` | cfg | R | `http://localhost:3000/amplify/connect/callback` | TBD, the prod One WSO2 callback page |

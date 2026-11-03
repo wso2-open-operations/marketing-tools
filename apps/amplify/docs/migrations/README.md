@@ -1,51 +1,46 @@
 # Database migrations and integration tests
 
 Schema source of truth: `architecture/solution/Phase 1/phase1-data-model.md`. Scripts:
-`amplify-database/migrations/` (V001–V020) and `seed/` (S001–S010). Per-migration notes:
+`amplify-database/migrations/` (V001 to V021; V017 is unused) and `seed/` (S001 to S010). Per-migration notes:
 `2026-10-17-v012-recognition-lock-maintenance-timeout.md`, `2026-10-17-v013-idle-timeout-dashboard-indexes.md`,
-`2026-10-27-v014-point-actions-all-phases.md`. Runner: `amplify-database/main.bal`.
+`2026-10-27-v014-point-actions-all-phases.md`. Runner: `amplify-database/main.bal`. Its settings and files are in
+[amplify-database/README.md](../../amplify-database/README.md).
 
 ## Running the migrate runner
 
-The runner connects as the **bootstrap admin** (Choreo/Aiven `avnadmin`, local `postgres`), because V001
-creates the roles. Configurables (Choreo: secrets / env `BAL_CONFIG_VAR_*`):
-
-| Key | Meaning |
-| --- | --- |
-| `dbHost`, `dbPort`, `dbName`, `dbUser`, `dbSslMode` | Connection (`dbSslMode` defaults to `VERIFY_FULL`; `DISABLE` only locally) |
-| `dbSslRootCert` | Managed Postgres CA PEM path (Choreo file mount, `BAL_CONFIG_VAR_DBSSLROOTCERT`, per environment). The runner warns at start-up when a remote server isn't verified |
-| `dbPassword` | Bootstrap admin password (secret) |
-| `apiDbPassword`, `jobsDbPassword`, `readonlyDbPassword` | Login passwords for the app roles (secrets, 16+ characters). Empty = leave the role as it is |
-| `migrationsDir`, `seedDir`, `dryRun` | Folders, and report-only mode (see below) |
-
-Role passwords never appear in a script. Roles are created `NOLOGIN`; after the scripts the runner calls
-`public.amplify_set_login_password(role, password)` with bind parameters, which quotes with `format(%L)`.
-`amplify_migrate` stays `NOLOGIN`: the runner reaches it through `SET LOCAL ROLE`.
+The runner connects as the one Amplify login user (`dbUser`, password `dbPassword`) and puts one schema first on the
+`search_path` (`dbSchema`, default the user name). There are no app roles and no role passwords: that user owns every
+object and every component connects as it (ADR-043). The DBA creates the login, the schema and the extensions before
+the first run (locally `local/db-init/10-amplify-dba-setup.sh`; check with `amplify-database/checks/d3_single_user.sql`).
+The server must be PostgreSQL 15 or later, and the runner checks this before any script runs
+([ADR-044](../../architecture/decisions/ADR-044-postgresql-15-or-later.md)).
 
 Each script runs in its own transaction under a transaction-level advisory lock, and is recorded in
-`public.schema_version` with a SHA-256 checksum. A rerun applies nothing; a changed applied script stops the run.
-A pending script that sorts below an already-applied version also stops the run: scripts apply in version
-order only, so a late-arriving `V0NN` must be renumbered above the highest applied version.
+`schema_version` (in the Amplify schema) with a SHA-256 checksum. A rerun applies nothing; a changed applied script
+stops the run. A pending script that sorts below an already-applied version also stops the run: scripts apply in
+version order only, so a late-arriving `V0NN` must be renumbered above the highest applied version.
 
-`dryRun = true` connects to the database but creates nothing (not even `public.schema_version`) and runs no
-script. It logs each script as `pending`, `applied` or `changed` and fails when any is `changed`, so it doubles
-as a checksum check before a deploy. Roles and passwords are not touched.
+`dryRun = true` connects to the database but creates nothing (not even `schema_version`) and runs no script. It
+logs each script as `PENDING`, `APPLIED` or `CHANGED` and fails on a changed or out-of-order script, so it doubles
+as a checksum check before a deploy.
 
-Local: `make up` runs it once before api/jobs start; `make seed` reruns it (compose pins `postgres:17`).
+Local: `make up` runs it once before api/jobs start; `make seed` reruns it (Compose pins `postgres:17.11`).
 
 ## Integration tests (PostgreSQL 17)
 
 `bal test` without a database passes: the `integration` group returns early unless enabled.
+`scripts/test-all.sh` runs the whole set (a throwaway `postgres:17.11`, mock_linkedin, every component). By hand:
 
 ```sh
 docker run -d --name amplify-pg17 -e POSTGRES_PASSWORD=postgres -p 55432:5432 postgres:17
 
-# 1. Runner: drops/creates `amplify_it`, migrates fresh, reruns (idempotent), checksum guard, partition tests.
+# 1. Runner: drops/creates `amplify_it` and its login user (`amplify_it_user`), migrates fresh, reruns
+#    (idempotent), checksum guard, partition tests.
 cd amplify-database
 BAL_CONFIG_VAR_ITENABLED=true BAL_CONFIG_VAR_DBPORT=55432 BAL_CONFIG_VAR_DBPASSWORD=postgres \
   BAL_CONFIG_VAR_DBSSLMODE=DISABLE bal test --groups integration
 
-# 2. Repositories and the M5 API flows (integration_m5_test.bal), as amplify_api / amplify_jobs against `amplify_it`.
+# 2. Repositories and the M5 API flows (integration_m5_test.bal), as the single login user against `amplify_it`.
 cd ../amplify-domain
 AMPLIFY_IT=true AMPLIFY_IT_DB_PORT=55432 bal test --groups integration
 
@@ -65,7 +60,7 @@ cd ../amplify-jobs
 AMPLIFY_IT=true AMPLIFY_IT_DB_PORT=55432 bal test --groups integration
 pkill -f mock_linkedin
 
-docker rm -f amplify-pg18
+docker rm -f amplify-pg17
 ```
 
 Step 3 registers a campaign (card to the stub, threaded `campaign-{id}`), connects through the mock OAuth
@@ -74,8 +69,8 @@ standing, correlation ids in audit, rerun safety (no second post, card or ledger
 replicas (advisory lock), stale-lock release and the `Idempotency-Key` purge. `bal run` of the mock rewrites
 its `Dependencies.toml`; revert it.
 
-The domain tests read environment variables (`AMPLIFY_IT`, `AMPLIFY_IT_DB_HOST`, `_PORT`, `_NAME`,
-`_API_PASSWORD`, `_JOBS_PASSWORD`, `_SSL`) instead of configurables: a configurable in the root test module
+The domain and jobs tests read environment variables (`AMPLIFY_IT`, `AMPLIFY_IT_DB_HOST`, `_PORT`, `_NAME`,
+`_LOGIN_USER`, `_LOGIN_PASSWORD`; the domain tests also `_SSL`, `_ADMIN_USER`, `_ADMIN_PASSWORD`) instead of configurables: a configurable in the root test module
 is "unused" in every other module's test run and fails it. Ids are fresh UUIDv7s, so step 2 can run again.
 
 ## Driver notes (learned the hard way)

@@ -192,7 +192,7 @@ Per environment (dev, prod), for each of the three components **[console]**:
 
 ## 13. People directory (team rosters)
 
-My Team and the Team page's team scope come from the HR Entity GraphQL service (ADR-019, ADR-045). Amplify Backend fetches the whole directory in pages, groups everyone by sub-team (team when there's none) under their business unit and keeps that index (teams and names; no houses yet) in memory for 24 hours (`ROSTERCACHESECONDS`, default 86400). Nothing is written to the database or the logs.
+My Team and the Team page's team scope come from the HR Entity GraphQL service (ADR-019, ADR-045). Amplify Backend fetches the whole directory in pages, groups everyone by sub-team (team when there's none) under their business unit and keeps that index (teams, names, and houses when `HRENTITYINCLUDEHOUSE` is on) in memory for 24 hours (`ROSTERCACHESECONDS`, default 86400). Nothing is written to the database or the logs.
 
 - **Someone moved team and still sees the old one.** Expected for up to 24 hours. To pick it up now, restart Amplify Backend; the next leaderboard read fetches the directory again.
 - **`teamStatus: NO_TEAM` for one person.** They aren't in the directory (only Active and Marked leaver employees are), their HR record has no team, or their Amplify email doesn't match their HR `workEmail`. Compare the two emails first.
@@ -202,6 +202,7 @@ My Team and the Team page's team scope come from the HR Entity GraphQL service (
   3. `People directory answered with GraphQL errors`: the query asks for a field the service doesn't offer, or the client lacks scope for one. The log doesn't carry the service's message (it can name people); ask People Operations for the service log.
   4. `/ready` shows the `roster` breaker `OPEN`: the HR Entity or the gateway is down. It closes by itself after 30 s once they're back.
 - **A request is slow once, then fast.** The HR Entity is down: the first failed read retries (about 21 s at the defaults, `HRENTITYRETRY*`), then the breaker opens and the next calls fail at once for 30 s. Lower `HRENTITYRETRYCOUNT` to shorten it.
+- **The house board says "No houses to show" or My Team shows no houses.** `HRENTITYINCLUDEHOUSE` is unset (the default). Turn it on only when People Operations confirms the environment runs hr_entity 1.1.1 or later (choreo-deploy C7 step 3). If GraphQL errors start right after turning it on, the service is older: unset it and redeploy. An employee with no house in HR is left out of the house board. House images are not served yet (ADR-046).
 - **A refresh fails after a good load.** Amplify keeps serving the old index and logs `People directory refresh failed; using the cached teams`. Nothing to do unless it lasts; teams just stop updating.
 - **Rotating the client secret.** New secret for the HR Entity client, update `HRENTITYCLIENTSECRET` (Backend and Jobs), redeploy both.
 

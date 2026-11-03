@@ -14,7 +14,7 @@ All in `main.bal`.
 
 | Route | What it does |
 | --- | --- |
-| `POST /graphql` | The HR Entity `employees(filter, limit, offset)` query. Reads `variables.filter.employeeStatus` (a list of statuses), `variables.limit` (default 1000) and `variables.offset` (default 0). Answers `{data: {employees: [...]}}`. A row whose `employeeStatus` is not in the list is left out. It ignores the query text and returns whole rows, not only the requested fields |
+| `POST /graphql` | The HR Entity `employees(filter, limit, offset)` query. Reads `variables.filter.employeeStatus` (a list of statuses), `variables.limit` (default 1000) and `variables.offset` (default 0). Answers `{data: {employees: [...]}}`. A row whose `employeeStatus` is not in the list is left out. It returns whole rows except `house` and `houseId`, which it adds only when the query text names `house`, as the real service answers only the fields asked for |
 | `GET /employees/basic-info` | The whole roster as a JSON array. This is the old people-app route. Only the local One WSO2 (photos, names) still reads it |
 | `GET /health` | `{status: "UP"}` |
 
@@ -29,6 +29,8 @@ Both data routes answer 500 when `directoryFile` is missing or not a JSON array.
 | `allowOrigins` | `["http://localhost:3000"]` | Browser origins that may read it |
 
 A row has the fields of the example file: `employeeId`, `firstName`, `lastName`, `workEmail`, `employeeThumbnail`, `designation`, `jobBand`, `startDate`, `managerEmail`, `businessUnit`, `house`, `team`, `subTeam`, `unit`, `employmentType`, `company`, `workLocation`, `employeeStatus`. Use `Active`, `Marked leaver` or `Left` for the status.
+
+Houses: hr_entity 1.1.1 has `houseId` (an integer, null when there is no house) and `house` (the house name). The example rows carry `houseId` and `house` with made-up names, not the real four (CloudBots, Titans, Legions, Wild Boars). The stub answers them only when the query names `house`, so locally the house board stays empty until `hrEntityIncludeHouse` is on (`HR_ENTITY_INCLUDE_HOUSE=true` in `local/.env`), the same as against a real service. `houseId` must be a number or null in your `directory.json`, because a string fails amplify-api's read.
 
 ## Files
 

@@ -4,6 +4,7 @@
 **Lifecycle:** SDLC for WSO2 Digital Team (9 stages, governance outputs and channels)
 **Phase source of truth:** "Amplify Requirements / Phase Breakdown" (screenshot, 2026-10-24). Older phase breakdowns in `CLAUDE.md`, the requirements map and the plan are superseded for this epic.
 **Status evidence:** git history and code as of 2026-10-24, and the [SDLC walk re-walk of 23 Oct](sdlc-checklist-walk.md) and the code change audit of 24 Oct
+**Updated 2026-11-03:** T4.3, T6.1, T6.4, F10.3 and FP12 (upstream merges of 2 Nov; the HR Entity directory, ADR-045). Other rows are as of 24 Oct; the plan ([phase1-planned-todos.md](phase1-planned-todos.md)) is the tracker.
 **Scripts:** two helper scripts built the 108 issues (run on 24 Oct) and regroup them by phase. Both dry-run by default; `--apply` changes GitHub. They live in the workspace repo, outside `projects/` (see the PR plan note on moving them).
 
 ---
@@ -133,7 +134,7 @@ Activities are the governance and delivery steps the 23 Oct re-walk found open. 
 | --- | --- | --- |
 | T4.1 | none | Deploy amplify-api, amplify-jobs and the database to Choreo dev (M8b, due 21 Oct, missed) |
 | T4.2 | none | Pull review data for each merged PR and confirm two approvals |
-| T4.3 | none | Raise upstream PRs in reviewable slices of about 200 to 400 LOC |
+| T4.3 | none | Raise upstream PRs in reviewable slices of about 200 to 400 LOC. Done 2026-11-02: marketing-tools #229–#249 and one-wso2 #406–#428 merged; follow-ups marketing-tools #252 and one-wso2 #434 open |
 
 ### Stage 5: Security Review
 
@@ -147,10 +148,10 @@ Activities are the governance and delivery steps the 23 Oct re-walk found open. 
 
 | Key | Phase | Activity |
 | --- | --- | --- |
-| T6.1 | 1 | Open and merge the upstream people-app PR, and deploy it. Blocks My Team |
+| T6.1 | 1 | Open and merge the upstream people-app PR, and deploy it. Blocks My Team. Superseded 2026-11-03 (ADR-045): people-ops-suite #380 and #387 merged, then reverted by #388 and #389; My Team now waits on Amplify's HR Entity client (T6.4) |
 | T6.2 | 1 | Deploy in order: wso2-digital-agents `4b7d5ff`, marketing-tools `a3c7b7e`, one-wso2 `c63e051` |
 | T6.3 | 1 | Write the rollback plan: backup restore and pinned image tags |
-| T6.4 | 1 | Set Choreo connections and secrets: people directory and Novera credentials |
+| T6.4 | 1 | Set Choreo connections and secrets: people directory and Novera credentials. Since 2026-11-03 the directory is the HR Entity GraphQL service: get Amplify's client from People Operations and set `HRENTITY*` (ADR-045) |
 | T6.5 | 1 | Get the production deployment approval by email, after T2.1 and T5.3 |
 
 ### Stage 7: UAT
@@ -297,7 +298,7 @@ Status is written in the feature body. "Built, ahead of phase N" means the code 
 | --- | --- | --- | --- |
 | F10.1 | Company top three this month, cached 2 hours (ADR-037) | Built | `/leaderboard/top`; `TopAmplifiersPodium.tsx`; `499bfd0`, `ff4d031` |
 | F10.2 | Personal standing: own rank and gap | Built | `/leaderboard/people`; "My position" in `LeaderboardPanels` |
-| F10.3 | My Team leaderboard from the people directory | Built, gated on people-app deploy | `/team`, `/leaderboard/groups`; `37a6eba`; people-ops-suite `8d39e2df` |
+| F10.3 | My Team leaderboard from the people directory | Built, gated on the HR Entity client (ADR-045, was people-app). Full team page built (one-wso2 #23, #27). Houses: **(2026-11-03):** HR Entity 1.1.1 has `houseId` and `house` (digiops-hr #2005); asked for behind `hrEntityIncludeHouse` (off until the environment runs 1.1.1). House cache built in amplify-api, not wired; image URL source open (ADR-046) | `/team`, `/leaderboard/groups`; `37a6eba`; marketing-tools #59; `TeamRosterPage.tsx` |
 | F10.4 | Open leaderboards by company, BU and team, with group boards (ADR-035) | Built | `/leaderboard/groups`; `4746d57`, `68a22a3` |
 
 ### R11: Reports (phase 1)
@@ -329,7 +330,7 @@ Not a PO requirement. This is the work every requirement item stands on. It sits
 | FP9 | Security documents: threat model v0.3, deployment checklist, token and OAuth notes | Built as markdown, stale, `.docx` not generated | `1e30782` |
 | FP10 | Runbooks, test guide, 37 ADRs and module READMEs | Built | `1e30782`, `51aef1b`, `1a209f1` |
 | FP11 | Automatic submodule pointer bump (rolling PR) | Built | `bump-submodule-pointers.yml`; `9776cd7` |
-| FP12 | People-app service-client access to the employee directory | Built on the fork, upstream PR not open | people-ops-suite `8d39e2df`, `81a2b73e` |
+| FP12 | People-app service-client access to the employee directory | Superseded by the HR Entity GraphQL read (ADR-045). Upstream #380 and #387 merged 2 Nov, reverted by #388 and #389 on 3 Nov; Amplify doesn't use it | people-ops-suite `8d39e2df`, `81a2b73e`; marketing-tools #59 |
 
 **Totals:** 9 stages, 25 activity tasks, 12 requirement items, 1 platform item, 61 features (49 under requirements, 12 under platform). 108 issues were created on 24 Oct. The phase restructure adds 26 (4 phase issues, 21 stage copies for phases 2 to 4, and R11b), for 134 in all.
 
