@@ -16,6 +16,7 @@
 
 
 import ballerina/http;
+import ballerina/lang.runtime;
 import ballerina/test;
 
 @test:Config
@@ -44,6 +45,7 @@ function noveraTokenEndpointDownIsARetryableUnavailableNotAStartUpFailure() {
         if result is NoveraError {
             test:assertEquals(result.detail().code, "UNAVAILABLE");
             test:assertTrue(result.detail().retryable);
+            test:assertEquals(result.detail().delivered, "NO", "no request reached Novera");
         }
     }
 }
@@ -63,22 +65,29 @@ service / on noveraStub {
         lock {
             noveraStubIdempotencyKey = key is string ? key : ();
         }
-        http:Response res = new;
+        int status;
         lock {
-            res.statusCode = noveraStubStatus;
+            status = noveraStubStatus;
         }
+        if status == 0 {
+            // Answer only after the client gave up: the request arrived, the answer was lost.
+            runtime:sleep(2);
+            status = 202;
+        }
+        http:Response res = new;
+        res.statusCode = status;
         return res;
     }
 }
 
-function noveraAnswers(int status) returns NoveraError? {
+function noveraAnswers(int status, decimal timeoutSeconds = 5) returns NoveraError? {
     lock {
         noveraStubStatus = status;
     }
     NoveraClient|error novera = new (string `http://127.0.0.1:${NOVERA_STUB_PORT}/internal/notifications`,
-        string `http://127.0.0.1:${NOVERA_STUB_PORT}/token`, "id", "secret", [], 5, allowInsecureHttp = true);
+        string `http://127.0.0.1:${NOVERA_STUB_PORT}/token`, "id", "secret", [], timeoutSeconds, allowInsecureHttp = true);
     if novera is error {
-        return noveraError("UNAVAILABLE", "client not built", (), false);
+        return noveraError("UNAVAILABLE", "client not built", (), false, "NO");
     }
     return novera.notify({'source: "amplify", title: "T", subtitle: "S", body: "B",
         button: {url: "https://one.wso2.com", label: "Amplify"}}, "amplify:c1", ());
@@ -107,4 +116,70 @@ function noveraStatusesAreClassifiedByWhoCanFixThem() {
     test:assertTrue(limited is NoveraError && limited.detail().code == "RATE_LIMITED" && limited.detail().retryable);
     NoveraError? down = noveraAnswers(503);
     test:assertTrue(down is NoveraError && down.detail().code == "UNAVAILABLE" && down.detail().retryable);
+}
+
+@test:Config
+function noveraErrorsSayWhetherTheCardMayHaveGoneOut() {
+    // Definitely not sent: retried automatically.
+    foreach int status in [400, 401, 403, 429, 503] {
+        NoveraError? e = noveraAnswers(status);
+        test:assertTrue(e is NoveraError && e.detail().delivered == "NO", string `HTTP ${status} sent nothing`);
+    }
+    // Novera or the gateway may have handed the card on: never retried automatically.
+    foreach int status in [500, 502, 504, 505] {
+        NoveraError? e = noveraAnswers(status);
+        test:assertTrue(e is NoveraError && e.detail().delivered == "UNKNOWN" && !e.detail().retryable
+                && e.detail().code == "OUTCOME_UNKNOWN", string `HTTP ${status} may have sent`);
+    }
+}
+
+@test:Config
+function aLostAnswerAfterTheRequestWasSentIsDeliveryUnknown() {
+    NoveraError? e = noveraAnswers(0, 1);
+    test:assertTrue(e is NoveraError, "the client timed out");
+    if e is NoveraError {
+        test:assertEquals(e.detail().delivered, "UNKNOWN");
+        test:assertEquals(e.detail().code, "OUTCOME_UNKNOWN");
+        test:assertFalse(e.detail().retryable);
+        test:assertEquals(e.detail().httpStatus, ());
+    }
+}
+
+@test:Config
+function buttonUrlSettingIsCheckedAtStartUp() {
+    test:assertEquals(validateNoveraButtonUrl("", false), (), "empty: announcements wait, start-up goes on");
+    test:assertEquals(validateNoveraButtonUrl("https://one.wso2.com/amplify/celebrate?share={campaignId}", false), ());
+    error? noPlaceholder = validateNoveraButtonUrl("https://one.wso2.com/amplify/celebrate", false);
+    test:assertTrue(noPlaceholder is error && noPlaceholder.message().startsWith("noveraButtonUrl is invalid"));
+    test:assertTrue(validateNoveraButtonUrl("http://one.wso2.com/amplify/celebrate?share={campaignId}", false) is error,
+            "a non-https template is refused");
+    test:assertEquals(validateNoveraButtonUrl("http://localhost:3000/amplify/celebrate?share={campaignId}", true), (),
+            "http only on the local stack");
+    test:assertTrue(validateNoveraButtonUrl("https://x.example/{campaignId}/{other}", false) is error);
+}
+
+@test:Config
+function aRefusedConnectionMeansNothingWasSentAndIsRetryable() {
+    // The token endpoint answers; the notify port is closed, so the connection is refused before any request.
+    NoveraClient|error novera = new ("http://127.0.0.1:1/internal/notifications",
+        string `http://127.0.0.1:${NOVERA_STUB_PORT}/token`, "id", "secret", [], 3, allowInsecureHttp = true);
+    test:assertTrue(novera is NoveraClient);
+    if novera is NoveraClient {
+        NoveraError? e = novera.notify({'source: "amplify", title: "T", subtitle: "S", body: "B",
+            button: {url: "https://one.wso2.com", label: "Amplify"}}, "amplify:c1", ());
+        test:assertTrue(e is NoveraError);
+        if e is NoveraError {
+            test:assertEquals(e.detail().delivered, "NO", "a refused connection cannot have carried the request");
+            test:assertTrue(e.detail().retryable);
+            test:assertEquals(e.detail().code, "UNAVAILABLE");
+        }
+    }
+}
+
+@test:Config
+function onlyConnectFailuresAreSeenAsBeforeSending() {
+    test:assertTrue(failedBeforeSending(error("Connection refused: /127.0.0.1:1")));
+    test:assertTrue(failedBeforeSending(error("Something failed", error("java.net.UnknownHostException: novera.example"))));
+    test:assertFalse(failedBeforeSending(error("Idle timeout triggered before initiating inbound response")));
+    test:assertFalse(failedBeforeSending(error("Connection reset by peer")));
 }

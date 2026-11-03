@@ -16,5 +16,5 @@ repository = "local"
 [[dependency]]
 org = "wso2"
 name = "amplify_domain"
-version = "0.5.0"
+version = "0.6.0"
 repository = "local"

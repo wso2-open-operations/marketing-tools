@@ -72,7 +72,7 @@ configurations:
       value: ""
     - name: BAL_CONFIG_VAR_NOVERADEFAULTIMAGEURL
       value: ""
-    - name: BAL_CONFIG_VAR_SHAREPAGEBASEURL
+    - name: BAL_CONFIG_VAR_NOVERABUTTONURL
       value: ""
     - name: BAL_CONFIG_VAR_NOVERANOTIFYURL
       value: ""

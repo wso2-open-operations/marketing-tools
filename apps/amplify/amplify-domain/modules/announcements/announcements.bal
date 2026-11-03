@@ -26,6 +26,12 @@ public const string NOVERA_SOURCE = "amplify";
 public const string NOVERA_SPACE = "novera";
 # Label of the button on Novera's card.
 public const string CARD_BUTTON_TEXT = "Amplify";
+# Placeholder in the button URL template (`noveraButtonUrl`) that is replaced with the campaign id.
+public const string BUTTON_URL_PLACEHOLDER = "{campaignId}";
+# Start of `last_error` on an announcement whose delivery can't be known (never sent again automatically).
+public const string DELIVERY_UNKNOWN = "Delivery unknown:";
+# Error code for a button URL template that can't give a link.
+public const string ERR_INVALID_BUTTON_URL = "INVALID_BUTTON_URL";
 # Novera's limits for `title` and `body`, in characters.
 const int NOVERA_LINE_MAX = 300;
 const int NOVERA_BODY_MAX = 5000;

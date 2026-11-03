@@ -94,7 +94,53 @@ public isolated function markFailed(Announcement announcement, string lastError,
     return failed;
 }
 
-# Admin retry (`POST /admin/announcements/{id}/retry`): only a `FAILED` announcement is re-queued.
+# Records that a send is about to start: the attempt marker is saved before Novera is called, so a later run can
+# tell that an earlier attempt may already have reached Novera (Novera doesn't dedupe; owner decision 2026-11-03).
+#
+# + announcement - Queued announcement
+# + now - Current time
+# + return - The announcement carrying the marker, or `ANNOUNCEMENT_NOT_QUEUED`
+public isolated function markAttempted(Announcement announcement, time:Utc now) returns Announcement|types:DomainError {
+    check ensureQueued(announcement);
+    Announcement attempted = announcement.clone();
+    attempted.attemptedAt = now;
+    return attempted;
+}
+
+# Clears the attempt marker after a call that definitely sent nothing (the token endpoint or an open breaker
+# stopped it before the request, or Novera answered 401, 403, 429 or 503), so the automatic retry may send.
+#
+# + announcement - Queued announcement carrying the marker
+# + return - The announcement without the marker, or `ANNOUNCEMENT_NOT_QUEUED`
+public isolated function clearAttempt(Announcement announcement) returns Announcement|types:DomainError {
+    check ensureQueued(announcement);
+    Announcement cleared = announcement.clone();
+    cleared.attemptedAt = ();
+    return cleared;
+}
+
+# True when a queued announcement carries the attempt marker: an earlier attempt may have reached Novera.
+#
+# + announcement - Announcement
+# + return - True when queued with `attemptedAt` set
+public isolated function hasUnfinishedAttempt(Announcement announcement) returns boolean =>
+    announcementStatus(announcement) == QUEUED && announcement.attemptedAt !is ();
+
+# Fails an announcement whose delivery can't be known (an earlier attempt may have reached Novera, or the call
+# lost its answer). It is never sent again automatically: a person checks Novera and uses the admin retry only if
+# the card did not go out. The attempt marker stays as evidence.
+#
+# + announcement - Queued announcement
+# + now - Current time
+# + reason - Safe text for why the outcome is unknown
+# + return - The failed announcement (`lastError` starts with `Delivery unknown:`), or `ANNOUNCEMENT_NOT_QUEUED`
+public isolated function markDeliveryUnknown(Announcement announcement, time:Utc now,
+        string reason = "an earlier attempt may have reached Novera") returns Announcement|types:DomainError {
+    return markFailed(announcement, string `${DELIVERY_UNKNOWN} ${reason}; check Novera before retrying`, now);
+}
+
+# Admin retry (`POST /admin/announcements/{id}/retry`): only a `FAILED` announcement is re-queued. Retrying is the
+# person's decision to send again, so both the failure and the attempt marker are cleared.
 #
 # + announcement - Failed announcement
 # + return - The re-queued announcement, or `ANNOUNCEMENT_NOT_FAILED`
@@ -104,6 +150,7 @@ public isolated function retryAnnouncement(Announcement announcement) returns An
     }
     Announcement queued = announcement.clone();
     queued.failedAt = ();
+    queued.attemptedAt = ();
     return queued;
 }
 
@@ -118,15 +165,15 @@ isolated function ensureQueued(Announcement announcement) returns types:DomainEr
 # long title never blocks an announcement.
 #
 # + campaign - Campaign
-# + sharePageBaseUrl - One WSO2 Celebrate page; the link adds `?share=<campaignId>`
+# + buttonUrlTemplate - The button's link (`noveraButtonUrl`): every `{campaignId}` is replaced with the campaign id
 # + iconUrl - Icon beside the title, kept only when it is https
 # + defaultImageUrl - Picture used when the campaign's own image is missing or unusable (Chat fetches it, so it
 # must be public https)
-# + return - The notification: icon, title, subtitle, picture, summary and an Amplify button
-public isolated function buildNoveraNotification(CampaignCardSource campaign, string sharePageBaseUrl,
-        string? iconUrl = (), string? defaultImageUrl = ()) returns NoveraNotification {
-    string base = sharePageBaseUrl.endsWith("/") ? sharePageBaseUrl.substring(0, sharePageBaseUrl.length() - 1)
-        : sharePageBaseUrl;
+# + return - The notification: icon, title, subtitle, picture, summary and an Amplify button, or
+# `INVALID_BUTTON_URL` when the template can't give a link (never a card without a button)
+public isolated function buildNoveraNotification(CampaignCardSource campaign, string buttonUrlTemplate,
+        string? iconUrl = (), string? defaultImageUrl = ()) returns NoveraNotification|types:DomainError {
+    string buttonUrl = check buttonUrlFor(buttonUrlTemplate, campaign.campaignId);
     string? summary = campaign.summary;
     string body = summary is () || summary.trim() == "" ? "A new post is ready to share." : summary.trim();
     NoveraNotification n = {
@@ -134,8 +181,7 @@ public isolated function buildNoveraNotification(CampaignCardSource campaign, st
         title: cutTo(campaign.title.trim(), NOVERA_LINE_MAX),
         subtitle: campaign.isPriority ? "Amplify · Priority" : "Amplify",
         body: cutTo(body, NOVERA_BODY_MAX),
-        button: {url: string `${base}${base.includes("?") ? "&" : "?"}share=${campaign.campaignId}`,
-            label: CARD_BUTTON_TEXT}
+        button: {url: buttonUrl, label: CARD_BUTTON_TEXT}
     };
     if iconUrl is string && iconUrl.startsWith("https://") {
         n.iconUrl = iconUrl;
@@ -147,6 +193,47 @@ public isolated function buildNoveraNotification(CampaignCardSource campaign, st
         n.imageUrl = defaultImageUrl;
     }
     return n;
+}
+
+# Checks a button URL template (`noveraButtonUrl`): an https URL (http only when the local stack allows it) that
+# contains `{campaignId}` and no other braces or whitespace.
+#
+# + template - The template
+# + allowInsecureHttp - Local stack only: accept an http URL
+# + return - `INVALID_BUTTON_URL` naming the problem, or `()`
+public isolated function checkButtonUrlTemplate(string template, boolean allowInsecureHttp = false)
+        returns types:DomainError? {
+    string lower = template.toLowerAscii();
+    if !lower.startsWith("https://") && !(allowInsecureHttp && lower.startsWith("http://")) {
+        return types:domainError(ERR_INVALID_BUTTON_URL, allowInsecureHttp
+            ? "The button URL must start with https:// or http://" : "The button URL must start with https://");
+    }
+    _ = check buttonUrlFor(template, "00000000-0000-0000-0000-000000000000");
+}
+
+# The button's link for one campaign: `{campaignId}` replaced, and nothing left that looks like a placeholder.
+#
+# + template - The template
+# + campaignId - Campaign id (a uuid)
+# + return - The link, or `INVALID_BUTTON_URL`
+isolated function buttonUrlFor(string template, string campaignId) returns string|types:DomainError {
+    string trimmed = template.trim();
+    if trimmed == "" {
+        return types:domainError(ERR_INVALID_BUTTON_URL, "The button URL is not configured");
+    }
+    string lower = trimmed.toLowerAscii();
+    if !lower.startsWith("https://") && !lower.startsWith("http://") {
+        return types:domainError(ERR_INVALID_BUTTON_URL, "The button URL must be an http(s) URL");
+    }
+    if !trimmed.includes(BUTTON_URL_PLACEHOLDER) {
+        return types:domainError(ERR_INVALID_BUTTON_URL, "The button URL must contain " + BUTTON_URL_PLACEHOLDER);
+    }
+    string url = re `\{campaignId\}`.replaceAll(trimmed, campaignId);
+    if url.includes("{") || url.includes("}") || re `\s`.find(url) !is () {
+        return types:domainError(ERR_INVALID_BUTTON_URL,
+            "The button URL may contain no braces other than " + BUTTON_URL_PLACEHOLDER + " and no spaces");
+    }
+    return url;
 }
 
 isolated function cutTo(string text, int max) returns string => text.length() <= max ? text : text.substring(0, max);

@@ -17,8 +17,8 @@
 
 // PostgreSQL reads of `announcement` for the admin screen and dashboard (M5), and the admin retry.
 // `amplify_api` can only read `announcement`; the jobs worker owns its writes. A retry
-// re-queues the announcement's `CampaignRegistered` outbox row instead (ADR-024): the worker sends it to Novera
-// again and clears `failed_at` when Novera accepts it.
+// re-queues the announcement's `CampaignRegistered` outbox row instead (ADR-024): the worker clears `failed_at` and
+// `attempted_at` (the person decided to send again) and sends it to Novera.
 // Column names predate Novera: `thread_key` holds the idempotency key and `chat_message_name` the delivery marker.
 // `chat_thread_name` (V011, Club webhook threads) is no longer read or written; old rows keep their value.
 
@@ -42,6 +42,7 @@ type AnnouncementRow record {|
     time:Utc? sent_at;
     time:Utc? failed_at;
     string? last_error;
+    time:Utc? attempted_at;
 |};
 
 # Persistence port for the admin side of S5.
@@ -83,7 +84,7 @@ public isolated class PgAnnouncementRepository {
     public isolated function findByCampaign(string campaignId) returns Announcement|error? {
         AnnouncementRow|error row = self.db->queryRow(`
             SELECT campaign_id::text AS campaign_id, outbox_id, space, thread_key, chat_message_name,
-                   queued_at, sent_at, failed_at, last_error
+                   queued_at, sent_at, failed_at, last_error, attempted_at
             FROM announcement WHERE campaign_id = CAST(${campaignId} AS uuid)`);
         if row is error {
             return store:isNoRows(row) ? () : row;
@@ -95,7 +96,7 @@ public isolated class PgAnnouncementRepository {
         sql:ParameterizedQuery cond = status is () ? `` : `WHERE status = ${status}`;
         stream<AnnouncementRow, error?> rows = self.db->query(sql:queryConcat(`
             SELECT campaign_id::text AS campaign_id, outbox_id, space, thread_key, chat_message_name,
-                   queued_at, sent_at, failed_at, last_error
+                   queued_at, sent_at, failed_at, last_error, attempted_at
             FROM announcement_v `, cond, ` ORDER BY queued_at DESC LIMIT ${'limit}`));
         return from AnnouncementRow r in rows
             select toAnnouncement(r);
@@ -161,9 +162,11 @@ public isolated class PgAnnouncementWriter {
             ON CONFLICT (campaign_id) DO NOTHING`);
     }
 
-    # Stores a sent or failed announcement with its events and an audit row, in one transaction.
+    # Stores a sent, failed or attempted announcement with its events and an audit row, in one transaction. The
+    # attempt marker (`attempted_at`) is written here too, so it is durable before the Novera call starts.
     #
-    # + announcement - From `markSent` / `markFailed` / `retryAnnouncement`
+    # + announcement - From `markAttempted` / `clearAttempt` / `markSent` / `markFailed` / `markDeliveryUnknown` /
+    # `retryAnnouncement`
     # + outbox - `CampaignAnnounced` when sent
     # + return - An error
     public isolated function save(Announcement announcement, events:OutboxEvent[] outbox) returns error? {
@@ -179,11 +182,13 @@ public isolated class PgAnnouncementWriter {
                 UPDATE announcement
                 SET chat_message_name = ${a.messageName},
                     sent_at = CAST(${store:ts(a.sentAt)} AS timestamptz),
-                    failed_at = CAST(${store:ts(a.failedAt)} AS timestamptz), last_error = ${a.lastError}
+                    failed_at = CAST(${store:ts(a.failedAt)} AS timestamptz), last_error = ${a.lastError},
+                    attempted_at = CAST(${store:ts(a.attemptedAt)} AS timestamptz)
                 WHERE campaign_id = CAST(${a.campaignId} AS uuid)`);
             _ = check store:writeOutbox(self.db, outbox, self.actor.correlationId);
             string action = outbox.length() > 0 ? outbox[0].eventType
-                : a.failedAt is () ? "AnnouncementQueued" : "AnnouncementFailed";
+                : a.failedAt !is () ? "AnnouncementFailed"
+                : a.attemptedAt !is () ? "AnnouncementAttempted" : "AnnouncementQueued";
             check store:writeAudit(self.db, store:auditOf(self.actor, action, ANNOUNCEMENT_TABLE, a.campaignId,
                     {status: announcementStatus(a), space: a.space}));
             check commit;
@@ -218,5 +223,6 @@ isolated function toAnnouncement(AnnouncementRow r) returns Announcement => {
     queuedAt: r.queued_at,
     sentAt: r.sent_at,
     failedAt: r.failed_at,
-    lastError: r.last_error
+    lastError: r.last_error,
+    attemptedAt: r.attempted_at
 };

@@ -50,7 +50,8 @@ type RunConfig record {|
     decimal deferSeconds;
     int linkedinMaxPostsPerRun;
     int linkedinMaxPostsPerDay;
-    string sharePageBaseUrl;
+    # Novera card button URL template (`noveraButtonUrl`); empty = not configured
+    string noveraButtonUrl;
     string? cardAvatarUrl = ();
     string? defaultImageUrl = ();
 |};

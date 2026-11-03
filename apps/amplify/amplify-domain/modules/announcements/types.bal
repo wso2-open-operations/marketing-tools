@@ -45,6 +45,9 @@ public type Announcement record {|
     time:Utc? failedAt;
     # Last delivery error (safe text, never a URL or a credential)
     string? lastError;
+    # Attempt marker (column `attempted_at`, V022): written before the Novera call and cleared only when the call
+    # definitely sent nothing. A queued row that still carries it may already have reached Novera
+    time:Utc? attemptedAt = ();
 |};
 
 # What the card needs from the campaign (S1 → S5, Customer/Supplier).
@@ -75,6 +78,6 @@ public type NoveraNotification record {|
     string iconUrl?;
     # Picture under the title (public https only), if any
     string imageUrl?;
-    # The Amplify button: opens the Celebrate page with this campaign's share dialog
+    # The Amplify button: opens the configured link (`noveraButtonUrl`) for this campaign
     record {|string url; string label;|} button;
 |};

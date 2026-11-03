@@ -42,6 +42,7 @@ function init() returns error? {
     // The database may still be starting: create the next two weeks of token partitions in the background.
     _ = start ensurePartitionsAtStartup();
     check validateRunConfig(runConfig(), longestCallSeconds());
+    check validateNoveraButtonUrl(noveraButtonUrl, noveraAllowInsecureHttp);
     log:printInfo(string `${COMPONENT} starting on port ${port}`);
     string? tls = store:tlsWarning(dbConfig());
     if tls is string {

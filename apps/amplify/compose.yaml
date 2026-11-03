@@ -172,7 +172,6 @@ services:
       BAL_CONFIG_VAR_HRENTITYCLIENTSECRET: ${HR_ENTITY_CLIENT_SECRET:-}
       BAL_CONFIG_VAR_TOKENKEYS: ${TOKEN_ENCRYPTION_KEY_ID:?}:${TOKEN_ENCRYPTION_KEY:?}
       BAL_CONFIG_VAR_TOKENCURRENTKEYID: ${TOKEN_ENCRYPTION_KEY_ID:?}
-      BAL_CONFIG_VAR_SHAREPAGEBASEURL: ${AMPLIFY_SHARE_PAGE_BASE_URL:-https://one.wso2.com/amplify/celebrate}
       # Novera (Google Chat assistant), the one announcement channel: the Choreo gateway URL of its
       # POST /internal/notifications and the client-credentials application subscribed to it. AMPLIFY_ON_NOVERA=false
       # or empty settings = announcements defer. Local try-out: run local/novera-mock (node server.mjs, :3003) and see
@@ -187,6 +186,8 @@ services:
       BAL_CONFIG_VAR_NOVERAALLOWINSECUREHTTP: ${NOVERA_ALLOW_INSECURE_HTTP:-false}
       BAL_CONFIG_VAR_NOVERAICONURL: ${NOVERA_ICON_URL:-}
       BAL_CONFIG_VAR_NOVERADEFAULTIMAGEURL: ${NOVERA_DEFAULT_IMAGE_URL:-}
+      # The card button's link: a URL template whose {campaignId} is replaced with the post's id. Empty = announcements wait.
+      BAL_CONFIG_VAR_NOVERABUTTONURL: ${NOVERA_BUTTON_URL:-https://one.wso2.com/amplify/celebrate?share={campaignId}}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:9091/ready >/dev/null"]
       interval: 5s

@@ -398,7 +398,19 @@ function testAnnouncementWriterQueueSendAndFail() returns error? {
         test:assertFail("announcement not stored");
     }
     test:assertEquals(announcements:announcementStatus(stored), announcements:QUEUED);
-    announcements:Announcement sent = check announcements:markSent(stored, "novera:" + sentId, now);
+    test:assertEquals(stored.attemptedAt, (), "a new row carries no attempt marker");
+    // The attempt marker (V022) is durable before the Novera call and reads back; clearing it writes NULL.
+    announcements:Announcement attempted = check announcements:markAttempted(stored, now);
+    check writer.save(attempted, []);
+    announcements:Announcement? marked = check reader.findByCampaign(sentId);
+    test:assertTrue(marked is announcements:Announcement && announcements:hasUnfinishedAttempt(marked));
+    test:assertEquals(check count(jobsDb, `SELECT count(*)::int FROM audit_log
+                                           WHERE entity_id = ${sentId} AND action = 'AnnouncementAttempted'`), 1);
+    check writer.save(check announcements:clearAttempt(attempted), []);
+    announcements:Announcement? cleared = check reader.findByCampaign(sentId);
+    test:assertTrue(cleared is announcements:Announcement && cleared.attemptedAt is ());
+    announcements:Announcement sent = check announcements:markSent(check announcements:markAttempted(stored, now),
+            "novera:" + sentId, now);
     check writer.save(sent, [announcements:campaignAnnouncedEvent(sent)]);
     announcements:Announcement? reread = check reader.findByCampaign(sentId);
     test:assertEquals(reread is announcements:Announcement ? reread.messageName : (), "novera:" + sentId);
@@ -414,6 +426,21 @@ function testAnnouncementWriterQueueSendAndFail() returns error? {
     check writer.save(check announcements:markFailed(q2, "HTTP 500", now), []);
     announcements:Announcement[] failed = check reader.list(announcements:FAILED, 50);
     test:assertTrue(failed.some(a => a.campaignId == failedId));
+
+    // Delivery unknown: FAILED with the marker kept, listed through the view; the admin retry clears both.
+    string unknownId = types:newUuidV7();
+    announcements:Announcement q3 = check announcements:queueAnnouncement((), unknownId, check int:fromHexString(uniq()), now);
+    check writer.insertQueued(q3);
+    check writer.save(check announcements:markDeliveryUnknown(check announcements:markAttempted(q3, now), now), []);
+    announcements:Announcement[] unknowns = from announcements:Announcement a in check reader.list(announcements:FAILED, 50)
+        where a.campaignId == unknownId
+        select a;
+    test:assertEquals(unknowns.length(), 1);
+    test:assertTrue(unknowns[0].attemptedAt !is (), "the view carries attempted_at");
+    test:assertTrue((unknowns[0].lastError ?: "").startsWith("Delivery unknown:"));
+    check writer.save(check announcements:retryAnnouncement(unknowns[0]), []);
+    announcements:Announcement? retried = check reader.findByCampaign(unknownId);
+    test:assertTrue(retried is announcements:Announcement && retried.failedAt is () && retried.attemptedAt is ());
     map<announcements:AnnouncementStatus> statuses = check announcements:statusesOf(apiDb, [sentId, failedId]);
     test:assertEquals(statuses[sentId], announcements:SENT);
     test:assertEquals(statuses[failedId], announcements:FAILED);

@@ -118,6 +118,13 @@ isolated function route(HandlerContext ctx) returns Outcome|error {
 }
 
 // ---- CampaignRegistered → Novera announcement (M6a, B8) ----------------------------------------------
+//
+// At most one card per campaign (owner decision 2026-11-03: Novera does not dedupe on `Idempotency-Key`, so Amplify
+// must). The attempt marker (`announcement.attempted_at`) is saved before Novera is called and cleared only when
+// the call definitely sent nothing. A queued row that still carries it on a later run (a crash after the call, a
+// lost answer, or a failed save after Novera accepted) may already have reached Novera: it is failed as
+// "Delivery unknown" for a person to check, never sent again automatically. The admin retry is that person's
+// decision to send again and clears the marker.
 
 isolated function handleCampaignRegistered(HandlerContext ctx, events:CampaignRegistered event) returns Outcome|error {
     if !ctx.settings.announcementsEnabled {
@@ -127,6 +134,10 @@ isolated function handleCampaignRegistered(HandlerContext ctx, events:CampaignRe
     NoveraPort? novera = ctx.novera;
     if novera is () {
         return deferFor(ctx.config.deferSeconds, "Novera is off or not configured");
+    }
+    // A card never goes out without its button: no link configured, the row waits too.
+    if ctx.config.noveraButtonUrl.trim() == "" {
+        return deferFor(ctx.config.deferSeconds, "Novera button URL is not configured");
     }
     campaign:Campaign? c = check ctx.store.campaign(event.campaignId);
     if c is () {
@@ -151,29 +162,71 @@ isolated function handleCampaignRegistered(HandlerContext ctx, events:CampaignRe
         if current == announcements:SENT {
             return done("already announced");
         }
-        // FAILED and re-queued by the admin retry (ADR-024 item 2): clear failed_at when it goes out.
-        queued = current == announcements:FAILED ? check announcements:retryAnnouncement(existing) : existing;
+        if current == announcements:FAILED {
+            // The admin retry resets the outbox row's attempts, so it is claimed as attempt 1. A FAILED announcement
+            // on a later attempt is this row coming back after its failure was saved but the row wasn't finished (a
+            // crash or a failed outbox write): sending now could be a second card.
+            if ctx.row.attempts > 1 {
+                return failed("announcement already failed; waiting for an admin retry");
+            }
+            // FAILED and re-queued by the admin retry (ADR-024 item 2): the person decided to send again, so the
+            // failure and the attempt marker are cleared.
+            queued = check announcements:retryAnnouncement(existing);
+        } else if announcements:hasUnfinishedAttempt(existing) {
+            // An earlier attempt may have reached Novera: never send a second card on a guess.
+            announcements:Announcement unknown = check announcements:markDeliveryUnknown(existing, ctx.now);
+            check ctx.store.saveAnnouncement(unknown, []);
+            log:printWarn("Novera announcement delivery unknown; manual check needed", outboxId = ctx.row.id,
+                    correlationId = ctx.correlationId);
+            return failed(unknown.lastError ?: announcements:DELIVERY_UNKNOWN);
+        } else {
+            queued = existing;
+        }
     }
 
     announcements:CampaignCardSource campaignSource = {campaignId: c.id, title: c.title, summary: c.summary,
         imageUrl: c.imageUrl, isPriority: c.isPriority};
-    // The stored key goes out on every attempt, so Novera can drop a repeat once it honours `Idempotency-Key`.
-    NoveraError? rejected = novera.notify(announcements:buildNoveraNotification(campaignSource,
-        ctx.config.sharePageBaseUrl, ctx.config.cardAvatarUrl, ctx.config.defaultImageUrl), queued.idempotencyKey,
-        ctx.correlationId);
+    announcements:NoveraNotification|types:DomainError notification = announcements:buildNoveraNotification(
+            campaignSource, ctx.config.noveraButtonUrl, ctx.config.cardAvatarUrl, ctx.config.defaultImageUrl);
+    if notification is types:DomainError {
+        // Start-up validation refuses a bad template, so this is only a guard: nothing is sent.
+        return deferFor(ctx.config.deferSeconds, "Novera button URL is invalid");
+    }
+
+    // The marker is durable before the call. If it can't be saved, nothing was sent and the row simply retries.
+    announcements:Announcement attempted = check announcements:markAttempted(queued, ctx.now);
+    error? marked = ctx.store.saveAnnouncement(attempted, []);
+    if marked is error {
+        log:printWarn("Novera attempt marker could not be saved; nothing sent", 'error = resilience:loggable(marked),
+                correlationId = ctx.correlationId);
+        return retryLater("attempt marker could not be saved; nothing sent");
+    }
+    // The stored key goes out on every attempt, in case Novera ever honours `Idempotency-Key`.
+    NoveraError? rejected = novera.notify(notification, attempted.idempotencyKey, ctx.correlationId);
     if rejected is NoveraError {
-        string note = string `Novera ${rejected.detail().code} (HTTP ${rejected.detail().httpStatus.toString()})`;
-        if rejected.detail().retryable && !ctx.finalAttempt {
+        NoveraErrorDetail d = rejected.detail();
+        string note = string `Novera ${d.code} (HTTP ${d.httpStatus.toString()})`;
+        if d.delivered == "UNKNOWN" {
+            // The request may have reached Novera (no answer, or a 5xx other than 503): no automatic retry.
+            announcements:Announcement unknown = check announcements:markDeliveryUnknown(attempted, ctx.now,
+                    string `${note}, the card may have gone out`);
+            check ctx.store.saveAnnouncement(unknown, []);
+            log:printWarn("Novera announcement delivery unknown; manual check needed", outboxId = ctx.row.id,
+                    correlationId = ctx.correlationId);
+            return failed(unknown.lastError ?: note);
+        }
+        // Definitely not sent: clear the marker so the retry (or the admin retry) may send.
+        announcements:Announcement cleared = check announcements:clearAttempt(attempted);
+        if d.retryable && !ctx.finalAttempt {
+            check ctx.store.saveAnnouncement(cleared, []);
             return retryLater(note);
         }
-        check ctx.store.saveAnnouncement(check announcements:markFailed(queued, note, ctx.now), []);
+        check ctx.store.saveAnnouncement(check announcements:markFailed(cleared, note, ctx.now), []);
         return failed(note);
     }
-    // Novera answers 202 before it sends, so there is no message name: a stable marker stands in.
-    // If the save below fails after Novera accepted the notification, the outbox retries this handler and
-    // Novera is notified again with the same idempotency key. Owner decision (2026-11-02): a duplicate
-    // announcement is better than a missed one.
-    announcements:Announcement done = check announcements:markSent(queued,
+    // Novera answers 202 before it sends, so there is no message name: a stable marker stands in. If this save
+    // fails, the row retries and finds the attempt marker (case "delivery unknown"), so there is no second card.
+    announcements:Announcement done = check announcements:markSent(attempted,
         string `${announcements:NOVERA_SPACE}:${c.id}`, ctx.now);
     check ctx.store.saveAnnouncement(done, [announcements:campaignAnnouncedEvent(done)]);
     return {kind: DONE, note: "announced"};

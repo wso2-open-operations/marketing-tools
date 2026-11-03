@@ -88,8 +88,12 @@ configurable string noveraIconUrl = "";
 # the fork or path moves). The file in this folder is the source asset only. Empty = such cards go out without an
 # image.
 configurable string noveraDefaultImageUrl = "";
-# One WSO2 Celebrate page URL; the Novera card's button opens `<url>?share=<campaignId>`, which shows that post's share dialog.
-configurable string sharePageBaseUrl = "https://one.wso2.com/amplify/celebrate";
+# The Novera card button's link (`BAL_CONFIG_VAR_NOVERABUTTONURL`): a URL template in which every `{campaignId}` is
+# replaced with the post's id, e.g. `https://one.wso2.com/amplify/celebrate?share={campaignId}` (the Celebrate page
+# with that post's share dialog). Must be https (http only with `noveraAllowInsecureHttp`) and contain
+# `{campaignId}`; checked at start-up. Empty = Novera button not configured: announcements wait, a card never goes
+# out without its button.
+configurable string noveraButtonUrl = "";
 
 // ---- Token keys ----------------------------------------------------------------------------------------
 

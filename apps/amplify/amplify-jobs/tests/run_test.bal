@@ -142,9 +142,9 @@ function campaignRegisteredRetriesOn429AndFailsAfterMaxAttempts() returns error?
     var a = check w.mem.announcement(cid);
     test:assertTrue(a !is () && a.failedAt !is (), "announcement FAILED for the admin retry");
 
-    // Admin retry re-queues the row; the next good send clears failed_at.
+    // Admin retry re-queues the row (attempts reset); the next good send clears failed_at.
     w.novera.setMode("ok");
-    w.queue.redeliver(id);
+    w.queue.adminRetry(id);
     _ = check run(w);
     var sent = check w.mem.announcement(cid);
     test:assertTrue(sent !is () && sent.sentAt !is () && sent.failedAt is ());
