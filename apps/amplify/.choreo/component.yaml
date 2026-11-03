@@ -11,8 +11,10 @@ endpoints:
       basePath: /
       port: 9090
     type: REST
+    # Organization, not Project: the gateway behind the API proxy can't reach a Project-only endpoint
+    # (ADR-004 amendment 2026-11-03). Only the proxy is published.
     networkVisibilities:
-      - Project
+      - Organization
     schemaFilePath: amplify-api/openapi.yaml
 configurations:
   env:
