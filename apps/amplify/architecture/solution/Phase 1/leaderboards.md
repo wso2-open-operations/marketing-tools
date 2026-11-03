@@ -35,7 +35,7 @@ Shapes are in `amplify-api/openapi.yaml` (`LeaderboardPeople`, `LeaderboardGroup
 
 Amplify stores no org data (ADR-009). The team comes from the **HR Entity GraphQL service** (ADR-045), keyed by work email. The One WSO2 UI reads photos and names from people-app.
 
-1. `amplify-api` resolves the viewer's team roster (member emails + team name) from the HR Entity GraphQL service (`employees` query, paged; ADR-045), **server to server**, through a declared egress connection with a circuit breaker. The whole directory is fetched in pages and grouped by **team** under the person's own `businessUnit` (ADR-035); the entity query does not ask for a sub-team yet, so the 2026-10-19 sub-team grouping returns when it does. The index is kept in memory for **3 days** (teams change, but rarely), **never written to the database**; a failed refresh keeps serving the last index.
+1. `amplify-api` resolves the viewer's team roster (member emails + team name) from the HR Entity GraphQL service (`employees` query, paged; ADR-045), **server to server**, through a declared egress connection with a circuit breaker. The whole directory is fetched in pages and grouped by **sub-team**, falling back to **team** when a person has no sub-team (decided 2026-10-19), under the person's own `businessUnit` (ADR-035). The index is kept in memory for **3 days** (teams change, but rarely), **never written to the database**; a failed refresh keeps serving the last index.
 2. It ranks that set from `recognition.standing` (query below).
 3. The One WSO2 UI adds photos and full names per row from the same directory, with the user's own token (Org Chart's query, shared through React Query). If that fails, rows show amplify-api's display name and initials.
 

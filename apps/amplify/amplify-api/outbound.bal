@@ -81,7 +81,7 @@ final http:Client? jobsClient = check newBreakerClient(jobsUrl, jobsTimeoutSecon
 // ---- People directory: team rosters (D13, leaderboards.md) -----------------------------------------
 
 # The HR Entity GraphQL service's URL (the endpoint a GraphQL POST goes to). One paged query returns every
-# current employee with `workEmail`, names, `businessUnit` and `team`. Empty = not configured
+# current employee with `workEmail`, names, `businessUnit`, `team` and `subTeam`. Empty = not configured
 # (`teamStatus: UNAVAILABLE`).
 configurable string hrEntityBaseUrl = "";
 # HR Entity timeout, seconds, per page.
@@ -92,6 +92,15 @@ configurable string hrEntityTokenUrl = "";
 configurable string hrEntityClientId = "";
 # HR Entity client secret (Choreo secret).
 configurable string hrEntityClientSecret = "";
+# Retries after a failed HR Entity call (connection error, or a 500, 502, 503 or 504 answer). The same defaults as the
+# other apps that read the HR Entity (`retryConfig`: count 3, interval 3.0, backOffFactor 2.0, maxWaitInterval 20.0).
+configurable int hrEntityRetryCount = 3;
+# Seconds before the first retry.
+configurable decimal hrEntityRetryInterval = 3.0;
+# Each retry waits this many times longer than the one before.
+configurable float hrEntityRetryBackOffFactor = 2.0;
+# Longest wait between two retries, seconds.
+configurable decimal hrEntityRetryMaxWaitInterval = 20.0;
 # Rows asked for per page. The service answers a page at a time, so the whole company takes several calls.
 configurable int hrEntityPageSize = 1000;
 # Employee statuses the directory lists. `Marked leaver` stays in until the person is `Left`: they still work here.
@@ -106,7 +115,7 @@ configurable decimal rosterCacheSeconds = 86400;
 configurable decimal headcountCacheSeconds = 86400;
 
 final http:Client? peopleDirectoryClient = check newBreakerClient(hrEntityBaseUrl, hrEntityTimeoutSeconds,
-        hrEntityAuth());
+        hrEntityAuth(), hrEntityRetry());
 
 // ---- LinkedIn (S2) ------------------------------------------------------------------------------------
 
@@ -148,8 +157,8 @@ final linkedin:ProviderAdapter? linkedInAdapter = check newLinkedInAdapter();
 final crypto:TokenCipher? tokenCipher = check newTokenCipher();
 final linkedin:IdTokenValidator? idTokenValidator = check newIdTokenValidator();
 
-isolated function newBreakerClient(string url, decimal timeout, http:ClientAuthConfig? auth = ())
-        returns http:Client?|error {
+isolated function newBreakerClient(string url, decimal timeout, http:ClientAuthConfig? auth = (),
+        http:RetryConfig? retryCfg = ()) returns http:Client?|error {
     if url == "" {
         return ();
     }
@@ -165,8 +174,19 @@ isolated function newBreakerClient(string url, decimal timeout, http:ClientAuthC
     if auth is http:ClientAuthConfig {
         config.auth = auth;
     }
+    if retryCfg is http:RetryConfig {
+        config.retryConfig = retryCfg;
+    }
     return check new (url, config);
 }
+
+isolated function hrEntityRetry() returns http:RetryConfig => {
+    count: hrEntityRetryCount,
+    interval: hrEntityRetryInterval,
+    backOffFactor: hrEntityRetryBackOffFactor,
+    maxWaitInterval: hrEntityRetryMaxWaitInterval,
+    statusCodes: [500, 502, 503, 504]
+};
 
 isolated function hrEntityAuth() returns http:OAuth2ClientCredentialsGrantConfig? {
     if hrEntityTokenUrl == "" {
@@ -356,7 +376,7 @@ type Roster record {|
 |};
 
 # The fields of an HR Entity employee Amplify reads. Open: anything else the service returns is ignored and
-# never kept. `house` and `subTeam` are not asked of the service yet, so they stay empty.
+# never kept. `house` is not a field of the HR Entity, so it stays empty.
 type DirectoryRecord record {
     # Work email. Optional: one row without it (a contractor, a placeholder) is skipped, not a reason to
     # reject the whole directory.
@@ -552,7 +572,7 @@ isolated function directoryIndex(string? correlationId) returns (DirectoryIndex 
 
 # The query, one page of current employees. Only the fields Amplify uses are asked for.
 const string EMPLOYEES_QUERY = "query getEmployees($filter: EmployeeFilter!, $limit: Int, $offset: Int) { "
-        + "employees(filter: $filter, limit: $limit, offset: $offset) { workEmail firstName lastName businessUnit team } }";
+        + "employees(filter: $filter, limit: $limit, offset: $offset) { workEmail firstName lastName businessUnit team subTeam } }";
 
 # Most pages one directory read will ask for. A service that never runs dry cannot loop the caller forever.
 const int MAX_DIRECTORY_PAGES = 100;
@@ -568,11 +588,13 @@ isolated function fetchDirectory(string? correlationId) returns (DirectoryIndex 
     int offset = 0;
     foreach int _ in 0 ..< MAX_DIRECTORY_PAGES {
         DirectoryRecord[] page = check fetchDirectoryPage(c, headers, pageSize, offset);
-        records.push(...page);
-        if page.length() < pageSize {
+        // The end is an empty page, not a short one: the service may cap `limit` below what was asked for, and the
+        // next offset is what came back, so a capped page never skips or ends the read early.
+        if page.length() == 0 {
             return indexDirectory(records);
         }
-        offset += pageSize;
+        records.push(...page);
+        offset += page.length();
     }
     return error(string `People directory did not end within ${MAX_DIRECTORY_PAGES} pages`);
 }

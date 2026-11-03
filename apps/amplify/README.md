@@ -103,6 +103,7 @@ Every setting is a Ballerina `configurable`, set through `BAL_CONFIG_VAR_<NAME>`
 | `SCORECARDTARGETCONNECTEDPCT`, `SCORECARDMAXEXPIREDPCT`, `SCORECARDTARGETSHARESUCCESSPCT`, `SCORECARDTARGETPRIORITYREACHPCT`, `SCORECARDTARGETACTIVE30D`, `SCORECARDTARGETREPOSTSPERMONTH` | ✓ | | | | unset (defaults 25, 5, 98, 25, 100, 600). The scorecard lines; local `.env` names are `SCORECARD_TARGET_CONNECTED_PCT` etc. |
 | `HRENTITYTOKENURL`, `HRENTITYCLIENTID`, `HRENTITYCLIENTSECRET` | ✓ | ✓ | | ✓ (secret) | unset. OAuth2 client credentials for the HR Entity service; same shape as leave-app's `oauthConfig` |
 | `HRENTITYPAGESIZE`, `HRENTITYSTATUSES` | ✓ | ✓ | | | unset (defaults 1000, `["Active","Marked leaver"]`) |
+| `HRENTITYRETRYCOUNT`, `HRENTITYRETRYINTERVAL`, `HRENTITYRETRYBACKOFFFACTOR`, `HRENTITYRETRYMAXWAITINTERVAL` | ✓ | ✓ | | | unset (defaults 3, 3.0, 2.0, 20.0: the other apps' `retryConfig`). Retried on a connection error or a 500, 502, 503 or 504 |
 | `LINKEDINCLIENTID` | ✓ | ✓ | | | `amplify-local` (mock) |
 | `LINKEDINCLIENTSECRET` | ✓ | | | ✓ | random, shared with the mock |
 | `LINKEDINREDIRECTURI` | ✓ | | | | `http://localhost:3000/amplify/connect/callback` |
