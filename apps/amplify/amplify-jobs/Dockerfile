@@ -23,12 +23,13 @@
 # Clean checkout: shared packages are packed and pushed to the build stage's own local repository (ADR-020/021).
 
 FROM ballerina/ballerina:2201.13.3@sha256:7cba1a3bcb3314e2444aa6823d332e79882437df512de71037c4b0607d39e019 AS build
-WORKDIR /home/ballerina
+# The base image declares VOLUME /home/ballerina. Choreo's builder (buildah), like Docker's legacy builder, drops
+# whatever a RUN step writes under a volume, so the sources and target/ live in /build. ~/.ballerina stays under the
+# volume, so the packs, the pushes to its local repository and the build share one RUN.
+WORKDIR /build
 COPY --chown=ballerina amplify/amplify-common amplify-common
 COPY --chown=ballerina amplify/amplify-domain amplify-domain
 COPY --chown=ballerina amplify/amplify-jobs amplify-jobs
-# One RUN: Choreo's builder doesn't keep ~/.ballerina from one RUN step to the next, so a package pushed to the
-# local repository in one step is gone in the next ("Dependency version ... cannot be found in the local repository").
 RUN cd amplify-common && bal pack && bal push --repository=local \
     && cd ../amplify-domain && bal pack && bal push --repository=local \
     && cd ../amplify-jobs && bal build
@@ -36,7 +37,7 @@ RUN cd amplify-common && bal pack && bal push --repository=local \
 FROM eclipse-temurin:21-jre-alpine@sha256:51ab5e3302e7141ce665ca3ea85e8b5cd648eafbc3c0c90dd79d6537684e4555
 RUN addgroup -g 10014 choreo && adduser -D -H -u 10014 -G choreo choreouser
 WORKDIR /app
-COPY --from=build /home/ballerina/amplify-jobs/target/bin/amplify_jobs.jar app.jar
+COPY --from=build /build/amplify-jobs/target/bin/amplify_jobs.jar app.jar
 USER 10014
 EXPOSE 9091
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

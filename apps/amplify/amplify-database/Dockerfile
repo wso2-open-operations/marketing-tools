@@ -20,15 +20,17 @@
 # Choreo Manual Task: runs once and exits, so no port.
 
 FROM ballerina/ballerina:2201.13.3@sha256:7cba1a3bcb3314e2444aa6823d332e79882437df512de71037c4b0607d39e019 AS build
-WORKDIR /home/ballerina
+# The base image declares VOLUME /home/ballerina. Choreo's builder (buildah), like Docker's legacy builder, drops
+# whatever a RUN step writes under a volume, so the build works in /build.
+WORKDIR /build
 COPY --chown=ballerina . amplify-database
 RUN cd amplify-database && bal build
 
 FROM eclipse-temurin:21-jre-alpine@sha256:51ab5e3302e7141ce665ca3ea85e8b5cd648eafbc3c0c90dd79d6537684e4555
 RUN addgroup -g 10014 choreo && adduser -D -H -u 10014 -G choreo choreouser
 WORKDIR /app
-COPY --from=build /home/ballerina/amplify-database/target/bin/amplify_database.jar app.jar
-COPY --from=build --chown=10014:10014 /home/ballerina/amplify-database/migrations migrations
-COPY --from=build --chown=10014:10014 /home/ballerina/amplify-database/seed seed
+COPY --from=build /build/amplify-database/target/bin/amplify_database.jar app.jar
+COPY --from=build --chown=10014:10014 /build/amplify-database/migrations migrations
+COPY --from=build --chown=10014:10014 /build/amplify-database/seed seed
 USER 10014
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]
