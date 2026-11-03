@@ -38,6 +38,12 @@ configurations:
         configForm:
           displayName: DB user
           type: string
+    - name: BAL_CONFIG_VAR_DBSCHEMA
+      valueFrom:
+        configForm:
+          displayName: DB schema (empty = the login user name)
+          type: string
+          required: false
     - name: BAL_CONFIG_VAR_DBPASSWORD
       valueFrom:
         configForm:
