@@ -52,7 +52,3 @@ export = true
 [[package.modules]]
 name = "amplify_domain.announcements"
 export = true
-
-[[package.modules]]
-name = "amplify_domain.house"
-export = true
