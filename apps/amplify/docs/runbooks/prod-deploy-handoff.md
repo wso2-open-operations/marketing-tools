@@ -34,7 +34,7 @@ Check: both services are healthy in prod.
 
 ### Step 2: Databases (B)
 
-1. PostgreSQL 18 server on a plan with backups. If 18 isn't offered, stop and escalate; do not continue on an older version.
+1. PostgreSQL server (15 or later; staging runs 17, ADR-044) on a plan with backups. If the plan is older than 15, stop and escalate.
 2. Run `amplify-database/checks/d2_extensions.sql`. `citext` and `pg_trgm` are required. If either is missing, stop and raise it.
 3. Database `amplify` (bootstrap admin goes only into the DB Migrate component's secrets) and database `scheduler` with its own user.
 4. Record backup frequency and retention.

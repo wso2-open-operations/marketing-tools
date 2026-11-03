@@ -74,7 +74,7 @@ Kill switches ([operations.md](operations.md) §10) let a PO stop new shares or 
 
 | | |
 | --- | --- |
-| Mechanism | Choreo-managed PostgreSQL 18 on a **plan with backups** ([choreo-deploy.md](choreo-deploy.md) B1) — provider snapshots/PITR |
+| Mechanism | Choreo-managed PostgreSQL (15 or later) on a **plan with backups** ([choreo-deploy.md](choreo-deploy.md) B1) — provider snapshots/PITR |
 | Frequency / retention | **Record at deploy (B4)** — depends on the plan |
 | Restore test | **Pending** — restore one backup into dev once and record the result ([operations.md](operations.md) §8, plan M3 "Backups") |
 | Deletion caveat | Deleted data (and dropped token partitions) live in backups until **backup retention** ends — the true RPO floor for erasure |
