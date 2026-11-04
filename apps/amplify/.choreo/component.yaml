@@ -219,7 +219,6 @@ configurations:
           type: string
           required: false
     - name: BAL_CONFIG_VAR_HRENTITYBASEURL
-    - name: BAL_CONFIG_VAR_HRENTITYINCLUDEHOUSE
       valueFrom:
         configForm:
           displayName: HR Entity GraphQL URL
@@ -242,6 +241,14 @@ configurations:
         configForm:
           displayName: HR Entity client secret
           type: secret
+          required: false
+    # House name and id from the HR Entity (hr_entity 1.1.1 or later). Off by default: an older service fails the whole
+    # directory read when asked for them (teams, BUs and the employee count would all go unavailable).
+    - name: BAL_CONFIG_VAR_HRENTITYINCLUDEHOUSE
+      valueFrom:
+        configForm:
+          displayName: Ask the HR Entity for each employee's house (true/false; only with hr_entity 1.1.1 or later; default false)
+          type: boolean
           required: false
     - name: BAL_CONFIG_VAR_LINKEDINCLIENTID
       valueFrom:

@@ -123,35 +123,26 @@ configurations:
         configForm:
           displayName: Current token key id
           type: string
-    - name: BAL_CONFIG_VAR_CHATWEBHOOKURL
+    # The Novera card (ADR-047). The button link is required for a card to go out: while it is empty, new-post
+    # announcements wait (nothing is lost) until it is set.
+    - name: BAL_CONFIG_VAR_NOVERABUTTONURL
       valueFrom:
         configForm:
-          displayName: Google Chat webhook URL
-          type: secret
-          required: false
-    - name: BAL_CONFIG_VAR_CHATSPACE
-      valueFrom:
-        configForm:
-          displayName: Chat space label (club or dev-test)
+          displayName: Novera card button link, with {campaignId} (e.g. https://one.wso2.com/amplify/celebrate?share={campaignId})
           type: string
           required: false
-    - name: BAL_CONFIG_VAR_CHATCARDAVATARURL
+    - name: BAL_CONFIG_VAR_NOVERAICONURL
       valueFrom:
         configForm:
-          displayName: Chat card avatar URL (https)
+          displayName: Novera card icon URL (public https; empty = no icon)
           type: string
           required: false
-    - name: BAL_CONFIG_VAR_CHATDEFAULTIMAGEURL
+    - name: BAL_CONFIG_VAR_NOVERADEFAULTIMAGEURL
       valueFrom:
         configForm:
-          displayName: Chat card default image URL (public https PNG/JPEG; used when a post has no usable image)
+          displayName: Novera card default image URL (public https PNG/JPEG on a WSO2 host; used when a post has no usable image)
           type: string
           required: false
-    - name: BAL_CONFIG_VAR_SHAREPAGEBASEURL
-      valueFrom:
-        configForm:
-          displayName: One WSO2 Celebrate page URL (card button adds ?share=<campaignId>)
-          type: string
     - name: BAL_CONFIG_VAR_NOVERANOTIFYURL
       valueFrom:
         configForm:
@@ -186,11 +177,5 @@ configurations:
       valueFrom:
         configForm:
           displayName: Announce shares through Novera (true or false; default true)
-          type: boolean
-          required: false
-    - name: BAL_CONFIG_VAR_AMPLIFYONWEBHOOK
-      valueFrom:
-        configForm:
-          displayName: Announce shares through the Google Chat webhook (true or false; default false)
           type: boolean
           required: false

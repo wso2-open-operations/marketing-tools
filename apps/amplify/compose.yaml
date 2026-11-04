@@ -107,6 +107,8 @@ services:
       BAL_CONFIG_VAR_PRIVACYNOTICEURL: ${PRIVACY_NOTICE_URL:-https://wso2.com/privacy-policy}
       # Team rosters (D13) = people-stub's HR Entity GraphQL route by default: copy local/people-stub/directory.json.example to directory.json (gitignored) and edit it.
       BAL_CONFIG_VAR_HRENTITYBASEURL: ${HR_ENTITY_URL:-http://people-stub:9096/graphql}
+      # House ids and names from the HR Entity (hr_entity 1.1.1+). The local stub answers them when its rows have them.
+      BAL_CONFIG_VAR_HRENTITYINCLUDEHOUSE: ${HR_ENTITY_INCLUDE_HOUSE:-false}
       # Post links: LinkedIn, plus the mock's browser-facing origin for local demos.
       BAL_CONFIG_VAR_CAMPAIGNLINKORIGINS: ${CAMPAIGN_LINK_ORIGINS:-https://www.linkedin.com,https://linkedin.com,http://localhost:19091}
       # Employee count cache and the scorecard lines (ADR-036): local/.env overrides, these are the defaults.
@@ -170,20 +172,14 @@ services:
       BAL_CONFIG_VAR_HRENTITYCLIENTSECRET: ${HR_ENTITY_CLIENT_SECRET:-}
       BAL_CONFIG_VAR_TOKENKEYS: ${TOKEN_ENCRYPTION_KEY_ID:?}:${TOKEN_ENCRYPTION_KEY:?}
       BAL_CONFIG_VAR_TOKENCURRENTKEYID: ${TOKEN_ENCRYPTION_KEY_ID:?}
-      # Google Chat (M6a). Default: chat-stub. "Send to dev space": GOOGLE_CHAT_WEBHOOK_URL = the dev test
-      # space's webhook (https) + GOOGLE_CHAT_SPACE=dev-test. Never the Club.
-      BAL_CONFIG_VAR_CHATWEBHOOKURL: ${GOOGLE_CHAT_WEBHOOK_URL:-http://chat-stub:9095/v1/spaces/local/messages?key=local&token=local}
-      BAL_CONFIG_VAR_CHATSPACE: ${GOOGLE_CHAT_SPACE:-dev-test}
-      # Lets only the plain-http stub URL through; a real webhook is https. Never set in Choreo.
-      BAL_CONFIG_VAR_CHATALLOWINSECUREHTTP: "true"
-      BAL_CONFIG_VAR_CHATCARDAVATARURL: ${GOOGLE_CHAT_AVATAR_URL:-}
-      BAL_CONFIG_VAR_CHATDEFAULTIMAGEURL: ${GOOGLE_CHAT_DEFAULT_IMAGE_URL:-}
-      BAL_CONFIG_VAR_SHAREPAGEBASEURL: ${AMPLIFY_SHARE_PAGE_BASE_URL:-https://one.wso2.com/amplify/celebrate}
       BAL_CONFIG_VAR_AMPLIFYONNOVERA: ${AMPLIFY_ON_NOVERA:-true}
-      BAL_CONFIG_VAR_AMPLIFYONWEBHOOK: ${AMPLIFY_ON_WEBHOOK:-false}
-      # Novera (Google Chat assistant): the Choreo gateway URL of its POST /internal/notifications and the
-      # client-credentials application subscribed to it. Empty = Novera not configured (announcements defer
-      # unless the webhook is on). Local try-out: run local/novera-mock (node server.mjs, :3003) and see docs/HowToTestLocally/TestNovera.md.
+      # Novera (Google Chat assistant), the one announcement channel (ADR-047): the Choreo gateway URL of its
+      # POST /internal/notifications and the client-credentials application subscribed to it. Empty settings =
+      # announcements defer. Local try-out: run local/novera-mock (node server.mjs, :3003) and see docs/HowToTestLocally/TestNovera.md.
+      BAL_CONFIG_VAR_NOVERAICONURL: ${NOVERA_ICON_URL:-}
+      BAL_CONFIG_VAR_NOVERADEFAULTIMAGEURL: ${NOVERA_DEFAULT_IMAGE_URL:-}
+      # The card button's link: a URL template whose {campaignId} is replaced with the post's id. Empty = announcements wait.
+      BAL_CONFIG_VAR_NOVERABUTTONURL: ${NOVERA_BUTTON_URL:-https://one.wso2.com/amplify/celebrate?share={campaignId}}
       BAL_CONFIG_VAR_NOVERANOTIFYURL: ${NOVERA_NOTIFY_URL:-}
       BAL_CONFIG_VAR_NOVERATOKENURL: ${NOVERA_TOKEN_URL:-}
       BAL_CONFIG_VAR_NOVERACLIENTID: ${NOVERA_CLIENT_ID:-}
@@ -197,7 +193,6 @@ services:
       retries: 30
     depends_on:
       amplify-db-migrate: {condition: service_completed_successfully}
-      chat-stub: {condition: service_started}
       mock-linkedin: {condition: service_started}
     networks: [internal]
 
