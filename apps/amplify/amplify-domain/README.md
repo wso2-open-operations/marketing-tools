@@ -53,15 +53,15 @@ CORE        ┃     │  ┌─────────────────�
             ┃     ▼                                     ▼                                                        ┃
 SUPPORTING  ┃  ┌─────────────────────────┐  ┌──────────────────────────────┐                                     ┃
             ┃  │ ANNOUNCEMENTS     [S5]  │  │ RECOGNITION            [S4]  │                                     ┃
-            ┃  │ Club space cards        │  │ 3 leaderboards · my points   │                                     ┃
-            ┃  │ chat notifier in jobs   │  │ PO dashboard                 │                                     ┃
+            ┃  │ Novera post cards       │  │ 3 leaderboards · my points   │                                     ┃
+            ┃  │ notifier in jobs        │  │ PO dashboard                 │                                     ┃
             ┃  └────────────┬────────────┘  └──────────────────────────────┘                                     ┃
             ┗━━━━━━━━━━━━━━━┿━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-                            │ ACL: incoming webhook             S2 and C1 ──► LinkedIn (ACL: OAuth/OIDC, provider adapter)
+                            │ ACL: Novera client                S2 and C1 ──► LinkedIn (ACL: OAuth/OIDC, provider adapter)
             ┌───────────────▼──────────┐                         ┌──────────────────────────────────────────────┐
-EXTERNAL    │ GOOGLE CHAT   [EXTERNAL] │                         │ LINKEDIN                          [EXTERNAL] │
-            │ Club space               │                         │ Sign In with LinkedIn (OIDC: sub → person)   │
-            │ incoming webhook, cardsV2│                         │ Share on LinkedIn: POST /rest/posts          │
+EXTERNAL    │ NOVERA        [EXTERNAL] │                         │ LINKEDIN                          [EXTERNAL] │
+            │ Google Chat assistant    │                         │ Sign In with LinkedIn (OIDC: sub → person)   │
+            │ POST /internal/notif.    │                         │ Share on LinkedIn: POST /rest/posts          │
             └──────────────────────────┘                         │ self-serve · w_member_social · no approval   │
                                                                  └──────────────────────────────────────────────┘
 
@@ -75,16 +75,54 @@ C = core subdomain   S = supporting subdomain   OHS/PL = open host service + pub
 
 ### Contexts and where they live
 
-| Context | Type | Module here | Postgres schema | What it owns |
+All contexts share one database schema. Table and view names carry the context as a prefix, `<context>_<name>` (ADR-043); the configured schema comes from `store:DbConfig.schema`. The tables a module owns are listed in its README.
+
+| Context | Type | Module here | Table prefix | What it owns |
 | --- | --- | --- | --- | --- |
-| C1 Sharing | Core | `sharing` | `sharing` | `ShareRequest` (one per campaign per employee, retry reuses the row), `Engagement` (verified facts), the provider adapter port |
-| C2 Scoring & Points Ledger | Core | `scoring` | `scoring` | `PointRule` (versioned tiers), the append-only `PointsLedger` (once per action per post per person), allocations and adjustments |
-| S1 Campaign | Supporting | `campaign` | `campaign` | Registry of official WSO2 posts: category, priority, active window, derived status |
-| S2 LinkedIn Connection | Supporting | `connection` | `connection` | OAuth consent, the encrypted token vault (daily partitions), 60-day expiry, remove connection |
-| S3 External Sharing | Supporting | `external_sharing` | `external_sharing` | Evidence-URL claims for actions outside Amplify, PO review |
-| S4 Recognition | Supporting | `recognition` | `recognition` | Pre-built leaderboard, team, my-points and PO dashboard tables, rebuildable from the ledger |
-| S5 Announcements | Supporting | `announcements` | `announcement` | The Club chat card for a campaign, sent once |
-| Shared | | `identity`, `store` | `identity`, `messaging`, `audit`, `config` | Employee directory snapshot; the client, outbox and audit writers, SQL error mapping, partition upkeep |
+| C1 Sharing | Core | [`sharing`](modules/sharing/README.md) | `sharing_` | `ShareRequest` (one per campaign per employee, retry reuses the row), `Engagement` (verified facts), the provider adapter port |
+| C2 Scoring & Points Ledger | Core | [`scoring`](modules/scoring/README.md) | `scoring_` | `PointRule` (versioned tiers), the append-only `PointsLedger` (once per action per post per person), allocations and adjustments |
+| S1 Campaign | Supporting | [`campaign`](modules/campaign/README.md) | `campaign` | Registry of official WSO2 posts: category, priority, active window, derived status |
+| S2 LinkedIn Connection | Supporting | [`connection`](modules/connection/README.md) | `connection_` | OAuth consent, the encrypted token vault (daily partitions), 60-day expiry, remove connection |
+| S3 External Sharing | Supporting | [`external_sharing`](modules/external_sharing/README.md) | `external_sharing_` | Evidence-URL claims for actions outside Amplify, PO review |
+| S4 Recognition | Supporting | [`recognition`](modules/recognition/README.md) | `recognition_` | Pre-built leaderboard, team, my-points and PO dashboard tables, rebuildable from the ledger |
+| S5 Announcements | Supporting | [`announcements`](modules/announcements/README.md) | `announcement` | The Novera announcement for a campaign, sent at most once unless an admin resends (ADR-047; `attempted_at` marker, V022) |
+| Shared | | [`identity`](modules/identity/README.md), [`store`](modules/store/README.md) | `identity_`, `messaging_`, `audit_`, `config_` | Employee directory snapshot; the client, outbox and audit writers, SQL error mapping, partition upkeep |
+| Read only | | [`reporting`](modules/reporting/README.md) | none | Dashboard aggregates (ADR-036). Reads other contexts' views, writes nothing |
 
-A context reads and writes only its own schema (no cross-context foreign keys, ADR-005). Contexts talk through events in the outbox: `CampaignRegistered`, `RepostRequested`, `EngagementRecorded`, `ConnectionReady` / `ConnectionRevoked`, `ExternalShareApproved`, and the `Points*` family. The full event catalogue is in [phase1-data-model](../architecture/solution/Phase%201/phase1-data-model.md). Which deployable runs which context is in the domain doc's "Mapping to the phase 1 deployables" table.
+A context writes only its own tables (no cross-context foreign keys, ADR-005). A few queries read another context's tables or views read-only: `campaign` (`hasActivity` before a post id change), `reporting` (all dashboards), `recognition` (the ledger and `identity_employee`), `sharing` (`messaging_outbox`). Contexts talk through events in the outbox: `CampaignRegistered`, `RepostRequested`, `EngagementRecorded`, `ConnectionReady` / `ConnectionRevoked`, `ExternalShareApproved`, and the `Points*` family. The full event catalogue is in [phase1-data-model](../architecture/solution/Phase%201/phase1-data-model.md). Which deployable runs which context is in the domain doc's "Mapping to the phase 1 deployables" table.
 
+## Module layout
+
+Each context module has the same files where they apply:
+
+| File | Holds |
+| --- | --- |
+| `types.bal` | Aggregate records, the derived-status enum, the repository port |
+| `service.bal` | Pure rules and use cases that take a port |
+| `events.bal` | Outbox event builders (wrap `amplify_common.events`) |
+| `repository.bal` | `Pg...Repository` classes over `postgresql:Client` |
+| `queries.bal` | Read-only page and dashboard queries (some modules) |
+| `<module>.bal` | `MODULE` constant for log context |
+
+Exceptions: `identity` has no `events.bal`; `reporting` has only `snapshot.bal` and `queries.bal`; `recognition` has no repository port and exposes plain functions; `store` is plumbing.
+
+## Config
+
+The package declares these `configurable` values. Values come from the consuming component's `Config.toml`.
+
+| Name | Module | Default |
+| --- | --- | --- |
+| `oauthStateTtlSeconds` | `connection` | 600 |
+| `dashboardCampaignWindowDays` | `reporting` | 90 |
+| `dashboardCampaignLimit` | `reporting` | 200 |
+| `dashboardMonthlyMonths` | `reporting` | 6 |
+| `dashboardCardsWindowDays` | `reporting` | 30 |
+
+Database settings are the `store:DbConfig` record, filled by each component.
+
+## Tests
+
+- `bal test` runs the module unit tests (`modules/<m>/tests/`, in-memory repositories) and the package `tests/lock_order_test.bal`.
+- The `integration` group (`tests/integration_*.bal`) needs `AMPLIFY_IT=true` and a migrated PostgreSQL; see `docs/migrations/README.md`.
+
+Details for agents are in [CLAUDE.md](CLAUDE.md).

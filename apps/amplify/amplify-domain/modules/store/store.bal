@@ -107,7 +107,7 @@ public isolated function databaseOf(DbConfig config) returns string|sql:Error {
     if !isPlainIdentifier(schema) {
         return error sql:ApplicationError("dbSchema is not a plain identifier");
     }
-    string options = string `-c search_path=${schema},public -c idle_in_transaction_session_timeout=${config.idleInTransactionTimeoutMs}`;
+    string options = string `-c search_path=${schema},public,pg_temp -c idle_in_transaction_session_timeout=${config.idleInTransactionTimeoutMs}`;
     return string `${config.database}?options=${re ` `.replaceAll(re `=`.replaceAll(options, "%3D"), "%20")}`;
 }
 
