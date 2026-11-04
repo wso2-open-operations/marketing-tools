@@ -154,3 +154,15 @@ function publicHttpsUrlRefusesTrailingDotAndNumericHosts() {
     // A numeric *first* label is a name, not an IP literal.
     test:assertTrue(isPublicHttpsUrl("https://10.cdn.example.com/logo.png"));
 }
+
+// A malformed port is a malformed URL: the card falls back to its default image.
+@test:Config
+function publicHttpsUrlRefusesAMalformedPort() {
+    foreach string url in ["https://cdn.example.com:notaport/a.png", "https://cdn.example.com:/a.png",
+            "https://cdn.example.com:0/a.png", "https://cdn.example.com:65536/a.png",
+            "https://cdn.example.com:443:1/a.png", "https://cdn.example.com:+443/a.png"] {
+        test:assertFalse(isPublicHttpsUrl(url), url);
+    }
+    test:assertTrue(isPublicHttpsUrl("https://cdn.example.com:443/a.png"), "a real port is fine");
+    test:assertTrue(isPublicHttpsUrl("https://cdn.example.com:8443/a.png"));
+}

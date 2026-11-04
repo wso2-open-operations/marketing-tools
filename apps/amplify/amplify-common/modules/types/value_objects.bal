@@ -183,6 +183,13 @@ public isolated function isPublicHttpsUrl(string url) returns boolean {
     }
     int? colon = host.indexOf(":");
     if colon is int {
+        // A port, when there is one, is 1 to 65535 in digits; anything else is a malformed URL, and the card then
+        // uses its default image instead.
+        string port = host.substring(colon + 1);
+        int|error portNumber = int:fromString(port);
+        if !re `[0-9]{1,5}`.isFullMatch(port) || portNumber !is int || portNumber < 1 || portNumber > 65535 {
+            return false;
+        }
         host = host.substring(0, colon);
     }
     if host.endsWith(".") {
