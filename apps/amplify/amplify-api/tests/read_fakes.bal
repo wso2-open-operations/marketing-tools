@@ -64,7 +64,8 @@ isolated function mockRosterConfigured() returns boolean {
 }
 
 # How the fake directory answers: `ok`, `down` (418, not a breaker status, so the breaker stays closed for
-# the other tests), `unavailable` (503, which opens the breaker: only for a client of its own), `garbled` (a body that isn't a directory) or `gqlerror` (a GraphQL `errors` array).
+# the other tests), `unavailable` (503, which opens the breaker: only for a client of its own), `garbled` (a body that isn't a directory), `gqlerror` (a GraphQL `errors` array),
+# or `nohouse` / `nohouse400` (an HR Entity older than 1.1.1: a query asking for house gets GraphQL errors / a 400).
 isolated string directoryMode = "ok";
 isolated int directoryFetches = 0;
 
@@ -143,6 +144,17 @@ service /people/graphql on jwksListener {
         }
         if mode == "gqlerror" {
             return ok({errors: [{message: "Bob Jones bob@wso2.com is not allowed"}], data: ()});
+        }
+        // An HR Entity older than 1.1.1: no house fields, so a query that asks for them is refused as a whole.
+        json query = request is map<json> ? request["query"] : ();
+        boolean asksHouse = query is string && query.includes("houseId");
+        if mode == "nohouse" && asksHouse {
+            return ok({errors: [{message: "Cannot query field \"houseId\" on type \"Employee\"."}], data: ()});
+        }
+        if mode == "nohouse400" && asksHouse {
+            http:Response res = new;
+            res.statusCode = 400;
+            return res;
         }
         int 'limit = 1000;
         int offset = 0;

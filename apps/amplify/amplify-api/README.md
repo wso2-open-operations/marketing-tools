@@ -1,6 +1,6 @@
 # amplify-api
 
-The published Amplify API (Ballerina, Choreo "Amplify Backend"). It is reached only through the Choreo API proxy at the cell edge, which forwards the caller as a signed backend JWT in `x-jwt-assertion` ([ADR-004](../architecture/decisions/ADR-004-api-proxy-cell-edge.md), ADR-022). It serves the One WSO2 Amplify UI. Port 9090 (`port`), project visibility only ([workload.yaml](workload.yaml)).
+The published Amplify API (Ballerina, Choreo "Amplify Backend"). It is reached only through the Choreo API proxy at the cell edge, which forwards the caller as a signed backend JWT in `x-jwt-assertion` ([ADR-004](../architecture/decisions/ADR-004-api-proxy-cell-edge.md), ADR-022). It serves the One WSO2 Amplify UI. Port 9090 (`port`). On Choreo the endpoint is Organization-visible ([.choreo/component.yaml](../.choreo/component.yaml)): the API proxy calls its Organization URL, and a Project-only endpoint makes the proxy answer `503 No healthy upstream`. The OpenChoreo [workload.yaml](workload.yaml) keeps Project visibility.
 
 **Contract: [openapi.yaml](openapi.yaml).** Every phase 1 operation, its `x-access` grant, its errors and its cache headers are defined there. A new route needs its entry in `openapi.yaml`, a row in `modules/auth/matrix.bal`, and the resource in `service.bal`; `tests/contract_test.bal` fails otherwise. Lint names with `../scripts/lint-openapi-names.sh`.
 
@@ -53,7 +53,7 @@ Every POST accepts `Idempotency-Key` (`idempotency.bal`, ADR-024): a repeat with
 
 File: `outbound.bal`.
 
-Calls to amplify-jobs (trigger a run), the HR Entity GraphQL directory (teams, business units, names, headcount, and house name and id; OAuth2 client credentials, ADR-045) and LinkedIn (OAuth, ID-token check, token cipher, revoke). Each client has a timeout and a circuit breaker. The breaker states show on `/ready`.
+Calls to amplify-jobs (trigger a run), the HR Entity GraphQL directory (teams, business units, names, headcount, and house name and id; OAuth2 client credentials, ADR-045; the team is the HR Entity's `department`, and an HR Entity older than 1.1.1 is read without house instead of failing) and LinkedIn (OAuth, ID-token check, token cipher, revoke). Each client has a timeout and a circuit breaker. The breaker states show on `/ready`.
 
 ## Scheduler sync
 
@@ -79,7 +79,7 @@ A lazy PostgreSQL client with a circuit breaker, and the repository factories an
 
 ## Tests
 
-Folder: `tests/`. Run from this folder:
+Folder: `tests/`. Run from the package root (`amplify-api/`, where `Ballerina.toml` is), not from `tests/`:
 
 ```
 bal build

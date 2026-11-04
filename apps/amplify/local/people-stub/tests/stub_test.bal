@@ -24,7 +24,9 @@ function servesTheDirectory() returns error? {
     json[] rows = check stubClient->get("/employees/basic-info");
     test:assertTrue(rows.length() > 0);
     test:assertTrue(rows[0].workEmail is string);
-    test:assertTrue(rows[0].team is string);
+    json row = rows[0];
+    test:assertTrue(row is map<json> && (row["department"] is string || row["team"] is string),
+            "the team, as `department` (or `team` in an older file)");
 }
 
 @test:Config
@@ -47,4 +49,6 @@ function answersTheHrEntityQuery() returns error? {
     json[] page = <json[]>check body.data.employees;
     test:assertEquals(page.length(), 1, "one row per page");
     test:assertTrue(page[0].workEmail is string);
+    json first = page[0];
+    test:assertTrue(first is map<json> && first["department"] is string, "the team comes as `department`");
 }

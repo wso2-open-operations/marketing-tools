@@ -588,15 +588,24 @@ isolated function directoryIndex(string? correlationId) returns (DirectoryIndex 
     return fresh;
 }
 
-# The fields asked of every employee: only what Amplify uses (house from HR Entity 1.1.1).
-const string EMPLOYEE_FIELDS = "workEmail firstName lastName businessUnit department subTeam houseId house";
+# The fields asked of every employee: only what Amplify uses. The HR Entity's `department` is the team (its
+# `team` is the sub-team level, which Amplify does not read).
+const string EMPLOYEE_FIELDS = "workEmail firstName lastName businessUnit department subTeam";
+# The house fields, from hr_entity 1.1.1 (digiops-hr PR #2005).
+const string HOUSE_FIELDS = "houseId house";
 
 # The query, one page of current employees. Only the fields Amplify uses are asked for.
 #
+# + includeHouse - Also ask for `houseId` and `house` (the default; `false` only for an HR Entity older than 1.1.1)
 # + return - The GraphQL document
-isolated function employeesQuery() returns string =>
+isolated function employeesQuery(boolean includeHouse = true) returns string =>
     "query getEmployees($filter: EmployeeFilter!, $limit: Int, $offset: Int) { "
-    + "employees(filter: $filter, limit: $limit, offset: $offset) { " + EMPLOYEE_FIELDS + " } }";
+    + "employees(filter: $filter, limit: $limit, offset: $offset) { " + EMPLOYEE_FIELDS
+    + (includeHouse ? " " + HOUSE_FIELDS : "") + " } }";
+
+# The HR Entity refused the query itself: HTTP 400, or a GraphQL `errors` answer. A service older than
+# hr_entity 1.1.1 answers this way when asked for a field it does not have (`houseId`, `house`).
+type DirectoryQueryRefused distinct error;
 
 # Most pages one directory read will ask for. A service that never runs dry cannot loop the caller forever.
 const int MAX_DIRECTORY_PAGES = 100;
@@ -610,8 +619,19 @@ isolated function fetchDirectory(string? correlationId) returns (DirectoryIndex 
     map<string> headers = correlationId is string ? {[CORRELATION_HEADER]: correlationId} : {};
     DirectoryRecord[] records = [];
     int offset = 0;
+    // House is always asked for. An HR Entity older than 1.1.1 refuses the whole query for it, which would leave
+    // teams, BUs and the employee count unavailable, so the first page is asked again without house and the read
+    // goes on without it (no House column until the service is upgraded).
+    boolean withHouse = true;
     foreach int _ in 0 ..< MAX_DIRECTORY_PAGES {
-        DirectoryRecord[] page = check fetchDirectoryPage(c, headers, pageSize, offset);
+        DirectoryRecord[]|error asked = fetchDirectoryPage(c, headers, pageSize, offset, withHouse);
+        if asked is DirectoryQueryRefused && withHouse && offset == 0 {
+            log:printWarn("People directory refused the house fields; reading without house (needs hr_entity 1.1.1 or later)",
+                    correlationId = correlationId);
+            withHouse = false;
+            asked = fetchDirectoryPage(c, headers, pageSize, offset, false);
+        }
+        DirectoryRecord[] page = check asked;
         // The end is an empty page, not a short one: the service may cap `limit` below what was asked for, and the
         // next offset is what came back, so a capped page never skips or ends the read early.
         if page.length() == 0 {
@@ -629,14 +649,19 @@ isolated function fetchDirectory(string? correlationId) returns (DirectoryIndex 
 # + headers - Request headers
 # + pageSize - Rows asked for
 # + offset - Rows to skip
-# + return - The rows, or an error that never carries the response body (it names people)
-isolated function fetchDirectoryPage(http:Client c, map<string> headers, int pageSize, int offset)
-        returns DirectoryRecord[]|error {
+# + includeHouse - Also ask for `houseId` and `house`
+# + return - The rows, or an error that never carries the response body (it names people). A refused query
+# (400 or GraphQL `errors`) is a `DirectoryQueryRefused`
+isolated function fetchDirectoryPage(http:Client c, map<string> headers, int pageSize, int offset,
+        boolean includeHouse = true) returns DirectoryRecord[]|error {
     json body = {
-        query: employeesQuery(),
+        query: employeesQuery(includeHouse),
         variables: {filter: {employeeStatus: hrEntityStatuses}, 'limit: pageSize, offset}
     };
     http:Response res = check c->post("", body, headers);
+    if res.statusCode == 400 {
+        return error DirectoryQueryRefused("People directory refused the query (400)");
+    }
     if res.statusCode != 200 {
         return error(string `People directory answered ${res.statusCode}`);
     }
@@ -647,7 +672,7 @@ isolated function fetchDirectoryPage(http:Client c, map<string> headers, int pag
     }
     json errors = payload["errors"];
     if errors is json[] && errors.length() > 0 {
-        return error("People directory answered with GraphQL errors");
+        return error DirectoryQueryRefused("People directory answered with GraphQL errors");
     }
     json data = payload["data"];
     json employees = data is map<json> ? data["employees"] : ();

@@ -24,6 +24,37 @@ function testTheQueryAlwaysAsksForTheHouseFields() {
 }
 
 @test:Config {groups: ["reads"]}
+function testTheQueryCanLeaveHouseOut() {
+    string query = employeesQuery(false);
+    test:assertFalse(query.includes("house"), "an HR Entity older than 1.1.1 is asked without house");
+    test:assertTrue(query.includes("workEmail firstName lastName businessUnit department subTeam"));
+}
+
+// An HR Entity older than 1.1.1 refuses a query that asks for house (GraphQL errors or a 400). The read asks the
+// first page again without house, so teams, BUs and the employee count stay available.
+@test:Config {groups: ["reads"]}
+function testAnHrEntityWithoutHouseStillGivesTheDirectory() returns error? {
+    foreach string mode in ["nohouse", "nohouse400"] {
+        setDirectory(mode);
+        _ = takeDirectoryFetches();
+        DirectoryIndex index = check fetchDirectory(());
+        test:assertEquals(takeDirectoryFetches(), 2, mode + ": asked with house, then once without");
+        test:assertEquals(index.total, 4, mode + ": every employee is read");
+        test:assertTrue(index.teamOf["rv-a@wso2.com"] is string, mode + ": teams still come");
+        test:assertEquals(index.houseMembers.length(), 0, mode + ": just no house");
+    }
+    setDirectory("ok");
+}
+
+@test:Config {groups: ["reads"]}
+function testADirectoryRefusedWithoutHouseIsStillAnError() {
+    setDirectory("gqlerror");
+    (DirectoryIndex & readonly)|error result = fetchDirectory(());
+    test:assertTrue(result is error, "the fallback is tried once; a service that refuses it too is an outage");
+    setDirectory("ok");
+}
+
+@test:Config {groups: ["reads"]}
 function testAnEntityEmployeeWithAHouseFeedsTheIndex() returns error? {
     json rows = [
         {workEmail: "Ada@WSO2.com", firstName: "Ada", lastName: "L", businessUnit: "Eng", department: "Core", subTeam: (), houseId: 3, house: "Titans"},
