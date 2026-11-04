@@ -33,7 +33,7 @@ dependencies = [
 [[package]]
 org = "ballerina"
 name = "constraint"
-version = "1.7.2"
+version = "1.7.3"
 dependencies = [
 	{org = "ballerina", name = "jballerina.java"}
 ]
@@ -505,6 +505,7 @@ dependencies = [
 	{org = "ballerina", name = "lang.array"},
 	{org = "ballerina", name = "lang.regexp"},
 	{org = "ballerina", name = "lang.runtime"},
+	{org = "ballerina", name = "lang.value"},
 	{org = "ballerina", name = "log"},
 	{org = "ballerina", name = "mime"},
 	{org = "ballerina", name = "observe"},
@@ -519,6 +520,7 @@ modules = [
 	{org = "wso2", packageName = "amplify_common", moduleName = "amplify_common"},
 	{org = "wso2", packageName = "amplify_common", moduleName = "amplify_common.crypto"},
 	{org = "wso2", packageName = "amplify_common", moduleName = "amplify_common.events"},
+	{org = "wso2", packageName = "amplify_common", moduleName = "amplify_common.googlechat"},
 	{org = "wso2", packageName = "amplify_common", moduleName = "amplify_common.linkedin"},
 	{org = "wso2", packageName = "amplify_common", moduleName = "amplify_common.resilience"},
 	{org = "wso2", packageName = "amplify_common", moduleName = "amplify_common.types"}
