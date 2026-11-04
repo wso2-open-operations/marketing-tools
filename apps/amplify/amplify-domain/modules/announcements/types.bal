@@ -23,29 +23,31 @@ public enum AnnouncementStatus {
     FAILED
 }
 
-# Announcement aggregate (`announcement`): one Club card per campaign. PK = `campaignId`,
+# Announcement aggregate (`announcement`): one Novera announcement per campaign. PK = `campaignId`,
 # so a campaign is announced exactly once.
 public type Announcement record {|
     # Campaign (PK)
     string campaignId;
     # Outbox id of the `CampaignRegistered` row
     int? outboxId;
-    # `club` or `dev-test`
+    # `novera` (rows from before Novera replaced the Club webhook say `club` or `dev-test`)
     string space;
-    # `campaign-{id}`
-    string threadKey;
-    # Name Chat returned
-    string? chatMessageName;
-    # Thread name Chat returned (`spaces/{space}/threads/{thread}`), when it sent one
-    string? chatThreadName = ();
+    # Key sent to Novera as `Idempotency-Key`: `amplify:{campaignId}` (column `thread_key`; older rows hold
+    # `campaign-{id}`)
+    string idempotencyKey;
+    # Delivery marker `novera:{campaignId}` (column `chat_message_name`); Novera returns no message name
+    string? messageName;
     # Queue time
     time:Utc queuedAt;
     # Sent fact
     time:Utc? sentAt;
     # Failed fact
     time:Utc? failedAt;
-    # Last webhook error (never the webhook URL)
+    # Last delivery error (safe text, never a URL or a credential)
     string? lastError;
+    # Attempt marker (column `attempted_at`, V022): written before the Novera call and cleared only when the call
+    # definitely sent nothing. A queued row that still carries it may already have reached Novera
+    time:Utc? attemptedAt = ();
 |};
 
 # What the card needs from the campaign (S1 → S5, Customer/Supplier).
@@ -76,6 +78,6 @@ public type NoveraNotification record {|
     string iconUrl?;
     # Picture under the title (public https only), if any
     string imageUrl?;
-    # The Amplify button: opens the Celebrate page with this campaign's share dialog
+    # The Amplify button: opens the configured link (`noveraButtonUrl`) for this campaign
     record {|string url; string label;|} button;
 |};

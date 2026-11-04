@@ -1,18 +1,103 @@
 # amplify-database
 
-Amplify DB Migrate: the Choreo Manual Task (and Compose one-shot) that builds the Amplify PostgreSQL database (15 or later). It applies `migrations/` (`V###__name.sql`), then `seed/` (`S###__name.sql`), in order, one transaction per script, and records each in `public.schema_version` with a checksum. It also sets the app role passwords from secrets, then exits. A rerun is a no-op, a changed applied script stops the run (forward-only), a pending script that sorts below an already-applied version stops it too (no out-of-order), and `dryRun = true` connects but creates nothing (not even `public.schema_version`) and runs no script: it logs each script as pending, applied or changed, and fails on a changed one.
+Amplify DB Migrate: the migration runner that builds the Amplify PostgreSQL database. It is a Ballerina job (Choreo Manual Task, Compose one-shot), not a service. It has no endpoint.
 
-| Folder | What |
+## What it is and how it is triggered
+
+The runner starts, applies what is pending, and exits. Nothing calls it while it runs.
+
+- Compose: the `amplify-db-migrate` one-shot runs it before amplify-api and amplify-jobs start. `make seed` reruns it.
+- Choreo: run the Manual Task from the console on each deploy (`docs/runbooks/choreo-deploy.md`).
+
+It connects as the one Amplify login user (`dbUser`; staging `amplify_stg_user`) and puts one schema first on the `search_path` (`dbSchema`, default the user name). There are no roles: that user owns every object and every component connects as it (ADR-043). The DBA creates the login, the schema and the extensions before the first run (`local/db-init/10-amplify-dba-setup.sh` does it locally). The server must be PostgreSQL 15 or later; the runner checks this before any script runs (ADR-044).
+
+## What a run does
+
+1. Lists `migrations/` (`V###__snake_name.sql`), then `seed/` (`S###__snake_name.sql`). A `.sql` file whose name does not match, or two scripts with the same number, stop the run.
+2. Creates `schema_version` in the Amplify schema once (version, kind, SHA-256 checksum, `applied_at`, `applied_by`, `execution_ms`).
+3. Stops when a pending script sorts below an applied one. A late `V0NN` must be renumbered above the highest applied version.
+4. Applies each pending script in its own transaction, under a transaction-level advisory lock, and records it with its checksum.
+5. Stops when an applied script has changed on disk (forward-only). A rerun with nothing pending is a no-op.
+
+Never edit an applied script. Add a new version. A seed that must change after it was applied needs a new seed, and often a migration for databases that already hold the old value (see `seed/README.md`).
+
+Dry run (`dryRun = true`): connects, creates nothing (not even `schema_version`), runs no script. It logs each script as `PENDING`, `APPLIED` or `CHANGED` and fails on a changed or out-of-order script. Use it as a checksum check before a deploy.
+
+## Settings
+
+All are `configurable` in `main.bal`. In Choreo they arrive as `BAL_CONFIG_VAR_*` (`workload.yaml`, `.choreo/component.yaml`).
+
+| Setting | Default | What |
+| --- | --- | --- |
+| `dbHost`, `dbPort`, `dbName` | `localhost`, 5432, `amplify` | The server and database |
+| `dbUser` | `amplify` | The login user |
+| `dbPassword` | empty | The login password (secret) |
+| `dbSchema` | empty (the user name) | The schema every table lives in. It must exist |
+| `dbSslMode` | `VERIFY_FULL` | TLS mode. `DISABLE` only for local Compose and the integration tests. The runner warns at start-up when a remote host is not verified |
+| `dbSslRootCert` | empty | Path of the CA PEM (Choreo file mount, `BAL_CONFIG_VAR_DBSSLROOTCERT`) |
+| `migrationsDir`, `seedDir` | `migrations`, `seed` | Script folders |
+| `dryRun` | `false` | Report only |
+
+## Files
+
+| Path | What |
 | --- | --- |
-| `main.bal` | The runner |
-| `migrations/` | Forward-only schema scripts, `V001` to `V020` so far |
-| `seed/` | Idempotent seed data (`ON CONFLICT DO NOTHING`): point rules (S001, S005 pilot values, S006 all values), categories, app settings, scheduler settings, leaderboard top scope (S007, moved to MONTH by S009) and minimum points (S010), token grace (S008) (see `seed/README.md`) |
-| `checks/` | One-off checks such as `d2_extensions.sql` (run on each new server, plan D2) |
-| `tests/` | Unit tests plus the `integration` group: off unless `itEnabled = true`. It drops and recreates `itDbName` (default `amplify_it`) on a PostgreSQL 17 server, so never point it at a database you need (see `docs/migrations/README.md`) |
+| `main.bal` | The runner: script listing, version table, checksums, out-of-order check, dry run, TLS check, server version check |
+| `migrations/` | Forward-only schema scripts, `V001` to `V022` (`V017` is unused). See `migrations/README.md` |
+| `seed/` | Idempotent seed data, `S001` to `S010`. See `seed/README.md` |
+| `checks/` | One-off read-only checks, not run by the runner. See below |
+| `tests/` | Unit tests and the `integration` group. See below |
+| `Dockerfile` | Builds the jar on `ballerina/ballerina`, runs it on a JRE as UID 10014. Copies `migrations/` and `seed/` into the image |
+| `workload.yaml`, `.choreo/component.yaml` | Deploy descriptors (kept in step by `scripts/check-descriptors.sh`) |
+| `Ballerina.toml`, `Dependencies.toml`, `.dockerignore` | Package and build files |
+| `CLAUDE.md` | Rules for agents and maintainers |
 
-Run from this folder: `bal build`, `bal test`, `bal run`. Rules for writing scripts: never edit an applied migration, no `?` in scripts (the JDBC driver reads it as a bind marker), enums are `text` plus `CHECK`, views are `security_invoker`, and maintenance functions are `SECURITY DEFINER` with a pinned `search_path`. Details: `CLAUDE.md` in this folder.
+### checks/
+
+Run by hand, once per server or environment. The runner never runs them.
+
+- `d2_extensions.sql`: lists `citext`, `pg_trgm`, `pg_partman`, `pg_cron`, `pgaudit` and `SELECT version()`. `citext` and `pg_trgm` are required. Run on each new server (plan D2, `docs/runbooks/choreo-deploy.md`).
+- `d3_single_user.sql`: run as the login user. Checks that the schema named after the user exists and that the single login can run Amplify. Every row should say `OK`.
+
+### tests/
+
+- Unit tests: `main_test.bal` (listing, naming, duplicates, TLS warning, checksum, out-of-order).
+- `integration` group: `integration_test.bal` (fresh migrate, rerun, checksum guard, partitions), `invariants_test.bal`, `uuidv7_test.bal`, and one file per migration with behavior worth pinning: `v006_reversal_test.bal`, `v013_test.bal`, `v014_test.bal`, `v018_test.bal`, `v019_test.bal`, `v020_test.bal`, `v021_test.bal`. Off unless `itEnabled = true`. It drops and recreates the database `itDbName` (default `amplify_it`) through `itAdminUser`, so never point it at a database you need.
+- `tests/resources/`: fixture folders (`migrations/`, `duplicate/`, `misnamed/`) for the listing tests.
+
+## Build, run and test
+
+From this folder:
+
+```sh
+bal build
+bal test                                                  # unit tests; the integration group returns early
+BAL_CONFIG_VAR_ITENABLED=true BAL_CONFIG_VAR_DBPORT=55432 BAL_CONFIG_VAR_DBPASSWORD=postgres \
+  BAL_CONFIG_VAR_DBSSLMODE=DISABLE bal test --groups integration
+bal run                                                   # against the database the settings name
+```
+
+Integration setup (a throwaway PostgreSQL container, the other components' tests): `docs/migrations/README.md`.
+
+## Rules for scripts
+
+- Every `.sql` carries the Apache-2.0 header.
+- No script names a schema. The runner sets the `search_path`. Tables are named `<context>_<name>`.
+- No `?` in a script: the JDBC driver reads it as a bind marker.
+- Enums are `text` plus `CHECK`. Views are `security_invoker`.
+- Maintenance functions are `SECURITY DEFINER` with a pinned `search_path` and `format(%I)`.
+- No script creates a role, grants to one or switches to one (ADR-043).
+
+## What it does not do
+
+- It does not create roles, the login user, the schema or the extensions. The DBA does (V001 only checks that they exist, and installs `uuidv7()` on servers older than 18).
+- It does not run `checks/`.
+- It does not roll back an applied script. Fix forward with a new version.
+- It does not run again on its own. Something has to start it.
 
 > **The data model below is a copy** of [`architecture/solution/Phase 1/phase1-data-model.md`](../architecture/solution/Phase%201/phase1-data-model.md) (pasted 2026-10-21, relative links adjusted). That file is the source of truth. Change it first, then refresh this copy.
+>
+> **The grants and roles parts of the copy are out of date.** It still describes the `amplify_api`, `amplify_jobs`, `amplify_readonly` and `amplify_migrate` roles and a `V017` token-grant script. ADR-043 removed the roles (one login, one schema), and `V017` is unused. Trust `migrations/README.md` and the source file for those parts.
 
 ---
 
@@ -649,11 +734,12 @@ erDiagram
     ANNOUNCEMENT["announcement (AR)"] {
         uuid campaign_id PK
         bigint outbox_id
-        text space "club or dev-test"
-        text thread_key "campaign-{id}"
-        text chat_message_name "returned by Chat"
-        text chat_thread_name "returned by Chat (V011)"
+        text space "novera (older rows: club or dev-test)"
+        text thread_key "idempotency key amplify:{campaignId} (older rows: campaign-{id})"
+        text chat_message_name "novera:{campaignId} marker"
+        text chat_thread_name "unused since ADR-047 (V011)"
         timestamptz queued_at
+        timestamptz attempted_at "set before the Novera call (V022)"
         timestamptz sent_at
         timestamptz failed_at
         text last_error
@@ -668,6 +754,8 @@ erDiagram
 | messaging | `outbox.id` | announcement | `announcement.outbox_id` |
 
 Derived status (`announcement_v`): `SENT` / `FAILED` / `QUEUED` from the timestamps. Failed rows feed the admin retry view.
+
+`attempted_at` (V022, nullable) is saved before jobs calls Novera. It does not change the derived status. A `QUEUED` row with `attempted_at` set is not sent again: jobs marks it `FAILED` with `last_error` starting "Delivery unknown:". The admin retry clears `failed_at` and `attempted_at` (ADR-047).
 
 ## messaging, audit, config — infrastructure
 
@@ -741,7 +829,7 @@ erDiagram
 
 | Event (outbox `event_type`) | Publisher | Producer writes | Consumer | Consumer writes | Idempotency key |
 | --- | --- | --- | --- | --- | --- |
-| `CampaignRegistered` | S1 (`amplify-api`, Save or Save & Share Now) | `campaign` | S5 chat notifier (jobs) | `announcement` (queued), then webhook | `campaign.id` |
+| `CampaignRegistered` | S1 (`amplify-api`, Save or Save & Share Now) | `campaign` | S5 announcement handler (jobs) | `announcement` (queued), then Novera notification (ADR-047) | `campaign.id` |
 | `CampaignAnnounced` | S5 (jobs) | `announcement` (`sent_at`) | — (admin view only) | — | `outbox.id` |
 | `ConnectionReady` | S2 (api, OAuth complete or reconnect) | `connection_member_connection`, `provider_token` | C1, channel banners | — | `member_urn` + `connected_at` |
 | `ConnectionRevoked` | S2 (jobs on a LinkedIn 401, or consent withdrawn) | `member_connection.revoked_at` | C1 | unpublished `share_request` rows: `failed_at`, `failure_reason = NEEDS_RECONNECT` | `member_urn` + `revoked_at` |
@@ -780,7 +868,7 @@ history. The scripts as they stand carry neither.
 
 | Script | What it changes |
 | --- | --- |
-| `V011__announcement_thread_name.sql` | `announcement.chat_thread_name` (the thread Chat returns with each Club card, M6a). Recreates `announcement_v` to pick up the column and re-grants `SELECT` to the same roles as V008 |
+| `V011__announcement_thread_name.sql` | `announcement.chat_thread_name` (the thread Chat returned with each Club card, M6a; unused since Google Chat was removed, ADR-047). Recreates `announcement_v` to pick up the column and re-grants `SELECT` to the same roles as V008 |
 | `V012__recognition_lock_maintenance_timeout.sql` | `pg_advisory_xact_lock(1634561133)` first in `apply_ledger_entry`, `rerank`, `rebuild` (lock order above). `lock_timeout = 5s` on the six upkeep functions, so daily upkeep gives up instead of queueing every token and audit write behind an `ACCESS EXCLUSIVE` request; `run_partition_maintenance` takes advisory lock 1634561134 so two upkeep calls don't race. Owners and grants unchanged |
 | `V013__idle_timeout_dashboard_indexes.sql` | `idle_in_transaction_session_timeout = '30s'` (set per connection in the JDBC options since ADR-043, not on a role), so a session the runtime leaves idle in a transaction releases its locks (R-13). Indexes `points_ledger (created_at)` and partial `share_request (failed_at) WHERE failed_at IS NOT NULL`, the two the planner used for the PO dashboard tiles (EXPLAIN in `docs/migrations/2026-10-17-v013-idle-timeout-dashboard-indexes.md`). `COMMENT ON FUNCTION` for the lock order |
 | `V014__point_actions_all_phases.sql` | `point_rule_action_check` and `points_ledger_action_check` also accept `REACTION`, `COMMENT`, `CHALLENGE_ENTRY` and `CHALLENGE_WINNER`, so the whole points table fits without a later schema change. Nothing awards them yet (likes and comments need Community Management; Challenge entry and winner are PO adjustments for now). `sharing_engagement.action` is unchanged. Seeds S005 to S007 price them (REACTION 1, COMMENT 1, CHALLENGE_ENTRY 10, CHALLENGE_WINNER 25 from 2026-10-19) and add `leaderboard.top_scope` |
@@ -794,7 +882,10 @@ history. The scripts as they stand carry neither.
 | `V017__narrow_token_grants.sql` | (removed by ADR-043: it narrowed the token grants per role; there are no grants now, and the token is protected by app encryption and the erasure function) |
 | `V018__erase_employee_function.sql` | `identity.erase_employee(p_employee_id, p_actor, p_reason)`, the audited erase (ADR-040): connection, tokens, consent, idempotency keys, commentary and names go; the ledger, engagements, shares and audit rows stay under the pseudonymous id |
 | `V019__dev_post_link_http.sql` | `campaign.resource_url` also accepts the local stack's one http dev origin; the app's `campaignLinkOrigins` stays the production policy |
-| `V020__employee_alias.sql` | `identity_employee_alias`: a re-created Asgardeo account maps to the first employee id (ADR-041) |
+| `V020__employee_alias.sql` | `identity_employee_alias`: a re-created Asgardeo account maps to the first employee id (ADR-041); `amplify_api` SELECT, INSERT, `amplify_jobs` and `amplify_readonly` SELECT |
+| `V021__immutable_ledger_and_audit.sql` | |
+| `V022__announcement_attempted_at.sql` | nullable `announcement.attempted_at timestamptz`, the Novera attempt marker (ADR-047). Jobs saves it before the call; a row already attempted is never sent again automatically |
+
 
 There are no grants to change since ADR-043. The review proposals about `REVOKE` on app roles (jobs-db review D4/D5, H3) no longer apply; V021 covers the ledger and the audit log, and `REVOKE TEMPORARY ON DATABASE <db> FROM PUBLIC` is a DBA decision.
 

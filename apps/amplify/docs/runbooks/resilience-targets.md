@@ -33,7 +33,7 @@ Targets; the DB figures depend on the managed-Postgres plan chosen at deploy (mu
 | Component | Liveness | Readiness | Gates on |
 | --- | --- | --- | --- |
 | `amplify-api` | `GET /health` → always `UP` | `GET /ready` | **`database`** (breaker not OPEN **and** `store:probe` ok) **and `jwks`** (breaker not OPEN). `jobs`, `roster`, `linkedinOAuth`, `linkedinApi`, `linkedinIdTokenJwks` are **reported, not fatal** (ADR-024, ADR-028 amendment) |
-| `amplify-jobs` | `GET /health` → always `UP` | `GET /ready` | **`database`** (breaker not OPEN **and** `store:probe` ok). `linkedinApi`, `googleChat` breakers and `runInProgress` are **reported, not fatal** (a run defers those rows, ADR-025). Compose healthcheck uses it |
+| `amplify-jobs` | `GET /health` → always `UP` | `GET /ready` | **`database`** (breaker not OPEN **and** `store:probe` ok). `linkedinApi`, `novera` breakers and `runInProgress` are **reported, not fatal** (a run defers those rows, ADR-025). Compose healthcheck uses it |
 | API proxy | platform health | platform | — |
 | Scheduler | external image | — | no Amplify health code |
 
@@ -48,7 +48,7 @@ Targets; the DB figures depend on the managed-Postgres plan chosen at deploy (mu
 | Signal | Where | What it means |
 | --- | --- | --- |
 | Outbox `FAILED` count rising | PO dashboard / SQL (`operations.md` §1) | Settlements failing past retries |
-| Breaker gauge `OPEN` (`amplify_breaker_state`) | Choreo metrics / `/ready` | A dependency (DB, JWKS, LinkedIn, Chat, people directory) is down |
+| Breaker gauge `OPEN` (`amplify_breaker_state`) | Choreo metrics / `/ready` | A dependency (DB, JWKS, LinkedIn, Novera, people directory) is down |
 | `RunReport.failed` > 0, `durationMs` high | run log / `POST /runs` response | Run health |
 | `schedulerSync: PENDING` / reconcile give-up | settings response / audit | Scheduler unreachable or refused |
 | 5xx rate; scheduler job failures | Choreo observability; `GET {scheduler}/jobs/{id}/history` | Platform/run errors |
@@ -62,7 +62,7 @@ Alerts and thresholds: [choreo-deploy.md](choreo-deploy.md) §alerts.
 | Dependency down | Effect | Behaviour (by design) |
 | --- | --- | --- |
 | **LinkedIn** (OAuth or post API) | New shares can't post | Outbox **retries with backoff** (base 30 s → max 3600 s, `maxAttempts=8`); `429` stays queued; `401` revokes → `NEEDS_RECONNECT`. Reads, leaderboard, points still work |
-| **Google Chat** | Announcements/cards fail | `400` fails once; `5xx`/`429` retry; a card 404 means the webhook was deleted (rotate). Announcement status `FAILED`, admin retry (`/admin/announcements/{id}/retry`) |
+| **Novera** (ADR-047) | Announcements fail | No response, `5xx`, `429`, `401` or `403` retry through the outbox; another `4xx` fails once. After the last attempt the announcement is `FAILED`, admin retry (`/admin/announcements/{id}/retry`). There is no second channel |
 | **Postgres** | Everything | DB breaker opens → API `503`, `/ready` **DOWN**; jobs run errors cleanly, half-open trial closes after restart. No writes lost (nothing committed) |
 | **JWKS / Asgardeo** | Login + token verify | Cached keys served; empty cache → **503 `DEPENDENCY_UNAVAILABLE`** (not 401). Breaker + 30 s min-refresh guard |
 | **people-app directory** (team rosters) | My Team, Team page team scope | Index cached 24 hours; a failed refresh keeps serving the old teams and asks again on the next call (an outage is never cached for the TTL). Only a cold start with the directory down gives `teamStatus: UNAVAILABLE`; My Team degrades, **never widens** (fails closed to self). Photos and names in the UI fall back to initials ([operations.md](operations.md) §13) |
@@ -93,4 +93,4 @@ The UI is the One WSO2 Amplify module; user-visible states (owner: One WSO2 UI o
 | My Team unavailable | "Team view unavailable right now" (degrades, does not error) |
 | Kill switch on | "Sharing/announcements paused" (`FEATURE_DISABLED`) |
 
-**Pilot comms during an incident:** PO team posts to the WSO2 Club space ([pilot-readiness.md](../requirements/pilot-readiness.md) §3) — a short "Amplify posting is paused, your shares are queued and will go out once LinkedIn recovers" note. Use the kill switch to stop new work while the incident is open.
+**Pilot comms during an incident:** PO team tells the pilot group ([pilot-readiness.md](../requirements/pilot-readiness.md) §3) — a short "Amplify posting is paused, your shares are queued and will go out once LinkedIn recovers" note. Use the kill switch to stop new work while the incident is open.

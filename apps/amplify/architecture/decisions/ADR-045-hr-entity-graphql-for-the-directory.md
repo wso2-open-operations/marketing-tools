@@ -15,26 +15,39 @@ Entity GraphQL service is what service-to-service callers use for this.
 
 - **amplify-api and amplify-jobs read the HR Entity GraphQL service**, not people-app. The `employees(filter, limit,
   offset)` query is sent as a GraphQL POST over the existing HTTP client (circuit breaker, timeout, OAuth2
-  client credentials). It is paged (`hrEntityPageSize`, default 1000) and stops at a short page.
+  client credentials). It is paged (`hrEntityPageSize`, default 1000; the service's own default is 100, and it may cap larger asks). The read ends on an empty page and the next offset moves by the rows that came back, so a capped page never truncates the roster.
 - **Only the fields Amplify uses are asked for.** The api asks for `workEmail`, `firstName`, `lastName`,
-  `businessUnit`, `team` and `subTeam`; the leaver sweep asks for `workEmail` only. Status, job band, manager and start date are
+  `businessUnit`, `team` and `subTeam` (plus `houseId` and `house` when `hrEntityIncludeHouse` is on); the leaver sweep asks for `workEmail` only. Status, job band, manager and start date are
   never requested.
 - **Statuses:** `hrEntityStatuses`, default `Active` and `Marked leaver`. A person who has resigned still works here
   until their status is `Left`, so they stay on rosters and out of the sweep.
+- **Retries** use the other HR Entity apps' settings and defaults: `count` 3, `interval` 3.0 s, `backOffFactor` 2.0, `maxWaitInterval` 20 s
+  (`hrEntityRetryCount`, `hrEntityRetryInterval`, `hrEntityRetryBackOffFactor`, `hrEntityRetryMaxWaitInterval`), on a connection
+  error or a 500, 502, 503 or 504. Ballerina cannot set a record configurable (`retryConfig`, `oauthConfig`) from an
+  environment variable, and Amplify configures everything that way, so these are flat names with the same fields and
+  values. In amplify-api the first failed read after an outage takes the whole retry time (about 21 s at the defaults),
+  then the circuit breaker opens and later calls fail at once for 30 s.
 - **Configuration** has the same shape as leave-app's: `hrEntityBaseUrl` and OAuth2 `tokenUrl`, `clientId`,
   `clientSecret` (`hrEntityTokenUrl`, `hrEntityClientId`, `hrEntityClientSecret`). Amplify gets its own client from
   People Operations; the code does not depend on which client is used.
-- **Team grouping** uses the sub-team, or the team when a person has none, as people-app's directory did. The query
-  asks for `subTeam` (infra-operations' employee-claims-sync asks the same `employees` query for it), so rosters keep
-  their sub-team split.
-- **House is not read.** It lives in people-app's database, and no entity query Amplify knows of returns it. The
-  house board and house counts stay in the API and answer empty until a later change adds the field.
-- **No other change to people-app.** PR #380's service-client path stays in people-app but Amplify no longer uses it.
+- **Team grouping** is unchanged: the sub-team, or the team when a person has none, under the business unit
+  (decided 2026-10-19). The entity's `Employee` has both `team` and `subTeam`.
+- **House is read from hr_entity 1.1.1, behind a flag.** **(2026-11-03):** digiops-hr PR #2005 (merged 2026-11-03,
+  `hr_entity` 1.1.0 to 1.1.1) added `houseId: Int` and `house: String` (the house name) to `Employee`. Both are null
+  when the employee has no house, and the name is still returned after the house is deactivated. There is no image URL
+  and `EmployeeFilter` has no house filter. amplify-api asks for `houseId house` only when `hrEntityIncludeHouse`
+  (`HRENTITYINCLUDEHOUSE`) is true. It is false by default: asking an older service for a field it lacks fails the
+  whole read, and the directory would answer `UNAVAILABLE`. Turn it on once the environment's HR Entity is 1.1.1 or
+  later. The index already maps `house` to the house board, the `by=HOUSE` counts and My Team's house names. The leaver
+  sweep in amplify-jobs does not ask for house.
+- **No change to people-app.** **(2026-11-03):** people-ops-suite PRs #388 and #389 reverted #380 and #387, so the
+  service-client path is no longer in people-app.
 
 ## Consequences
 
-- The people-app interceptor change is no longer on Amplify's critical path.
-- Rosters carry no house until the entity offers it.
+- The people-app interceptor change is not on Amplify's critical path, and it was reverted upstream.
+- Rosters carry a house once `hrEntityIncludeHouse` is on and the environment runs hr_entity 1.1.1 or later. Until then
+  the house board and house counts answer empty.
 - The local stack's `people-stub` answers the same GraphQL query from `directory.json`, and still serves
   `GET /employees/basic-info` for One WSO2's photos.
-- `local/people-app-proto` exercised the people-app service-client path and no longer matches the config names.
+- `local/people-app-proto` exercised the people-app service-client path, which upstream reverted. It no longer matches the config names.

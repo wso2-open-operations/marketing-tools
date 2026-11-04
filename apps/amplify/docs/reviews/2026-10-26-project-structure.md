@@ -1,5 +1,7 @@
 # Project structure review: Amplify in marketing-tools
 
+> Superseded in part on 2026-11-03: Google Chat was replaced by Novera (ADR-047).
+
 Date: 2026-10-26 · Method: WSO2 Digital project-structure conventions · Scope: `projects/marketing-tools` (root files, `apps/amplify` tree, docs placement, `local/`, `scripts/`, Dockerfile and Choreo descriptor placement, naming), `projects/one-wso2/webapp/src/features/amplify`, and the people-app and po-agent changes. Re-run of the 19 Oct review after the 20 Oct flattening and the 26 Oct move of `architecture/` and `docs/` into `apps/amplify`.
 
 **Overall:** still conforms on the things that matter for review and operation. Every Ballerina deployable has a `CLAUDE.md`, a committed `Dependencies.toml` and `observabilityIncluded = true`. Every component has its own Dockerfile, `.choreo/component.yaml` and `workload.yaml`, and `scripts/check-descriptors.sh` keeps them in step. Every relative link in `apps/amplify/**/*.md` resolves, and none points outside `projects/`. The new problems come mostly from drift: the `apps/amplify/README.md` layout block is stale after the move, the new `architecture/` and `docs/` trees are untracked and use names with spaces, and a few project docs still describe the old workspace layout.

@@ -13,13 +13,13 @@ apps/amplify/
 ├── compose.yaml · Makefile       # full local stack (M8a): make up / seed / e2e / down
 ├── .choreo/component.yaml        # Choreo descriptor of amplify-api (its Docker context is this folder, ADR-027); jobs' is ../.choreo/component.yaml (context `apps`)
 ├── .dockerignore · .gitignore
-├── amplify-common/           # shared library (ADR-020): types, events, crypto, linkedin, googlechat
+├── amplify-common/           # shared library (ADR-020): types, events, crypto, linkedin, resilience
 ├── amplify-domain/           # shared library (ADR-021): bounded contexts + PostgreSQL repositories + store
 ├── amplify-api/              # published API (behind the API proxy): /health, /ready
 ├── amplify-jobs/             # worker: POST /runs, POST /maintenance/partitions, POST /maintenance/rebuild-recognition, /health
 ├── amplify-scheduler/        # pinned akorn/scheduler image (UID 10014): calls amplify-jobs on schedule (ADR-026)
 ├── amplify-database/         # Amplify DB Migrate runner + migrations/ + seed/ + checks/
-├── local/                        # .env.example, dev-jwt/ (ADR-023), chat-stub/
+├── local/                        # .env.example, dev-jwt/ (ADR-023), novera-mock/
 ├── scripts/                      # test-all.sh, e2e-local.sh, load-test.sh (+ load/), check-descriptors.sh, check-logs-pii.sh, it-scheduler.sh, lint-openapi-names.sh
 └── docs/migrations/              # dated behavior/schema change notes
 ```
@@ -51,9 +51,9 @@ Needs Docker (Compose v2), `openssl`, `curl`, `jq`. From this folder:
 
 ```sh
 make up      # first run writes local/.env (random local-only secrets) and the dev JWT keys, builds, starts, waits for health
-make e2e     # scripts/e2e-local.sh: campaign -> scheduler Run -> Chat card -> mock OAuth -> share -> points -> leaderboard
+make e2e     # scripts/e2e-local.sh: campaign -> scheduler Run -> announcement -> mock OAuth -> share -> points -> leaderboard
 make seed    # rerun Amplify DB Migrate (migrations + seeds; idempotent)
-make logs    # follow all logs; `docker compose --env-file local/.env logs -f chat-stub` for cards
+make logs    # follow all logs; `docker compose --env-file local/.env logs -f amplify-jobs` for announcements
 make check   # descriptor drift check (Choreo component.yaml vs workload.yaml vs Dockerfile vs compose) + log hygiene (scripts/check-logs-pii.sh)
 ```
 
@@ -74,7 +74,7 @@ make down    # stop and REMOVE volumes
 | amplify-api | `127.0.0.1:9090` | Published directly (no gateway). Call it with a dev JWT: `curl -H "x-jwt-assertion: $(local/dev-jwt/mint-dev-jwt.sh token emp-1 ada@example.com amplify_po)" localhost:9090/me` (ADR-023, `environment=local` only) |
 | mock-linkedin | `127.0.0.1:19091` (www/OAuth only) | The browser follows the authorization redirect here; api port 9090 stays internal. One mock member signs in every time |
 | people-stub | `127.0.0.1:19092` | people directory stub (HR Entity `POST /graphql` for team rosters; `GET /employees/basic-info` for One WSO2 photos/names). `make env` (and so `make up`) creates `local/people-stub/directory.json` from the example the first time (the real file is gitignored, so it never gets committed); edit it to add yourself. ThunderID users are keyed `<sub>@example.com` (the dev proxy's fallback when the token has no email) |
-| postgres, amplify-db-migrate, amplify-jobs, scheduler, scheduler-db, chat-stub | none | Compose network only. Scheduler UI: `docker compose --env-file local/.env exec amplify-api wget -qO- http://scheduler:8080/jobs` |
+| postgres, amplify-db-migrate, amplify-jobs, scheduler, scheduler-db | none | Compose network only. Scheduler UI: `docker compose --env-file local/.env exec amplify-api wget -qO- http://scheduler:8080/jobs` |
 | apim (`make up PROFILE=apim`) | `127.0.0.1:9443`, `8243` | Optional WSO2 API Manager 4.7.0. **Pending the non-prod Asgardeo org** (key manager); steps in `compose.yaml`. Until then the default profile is the supported one |
 
 To point a local One WSO2 at it, use `http://localhost:9090` with a dev JWT forwarded as `x-jwt-assertion`, and `LINKEDIN_REDIRECT_URI` (default `http://localhost:3000/amplify/connect/callback`) as its callback page.
@@ -95,13 +95,15 @@ Every setting is a Ballerina `configurable`, set through `BAL_CONFIG_VAR_<NAME>`
 | `JOBSURL`, `SCHEDULERJOBSURL` | ✓ | | | | `http://amplify-jobs:9091` (Choreo: the Jobs endpoint's Project URL) |
 | `SCHEDULERURL` | ✓ | | | | `http://scheduler:8080` (Choreo: scheduler connection) |
 | `MINRUNINTERVALSECONDS`, `RECONCILEDELAYSECONDS` | ✓ | | | | 10, 5 (local only; defaults 60, 15) |
-| `HRENTITYBASEURL` | ✓ | ✓ | | | `http://people-stub:9096/graphql` (Choreo: unset until the HR Entity client is approved, `teamStatus: UNAVAILABLE`). HR Entity GraphQL `employees` query, paged; directory results (teams, names) cached 24 hours. House is not read yet |
+| `HRENTITYBASEURL` | ✓ | ✓ | | | `http://people-stub:9096/graphql` (Choreo: unset until the HR Entity client is approved, `teamStatus: UNAVAILABLE`). HR Entity GraphQL `employees` query, paged; directory results (teams, names, houses) cached 24 hours. House fields are asked for only when `HRENTITYINCLUDEHOUSE` is true |
 | `CAMPAIGNLINKORIGINS` | ✓ | | | | `https://www.linkedin.com,https://linkedin.com,http://localhost:19091` (Choreo prod: unset = LinkedIn only; dev may add the mock's public www URL). Origins a campaign's post link may use |
-| `ROSTERCACHESECONDS` | ✓ | | | | unset (default 86400 = 24 hours). TTL of the directory results (teams, names, houses): how long a team move or new hire takes to show without a restart. Only a successful read is kept; a failed refresh keeps serving the last result and asks again on the next call |
+| `ROSTERCACHESECONDS` | ✓ | | | | unset (default 86400 = 24 hours). TTL of the directory results (teams, business units, names, and houses when `HRENTITYINCLUDEHOUSE` is on): how long a team move or new hire takes to show without a restart. Only a successful read is kept; a failed refresh keeps serving the last result and asks again on the next call |
 | `HEADCOUNTCACHESECONDS` | ✓ | | | | unset (default 86400 = 24 hours). How long the employee count ("of N") reuses one directory read |
 | `SCORECARDTARGETCONNECTEDPCT`, `SCORECARDMAXEXPIREDPCT`, `SCORECARDTARGETSHARESUCCESSPCT`, `SCORECARDTARGETPRIORITYREACHPCT`, `SCORECARDTARGETACTIVE30D`, `SCORECARDTARGETREPOSTSPERMONTH` | ✓ | | | | unset (defaults 25, 5, 98, 25, 100, 600). The scorecard lines; local `.env` names are `SCORECARD_TARGET_CONNECTED_PCT` etc. |
 | `HRENTITYTOKENURL`, `HRENTITYCLIENTID`, `HRENTITYCLIENTSECRET` | ✓ | ✓ | | ✓ (secret) | unset. OAuth2 client credentials for the HR Entity service; same shape as leave-app's `oauthConfig` |
 | `HRENTITYPAGESIZE`, `HRENTITYSTATUSES` | ✓ | ✓ | | | unset (defaults 1000, `["Active","Marked leaver"]`) |
+| `HRENTITYINCLUDEHOUSE` | ✓ | | | | `false` (local `.env` name `HR_ENTITY_INCLUDE_HOUSE`; Choreo: unset, default `false`). When true, the directory query also asks for `houseId` and `house` (hr_entity 1.1.1, digiops-hr #2005). Asking an older HR Entity for them fails the whole read and the directory answers `UNAVAILABLE`, so turn it on only once the environment runs 1.1.1 or later. The people-stub answers `house` and `houseId` only when the query asks for them |
+| `HRENTITYRETRYCOUNT`, `HRENTITYRETRYINTERVAL`, `HRENTITYRETRYBACKOFFFACTOR`, `HRENTITYRETRYMAXWAITINTERVAL` | ✓ | ✓ | | | unset (defaults 3, 3.0, 2.0, 20.0: the other apps' `retryConfig`). Retried on a connection error or a 500, 502, 503 or 504 |
 | `LINKEDINCLIENTID` | ✓ | ✓ | | | `amplify-local` (mock) |
 | `LINKEDINCLIENTSECRET` | ✓ | | | ✓ | random, shared with the mock |
 | `LINKEDINREDIRECTURI` | ✓ | | | | `http://localhost:3000/amplify/connect/callback` |
@@ -110,12 +112,11 @@ Every setting is a Ballerina `configurable`, set through `BAL_CONFIG_VAR_<NAME>`
 | `LINKEDINIDTOKENVALIDATION` | ✓ | | | | `false` (`LINKEDIN_ID_TOKEN_VALIDATION`; the mock issues no ID token). `LINKEDINJWKSURL` / `LINKEDINOIDCISSUER` default to LinkedIn's |
 | `LINKEDINNONCEMODE` | ✓ | | | | `OFF` (`LINKEDIN_NONCE_MODE`). OIDC nonce on connect, only with `LINKEDINIDTOKENVALIDATION=true`: `SEND` puts it on the authorize URL and checks it when the ID token carries one (logs `nonce not echoed` otherwise), `REQUIRE` refuses a token without the same nonce. LinkedIn documents neither a nonce parameter nor a nonce claim, so stay at `SEND` until a real app is seen to echo it |
 | `TOKENKEYS`, `TOKENCURRENTKEYID` | ✓ | ✓ | | ✓ (keys) | `local-1:<random base64 32 bytes>`, `local-1` |
-| `CHATWEBHOOKURL` | | ✓ | | ✓ | chat-stub URL (or the dev test space) |
-| `CHATSPACE`, `CHATCARDAVATARURL`, `SHAREPAGEBASEURL` | | ✓ | | | `dev-test`, empty, One WSO2 Celebrate page |
-| `CHATALLOWINSECUREHTTP` | | ✓ | | | `true` (local only, plain-http stub) |
-| `AMPLIFYONNOVERA`, `AMPLIFYONWEBHOOK` | | ✓ | | | `true`, `false` (`AMPLIFY_ON_NOVERA`, `AMPLIFY_ON_WEBHOOK`): which channels announce a campaign. Novera is primary, the webhook best effort |
+| `NOVERABUTTONURL` | | ✓ | | | `https://one.wso2.com/amplify/celebrate?share={campaignId}` (compose default; `NOVERA_BUTTON_URL` in `local/.env` overrides it). URL template for the Novera card button; must contain `{campaignId}`, for example `https://one.wso2.com/amplify/celebrate?share={campaignId}`. No default in code; empty defers announcements ("Novera button URL is not configured"). https only (http only with `NOVERAALLOWINSECUREHTTP` locally). Checked at jobs start-up. The card icon and default image URLs are in `amplify-jobs/config.bal` |
+| `AMPLIFYONNOVERA` | | ✓ | | | `true` (`AMPLIFY_ON_NOVERA`). Novera is the only channel that announces a campaign (ADR-047) |
 | `NOVERANOTIFYURL`, `NOVERATOKENURL`, `NOVERACLIENTID`, `NOVERASCOPES` | | ✓ | | | empty (Novera's `POST /internal/notifications` through its Choreo gateway, the token endpoint, the subscribed application, optional scopes) |
 | `NOVERACLIENTSECRET` | | ✓ | | ✓ | empty (that application's secret) |
+| `NOVERAALLOWINSECUREHTTP` | | ✓ | | | unset. `true` only to try `local/novera-mock` over plain http; never in Choreo |
 
 Scheduler: `DSN` (secret, its own database/user). Mock LinkedIn: `LISTENERHOST=0.0.0.0`, `WWWBASEURL`, `CLIENTID`, `CLIENTSECRET` (secret), and `BAL_CONFIG_DATA` for `redirectUris`. Tuning knobs with safe defaults (run batch sizes, timeouts, breakers, LinkedIn ceilings) are in each component's `config.bal`; set them the same way when needed.
 
@@ -156,6 +157,30 @@ Which tests use the mock:
 | amplify-domain | no LinkedIn calls |
 | amplify-jobs IT (`integration`, `db-down-it`) | **real `mock_linkedin`** on 19190/19191, started by `scripts/test-all.sh` |
 | e2e (`scripts/e2e-local.sh`) | **real `mock_linkedin`** in Compose: connect, share, publish |
+
+## Caches
+
+Every cache is in memory and per process. amplify-api and amplify-jobs each hold their own, and replicas of one component do not share them. None is stored in the database, and a restart empties them. The last column says what happens when the source is down.
+
+| # | Cache | Where it lives | Holds | Lifetime (setting) | Refresh or invalidation | When the source fails |
+|---|---|---|---|---|---|---|
+| 1 | Directory index (`directoryCache`) | [amplify-api/outbound.bal](amplify-api/outbound.bal) | Everyone from the HR Entity: team, sub-team, business unit, display names, and house name and id when `hrEntityIncludeHouse` is on (hr_entity 1.1.1; off by default, so houses stay empty) | 24 h (`rosterCacheSeconds`) | Expires; the next call reloads it. Cache 2's refresh also reloads it | Keeps serving the old index; errors only if it was never loaded |
+| 2 | Headcount snapshot (`headcountCache`) | [amplify-api/outbound.bal](amplify-api/outbound.bal) | Employee counts by business unit, team and house | 24 h (`headcountCacheSeconds`) | Expires; its refresh is a fresh directory call and also reloads cache 1 | Keeps serving the last count; errors only if never counted |
+| 3 | Settings (`settingsCache`) | [amplify-api/settings.bal](amplify-api/settings.bal) | The settings row, kill switches included | 5 s (`settingsCacheSeconds`, 0 = off) | A save on this replica clears it and bumps a generation; other replicas see the change within 5 s. `SchedulerSync` reads the database directly | Nothing is served from a stale entry: the read fails with the database error |
+| 4 | Monthly totals, top board (`monthlyCache`) | [amplify-api/topboard.bal](amplify-api/topboard.bal) | Points per employee for the current month | 2 h (`topBoardCacheSeconds`) | Expires, or a new month; `dropMonthlyCache()` in tests | Serves the previous totals of the same month; errors if there are none |
+| 5 | Dashboard snapshot (`snapshotCache`) | [amplify-api/dashboard_data.bal](amplify-api/dashboard_data.bal) | Data for the five `amplify_*` boards (ADR-036) | 60 s (constant `SNAPSHOT_SECONDS`) | Expires | The read fails with the database error |
+| 6 | PO dashboard (`dashboardCache`) | [amplify-api/reads.bal](amplify-api/reads.bal) | Dashboard JSON per month, up to 24 months | 60 s (constant) | Expires; at 24 entries it is emptied | The read fails with the database error |
+| 7 | Resolved sub (`resolvedSubs`) | [amplify-api/identity_resolution.bal](amplify-api/identity_resolution.bal) | Token `sub` to employee id | 5 min (`identityCacheSeconds`), at most 20,000 entries | Expires; at the cap expired entries go, then all. A clash (`EMAIL_CONFLICT`) is never cached | The lookup fails with the database error |
+| 8 | Gateway JWKS (`JwksCache`) | [amplify-api/modules/auth/jwks.bal](amplify-api/modules/auth/jwks.bal) | Token signing keys | 1 h (`jwksRefreshSeconds`); at most one fetch per 30 s (`jwksMinRefreshIntervalSeconds`), also for an unknown key id | Age or an unknown `kid` | Keeps serving the last good keys, behind a circuit breaker; `KEYS_UNAVAILABLE` if it never had any |
+| 9 | Outbox backlog (amplify-jobs) | [amplify-jobs/backlog.bal](amplify-jobs/backlog.bal) | Pending-row count for `/ready` | 15 s (`outboxBacklogCacheSeconds`) | Expires | The read fails with the database error |
+| 10 | House cache (`HouseCache`, `HouseService`) | [amplify-api/house_cache.bal](amplify-api/house_cache.bal), [house_service.bal](amplify-api/house_service.bal), [house_types.bal](amplify-api/house_types.bal) | House by id (name, image URL), employee email to house id, house to members | 30 days per entry (`DEFAULT_HOUSE_TTL_SECONDS`) | `populate()` at start-up, `refresh()`, `refreshHouse(id)`, `removeHouse(id)`, `removeEmployee(email)` | A failed refresh keeps what is cached |
+
+Row 10 is new and not wired to any route yet ([ADR-046](architecture/decisions/ADR-046-house-cache-and-house-service.md)): nothing calls `populate()` or `refresh()`. It lives in `amplify-api` next to the directory index because it is the same kind of data about an employee. The HR Entity has `houseId` and `house` (name) from hr_entity 1.1.1 (digiops-hr #2005, merged 2026-11-03), so house ids, names and assignments can come from the directory read the index already makes, with no second fetch. Only the image URL needs another source, not yet decided. Until the cache is wired, the house board and house counts read the directory index (row 1).
+
+Two related things are not data caches:
+
+- HTTP caching on read routes. Responses are `Cache-Control: no-store` by default. `/leaderboard` is `private, max-age=30` with an ETag (`If-None-Match` gives a 304), and `/leaderboard/top` and `/po/dashboard` are `private, max-age=60`. This is the browser's copy, not the server's.
+- The denial-audit throttle (`denialBuckets` in [amplify-api/interceptors.bal](amplify-api/interceptors.bal)). A repeat of the same 401 or 403 inside `denialAuditWindowSeconds` (60 s) is counted, not written to `audit_log`, and the next row carries the count. It holds at most 1,024 keys.
 
 ## Docs
 

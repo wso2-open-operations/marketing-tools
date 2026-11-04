@@ -2,6 +2,7 @@
 
 - **Status:** Accepted for phase 1; B19 review done in [ADR-021](ADR-021-amplify-domain-shared-contexts.md) (contexts moved to `amplify_domain`)
 - **Date:** 2026-10-16
+- **Superseded in part (2026-11-03):** Google Chat was replaced by Novera ([ADR-047](ADR-047-novera-replaces-google-chat.md)); the `googlechat` module is removed.
 - **Source:** plan M1 (shared code), B19
 
 ## Context

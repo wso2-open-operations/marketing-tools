@@ -27,19 +27,19 @@ Not on the dashboard (and why): reach and impressions (need analytics access, A1
 
 ## Scorecard and the other boards (ADR-036)
 
-Built as `GET /dashboards/{operations,campaigns,participation,glance,scorecard}` for every `amplify_*` role (not plain employees). This page's PO dashboard (`GET /po/dashboard`) stays PO only. The scorecard is a second view for PO, Marketing, SLT and Admin: how participation is tracking against targets. It reports **only what Amplify recorded in its own database**: reposts, shares, connections, points and Chat card status. Reach, impressions and anything LinkedIn holds stay out until Community Management is approved (ADR-018).
+Built as `GET /dashboards/{operations,campaigns,participation,glance,scorecard}` for every `amplify_*` role (not plain employees). This page's PO dashboard (`GET /po/dashboard`) stays PO only. The scorecard is a second view for PO, Marketing, SLT and Admin: how participation is tracking against targets. It reports **only what Amplify recorded in its own database**: reposts, shares, connections, points and Novera announcement status. Reach, impressions and anything LinkedIn holds stay out until Community Management is approved (ADR-018).
 
 | Measure | Source | Target configurable (env `BAL_CONFIG_VAR_<NAME>`, default in code) |
 | --- | --- | --- |
 | Employees connected, % of headcount | `connection.member_connection_v` (not `REMOVED`) over `GET /headcount` | `scorecardTargetConnectedPct` (25) |
 | Connections expired, % of connected | `member_connection_v` `NEEDS_RECONNECT` where `access_expires_at < now()` | `scorecardMaxExpiredPct` (5, a ceiling) |
 | Share success rate | `sharing.share_request_v` published over published + failed, this calendar month (UTC) | `scorecardTargetShareSuccessPct` (98) |
-| Chat cards delivered | `announcement.announcement_v` `SENT` over campaigns opened in the window; `FAILED` listed by name, retries shown from `messaging.outbox.attempts` | none (every post) |
+| Novera announcements delivered | `announcement.announcement_v` `SENT` over campaigns opened in the window; `FAILED` listed by name, retries shown from `messaging.outbox.attempts` | none (every post) |
 | Priority posts reaching X% of connected | `recognition.campaign_participation.reposters` over connected, where `campaign_v.is_priority` | `scorecardTargetPriorityReachPct` (25) |
 | Active employees, last 30 days | `recognition.standing.last_activity_at` | `scorecardTargetActive30d` (100) |
 | Reposts this month | `sharing.engagement` `occurred_at`, `REPOST` / `REPOST_COMMENTARY`, since the 1st (UTC) | `scorecardTargetRepostsPerMonth` (600) |
 
-Status is On track when the measure meets its target, Watch when it doesn't. The seeded values are starting lines, not agreed targets. Chat delivery has no reminder or manual retry here: failed cards retry through the outbox with backoff (ADR-025), and only a card that used all 8 attempts needs the admin retry (ADR-024).
+Status is On track when the measure meets its target, Watch when it doesn't. The seeded values are starting lines, not agreed targets. Novera delivery has no reminder or manual retry here: failed announcements retry through the outbox with backoff (ADR-025), and only an announcement that used all 8 attempts needs the admin retry (ADR-024).
 
 ## Performance and caching
 

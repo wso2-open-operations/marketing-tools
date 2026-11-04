@@ -42,6 +42,7 @@ function init() returns error? {
     // The database may still be starting: create the next two weeks of token partitions in the background.
     _ = start ensurePartitionsAtStartup();
     check validateRunConfig(runConfig(), longestCallSeconds());
+    check validateNoveraButtonUrl(noveraButtonUrl, noveraAllowInsecureHttp);
     log:printInfo(string `${COMPONENT} starting on port ${port}`);
     string? tls = store:tlsWarning(dbConfig());
     if tls is string {
@@ -63,7 +64,7 @@ service http:InterceptableService / on jobsListener {
     # + return - Component health
     resource function get health() returns types:HealthStatus => {component: COMPONENT, status: types:UP};
 
-    # Readiness probe: the database breaker isn't open and the database answers. LinkedIn, Chat and the
+    # Readiness probe: the database breaker isn't open and the database answers. LinkedIn, Novera and the
     # token keys are reported but don't fail readiness (a run defers those rows, ADR-025). Each probe also
     # refreshes the `amplify_breaker_state` gauges (ADR-028).
     #

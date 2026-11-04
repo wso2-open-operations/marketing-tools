@@ -430,7 +430,7 @@ modules = [
 [[package]]
 org = "wso2"
 name = "amplify_common"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
 	{org = "ballerina", name = "crypto"},
 	{org = "ballerina", name = "file"},
@@ -440,7 +440,6 @@ dependencies = [
 	{org = "ballerina", name = "lang.array"},
 	{org = "ballerina", name = "lang.regexp"},
 	{org = "ballerina", name = "lang.runtime"},
-	{org = "ballerina", name = "lang.value"},
 	{org = "ballerina", name = "log"},
 	{org = "ballerina", name = "mime"},
 	{org = "ballerina", name = "observe"},
@@ -455,7 +454,6 @@ modules = [
 	{org = "wso2", packageName = "amplify_common", moduleName = "amplify_common"},
 	{org = "wso2", packageName = "amplify_common", moduleName = "amplify_common.crypto"},
 	{org = "wso2", packageName = "amplify_common", moduleName = "amplify_common.events"},
-	{org = "wso2", packageName = "amplify_common", moduleName = "amplify_common.googlechat"},
 	{org = "wso2", packageName = "amplify_common", moduleName = "amplify_common.linkedin"},
 	{org = "wso2", packageName = "amplify_common", moduleName = "amplify_common.resilience"},
 	{org = "wso2", packageName = "amplify_common", moduleName = "amplify_common.types"}
@@ -464,7 +462,7 @@ modules = [
 [[package]]
 org = "wso2"
 name = "amplify_domain"
-version = "0.4.2"
+version = "0.6.0"
 dependencies = [
 	{org = "ballerina", name = "file"},
 	{org = "ballerina", name = "io"},

@@ -63,6 +63,15 @@ configurable string hrEntityTokenUrl = "";
 configurable string hrEntityClientId = "";
 # HR Entity client secret (Choreo secret).
 configurable string hrEntityClientSecret = "";
+# Retries after a failed HR Entity call (connection error, or a 500, 502, 503 or 504 answer); the same settings and
+# defaults as amplify-api and the other apps that read the HR Entity.
+configurable int hrEntityRetryCount = 3;
+# Seconds before the first retry.
+configurable decimal hrEntityRetryInterval = 3.0;
+# Each retry waits this many times longer than the one before.
+configurable float hrEntityRetryBackOffFactor = 2.0;
+# Longest wait between two retries, seconds.
+configurable decimal hrEntityRetryMaxWaitInterval = 20.0;
 # Rows asked for per page.
 configurable int hrEntityPageSize = 1000;
 # Employee statuses the directory lists. `Marked leaver` stays in until the person is `Left`.
@@ -200,11 +209,18 @@ isolated class ProductionLeaverPorts {
             return error("People directory is not configured");
         }
         int pageSize = hrEntityPageSize > 0 ? hrEntityPageSize : 1000;
-        final readonly & map<string> headers = resilience:correlationHeaders(self.correlationId).cloneReadOnly();
-        final http:Client directory = c;
-        return collectDirectoryEmails(pageSize,
-                isolated function(int size, int offset) returns [string[], int]|error =>
-                    directoryPage(directory, headers, size, offset));
+        string[] emails = [];
+        int offset = 0;
+        foreach int _ in 0 ..< MAX_DIRECTORY_PAGES {
+            DirectoryPage page = check directoryPage(c, pageSize, offset);
+            // The end is an empty page, not a short one: the service may cap `limit` below what was asked for.
+            if page.rows == 0 {
+                return emails;
+            }
+            emails.push(...page.emails);
+            offset += page.rows;
+        }
+        return error(string `People directory did not end within ${MAX_DIRECTORY_PAGES} pages`);
     }
 
     public isolated function candidates(string[] emails, int graceDays, int 'limit) returns string[]|error =>
@@ -248,7 +264,16 @@ isolated function newDirectoryClient() returns http:Client?|error {
     if hrEntityBaseUrl.trim() == "" {
         return ();
     }
-    http:ClientConfiguration config = {timeout: hrEntityTimeoutSeconds};
+    http:ClientConfiguration config = {
+        timeout: hrEntityTimeoutSeconds,
+        retryConfig: {
+            count: hrEntityRetryCount,
+            interval: hrEntityRetryInterval,
+            backOffFactor: hrEntityRetryBackOffFactor,
+            maxWaitInterval: hrEntityRetryMaxWaitInterval,
+            statusCodes: [500, 502, 503, 504]
+        }
+    };
     if hrEntityTokenUrl.trim() != "" {
         config.auth = {tokenUrl: hrEntityTokenUrl, clientId: hrEntityClientId, clientSecret: hrEntityClientSecret};
     }
@@ -262,16 +287,22 @@ const string EMPLOYEES_QUERY = "query getEmployees($filter: EmployeeFilter!, $li
 # Most pages one directory read will ask for.
 const int MAX_DIRECTORY_PAGES = 100;
 
+# One page of the HR Entity's employees.
+type DirectoryPage record {|
+    # Lower-case work emails (a row without one is skipped)
+    string[] emails;
+    # Rows the service returned, with or without an email: what the next offset moves by
+    int rows;
+|};
+
 # One page of the HR Entity's employees, as lower-case work emails.
 #
 # + c - HR Entity client
 # + headers - Request headers (the correlation id)
 # + pageSize - Rows asked for
 # + offset - Rows to skip
-# + return - The page's emails (rows without one are skipped) and the number of rows the page held, or an error
-# that never carries the response body (it names people)
-isolated function directoryPage(http:Client c, map<string> headers, int pageSize, int offset)
-        returns [string[], int]|error {
+# + return - The page, or an error that never carries the response body (it names people)
+isolated function directoryPage(http:Client c, int pageSize, int offset) returns DirectoryPage|error {
     json body = {
         query: EMPLOYEES_QUERY,
         variables: {filter: {employeeStatus: hrEntityStatuses}, 'limit: pageSize, offset}
@@ -300,7 +331,7 @@ isolated function directoryPage(http:Client c, map<string> headers, int pageSize
             emails.push(email.trim().toLowerAscii());
         }
     }
-    return [emails, employees.length()];
+    return {emails, rows: employees.length()};
 }
 
 # Checks the sweep settings at start-up: a mode that erases needs a directory, and the limits must make sense.

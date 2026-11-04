@@ -20,7 +20,7 @@ Ballerina backend for WSO2 Amplify phase 1. Three Ballerina deployables, the sch
 - `amplify-domain`: bounded contexts (domain + repository ports + PostgreSQL repositories) and `store` (client, outbox/audit writers), used by api and jobs (ADR-021).
 
 ## DB connections
-PostgreSQL 15 or later (staging runs 17, ADR-044). One login user and one schema named after it, no roles; every table is `<context>_<name>` (ADR-043). Every component connects as that user. A context reads and writes only its own tables; no cross-context FKs (ADR-005). Exception by design: the ledger append applies the row to `recognition` in the same transaction (B12). Details: `architecture/solution/Phase 1/phase1-data-model.md`. Integration tests against Postgres 17: `docs/migrations/README.md`.
+The PostgreSQL floor is in ADR-044; the version local and tests run is the image pinned in `compose.yaml`. One login user and one schema named after it, no roles; every table is `<context>_<name>` (ADR-043). Every component connects as that user. A context reads and writes only its own tables; no cross-context FKs (ADR-005). Exception by design: the ledger append applies the row to `recognition` in the same transaction (B12). Details: `architecture/solution/Phase 1/phase1-data-model.md`. Integration tests run against that pinned image: `docs/migrations/README.md`.
 
 ## Key patterns
 - Apache-2.0 WSO2 header on every `.bal`, `.sql`, `Dockerfile`.
@@ -28,9 +28,9 @@ PostgreSQL 15 or later (staging runs 17, ADR-044). One login user and one schema
 - Config only through `configurable` + `Config.toml` / `BAL_CONFIG_VAR_*`; never commit `Config.toml` or secrets.
 - `sql:ParameterizedQuery` only (the migrate runner executing trusted script files is the one exception). Bind times as `CAST(${store:ts(t)} AS timestamptz)` and uuids as `CAST(${id} AS uuid)`; use `call` for DDL (`execute` makes the driver append `RETURNING`). Log errors with `log:printError(msg, err)`; never return raw errors to callers.
 - Commit `Dependencies.toml`; never commit `target/`.
-- Every `transaction {}` block runs through `store:inTransaction` / `inTransactionValue` (one process-wide gate: Ballerina 2201.13.x races concurrent transactions, ballerina-lang #44737, `docs/reviews/2026-10-17-r13-transaction-race.md`). Put the block in a non-public `...Tx` function and call it only on a line that calls the gate; never `retry transaction`. Remove the gate after upgrading to 2201.14.1+.
+- Every `transaction {}` block runs through `store:inTransaction` / `inTransactionValue` (one process-wide gate: the Ballerina `distribution` in each `Ballerina.toml` races concurrent transactions, ballerina-lang #44737, `docs/reviews/2026-10-17-r13-transaction-race.md`). Put the block in a non-public `...Tx` function and call it only on a line that calls the gate; never `retry transaction`. Remove the gate once the release that fixes #44737 (named in that issue) is the `distribution` in every `Ballerina.toml`.
 
 ## Cell rules
 - Ingress only through the API proxy; `amplify-jobs`, the scheduler and the DBs are never published.
-- Egress only to the declared endpoints, set per environment as config or secrets: LinkedIn (API and OAuth base URLs), Novera (its notifications URL and a client-credentials application, secret as a secret) and Google Chat (webhook URL as a secret; in prod it points at the WSO2 Club group chat space, in dev at a test space), people-app directory for team rosters.
+- Egress only to the declared endpoints, set per environment as config or secrets: LinkedIn (API and OAuth base URLs), Novera (its notifications URL and a client-credentials application, secret as a secret; the only announce channel, ADR-047), people-app directory for team rosters.
 - Containers run as `USER 10014`.

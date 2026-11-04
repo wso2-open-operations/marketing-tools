@@ -17,9 +17,6 @@
 # Component name used in logs and probe bodies.
 const string COMPONENT = "amplify-jobs";
 
-# Space label stored on `announcement.space` for announcements sent through Novera.
-const string NOVERA_SPACE = "novera";
-
 # `share_request.last_error_code` marker written just before the LinkedIn call. A row read back with it is
 # never posted again automatically: the previous attempt may already have posted.
 const string PUBLISH_IN_FLIGHT = "PUBLISH_IN_FLIGHT";

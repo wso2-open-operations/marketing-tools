@@ -931,7 +931,7 @@ paths:
         - {name: status, in: query, schema: {type: string, enum: [QUEUED, SENT, FAILED, ALL], default: FAILED}}
       responses:
         "200":
-          description: Club cards, newest first
+          description: Novera announcements, newest first
           content:
             application/json:
               schema: {$ref: "#/components/schemas/AnnouncementList"}
@@ -945,7 +945,7 @@ paths:
       tags: [S5 Admin]
       operationId: retryAnnouncement
       x-access: CAN_ADMIN
-      description: Re-queues a FAILED Club card (by campaign id); the next Run sends it. Refused while `announcements.enabled` is false.
+      description: Re-queues a FAILED Novera announcement (by campaign id); the next Run sends it. Refused while `announcements.enabled` is false.
       parameters:
         - {$ref: "#/components/parameters/CorrelationId"}
         - {$ref: "#/components/parameters/IdempotencyKey"}
@@ -1158,11 +1158,11 @@ components:
         config:
           description: Deployment settings the UI needs (Choreo configs, not UI config)
           type: object
-          required: [linkedinOrgUrn, privacyNoticeUrl, postLinkOrigins]
+          required: [linkedinOrgUrn, privacyNoticeUrl, campaignLinkOrigins]
           properties:
             linkedinOrgUrn: {description: "LinkedIn company page a registered post must belong to (`wso2OrganizationUrn`)", type: string}
             privacyNoticeUrl: {description: "Privacy notice for the consent dialog; empty = no link (`privacyNoticeUrl`)", type: string}
-            postLinkOrigins: {description: "Origins a post link may use (`campaignLinkOrigins`)", type: array, items: {type: string}}
+            campaignLinkOrigins: {description: "Origins a campaign link may use (`campaignLinkOrigins`)", type: array, items: {type: string}}
     ConnectionStatus: {type: string, enum: [ACTIVE, EXPIRING, NEEDS_RECONNECT, REMOVED, NOT_CONNECTED]}
 
     CampaignStatus: {type: string, enum: [SCHEDULED, OPEN, CLOSED, ARCHIVED]}
@@ -1887,7 +1887,7 @@ components:
             type: object
             required: [key, label, unit, value, target, comparison, status]
             properties:
-              key: {type: string, enum: [connected, expired, shareSuccess, chatCards, priorityReach, active30Days, repostsPerMonth]}
+              key: {type: string, enum: [connected, expired, shareSuccess, announcements, priorityReach, active30Days, repostsPerMonth]}
               label: {type: string}
               unit: {type: string, enum: [PERCENT, COUNT]}
               value: {type: number}
