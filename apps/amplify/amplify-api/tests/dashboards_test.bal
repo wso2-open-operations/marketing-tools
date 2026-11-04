@@ -171,7 +171,7 @@ function testScorecardStatusesAgainstTargets() returns error? {
     setDirectory("ok");
     json body = check (check send("GET", "/dashboards/scorecard", (), check boardToken(SLT_GROUP))).getJsonPayload();
     json[] measures = <json[]>check body.measures;
-    test:assertEquals(measures.map(m => checkpanic m.key), ["connected", "expired", "shareSuccess", "chatCards",
+    test:assertEquals(measures.map(m => checkpanic m.key), ["connected", "expired", "shareSuccess", "announcements",
         "priorityReach", "active30Days", "repostsPerMonth"]);
     json connected = check measureOf(body, "connected");
     test:assertEquals((check connected.value).toString(), "50");
@@ -180,7 +180,7 @@ function testScorecardStatusesAgainstTargets() returns error? {
     json share = check measureOf(body, "shareSuccess");
     test:assertEquals((check share.value).toString(), "95");
     test:assertEquals(check share.status, "WATCH", "95% against 98%");
-    json cards = check measureOf(body, "chatCards");
+    json cards = check measureOf(body, "announcements");
     test:assertEquals((check cards.value).toString(), "66.7");
     test:assertEquals(check cards.note, "1 retrying, 0 failed after retries");
     test:assertEquals(check (check measureOf(body, "priorityReach")).status, "ON_TRACK");
@@ -210,7 +210,7 @@ function testScorecardStatusesAgainstTargets() returns error? {
     json noShares = check measureOf(empty, "shareSuccess");
     test:assertEquals(check noShares.status, "ON_TRACK");
     test:assertEquals(check noShares.note, "No shares this month");
-    test:assertEquals(check (check measureOf(empty, "chatCards")).note, "No campaigns opened in the last 30 days");
+    test:assertEquals(check (check measureOf(empty, "announcements")).note, "No campaigns opened in the last 30 days");
     json noCount = check measureOf(empty, "connected");
     test:assertEquals(check noCount.status, "WATCH");
     test:assertEquals(check noCount.note, "Employee count unavailable");
