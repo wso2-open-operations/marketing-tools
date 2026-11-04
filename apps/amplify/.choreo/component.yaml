@@ -11,8 +11,10 @@ endpoints:
       basePath: /
       port: 9090
     type: REST
+    # Organization, not Project: the gateway behind the API proxy can't reach a Project-only endpoint
+    # (ADR-004 amendment 2026-11-03). Only the proxy is published.
     networkVisibilities:
-      - Project
+      - Organization
     schemaFilePath: amplify-api/openapi.yaml
 configurations:
   env:
@@ -44,7 +46,7 @@ configurations:
     - name: BAL_CONFIG_VAR_SCHEDULERAPIKEY
       valueFrom:
         configForm:
-          displayName: Scheduler API key: amplify-jobs accepts it only for POST /runs and POST /maintenance/partitions; amplify-api sets it on the scheduler jobs. Must differ from the internal key (secret, at least 32 characters; the same value on both components)
+          displayName: "Scheduler API key: amplify-jobs accepts it only for POST /runs and POST /maintenance/partitions; amplify-api sets it on the scheduler jobs. Must differ from the internal key (secret, at least 32 characters; the same value on both components)"
           type: secret
     - name: BAL_CONFIG_VAR_DBHOST
       valueFrom:
@@ -183,37 +185,37 @@ configurations:
     - name: BAL_CONFIG_VAR_SCORECARDTARGETCONNECTEDPCT
       valueFrom:
         configForm:
-          displayName: Scorecard: employees connected, % of headcount (default 25) (leave empty for the default)
+          displayName: "Scorecard: employees connected, % of headcount (default 25) (leave empty for the default)"
           type: string
           required: false
     - name: BAL_CONFIG_VAR_SCORECARDMAXEXPIREDPCT
       valueFrom:
         configForm:
-          displayName: Scorecard: expired connections, % of connected, a ceiling (default 5) (leave empty for the default)
+          displayName: "Scorecard: expired connections, % of connected, a ceiling (default 5) (leave empty for the default)"
           type: string
           required: false
     - name: BAL_CONFIG_VAR_SCORECARDTARGETSHARESUCCESSPCT
       valueFrom:
         configForm:
-          displayName: Scorecard: share success rate, % (default 98) (leave empty for the default)
+          displayName: "Scorecard: share success rate, % (default 98) (leave empty for the default)"
           type: string
           required: false
     - name: BAL_CONFIG_VAR_SCORECARDTARGETPRIORITYREACHPCT
       valueFrom:
         configForm:
-          displayName: Scorecard: a campaign reaches people at this % of connected (default 25) (leave empty for the default)
+          displayName: "Scorecard: a campaign reaches people at this % of connected (default 25) (leave empty for the default)"
           type: string
           required: false
     - name: BAL_CONFIG_VAR_SCORECARDTARGETACTIVE30D
       valueFrom:
         configForm:
-          displayName: Scorecard: people active in the last 30 days (default 100) (leave empty for the default)
+          displayName: "Scorecard: people active in the last 30 days (default 100) (leave empty for the default)"
           type: string
           required: false
     - name: BAL_CONFIG_VAR_SCORECARDTARGETREPOSTSPERMONTH
       valueFrom:
         configForm:
-          displayName: Scorecard: reposts this calendar month (default 600) (leave empty for the default)
+          displayName: "Scorecard: reposts this calendar month (default 600) (leave empty for the default)"
           type: string
           required: false
     - name: BAL_CONFIG_VAR_HRENTITYINCLUDEHOUSE

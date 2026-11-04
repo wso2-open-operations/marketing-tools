@@ -75,12 +75,12 @@ configurations:
     - name: BAL_CONFIG_VAR_SCHEDULERAPIKEY
       valueFrom:
         configForm:
-          displayName: Scheduler API key: amplify-jobs accepts it only for POST /runs and POST /maintenance/partitions; amplify-api sets it on the scheduler jobs. Must differ from the internal key (secret, at least 32 characters; the same value on both components)
+          displayName: "Scheduler API key: amplify-jobs accepts it only for POST /runs and POST /maintenance/partitions; amplify-api sets it on the scheduler jobs. Must differ from the internal key (secret, at least 32 characters; the same value on both components)"
           type: secret
     - name: BAL_CONFIG_VAR_LEAVERSWEEPMODE
       valueFrom:
         configForm:
-          displayName: Leaver sweep: OFF (default), DRY_RUN or ERASE. Start with DRY_RUN; see ADR-040
+          displayName: "Leaver sweep: OFF (default), DRY_RUN or ERASE. Start with DRY_RUN; see ADR-040"
           type: string
           required: false
     - name: BAL_CONFIG_VAR_DBSCHEMA

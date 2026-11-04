@@ -22,18 +22,21 @@
 # (ADR-020/021), so nothing comes from a developer's ~/.ballerina.
 
 FROM ballerina/ballerina:2201.13.3@sha256:7cba1a3bcb3314e2444aa6823d332e79882437df512de71037c4b0607d39e019 AS build
-WORKDIR /home/ballerina
+# The base image declares VOLUME /home/ballerina. Choreo's builder (buildah), like Docker's legacy builder, drops
+# whatever a RUN step writes under a volume, so the sources and target/ live in /build. ~/.ballerina stays under the
+# volume, so the packs, the pushes to its local repository and the build share one RUN.
+WORKDIR /build
 COPY --chown=ballerina amplify-common amplify-common
-RUN cd amplify-common && bal pack && bal push --repository=local
 COPY --chown=ballerina amplify-domain amplify-domain
-RUN cd amplify-domain && bal pack && bal push --repository=local
 COPY --chown=ballerina amplify-api amplify-api
-RUN cd amplify-api && bal build
+RUN cd amplify-common && bal pack && bal push --repository=local \
+    && cd ../amplify-domain && bal pack && bal push --repository=local \
+    && cd ../amplify-api && bal build
 
-FROM eclipse-temurin:21-jre-alpine@sha256:51ab5e3302e7141ce665ca3ea85e8b5cd648eafbc3c0c90dd79d6537684e4555
+FROM eclipse-temurin:21-jre-alpine@sha256:82cf3d9ccbe1ed46252008d51b2f2329e6b9e8a2f4394c4bebefc3ea7f4b1372
 RUN addgroup -g 10014 choreo && adduser -D -H -u 10014 -G choreo choreouser
 WORKDIR /app
-COPY --from=build /home/ballerina/amplify-api/target/bin/amplify_api.jar app.jar
+COPY --from=build /build/amplify-api/target/bin/amplify_api.jar app.jar
 USER 10014
 EXPOSE 9090
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]
