@@ -219,11 +219,16 @@ configurations:
           type: string
           required: false
     - name: BAL_CONFIG_VAR_HRENTITYBASEURL
-    - name: BAL_CONFIG_VAR_HRENTITYINCLUDEHOUSE
       valueFrom:
         configForm:
           displayName: HR Entity GraphQL URL
           type: string
+          required: false
+    - name: BAL_CONFIG_VAR_HRENTITYINCLUDEHOUSE
+      valueFrom:
+        configForm:
+          displayName: HR Entity house lookup (true or false; default false, needs HR Entity 1.1.1 or later)
+          type: boolean
           required: false
     - name: BAL_CONFIG_VAR_HRENTITYTOKENURL
       valueFrom:
