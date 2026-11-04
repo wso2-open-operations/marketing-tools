@@ -703,7 +703,7 @@ service http:InterceptableService / on apiListener {
 
     // ---- S5 Admin ----------------------------------------------------------------------------------
 
-    # Club cards.
+    # Novera announcements.
     #
     # + ctx - Request context
     # + status - `FAILED` (default), `QUEUED`, `SENT`, `ALL`
@@ -712,7 +712,7 @@ service http:InterceptableService / on apiListener {
             returns http:Response|ProblemResponse|error =>
         okJson(listAnnouncements(check principalOf(ctx), cid(ctx), status));
 
-    # Re-queues a failed Club card.
+    # Re-queues a failed Novera announcement.
     #
     # + ctx - Request context
     # + req - Request

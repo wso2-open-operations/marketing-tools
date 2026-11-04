@@ -216,6 +216,12 @@ configurations:
           displayName: Scorecard: reposts this calendar month (default 600) (leave empty for the default)
           type: string
           required: false
+    - name: BAL_CONFIG_VAR_HRENTITYINCLUDEHOUSE
+      valueFrom:
+        configForm:
+          displayName: Ask the HR Entity for each employee's house (true/false; needs hr_entity 1.1.1 or later)
+          type: boolean
+          required: false
     - name: BAL_CONFIG_VAR_HRENTITYBASEURL
       valueFrom:
         configForm:

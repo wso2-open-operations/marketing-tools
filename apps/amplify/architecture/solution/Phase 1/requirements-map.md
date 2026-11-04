@@ -70,7 +70,7 @@ IDs are assigned here; the requirements doc has none.
 | ID | Coverage | How phase 1 does it | Where | Findings |
 | --- | --- | --- | --- | --- |
 | R1 | **Met** (with A6) | Campaign (S1): post URN, title, summary, image, category, tags, priority flag, window. Save / Save & Share Now. `amplify_marketing` **and `amplify_po`** can register | domains S1; data model `campaign.*`; plan M5 S1, M7 Campaigns | A6 |
-| R2 | **Met** | Announcements (S5): cardsV2 card through an incoming webhook to the company-wide **WSO2 Club Group** space (the one Marketing uses today), sent by `amplify-jobs`, retried via outbox | domains S5; data model `announcement`; plan M6a | A7 |
+| R2 | **Met** | Announcements (S5): a Novera notification per new post (ADR-047, 2026-11-03; it replaced the Club Group webhook), sent by `amplify-jobs`, retried via outbox | domains S5; data model `announcement`; plan M6a | A7 |
 | R3 | **Met, different mechanism** | Employee signs in to One WSO2 with Asgardeo, then connects LinkedIn by OAuth + OIDC (`openid profile w_member_social`) to `amplify-api`. **May move to Asgardeo federation** if it can hold the token encrypted and hand it to jobs (A8 research) | domains S2, D4; data model `connection.*`; plan M5 S2, M7 Connect | A8 |
 | R4 | **Partial** | `w_member_social` only covers reposts made **through Amplify** (`REPOST`, `REPOST_COMMENTARY`). Reactions, comments and native LinkedIn reposts come in a future phase with Community Management access | domains C1, D7; data model `sharing.engagement` | A3, B5 |
 | R5 | **Met** | External Sharing (S3, UI "My Campaign"): any HTTPS evidence URL, certify checkbox, PO review | domains S3; data model `external_sharing`; plan M5 S3, M7 My Campaign | C4 |
@@ -91,11 +91,11 @@ IDs are assigned here; the requirements doc has none.
 | P1 | **Partial** | Go-live 31 Oct 2026. Dated milestones added (2026-10-16), with a high go-live risk and a minimum pilot cut for PO | plan [Suggested order](../../../docs/requirements/phase1-planned-todos.md#dated-milestones-to-go-live-31-oct-2026) | A1 |
 | P2 | **Met** | Pilot group in Asgardeo + preview flag | plan M12 | — |
 | P3 | **Met** | Provider-agnostic tables (`provider`, `provider_api`, resource URN), `ProviderAdapter` port | data model design rule 9; domains C1 | — |
-| P4 | **Partial** | Posts appear in Chat. Two-way Chat is a future phase | plan M6a | A12 |
+| P4 | **Partial** | Posts appear in Chat through Novera (ADR-047). Two-way Chat is a future phase | plan M6a | A12 |
 | P5 | **Deferred** | Novera / agent in a future phase | domains scope | A12 |
 | Q1 | Answered | In-app reposts only (`w_member_social`); the rest needs Community Management | domains C1 | A3 |
 | Q2 | Answered | Yes for in-app shares, because the employee picks the kind. Native reposts in a future phase | domains C1 | A3 |
-| Q3 | Answered | One-way webhook to WSO2 Club Group; two-way later | plan M6a | A7, A12 |
+| Q3 | Answered | One-way announcement through Novera (ADR-047; was a WSO2 Club Group webhook); two-way later | plan M6a | A7, A12 |
 | Q4 | Deferred | Agent is a future phase | — | A12 |
 | Q5 | Deferred | Held in ledger; Coin contract open (L2 open items 3, 4) | L2 | A11, C1 |
 | Q6 | Answered (date) | Go-live 31 Oct 2026; effort estimate still to be written | plan M0c | A1 |
@@ -119,7 +119,7 @@ Placeholder. Phase numbers come from the documents where they say one; the rest 
 | Per-share metrics (`engagement_metric`): impressions, likes, comments, reposts; reach | R11, R9 | Future | `r_member_postAnalytics` / approval | Yes: table designed |
 | LinkedIn org-social-action webhook (L2 B10) | R4 | Later | Community Management | No |
 | Amplify agent, classifier, LLM gateway, AMP, ThunderID, Novera tools | P5, Q4 | Future | Agent platform | No |
-| Two-way Google Chat (reactions/comments in Chat feed scoring) | P4 | Future | Chat app instead of webhook (Novera or new) | No |
+| Two-way Google Chat (reactions/comments in Chat feed scoring) | P4 | Future | Novera (ADR-047) | No |
 | Separate queue service | — | Later | Volume | No (Postgres outbox) |
 | Other social channels | P3 | Later | Per-provider adapter | Yes: provider-agnostic |
 | Me › Overview widget bar | R9 | Later | — | Slot only |
@@ -137,7 +137,7 @@ Placeholder. Phase numbers come from the documents where they say one; the rest 
 | A4 | Medium | **One repost per campaign per employee** is stricter than R6 ("once per action per post") | domains L109; data model L416, L731 | Get PO sign-off | **Revisit once Community Management API access is granted** |
 | A5 | **High** | **PO can't edit point values.** R7 gives point values to PO. The plan gives `/admin/point-rules` to `amplify_admin` | requirements L35; plan L72, L216, L294 | Give `amplify_po` write on point rules | **Point rules are maintained by `amplify_po`.** Todo in M0c to update Roles, M5, M7 |
 | A6 | Medium | **PO can't register posts.** R1 says "Marketing and PO". Phase 1 limits campaign writes to `amplify_marketing` | requirements L29; plan L70, L212; domains L166 | Allow `amplify_po` on the campaign endpoints | **Allow `amplify_po` on every campaign endpoint.** Todo in M0c |
-| A7 | Medium | **Which Chat space?** R2 says the "Amplify Google Chat space". Phase 1 posts to WSO2 Club Group | requirements L30, flow step 2; domains L10; plan L11, M6a | Confirm the space with PO | **Use WSO2 Club Group**: it's company-wide and Marketing already uses it. Can change later (it's a per-environment secret) |
+| A7 | Medium | **Which Chat space?** R2 says the "Amplify Google Chat space". Phase 1 posts to WSO2 Club Group | requirements L30, flow step 2; domains L10; plan L11, M6a | Confirm the space with PO | ~~Use WSO2 Club Group~~ Superseded 2026-11-03 by ADR-047: Novera announces new posts; there is no Chat space to pick |
 | A8 | Low | **Connect isn't Asgardeo federation.** L1 planned LinkedIn linking through Asgardeo's federated connection. Phase 1 uses LinkedIn OAuth directly | L1 L70, L92; domains D4, S2 | Keep, and say so | **Conditional.** If Asgardeo federation can store the LinkedIn association **and** encrypts the stored token (and can hand it to jobs when the employee isn't signed in), switch to it and update the ERD and docs. Research todo in M0c |
 | A9 | Medium | **Privacy scope grew.** K3 says capture only metrics needed for scoring. Phase 1 holds a token that can post as the employee, plus commentary until publish | requirements L88; domains S2; plan M10 L426 | Name it in the consent copy and get Legal sign-off | **Legal todo added** (M0c A9) with placeholder copy: *"When you ask it to, Amplify posts on your LinkedIn for you…"* |
 | A10 | Medium | **No team leaderboard, and the "Team" page isn't one** | requirements L38; plan L292; domains L150 | Rename the page and add a team view, or defer | **Todo added:** "Audit A10 - ensure Team Leaderboard functionality". See B15 for the three leaderboards |

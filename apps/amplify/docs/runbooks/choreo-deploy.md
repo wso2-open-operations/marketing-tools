@@ -48,16 +48,17 @@ The Docker context is where Choreo reads `.choreo/component.yaml`, so each compo
 After each build, confirm the endpoint Choreo shows matches the descriptor (name, port, visibility). If Choreo shows the wrong port, the Docker context is wrong (Jobs on `apps/amplify` would read the Backend's descriptor and show 9090).
 
 1. **C1 Amplify DB Migrate** (Manual Task). Config form: `BAL_CONFIG_VAR_DBHOST/DBPORT/DBNAME/DBUSER` from B1/B2, secrets `BAL_CONFIG_VAR_DBPASSWORD` (bootstrap admin), `APIDBPASSWORD`, `JOBSDBPASSWORD`, `READONLYDBPASSWORD` (generate, 16+ chars, store only in Choreo). Run it once per environment, then after every release that adds a `V###`/`S###` script. Check the log ends with `Migration run done`.
-2. **C2 Amplify Jobs** (Project visibility only). `INTERNALAPIKEY` (full access) and `SCHEDULERAPIKEY` (only `POST /runs` and `POST /maintenance/partitions`): each a secret of at least 32 characters (`openssl rand -hex 24`), **different values**, each the **same value** on Amplify Backend (C5) and here, one pair per environment (ADR-039). Without both Jobs does not start; the Backend needs the internal key when `JOBSURL` is set and the scheduler key when `SCHEDULERURL` is set. DB: user `amplify_jobs` + its password. `TOKENKEYS` (`keyId:base64Key`, `openssl rand -base64 32`, one per environment, never shared dev↔prod) + `TOKENCURRENTKEYID`. Chat: `CHATWEBHOOKURL` secret (dev = test space, prod = WSO2 Club; see `google-chat-webhook.md`), `CHATSPACE` (`dev-test` / `club`), `CHATCARDAVATARURL` and `CHATDEFAULTIMAGEURL` (both optional; the default image is a public HTTPS PNG/JPEG pinned to a commit, see `google-chat-webhook.md` section C), `SHAREPAGEBASEURL` (the One WSO2 Celebrate page, e.g. `https://one.wso2.com/amplify/celebrate`; the card button adds `?share=<campaignId>`). LinkedIn: dev = LinkedIn Mock URLs + mock client id; prod = `https://api.linkedin.com`, `https://www.linkedin.com` + prod app client id. **Never** set `CHATALLOWINSECUREHTTP`.
+2. **C2 Amplify Jobs** (Project visibility only). `INTERNALAPIKEY` (full access) and `SCHEDULERAPIKEY` (only `POST /runs` and `POST /maintenance/partitions`): each a secret of at least 32 characters (`openssl rand -hex 24`), **different values**, each the **same value** on Amplify Backend (C5) and here, one pair per environment (ADR-039). Without both Jobs does not start; the Backend needs the internal key when `JOBSURL` is set and the scheduler key when `SCHEDULERURL` is set. DB: user `amplify_jobs` + its password. `TOKENKEYS` (`keyId:base64Key`, `openssl rand -base64 32`, one per environment, never shared dev↔prod) + `TOKENCURRENTKEYID`. Announcements (Novera, ADR-047): `NOVERANOTIFYURL`, `NOVERATOKENURL`, `NOVERACLIENTID`, `NOVERACLIENTSECRET` (secret), `NOVERASCOPES`; without them announcements defer. Card: `CHATCARDAVATARURL` and `CHATDEFAULTIMAGEURL` (both optional; the default image is a public HTTPS PNG/JPEG pinned to a commit), `NOVERABUTTONURL` (required: the card button URL template, must contain `{campaignId}`, https only, e.g. `https://one.wso2.com/amplify/celebrate?share={campaignId}`; no default, empty defers every announcement with "Novera button URL is not configured"). LinkedIn: dev = LinkedIn Mock URLs + mock client id; prod = `https://api.linkedin.com`, `https://www.linkedin.com` + prod app client id. **Never** set `NOVERAALLOWINSECUREHTTP`.
 3. **C3 Amplify Scheduler** (Project visibility only, no auth upstream, never published, never behind the proxy). Secret `DSN` = `postgres://<user>:<pw>@<host>:<port>/scheduler?sslmode=require` (B3).
 4. **C4 Jobs and Scheduler URLs for Amplify Backend.** Copy the **Project URL** of the Amplify Jobs endpoint and of the Amplify Scheduler endpoint (each component's overview) into the Backend's `BAL_CONFIG_VAR_JOBSURL` and `BAL_CONFIG_VAR_SCHEDULERURL`. Leave `BAL_CONFIG_VAR_SCHEDULERJOBSURL` empty: it then uses the Jobs URL. They are plain settings, not Choreo connections, so nothing is committed after the first deploy; Digital Operations sets the production values when promoting.
 5. **C5 Amplify Backend** (endpoint `Project`, schema `amplify-api/openapi.yaml`). `ENVIRONMENT` = `dev` or `prod` (**never `local`**; that and `DEVLOCALJWTENABLED` stay unset, ADR-023). `INTERNALAPIKEY` = the same secret as Jobs (C2); the Backend sends it on its own calls to Jobs. `SCHEDULERAPIKEY` = the scheduler secret, the same as Jobs; the Backend sets it (not the internal key) as a header on the jobs it registers with the scheduler (ADR-039). `GATEWAYJWKSURL` / `GATEWAYISSUER` / `GATEWAYAUDIENCES` from the Choreo gateway's backend JWT (identity-setup runbook). DB user `amplify_api`. LinkedIn client id/secret (secret), redirect URI = the One WSO2 callback page for that environment. Same `TOKENKEYS` as Jobs in that environment. Team rosters: `HRENTITYBASEURL`, `HRENTITYTOKENURL`, `HRENTITYCLIENTID` and `HRENTITYCLIENTSECRET` (secret) from the HR Entity client (C7). Left empty, My Team answers `UNAVAILABLE` and the rest works.
 6. **C6 LinkedIn Mock** (dev only; never promote to prod). Endpoints: api `Project`, www `Public` (the browser follows the OAuth redirect). `CLIENTID`/`CLIENTSECRET` = made-up values matching Backend/Jobs in dev, `WWWBASEURL` = the www endpoint's public URL, `BAL_CONFIG_DATA` = `redirectUris = ["<dev One WSO2 callback>"]`. In dev, Backend `LINKEDINAUTHBASEURL` = the mock's **public** www URL (the authorization URL is shown to the browser).
 
 7. **C7 HR Entity access** (team rosters and the leaver sweep, ADR-045). No people-app change is needed.
-   1. People Operations issues Amplify its own client for the **HR Entity GraphQL service** (ask for read-only on `employees` and, if the service can scope it, only `workEmail`, `firstName`, `lastName`, `businessUnit` and `team`). Note the GraphQL URL, the token URL, the client id and the secret.
+   1. People Operations issues Amplify its own client for the **HR Entity GraphQL service** (ask for read-only on `employees` and, if the service can scope it, only `workEmail`, `firstName`, `lastName`, `businessUnit`, `team` and `subTeam`, plus `houseId` and `house` for houses). Note the GraphQL URL, the token URL, the client id and the secret.
    2. Set C5's `HRENTITYBASEURL`, `HRENTITYTOKENURL`, `HRENTITYCLIENTID` and `HRENTITYCLIENTSECRET` (secret), and the same four on the Jobs component (the leaver sweep). Redeploy both.
-   5. Check: `GET /leaderboard` as an employee shows `teamStatus: OK` and their sub-team. A 500 from people-app means the client id isn't listed or the claim is wrong; a 403 means the route isn't the directory.
+   3. **Houses (2026-11-03).** Ask People Operations which `hr_entity` version the environment runs. Once it is 1.1.1 or later (digiops-hr #2005 adds `houseId` and `house`), set C5's `HRENTITYINCLUDEHOUSE` = `true` and redeploy. Leave it unset before that: an older service fails the whole read for the unknown fields and My Team answers `UNAVAILABLE`. Jobs does not need it.
+   4. Check: `GET /leaderboard` as an employee shows `teamStatus: OK` and their sub-team. A 401 or 403 in the Backend log (`People directory answered 401`) means the HR Entity does not accept the client; `People directory answered with GraphQL errors` right after turning on `HRENTITYINCLUDEHOUSE` means the service is older than 1.1.1 (set it back to unset). With houses on, `GET /leaderboard/groups?by=HOUSE` lists the houses.
 
 ## D. API Proxy (console only)
 
@@ -65,7 +66,7 @@ After each build, confirm the endpoint Choreo shows matches the descriptor (name
 2. **D2** Import `amplify-api/openapi.yaml`; access mode as One WSO2 needs (External if the SPA calls it from the browser). Key manager: Asgardeo (identity-setup runbook A3–A6). **Check the access token carries `groups`, `email` and `name` before testing anything else** (identity-setup, "Token requirements"): without `groups` every user is a plain employee and New Post, Current Posts and the dashboards refuse them. Per-resource scopes from the `x-access` in the spec; rate limits per resource (shares, external shares tighter than reads).
 3. **D3** Turn on backend JWT so the Backend gets `x-jwt-assertion`; copy its JWKS/issuer/audience into C5.
 4. **D4** Security headers at the proxy too if supported (`nosniff`, CSP `upgrade-insecure-requests`, HSTS).
-5. **D5 WAF / egress.** If the org uses egress control, allow-list only `api.linkedin.com`, `www.linkedin.com`, `chat.googleapis.com` and the people-app connection's gateway host for this project. Attach the org WAF policy to the proxy if one exists.
+5. **D5 WAF / egress.** If the org uses egress control, allow-list only `api.linkedin.com`, `www.linkedin.com`, the Novera notify URL's gateway host and its token endpoint host (ADR-047), and the people-app connection's gateway host for this project. Attach the org WAF policy to the proxy if one exists.
 6. **D6 Ingress rate limiting.** Put a rate limit on the proxy in front of amplify-api that slows an abusive caller without touching normal use. The limit itself is still to be chosen.
 7. **D7 Egress rate limiting to LinkedIn.** On the developer tier we are on for now, LinkedIn allows 500 reposts in a 24-hour window. amplify-jobs caps a run at 50 and a day at 1000 (`linkedinMaxPostsPerRun`, `linkedinMaxPostsPerDay`), so its own day cap sits above that limit. `linkedinMaxPostsPerDay` is not in the Jobs descriptor yet, so it cannot be lowered from the config form: add it (and to `workload.yaml`) before relying on it, or expect LinkedIn to answer 429 past 500.
 
@@ -74,7 +75,7 @@ After each build, confirm the endpoint Choreo shows matches the descriptor (name
 1. **E1** First version **v1.0.0 from `main`**; no extra deployment tracks.
 2. **E2** Build once, promote the same image dev → prod. Only config and secrets differ per environment.
 3. **E3** Before promoting: run DB Migrate in prod, then deploy Jobs, Scheduler, Backend; check Backend `GET /ready` (via the proxy test console) and that the startup log says `Scheduler sync … SYNCED`.
-4. **E4** No CI workflow runs the quality gates yet (the marketing-tools repo has none), so nothing checks a PR automatically. Until one is added, run them by hand before every promotion: `make check` (descriptors, log PII, transaction gate), `scripts/lint-openapi-names.sh`, and `scripts/test-all.sh`. A workflow that runs all of them on every PR is still to be added.
+4. **E4** CI runs part of the quality gates on every pull request (marketing-tools #45 and #55, upstream #247). `.github/workflows/amplify-quality-gates.yml` runs on changes under `apps/amplify/`: the gate scripts' self-tests, `make check` (descriptors, log PII, transaction gate) and `scripts/lint-openapi-names.sh`. `.github/workflows/amplify-database-integration.yml` runs the `amplify-database` integration group on PostgreSQL 15, 17 and 18 when `amplify-database/` changes. CI does not run the other components' unit and integration tests, so run `scripts/test-all.sh` by hand before every promotion.
 
 ## F. Observability
 
@@ -116,6 +117,7 @@ Same names in two components (`DBHOST`, `DBPORT`, `DBNAME`, `DBUSER`, `DBPASSWOR
 | `HRENTITYTOKENURL` | cfg | O | | TBD (C7) |
 | `HRENTITYCLIENTID` | cfg | O | | TBD (C7) |
 | `HRENTITYCLIENTSECRET` | secret | O | | TBD (C7) |
+| `HRENTITYINCLUDEHOUSE` | cfg | O | `false` | Leave empty (default false) until the environment's HR Entity is 1.1.1 or later, then `true` (C7 step 3) |
 | `LINKEDINCLIENTID` | cfg | R | `amplify-local` (mock) | TBD, from the LinkedIn app owner |
 | `LINKEDINCLIENTSECRET` | secret | R | | TBD, from the LinkedIn app owner |
 | `LINKEDINREDIRECTURI` | cfg | R | `http://localhost:3000/amplify/connect/callback` | TBD, the prod One WSO2 callback page |
@@ -152,18 +154,15 @@ Same names in two components (`DBHOST`, `DBPORT`, `DBNAME`, `DBUSER`, `DBPASSWOR
 | `LINKEDINAUTHBASEURL` | cfg | R | mock www URL | `https://www.linkedin.com` |
 | `TOKENKEYS` | secret | R | | Same as Backend |
 | `TOKENCURRENTKEYID` | cfg | R | | Same as Backend |
-| `CHATWEBHOOKURL` | secret | O | dev test space webhook (Scott-only) | TBD, from the Club space owner |
-| `CHATSPACE` | cfg | O | `Amplify Demo` locally; `dev-test` in Choreo dev | `club` |
-| `CHATCARDAVATARURL` | cfg | O | `https://fonts.gstatic.com/s/e/notoemoji/17.0/1f50a/72.png` | Same URL is fine; confirm |
-| `CHATDEFAULTIMAGEURL` | cfg | O | `https://raw.githubusercontent.com/BechtelCanDoIt/marketing-tools/5e5006aadd4a031021265342a20ff0fcda3102b7/apps/amplify/amplify-jobs/img/WSO2-Amplify-Poster-Default.png` (fork) | TBD, same file pinned to a commit in the WSO2-managed repo |
-| `SHAREPAGEBASEURL` | cfg | R | `https://one.wso2.com/amplify/celebrate` | TBD, the One WSO2 team confirms the prod Celebrate page |
-| `NOVERANOTIFYURL` | cfg | O | `https://apis-stg.wso2.com/people-ops-suite/po-agent/v1.0/internal/notifications` (stg) | TBD, prod gateway URL of `POST /internal/notifications` (https) |
-| `NOVERATOKENURL` | cfg | O | `https://api.asgardeo.io/t/wso2/oauth2/token` (stg app) | TBD |
-| `NOVERACLIENTID` | cfg | O | stg application id (in `local/.env`) | TBD, a prod application subscribed to Novera's API |
-| `NOVERACLIENTSECRET` | secret | O | | TBD |
+| `NOVERAICONURL` (Novera card icon) | cfg | O | `https://fonts.gstatic.com/s/e/notoemoji/17.0/1f50a/72.png` | Same URL is fine; confirm |
+| `NOVERADEFAULTIMAGEURL` (Novera card default image) | cfg | O | `https://raw.githubusercontent.com/BechtelCanDoIt/marketing-tools/5e5006aadd4a031021265342a20ff0fcda3102b7/apps/amplify/amplify-jobs/img/WSO2-Amplify-Poster-Default.png` (fork) | TBD, same file pinned to a commit in the WSO2-managed repo |
+| `NOVERABUTTONURL` | cfg | R | `https://<dev One WSO2 host>/amplify/celebrate?share={campaignId}` | TBD, e.g. `https://one.wso2.com/amplify/celebrate?share={campaignId}`; the One WSO2 team confirms the prod Celebrate page. Must contain `{campaignId}`, https only, checked at start-up. No default: empty defers announcements |
+| `NOVERANOTIFYURL` | cfg | R | `https://apis-stg.wso2.com/people-ops-suite/po-agent/v1.0/internal/notifications` (stg) | TBD, prod gateway URL of `POST /internal/notifications` (https) |
+| `NOVERATOKENURL` | cfg | R | `https://api.asgardeo.io/t/wso2/oauth2/token` (stg app) | TBD |
+| `NOVERACLIENTID` | cfg | R | stg application id (in `local/.env`) | TBD, a prod application subscribed to Novera's API |
+| `NOVERACLIENTSECRET` | secret | R | | TBD |
 | `NOVERASCOPES` | cfg | O | empty | TBD, empty unless Novera needs a scope |
-| `AMPLIFYONNOVERA` | cfg | O | `false` locally (default `true`) | TBD, the open item in `prod-deploy-handoff.md` |
-| `AMPLIFYONWEBHOOK` | cfg | O | `true` locally (default `false`) | TBD, same open item |
+| `AMPLIFYONNOVERA` | cfg | O | default `true` | `true` (Novera is the only announce channel, ADR-047) |
 | `INTERNALAPIKEY` | secret | R | | Ops-generated, at least 32 characters, the same value as the Backend (C5) |
 | `SCHEDULERAPIKEY` | secret | R | | Ops-generated, at least 32 characters, different from the internal key; accepted only for `POST /runs` and `POST /maintenance/partitions`; the same value as the Backend |
 | `LEAVERSWEEPMODE` | cfg | O | `OFF` | `OFF`, `DRY_RUN` or `ERASE`. Start with `DRY_RUN` (ADR-040) |
@@ -203,4 +202,4 @@ Same names in two components (`DBHOST`, `DBPORT`, `DBNAME`, `DBUSER`, `DBPASSWOR
 
 ## Go-live config review (M10)
 
-No environment has `BAL_CONFIG_VAR_ENVIRONMENT=local`, `DEVLOCALJWTENABLED`, `CHATALLOWINSECUREHTTP` or a LinkedIn Mock URL in prod. `scripts/check-descriptors.sh` passes.
+No environment has `BAL_CONFIG_VAR_ENVIRONMENT=local`, `DEVLOCALJWTENABLED`, `NOVERAALLOWINSECUREHTTP` or a LinkedIn Mock URL in prod. `scripts/check-descriptors.sh` passes.

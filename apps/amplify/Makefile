@@ -18,7 +18,7 @@
 #   make seed     rebuild and rerun Amplify DB Migrate (migrations + seeds, idempotent)
 #   make e2e      end-to-end smoke test against the running stack (scripts/e2e-local.sh)
 #   make down     stop and remove containers AND volumes
-#   make check    descriptor drift + log hygiene + Chat transport (no http client for the webhook) (no PII/tokens/commentary in log calls) + transaction gate (R-13)
+#   make check    descriptor drift + log hygiene (no PII/tokens/commentary in log calls) + transaction gate (R-13)
 #   make test-all unit + IT (postgres:17.11, mock LinkedIn, DB down) + scheduler IT + e2e; cleans up after
 #   make load-test k6 against the running stack: 1k employees / 50k ledger rows, p95 < 50 ms target
 #   make up PROFILE=apim   also start WSO2 API Manager (pending the non-prod Asgardeo org)
@@ -112,7 +112,6 @@ check:
 	scripts/check-logs-pii.sh
 	scripts/check-transaction-gate.sh --self-test
 	scripts/check-transaction-gate.sh
-	scripts/check-chat-transport.sh
 
 test-all:
 	scripts/test-all.sh

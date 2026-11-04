@@ -1,4 +1,7 @@
 # NEW APPROACH - WSO2 AGENT MANAGER
+
+> Superseded in part on 2026-11-03: Google Chat was replaced by Novera (ADR-047). Phase 1 announces new posts through Novera, and amplify-api does not post Google Chat cards itself.
+
 # WSO2 Amplify — L2 Solution Architecture (AMP variant)
 
 Builds on: [L0](../High%20Level/amplify-L0-solution.md) · [L1](../High%20Level/amplify-L1-solution.md) · [L2](amplify-L2-Choreo-Solution.md)

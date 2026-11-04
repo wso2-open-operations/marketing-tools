@@ -11,7 +11,7 @@ Fill in before handing over:
 ## Rules that apply to every step
 
 1. Build once, promote the same image from stg to prod. Only config and secrets change per environment (E2).
-2. `ENVIRONMENT` is `prod`. Never `local`. `DEVLOCALJWTENABLED` and `CHATALLOWINSECUREHTTP` stay unset.
+2. `ENVIRONMENT` is `prod`. Never `local`. `DEVLOCALJWTENABLED` and `NOVERAALLOWINSECUREHTTP` stay unset.
 3. No LinkedIn Mock anywhere in prod. Prod LinkedIn URLs are `https://api.linkedin.com` and `https://www.linkedin.com`.
 4. `TOKENKEYS` is generated fresh for prod (`openssl rand -base64 32`, format `keyId:base64Key`) with `TOKENCURRENTKEYID` set to its key id. Never reuse the dev or stg key. Jobs and Backend get the same values.
 5. Jobs, Scheduler and the databases are never published. Only the API Proxy is.
@@ -27,7 +27,7 @@ HR Entity (People Operations, ADR-045):
 
 wso2-digital-agents (`po-agent`, Novera):
 - The imageUrl and button change on `POST /internal/notifications` (DA-01) is deployed to prod.
-- If the Amplify card goes out through Novera, Amplify's application must be subscribed to Novera's API. That subscription check is the only auth on the route, so approve it deliberately. See "Open item" below.
+- Amplify's application must be subscribed to Novera's API. The card goes out only through Novera (ADR-047). That subscription check is the only auth on the route, so approve it deliberately.
 
 Check: both services are healthy in prod.
 
@@ -41,7 +41,7 @@ Check: both services are healthy in prod.
 ### Step 3: Components (C), in this order
 
 1. DB Migrate (Manual Task). Run once for the first release, then after every release that adds a `V###` or `S###` script. The log must end with `Migration run done`.
-2. Amplify Jobs (Project visibility). Needs the Chat webhook, the LinkedIn prod URLs and client id, and `TOKENKEYS`.
+2. Amplify Jobs (Project visibility). Needs the Novera notify URL, token URL and client credentials, the LinkedIn prod URLs and client id, and `TOKENKEYS`.
 3. Amplify Scheduler (Project visibility, no auth upstream, never behind the proxy). Needs `DSN` for the `scheduler` database.
 4. Amplify Backend. Set `JOBSURL` and `SCHEDULERURL` to the Project URLs of the Jobs and Scheduler endpoints (leave `SCHEDULERJOBSURL` empty), and the four `HRENTITY*` values from the HR Entity client (C7). These are plain settings, so nothing is committed before the build. The gateway JWT values don't exist yet, so the first deploy runs without them and step 4 finishes the job.
 5. Back to step 1: add the Backend's people-app client id to `directoryClientIds` and redeploy people-app.
@@ -51,7 +51,7 @@ Check: both services are healthy in prod.
 1. Proxy targets the Backend's Project endpoint. If Choreo refuses that, set the endpoint to `Organization` and record it in an ADR.
 2. Import `amplify-api/openapi.yaml`. Key manager is Asgardeo. Per-resource scopes come from `x-access`; rate limits are tighter on shares and external shares than on reads.
 3. Turn on backend JWT. Copy its JWKS URL, issuer and audience into the Backend's `GATEWAYJWKSURL`, `GATEWAYISSUER`, `GATEWAYAUDIENCES` and redeploy the Backend.
-4. Security headers at the proxy if supported. If the org uses egress control, allow only `api.linkedin.com`, `www.linkedin.com`, `chat.googleapis.com` and the people-app gateway host.
+4. Security headers at the proxy if supported. If the org uses egress control, allow only `api.linkedin.com`, `www.linkedin.com`, the Novera gateway and token hosts, and the people-app gateway host.
 
 ### Step 5: One WSO2 UI
 
@@ -63,9 +63,9 @@ Deployed by the One WSO2 team after the proxy is live. They need the proxy URL. 
 |---|---|
 | Choreo org admin access | Ops |
 | Prod LinkedIn app client id and secret, redirect URI | LinkedIn app owner |
-| `CHATWEBHOOKURL` for the WSO2 Club space (`CHATSPACE=club`) | Google Chat space owner (see `google-chat-webhook.md`) |
-| `CHATDEFAULTIMAGEURL`, `CHATCARDAVATARURL` (optional) | Repo; public HTTPS image pinned to a commit |
-| `SHAREPAGEBASEURL` | One WSO2 team (the prod Celebrate page) |
+| `NOVERANOTIFYURL`, `NOVERATOKENURL`, `NOVERACLIENTID`, `NOVERACLIENTSECRET` | Novera owner (prod gateway URL) and the application subscribed to Novera's API |
+| `NOVERADEFAULTIMAGEURL`, `NOVERAICONURL` (optional) | Repo; public HTTPS image pinned to a commit |
+| `NOVERABUTTONURL` (required; URL template with `{campaignId}`, https, e.g. `https://one.wso2.com/amplify/celebrate?share={campaignId}`) | One WSO2 team (the prod Celebrate page) |
 | Asgardeo setup, including **`groups`, `email` and `name` in the access token** (not only the id_token) and the `rolesClaim` / `emailClaim` / `nameClaim` names in the backend JWT | `identity-setup.md`, "Token requirements" |
 | Generated DB passwords (`APIDBPASSWORD`, `JOBSDBPASSWORD`, `READONLYDBPASSWORD`), `TOKENKEYS` | Ops generates and stores only in Choreo |
 
@@ -74,16 +74,16 @@ Deployed by the One WSO2 team after the proxy is live. They need the proxy URL. 
 1. `GET /ready` on the Backend, through the proxy test console, returns ready.
 2. The Backend startup log says `Scheduler sync ... SYNCED`.
 3. `GET /leaderboard` as an employee shows `teamStatus: OK` and their sub-team. A 500 from people-app means the client id isn't listed or the claim is wrong. A 403 means the route isn't the directory.
-4. `scripts/check-descriptors.sh` passes on the release commit, and no prod config has `ENVIRONMENT=local`, `DEVLOCALJWTENABLED`, `CHATALLOWINSECUREHTTP` or a LinkedIn Mock URL.
-5. Post one real share to the Club space and confirm the card, image and LinkedIn button.
+4. `scripts/check-descriptors.sh` passes on the release commit, and no prod config has `ENVIRONMENT=local`, `DEVLOCALJWTENABLED`, `NOVERAALLOWINSECUREHTTP` or a LinkedIn Mock URL.
+5. Register one real post and confirm the Novera card, its image and its Amplify button. The button opens the prod Celebrate page with that post's share dialog. Exactly one card arrives. If the announcement is deferred with "Novera button URL is not configured", `NOVERABUTTONURL` is missing on Jobs.
 
 ## Alerts to turn on (F)
 
 Outbox `FAILED`, share failure rate, breaker `OPEN` in the run log, 5xx rate, scheduler job failures, `schedulerSync: PENDING` or reconcile give-up log, partition-maintenance failures.
 
-## Open item
+## Announcement channel
 
-The runbook sends the Chat card through the Club space webhook (`CHATWEBHOOKURL` on Jobs). It does not list a Novera client credential for Amplify. Whether the prod card also goes through Novera's `/internal/notifications` needs a yes or no from the Amplify team before step 1 is finalised. If no, the Novera subscription step drops out.
+Resolved 2026-11-03 (ADR-047): the card goes out only through Novera's `/internal/notifications`. There is no Club space webhook. The Novera subscription in step 1 is required.
 
 ## Rollback
 

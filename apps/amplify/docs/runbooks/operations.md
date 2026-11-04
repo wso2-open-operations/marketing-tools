@@ -4,7 +4,7 @@ Operational procedures for the Amplify phase 1 pilot. Every procedure gives the 
 
 Owner: Developer. Escalation: PO team for product impact, WSO2 platform for Choreo/Aiven.
 
-**Companion runbooks** (linked, not duplicated): [choreo-deploy.md](choreo-deploy.md) · [identity-setup.md](identity-setup.md) · [google-chat-webhook.md](google-chat-webhook.md) · [data-deletion-interim.md](data-deletion-interim.md) · [resilience-targets.md](resilience-targets.md) · checklist exception: data deletion.
+**Companion runbooks** (linked, not duplicated): [choreo-deploy.md](choreo-deploy.md) · [identity-setup.md](identity-setup.md) · [data-deletion-interim.md](data-deletion-interim.md) · [resilience-targets.md](resilience-targets.md) · checklist exception: data deletion.
 
 Paths: `apps/…` = `apps/amplify/…`. Local commands run from `apps/amplify/`. In Choreo the same work is a console action (no shell) — those steps are marked **[console]**.
 
@@ -16,7 +16,7 @@ Paths: `apps/…` = `apps/amplify/…`. Local commands run from `apps/amplify/`.
 | Run now (manual) | `POST {jobs}/runs` (Project-only, header `X-Amplify-Internal-Key` with either key) or wait for the scheduler |
 | Maintenance now | `POST {jobs}/maintenance/partitions` (either key; also rotates token keys: `token_rotation` in the response) |
 | Scheduler sync now | `POST /admin/scheduler/sync` (admin) |
-| Retry one announcement | `POST /admin/announcements/{id}/retry` (admin) |
+| Retry one announcement | `POST /admin/announcements/{id}/retry` (admin). For "Delivery unknown" check Novera first (section 15) |
 | Kill switches | `PUT /admin/settings` `sharing.enabled` / `announcements.enabled` |
 | DB shell (local) | `docker compose exec postgres psql -U postgres -d amplify` |
 | Refresh team rosters now | Restart Amplify Backend (the people-directory index lives in memory, §13) |
@@ -37,7 +37,8 @@ The outbox is `messaging_outbox`, status ∈ {`PENDING`,`IN_PROGRESS`,`DONE`,`FA
    WHERE status='FAILED' AND event_type='CampaignRegistered'
    ORDER BY created_at DESC;
    ```
-2. `POST /admin/announcements/{campaignId}/retry` (admin token). This resets that row to `PENDING`/`attempts=0` and audits `AnnouncementRetried` (`amplify-domain/modules/announcements/repository.bal`, `requeue`).
+2. If `last_error` starts with `Delivery unknown:`, check Novera first (section 15): the card may already be out.
+3. `POST /admin/announcements/{campaignId}/retry` (admin token). This resets that row to `PENDING`/`attempts=0` (the next run clears the announcement's `failed_at` and `attempted_at` and sends once) and audits `AnnouncementRetried` (`amplify-domain/modules/announcements/repository.bal`, `requeue`).
 
 **1b. Manual reprocess of FAILED rows (gap — use with care).** Shape mirrors the announcement `requeue`; scope it by `event_type`/`aggregate_id` — **never reset all FAILED rows blindly** (some fail permanently).
 1. Inspect first:
@@ -88,15 +89,15 @@ The LinkedIn developer app has one client id/secret; it is stored in Choreo secr
 4. Smoke test: connect (real account in non-prod), share a campaign, confirm `POST /rest/posts` succeeds. Watch the run log `breakers` for `linkedinOAuth`/`linkedinApi`.
 5. A `401` on share revokes the connection (`NEEDS_RECONNECT`) — after a secret change, affected users reconnect.
 
-## 4. Rotate the Google Chat webhook
+## 4. Rotate the Novera client secret
 
-Full procedure: [google-chat-webhook.md](google-chat-webhook.md). Summary:
+Novera is the only channel that announces new posts (ADR-047).
 
-1. Chat space **[console]**: create a new incoming webhook ("Amplify").
-2. Update the `CHATWEBHOOKURL` secret **[console]**, redeploy `amplify-jobs`.
-3. Verify: `Save & Share Now` on a test campaign → card posts to the space.
-4. **Delete the old webhook** (delete first if the old URL leaked).
-5. A `404` on every card means the webhook was deleted — rotate. The URL is a bearer secret: never logged, never in `announcement.last_error`.
+1. Regenerate the secret of Amplify's application subscribed to Novera's API **[console]**.
+2. Update the `NOVERACLIENTSECRET` secret on `amplify-jobs` **[console]** and redeploy it.
+3. Verify: `Save & Share Now` on a test campaign → Novera answers 202 and the announcement is `SENT`.
+4. **Revoke the old secret** (revoke first if it leaked).
+5. A `401` or `403` from Novera on every announcement means the secret or the subscription is wrong. The rows retry (not failed) until it is fixed. The secret is never logged and never in `announcement.last_error`.
 
 ## 5. Bump `LinkedIn-Version`
 
@@ -156,15 +157,15 @@ Key points: Remove Connection deletes tokens at once; the interim process anonym
 1. Pause sharing: `PUT /admin/settings` `{"sharing.enabled":false}` (admin). API returns 409 `FEATURE_DISABLED` on new shares; `amplify-jobs` **defers** pending `RepostRequested` rows (not lost).
 2. Pause announcements: `{"announcements.enabled":false}` — `retryAnnouncement` 409; jobs defer `CampaignRegistered` rows.
 3. Resume by setting `true`. Settings cache is ~5 s, so the change takes effect within ~5 s on each replica (a local save invalidates that replica's cache; others pick it up within `settingsCacheSeconds`).
-4. Use when: LinkedIn outage storm, Chat spam, or a PO request to stop the pilot's posting.
+4. Use when: LinkedIn outage storm, a Novera problem, or a PO request to stop the pilot's posting.
 
 ## 11. Routine monitoring
 
 - **Run log:** each `POST /runs` returns a `RunReport` (`amplify-jobs/run.bal:29`): `claimed/succeeded/retried/deferred/failed`, `linkedinPosts`, `connections`, `breakers`, `durationMs`. Health of the pipeline is "failed=0 and deferred small".
 - **Duplicate publish:** if a post went out but the employee's engagement for that target was already recorded (an earlier round), the share settles `PUBLISHED` on the existing engagement (row note "published; engagement already recorded"), with no second engagement or award. If no engagement of that employee matches, the share fails `PROVIDER_REJECTED` with `DUPLICATE_ENGAGEMENT`. Either way it never sits in `QUEUED` (ADR-025 amendment). A few `DUPLICATE_ENGAGEMENT` failures are worth a look but need no action; the employee can't be paid twice.
-- **Readiness:** `GET /ready` → `database`, `breakers`. api: DB + JWKS gate readiness; jobs/roster (people directory)/LinkedIn (incl. `linkedinIdTokenJwks`) are reported, not fatal. jobs: DB gates; LinkedIn/Chat breakers and `runInProgress` are reported. Repeated pool timeouts ("Connection is not available") open the DB breaker, so a leaked pool fails readiness and the replica gets restarted.
+- **Readiness:** `GET /ready` → `database`, `breakers`. api: DB + JWKS gate readiness; jobs/roster (people directory)/LinkedIn (incl. `linkedinIdTokenJwks`) are reported, not fatal. jobs: DB gates; LinkedIn/Novera breakers and `runInProgress` are reported. Repeated pool timeouts ("Connection is not available") open the DB breaker, so a leaked pool fails readiness and the replica gets restarted.
 - **Breakers:** `amplify_breaker_state{component,dependency}` gauge (0=closed, 1=half-open, 2=open, -1=unknown) — exported on `/ready`, viewed in Choreo metrics.
-- **Outbox backlog:** gauges `amplify_outbox_pending`, `amplify_outbox_failed` and `amplify_outbox_oldest_pending_seconds` (-1 when nothing is pending), and an `outbox` block on amplify-jobs' `GET /ready` (`pending`, `inProgress`, `failed`, `oldestPendingSeconds`, `alerting`). **Alert when `amplify_outbox_oldest_pending_seconds` is over 3600** (`outboxAlertSeconds`) **or `amplify_outbox_failed` is above 0.** A row that waits that long means Novera, the Chat webhook or LinkedIn is unconfigured or down and every retry is deferring; nothing else reports it. Jobs also logs `Outbox backlog needs attention` (at most every 5 minutes) with the numbers. Fix the dependency, then see section 1 for failed rows.
+- **Outbox backlog:** gauges `amplify_outbox_pending`, `amplify_outbox_failed` and `amplify_outbox_oldest_pending_seconds` (-1 when nothing is pending), and an `outbox` block on amplify-jobs' `GET /ready` (`pending`, `inProgress`, `failed`, `oldestPendingSeconds`, `alerting`). **Alert when `amplify_outbox_oldest_pending_seconds` is over 3600** (`outboxAlertSeconds`) **or `amplify_outbox_failed` is above 0.** A row that waits that long means Novera or LinkedIn is unconfigured or down and every retry is deferring; nothing else reports it. Jobs also logs `Outbox backlog needs attention` (at most every 5 minutes) with the numbers. Fix the dependency, then see section 1 for failed rows.
 - **Token partition runway:** gauge `amplify_token_partition_days_ahead` (days past today with a `provider_token` partition; -1 when unknown) and a `tokenPartitions` block on amplify-jobs' `GET /ready` (`daysAhead`, `alerting`). **Alert when it is below 3** (`tokenPartitionAlertDays`). The partitions are two weeks ahead (V009), jobs creates them at start-up and the daily maintenance run keeps them going; a connect on a day with no partition fails, so a falling number means the maintenance schedule is off or failing. Check the scheduler job `amplify-maintenance-partitions` and `POST /maintenance/partitions` on jobs; running it by hand restores the runway.
 - **Partition upkeep:** nightly `POST /maintenance/partitions`; each drop audits `PARTITION_DROPPED`; `oauth_state` swept by `connection.sweep_oauth_state()`. The response's `token_rotation` should read `DONE` (or `NOT_CONFIGURED` where no keys are set); `failed > 0` needs a look (§2).
 - **Sessions idle in transaction (alert, R-13).** On Ballerina 2201.13.x a runtime race can leave a session `idle in transaction` holding locks ([R-13 write-up](../reviews/2026-10-17-r13-transaction-race.md), [ADR-032](../../architecture/decisions/ADR-032-transaction-gate-ballerina-2201-13.md)). The transaction gate should stop it, and V013's 30 s `idle_in_transaction_session_timeout` on `amplify_api`/`amplify_jobs` ends such a session, so any hit means something got past both. Alert when this returns a row (run as the admin user, every few minutes):
@@ -192,7 +193,7 @@ Per environment (dev, prod), for each of the three components **[console]**:
 
 ## 13. People directory (team rosters)
 
-My Team and the Team page's team scope come from the HR Entity GraphQL service (ADR-019, ADR-045). Amplify Backend fetches the whole directory in pages, groups everyone by team under their business unit and keeps that index (teams and names; no houses yet) in memory for 24 hours (`ROSTERCACHESECONDS`, default 86400). Nothing is written to the database or the logs.
+My Team and the Team page's team scope come from the HR Entity GraphQL service (ADR-019, ADR-045). Amplify Backend fetches the whole directory in pages, groups everyone by sub-team (team when there's none) under their business unit and keeps that index (teams, names, and houses when `HRENTITYINCLUDEHOUSE` is on) in memory for 24 hours (`ROSTERCACHESECONDS`, default 86400). Nothing is written to the database or the logs.
 
 - **Someone moved team and still sees the old one.** Expected for up to 24 hours. To pick it up now, restart Amplify Backend; the next leaderboard read fetches the directory again.
 - **`teamStatus: NO_TEAM` for one person.** They aren't in the directory (only Active and Marked leaver employees are), their HR record has no team, or their Amplify email doesn't match their HR `workEmail`. Compare the two emails first.
@@ -201,6 +202,8 @@ My Team and the Team page's team scope come from the HR Entity GraphQL service (
   2. `People directory answered 401` or `403`: the HR Entity doesn't accept Amplify's client. Check the client id, secret and token URL with People Operations.
   3. `People directory answered with GraphQL errors`: the query asks for a field the service doesn't offer, or the client lacks scope for one. The log doesn't carry the service's message (it can name people); ask People Operations for the service log.
   4. `/ready` shows the `roster` breaker `OPEN`: the HR Entity or the gateway is down. It closes by itself after 30 s once they're back.
+- **A request is slow once, then fast.** The HR Entity is down: the first failed read retries (about 21 s at the defaults, `HRENTITYRETRY*`), then the breaker opens and the next calls fail at once for 30 s. Lower `HRENTITYRETRYCOUNT` to shorten it.
+- **The house board says "No houses to show" or My Team shows no houses.** `HRENTITYINCLUDEHOUSE` is unset (the default). Turn it on only when People Operations confirms the environment runs hr_entity 1.1.1 or later (choreo-deploy C7 step 3). If GraphQL errors start right after turning it on, the service is older: unset it and redeploy. An employee with no house in HR is left out of the house board. House images are not served yet (ADR-046).
 - **A refresh fails after a good load.** Amplify keeps serving the old index and logs `People directory refresh failed; using the cached teams`. Nothing to do unless it lasts; teams just stop updating.
 - **Rotating the client secret.** New secret for the HR Entity client, update `HRENTITYCLIENTSECRET` (Backend and Jobs), redeploy both.
 
@@ -213,3 +216,36 @@ Two secrets guard amplify-jobs: `INTERNALAPIKEY` (full access; amplify-api's own
 3. **Then force a scheduler sync** so the registered jobs carry the new value: `POST /admin/scheduler/sync` (admin); the Backend also syncs at start-up. Check the response lists both jobs as `UPDATED`. Until then the scheduler still sends the old key and Jobs answers 401 (`Internal call refused` in the Jobs log, `keySent=true`).
 4. **Internal key:** set `INTERNALAPIKEY` on both and redeploy. No scheduler sync needed (the scheduler never holds it). "Save & Share Now" falls back to the scheduled run while the two disagree.
 5. A `403` in the Jobs log (`scheduler key on a route it may not call`) means something other than `/runs` or `/maintenance/partitions` was called with the scheduler key: check the job URIs in the scheduler.
+
+## 15. Novera announcements (ADR-047)
+
+Novera does not dedupe on `Idempotency-Key`. Amplify sends at most one card per campaign. Before the call, jobs saves `announcement.attempted_at`. Only an admin can send a card again.
+
+### An announcement shows "Delivery unknown"
+
+**What it means.** The announcement is `FAILED` and `last_error` starts with `Delivery unknown:`. Jobs sent the request but cannot tell whether Novera delivered the card. Causes: a timeout or a connection reset after the request was sent, Novera answered 500, 502, 504 or another 5xx except 503, or the row was already attempted when the handler started (a crash, or the `SENT` save failed after Novera accepted). The last case reads "Delivery unknown: an earlier attempt may have reached Novera; check Novera before retrying".
+
+**Why it is not retried automatically.** The card may already be in Chat. A retry could post it twice. The owner decided (2026-11-03) that a missed card is better than a duplicate, and an admin can see and fix a miss.
+
+1. Find the rows:
+   ```sql
+   SELECT campaign_id, attempted_at, failed_at, last_error
+   FROM announcement
+   WHERE failed_at IS NOT NULL AND last_error LIKE 'Delivery unknown:%'
+   ORDER BY failed_at DESC;
+   ```
+   The admin failed announcements list shows the same rows.
+2. Check whether the card arrived. Look in the Chat space or DMs that Novera posts to for a card with the campaign title around `attempted_at`. If you have access to Novera's logs, search for the notification with `Idempotency-Key: amplify:<campaignId>` or the correlation id from the jobs log.
+3. Decide:
+   - **The card arrived:** leave the row `FAILED`. Nothing else depends on it. Write the campaign id and "arrived, not resent" in the ops log.
+   - **The card did not arrive:** `POST /admin/announcements/{campaignId}/retry` (admin). The next run clears `failed_at` and `attempted_at` and sends once more.
+   - **You can't tell:** ask the PO. Retrying risks a duplicate; leaving it risks a miss.
+4. Many rows at once usually means Novera was down or slow. Fix that first, then work through the list.
+
+### Announcements are deferred: "Novera button URL is not configured"
+
+`noveraButtonUrl` (env `NOVERABUTTONURL`) is empty on Amplify Jobs. Jobs never sends a card without a button, so every `CampaignRegistered` row defers. Nothing is lost.
+
+1. Set `NOVERABUTTONURL` on Amplify Jobs, e.g. `https://one.wso2.com/amplify/celebrate?share={campaignId}`. It must contain `{campaignId}` and use https. Jobs does not start with an invalid value.
+2. Redeploy Jobs. The deferred rows go out on the next run (or `POST {jobs}/runs`).
+3. Verify: the announcement is `SENT` and the card button opens the post's share dialog.

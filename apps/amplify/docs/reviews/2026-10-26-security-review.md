@@ -1,5 +1,7 @@
 # Security review before the upstream PRs, 2026-10-26
 
+> Superseded in part on 2026-11-03: Google Chat was replaced by Novera (ADR-047).
+
 Scope: everything the fork adds on top of upstream, read as `git diff $(git merge-base upstream/main origin/main) origin/main` in each repo. This was a read-only review. I changed no source files, other docs or the threat model, and I built and ran nothing.
 
 | Repo | Reviewed | Skipped |

@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-16
+- **Superseded in part (2026-11-03):** Google Chat was replaced by Novera ([ADR-047](ADR-047-novera-replaces-google-chat.md)); `GET /ready` reports the Novera breaker, not a Chat breaker.
 - **Source:** owner decision 2026-10-16; plan M6b; supersedes the scheduler part of ADR-003
 - **Research:** [2026-10-16-akornatskyy-scheduler.md](../../docs/research/2026-10-16-akornatskyy-scheduler.md)
 

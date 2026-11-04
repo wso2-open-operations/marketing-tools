@@ -31,7 +31,7 @@ Where no artefact exists yet, the row says **no artefact yet** — nothing here 
 | ID | Requirement | Disposition | Milestone | ADR | Evidence (code / test / doc) |
 | --- | --- | --- | --- | --- | --- |
 | R1 | Register official WSO2 LinkedIn posts (category, priority) | Implemented (API); M7 UI open | M5 S1, M7 | ADR-012 (A6) | `amplify-api/handlers.bal` (POST `/campaigns`), `amplify-database/migrations/V002__identity_campaign.sql`; `amplify-domain/tests/integration_m5_test.bal` `testM5RegisterListAndShare` |
-| R2 | Share new posts to the Amplify Chat space automatically | Implemented (code); real webhook open | M6a | — (ADR-025 delivery) | `amplify-jobs/handlers.bal` (CampaignRegistered → Chat), `amplify-common/modules/googlechat/card.bal`; `amplify-jobs/tests/webhook_test.bal`; V011 chat thread columns |
+| R2 | Share new posts to the Amplify Chat space automatically | Implemented (code) through Novera; Novera client and egress open per environment | M6a | ADR-047 (ADR-025 delivery) | `amplify-jobs/handlers.bal` (CampaignRegistered → Novera), `amplify-jobs/novera.bal`, `amplify-domain/modules/announcements/service.bal` (`buildNoveraNotification`) |
 | R3 | Link LinkedIn to the WSO2 account via SSO | Implemented (direct OAuth; A8 research open) | M5 S2, M7 | — (A8 research) | `amplify-api/handlers.bal` (`connections/linkedin/complete`), `amplify-domain/modules/connection/service.bal`; `amplify-common/modules/crypto/tests/token_cipher_test.bal`; `amplify-domain/tests/integration_m5_test.bal` `testM5OAuthStateIsSingleUseAndOwned` |
 | R4 | Record who reacted/commented/reposted (or reposted with commentary) | Partial — in-app reposts only; reactions, comments, native reposts deferred | M6, ADR-018 | ADR-018 | `amplify-jobs/handlers.bal` (RepostRequested → `sharing.engagement`), V004 `engagement` table; `amplify-jobs/tests/integration_test.bal` `testM6RunAnnouncesSharesAndScores` |
 | R5 | Let employees submit their own WSO2 posts for higher-tier points | Implemented (API); M7 UI open | M5 S3, M7 | ADR-017 | `amplify-api/handlers.bal` (`POST /external-shares`), `amplify-database/migrations/V005__external_sharing.sql`; `amplify-api/tests/endpoint_test.bal` `testExternalShareApproveAndAmplifyAwardPoints` |
@@ -52,11 +52,11 @@ Where no artefact exists yet, the row says **no artefact yet** — nothing here 
 | P1 | Pilot launches 15 Oct 2026 (moved to 31 Oct 2026) | Partial — date set, dated milestones added; effort estimate open (Q6) | M0c | — (A1) | plan [Dated milestones](../../../docs/requirements/phase1-planned-todos.md#dated-milestones-to-go-live-31-oct-2026) |
 | P2 | 15–25 Amplify Champions kick-start the pilot | Console-blocked — Asgardeo pilot group not created | M12 | — | no artefact yet (M12; Asgardeo pilot group + One WSO2 preview flag both open) |
 | P3 | Design for additional social channels later (LinkedIn first) | Implemented | M2, M3 | ADR-005 | V002 `provider`/`resource_urn`; `amplify-common/modules/linkedin/adapter.bal` (`ProviderAdapter` port) |
-| P4 | Match EveryoneSocial's Google Chat integration (two-way) | Partial — posts in Chat; two-way deferred | M6a | — (A12) | `amplify-common/modules/googlechat/client.bal` (one-way webhook); two-way deferred (open items) |
+| P4 | Match EveryoneSocial's Google Chat integration (two-way) | Partial — posts in Chat through Novera; two-way deferred | M6a | ADR-047 (A12) | `amplify-jobs/novera.bal` (one-way); two-way deferred (open items) |
 | P5 | Offer AI help for employees writing their own posts | Deferred (Novera, future phase) | — | — (A12) | no artefact yet |
 | Q1 | Engagement data: which actions can Amplify see? | Answered — in-app reposts only (`w_member_social`) | M0b | ADR-018 | [research 2026-10-16](../../../docs/research/2026-10-16-linkedin-deletion-and-analytics.md) |
 | Q2 | Plain vs commentary reposts | Answered — employee picks the kind; native reposts later | M5 C1 | — | V006 enum `REPOST`/`REPOST_COMMENTARY` |
-| Q3 | Google Chat integration | Answered — one-way webhook to WSO2 Club Group | M6a | — (A7) | `amplify-jobs/handlers.bal`; [google-chat-webhook runbook](../../../docs/runbooks/google-chat-webhook.md) |
+| Q3 | Google Chat integration | Answered — one-way announcement through Novera | M6a | ADR-047 (A7) | `amplify-jobs/handlers.bal`, `amplify-jobs/novera.bal` |
 | Q4 | AI help | Deferred (future phase) | — | — (A12) | no artefact yet |
 | Q5 | Coins connection | Deferred — held in ledger; Coin contract open | — | ADR-029 | V006 settlement columns; L2 open items 3–4 |
 | Q6 | Effort and earliest go-live | Answered (date) — 31 Oct 2026; effort estimate open | M0c | — (A1) | plan [Dated milestones](../../../docs/requirements/phase1-planned-todos.md#dated-milestones-to-go-live-31-oct-2026) |
@@ -71,7 +71,7 @@ Where no artefact exists yet, the row says **no artefact yet** — nothing here 
 | A4 | Medium | One repost per campaign is stricter than "once per action" | Deferred — revisit with Community Management | M0b | ADR-015 (C2) | V004 `UNIQUE (campaign_id, employee_id)` |
 | A5 | High | PO can't edit point values → point rules move to `amplify_po` | Implemented | M5 C2, M7 | ADR-011 | `amplify-api/modules/auth/matrix.bal` (`po/point-rules` writes) |
 | A6 | Medium | PO can't register posts → `amplify_po` on campaign endpoints | Implemented | M5 S1, M7 | ADR-012 | `amplify-api/modules/auth/matrix.bal`; plan Roles table |
-| A7 | Medium | Which Chat space → WSO2 Club Group | Console-blocked — webhook secret to create | M6a | — | [google-chat-webhook runbook](../../../docs/runbooks/google-chat-webhook.md) |
+| A7 | Medium | Which Chat space → none; Novera announces (superseded 2026-11-03) | Closed by ADR-047 | M6a | ADR-047 | — |
 | A8 | Low | Connect isn't Asgardeo federation → keep direct OAuth, research | Console-blocked — research open | M0c | — | no ADR yet (owner: research; plan M0c A8) |
 | A9 | Medium | Privacy scope grew (token can post as the employee) | Console-blocked — Legal consent copy pending | M10, M0c | — | consent copy placeholder in plan M0c A9; owner: Legal |
 | A10 | Medium | No team leaderboard → My Team view added | Implemented (design; build depends D13) | M5 S4, M7 | ADR-019 | [leaderboards.md](leaderboards.md) |
@@ -158,7 +158,7 @@ Every row in requirements-map §Other phases is **Deferred** to a later phase; n
 | Per-share metrics (`engagement_metric`), reach | R11, R9 | Deferred | ADR-018 | table designed, not created |
 | LinkedIn org-social-action webhook (L2 B10) | R4 | Deferred | ADR-018 | none |
 | Amplify agent / classifier / LLM gateway / AMP / ThunderID / Novera | P5, Q4 | Deferred | — | none |
-| Two-way Google Chat | P4 | Deferred | — | one-way webhook only |
+| Two-way Google Chat | P4 | Deferred | — | one-way Novera announcement only |
 | Separate queue service | — | Deferred | ADR-025 | Postgres outbox |
 | Other social channels | P3 | Deferred | ADR-005 | provider-agnostic tables |
 | Me › Overview widget bar | R9 | Deferred | — | slot only (M7) |
@@ -195,5 +195,5 @@ Everything in the build is done; these are the non-code steps still outstanding,
 | **Security team** | Checklist exception for deferred data deletion (C3, Open item 5); threat-model review + go-live sign-off (M10). |
 | **Choreo / Asgardeo console** | Asgardeo app + groups + scopes (M4); Choreo project, BYOR, API Proxy, connections and secrets (M8b); extension check on the real DB (B18); pilot group (P2/M12). |
 | **WSO2 GitHub org admin** | Provision the WSO2-managed repo (D12, ADR-030). |
-| **LinkedIn / Chat console** | Real Chat space + webhook secret (A7); LinkedIn developer apps on team accounts (M4). |
+| **LinkedIn / Novera** | Novera client-credentials application and egress per environment (ADR-047); LinkedIn developer apps on team accounts (M4). |
 | **Research (Developer)** | D5 repost spike (done 2026-10-20); D4 SDK callback check; A8 Asgardeo-federation research; D13 roster endpoint. |

@@ -40,7 +40,7 @@ COMPONENTS=(
 )
 # Set only in local Compose, never in Choreo/OpenChoreo (dev JWT, plain-http stub, fast schedules, no TLS to
 # the local Postgres, browser-facing mock OAuth URL).
-LOCAL_ONLY="BAL_CONFIG_VAR_DEVLOCALJWTENABLED BAL_CONFIG_VAR_DEVJWKSFILE BAL_CONFIG_VAR_CHATALLOWINSECUREHTTP BAL_CONFIG_VAR_NOVERAALLOWINSECUREHTTP
+LOCAL_ONLY="BAL_CONFIG_VAR_DEVLOCALJWTENABLED BAL_CONFIG_VAR_DEVJWKSFILE BAL_CONFIG_VAR_NOVERAALLOWINSECUREHTTP
 BAL_CONFIG_VAR_MINRUNINTERVALSECONDS BAL_CONFIG_VAR_RECONCILEDELAYSECONDS BAL_CONFIG_VAR_DBSSLMODE
 BAL_CONFIG_VAR_LINKEDINAUTHORIZEBASEURL
 BAL_CONFIG_VAR_ENABLEMOCKADMIN BAL_CONFIG_VAR_MOCKADMINKEY"
@@ -127,8 +127,8 @@ for row in "${COMPONENTS[@]}"; do
   [[ -z "$extra" ]] || err "$name" "compose service $svc sets names unknown to $desc: $(echo $extra)"
   [[ -n "$(compose_envs "$svc")" ]] || err "$name" "compose service $svc has no config env (parse error?)"
 done
-# Every compose image and the local-only Dockerfiles (chat-stub, people-stub) are pinned by digest too.
-for f in local/chat-stub/Dockerfile local/people-stub/Dockerfile; do
+# Every compose image and the local-only Dockerfile (people-stub) are pinned by digest too.
+for f in local/people-stub/Dockerfile; do
   unpinned=$(grep -iE '^FROM ' "$f" | grep -v '@sha256:[0-9a-f]\{64\}' || true)
   [[ -z "$unpinned" ]] || err "$f" "base image not pinned by digest: $(echo $unpinned)"
 done
@@ -179,7 +179,7 @@ if [ "${1:-}" = "--self-test" ]; then
 
   fixture() {  # (re)write a clean, in-sync tree
     cd "$SELFTEST_TMP"
-    rm -rf root; mkdir -p root/.choreo root/amplify-api root/local/chat-stub root/local/people-stub
+    rm -rf root; mkdir -p root/.choreo root/amplify-api root/local/people-stub
     cat > root/.choreo/component.yaml <<EOF
 schemaVersion: "1.2"
 endpoints:
@@ -202,7 +202,7 @@ FROM alpine:3.20@$DIGEST_B
 USER 10014
 EXPOSE 9090
 EOF
-    for f in root/local/chat-stub/Dockerfile root/local/people-stub/Dockerfile; do
+    for f in root/local/people-stub/Dockerfile; do
       printf 'FROM alpine:3.20@%s\n' "$DIGEST_A" > "$f"
     done
     cat > root/compose.yaml <<EOF

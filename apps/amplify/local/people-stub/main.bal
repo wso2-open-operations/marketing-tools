@@ -80,6 +80,12 @@ service / on stubListener {
         }
         int end = int:min(offset + 'limit, listed.length());
         json[] page = offset >= listed.length() ? [] : listed.slice(offset, end);
+        // Like the service, answer only the fields asked for: house comes only when the query names it.
+        json queryText = request is map<json> ? request["query"] : ();
+        if !(queryText is string && queryText.includes("house")) {
+            page = from json row in page
+                select withoutHouse(row);
+        }
         http:Response res = new;
         res.statusCode = 200;
         res.setJsonPayload({data: {employees: page}});
@@ -87,4 +93,18 @@ service / on stubListener {
     }
 
     resource function get health() returns json => {status: "UP"};
+}
+
+# A row without its house fields.
+#
+# + row - A directory row
+# + return - The row without `house` and `houseId`
+isolated function withoutHouse(json row) returns json {
+    if row is map<json> {
+        map<json> copy = row.clone();
+        _ = copy.removeIfHasKey("house");
+        _ = copy.removeIfHasKey("houseId");
+        return copy;
+    }
+    return row;
 }

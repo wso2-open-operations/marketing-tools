@@ -74,7 +74,7 @@ MODULES = [
     dict(group="jobs-maintenance", threads="jobs.maintenance.threads", default=1, samplers=[
         s("jobs/partitions", "POST", "/maintenance/partitions", JOBS, codes=(200, 201, 202, 204)),
     ]),
-    # Opt-in (RUN_JOBS=1 in run.sh): drains the outbox, so it posts to LinkedIn and chat-stub.
+    # Opt-in (RUN_JOBS=1 in run.sh): drains the outbox, so it posts to LinkedIn (and Novera when configured).
     dict(group="jobs-run", threads="jobs.run.threads", default=0, samplers=[
         s("jobs/runs", "POST", "/runs", JOBS, codes=(200, 202),
           headers=(("X-Correlation-ID", "${__UUID()}"),)),

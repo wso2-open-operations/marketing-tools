@@ -4,7 +4,7 @@ How to run the whole of Amplify on your machine: the backend stack, a local One 
 
 Verified on 2026-10-19 from `apps/amplify` (backend, branch `feat/amplify-app`) and `projects/one-wso2` (branch `feat/amplify-people-data`).
 
-Phase 1 (2026-10-19 breakdown) is: Marketing and PO register posts (New Post, Current Posts), new posts go to the Club Chat space, employees link LinkedIn and amplify posts, and everyone sees the individual and team leaderboards (Celebrate).
+Phase 1 (2026-10-19 breakdown) is: Marketing and PO register posts (New Post, Current Posts), new posts are announced through Novera (ADR-047), employees link LinkedIn and amplify posts, and everyone sees the individual and team leaderboards (Celebrate).
 
 ---
 
@@ -12,7 +12,7 @@ Phase 1 (2026-10-19 breakdown) is: Marketing and PO register posts (New Post, Cu
 
 | Piece | Where | Port |
 |---|---|---|
-| amplify-api, amplify-jobs, scheduler, Postgres ×2, mock LinkedIn, chat-stub, people-stub | Docker Compose, `apps/amplify` | api 9090, mock LinkedIn 19091, people-stub 19092 |
+| amplify-api, amplify-jobs, scheduler, Postgres ×2, mock LinkedIn, people-stub | Docker Compose, `apps/amplify` | api 9090, mock LinkedIn 19091, people-stub 19092 |
 | Dev proxy (stands in for the Choreo API proxy) | `node local/one-wso2-proxy/proxy.mjs` | 9089 |
 | One WSO2 | `npm run dev` in `projects/one-wso2/webapp` | 3000 |
 | Real people-app (optional) | `local/people-app-proto/run.sh up` | gateway 19093, people-app 19094 |
@@ -75,7 +75,7 @@ Then `npm run dev` in `webapp/` and open http://localhost:3000/amplify/celebrate
 
 ## 6. Try the phase 1 flows
 
-1. **New Post** (PO or Marketing): paste a LinkedIn post URL (`/feed/update/urn:li:share:…` or a copy-link `/posts/…-activity-…`), headline, summary, category, priority. **Save & share now** starts a run; the card shows in chat-stub (`docker compose --env-file local/.env logs chat-stub`).
+1. **New Post** (PO or Marketing): paste a LinkedIn post URL (`/feed/update/urn:li:share:…` or a copy-link `/posts/…-activity-…`), headline, summary, category, priority. **Save & share now** starts a run; with `local/novera-mock` running and configured, the mock logs the Novera notification (see `TestNovera.md`). Without Novera configured, or with `NOVERA_BUTTON_URL` empty in `local/.env`, the announcement defers.
 2. **Current Posts:** Update post edits the card fields; Create new post goes back to New Post.
 3. **Celebrate:** posts to amplify (priority first; gone once you've shared them all), top three, my position, team leaderboard.
 4. **Amplify** on a card: not linked → the "Link your LinkedIn account" popup → mock consent on :19091 → back on Celebrate with the share dialog open. Linked → the share dialog. The share posts on the next run (every 5 minutes, or `make e2e` style `POST /runs`), and points follow.

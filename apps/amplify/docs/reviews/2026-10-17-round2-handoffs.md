@@ -1,5 +1,7 @@
 # Round 2: the round 1 handoffs, implemented (2026-10-17)
 
+> Superseded in part on 2026-11-03: Google Chat was replaced by Novera (ADR-047).
+
 Branch `rv2-backend` (off `feat/phase1-build` @ `8dd467d`). Round 1 had four reviewers, one per package
 (`2026-10-17-deep-review-{amplify-common,amplify-domain,amplify-api,jobs-db-infra}.md`), and each left
 HANDOFF items for code outside its own package. This round takes those handoffs across packages, adds a
