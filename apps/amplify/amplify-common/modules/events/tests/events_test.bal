@@ -23,7 +23,7 @@ function idempotencyKeysFollowTheCatalogue() {
     test:assertEquals(newCampaignRegistered({campaignId: "c1", provider: types:LINKEDIN, resourceUrn: "urn:li:share:1",
         title: "T", isPriority: false, shareNow: true, opensAt: "2026-10-20T00:00:00Z"}).idempotencyKey,
             "CampaignRegistered:c1");
-    test:assertEquals(newCampaignAnnounced({campaignId: "c1", outboxId: 42, chatMessageName: "spaces/a/messages/b",
+    test:assertEquals(newCampaignAnnounced({campaignId: "c1", outboxId: 42, messageName: "novera:c1",
         sentAt: "2026-10-20T00:00:00Z"}).idempotencyKey, "CampaignAnnounced:42");
     test:assertEquals(newConnectionReady({employeeId: "e1", provider: types:LINKEDIN, memberUrn: "urn:li:person:x",
         connectedAt: "2026-10-20T00:00:00Z", accessExpiresAt: "2026-12-19T00:00:00Z"}).idempotencyKey,
