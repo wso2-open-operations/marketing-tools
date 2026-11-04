@@ -14,7 +14,7 @@ File: `modules/sharing/types.bal`.
 
 File: `modules/sharing/service.bal`.
 
-- Pure rules: `shareStatus`, `newShareRequest` (campaign open, connection usable), `retryShare` (only a `FAILED` request, same row, bumps `attempts` and `version`), `ensurePublishable` (guard before calling LinkedIn so a rerun never posts twice), `markPublished` (clears commentary, builds the engagement fact), `asDuplicatePublish`, `markFailed`, `failForLostConnection` (reaction to `ConnectionRevoked` / `ConnectionRemoved`).
+- Pure rules: `shareStatus`, `newShareRequest` (campaign open, connection usable), `retryShare` (only a `FAILED` request, same row, bumps `attempts` and `version`), `ensurePublishable` (guard before calling LinkedIn: a rerun after a failed record write does not post again; a lost LinkedIn answer is retried by the outbox and can post twice, see the amplify-jobs README), `markPublished` (clears commentary, builds the engagement fact), `asDuplicatePublish`, `markFailed`, `failForLostConnection` (reaction to `ConnectionRevoked` / `ConnectionRemoved`).
 - Use case: `requestShare`.
 
 ## Events

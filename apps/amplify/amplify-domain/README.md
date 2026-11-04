@@ -61,9 +61,9 @@ SUPPORTING  ┃  ┌────────────────────
             ┌───────────────▼──────────┐                         ┌──────────────────────────────────────────────┐
 EXTERNAL    │ NOVERA        [EXTERNAL] │                         │ LINKEDIN                          [EXTERNAL] │
             │ Google Chat assistant    │                         │ Sign In with LinkedIn (OIDC: sub → person)   │
-            │ POST /internal/notif.    │                         │ Share on LinkedIn: POST /rest/posts          │
-            └──────────────────────────┘                         │ self-serve · w_member_social · no approval   │
-                                                                 └──────────────────────────────────────────────┘
+            │ POST                     │                         │ Share on LinkedIn: POST /rest/posts          │
+            │ /internal/notifications  │                         │ self-serve · w_member_social · no approval   │
+            └──────────────────────────┘                         └──────────────────────────────────────────────┘
 
             ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐
 LATER         Engagement Tracking (Community Mgmt API) · Rewards (Coin issuer) · Org data (HR Entity)
@@ -89,7 +89,7 @@ All contexts share one database schema. Table and view names carry the context a
 | Shared | | [`identity`](modules/identity/README.md), [`store`](modules/store/README.md) | `identity_`, `messaging_`, `audit_`, `config_` | Employee directory snapshot; the client, outbox and audit writers, SQL error mapping, partition upkeep |
 | Read only | | [`reporting`](modules/reporting/README.md) | none | Dashboard aggregates (ADR-036). Reads other contexts' views, writes nothing |
 
-A context writes only its own tables (no cross-context foreign keys, ADR-005). A few queries read another context's tables or views read-only: `campaign` (`hasActivity` before a post id change), `reporting` (all dashboards), `recognition` (the ledger and `identity_employee`), `sharing` (`messaging_outbox`). Contexts talk through events in the outbox: `CampaignRegistered`, `RepostRequested`, `EngagementRecorded`, `ConnectionReady` / `ConnectionRevoked`, `ExternalShareApproved`, and the `Points*` family. The full event catalogue is in [phase1-data-model](../architecture/solution/Phase%201/phase1-data-model.md). Which deployable runs which context is in the domain doc's "Mapping to the phase 1 deployables" table.
+A context writes only its own tables (no cross-context foreign keys, ADR-005). One exception by design: the ledger append (`PgLedgerRepository.append` in `scoring`) applies the row to the `recognition` tables in the same transaction (B12). A few queries read another context's tables or views read-only: `campaign` (`hasActivity` before a post id change), `reporting` (all dashboards), `recognition` (the ledger and `identity_employee`), `sharing` (`messaging_outbox`). Contexts talk through events in the outbox: `CampaignRegistered`, `RepostRequested`, `EngagementRecorded`, `ConnectionReady` / `ConnectionRevoked`, `ExternalShareApproved`, and the `Points*` family. The full event catalogue is in [phase1-data-model](../architecture/solution/Phase%201/phase1-data-model.md). Which deployable runs which context is in the domain doc's "Mapping to the phase 1 deployables" table.
 
 ## Module layout
 
