@@ -209,10 +209,11 @@ isolated class ProductionLeaverPorts {
             return error("People directory is not configured");
         }
         int pageSize = hrEntityPageSize > 0 ? hrEntityPageSize : 1000;
+        map<string> headers = resilience:correlationHeaders(self.correlationId);
         string[] emails = [];
         int offset = 0;
         foreach int _ in 0 ..< MAX_DIRECTORY_PAGES {
-            DirectoryPage page = check directoryPage(c, pageSize, offset);
+            DirectoryPage page = check directoryPage(c, headers, pageSize, offset);
             // The end is an empty page, not a short one: the service may cap `limit` below what was asked for.
             if page.rows == 0 {
                 return emails;
@@ -302,7 +303,8 @@ type DirectoryPage record {|
 # + pageSize - Rows asked for
 # + offset - Rows to skip
 # + return - The page, or an error that never carries the response body (it names people)
-isolated function directoryPage(http:Client c, int pageSize, int offset) returns DirectoryPage|error {
+isolated function directoryPage(http:Client c, map<string> headers, int pageSize, int offset)
+        returns DirectoryPage|error {
     json body = {
         query: EMPLOYEES_QUERY,
         variables: {filter: {employeeStatus: hrEntityStatuses}, 'limit: pageSize, offset}
