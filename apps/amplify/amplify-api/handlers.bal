@@ -44,6 +44,9 @@ configurable string campaignLinkOrigins = "https://www.linkedin.com,https://link
 # Privacy notice the LinkedIn consent dialog links to. Empty = the dialog shows no link.
 configurable string privacyNoticeUrl = "";
 
+// Stops startup on a value that is not empty or https (checked once, like the redirect URI).
+final () privacyNoticeUrlChecked = check checkPrivacyNoticeUrl(privacyNoticeUrl);
+
 final string[] & readonly postLinkOrigins = linkOrigins(campaignLinkOrigins);
 
 # Parses `campaignLinkOrigins`. Empty (an unset descriptor value arrives as "") means LinkedIn only, never

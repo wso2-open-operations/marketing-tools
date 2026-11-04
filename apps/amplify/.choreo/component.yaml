@@ -86,6 +86,8 @@ configurations:
           displayName: DB CA certificate file path (file mount)
           type: string
           required: false
+    # Plain settings, not Choreo connections: copy each endpoint's Project URL from the console when deploying.
+    # Connections would need the endpoint ids in this file, so a second PR after Jobs and Scheduler exist.
     - name: BAL_CONFIG_VAR_JOBSURL
       valueFrom:
         configForm:

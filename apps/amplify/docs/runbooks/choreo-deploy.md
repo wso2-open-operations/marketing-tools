@@ -27,9 +27,9 @@ Inside marketing-tools the order is: databases, DB Migrate, Jobs, Scheduler, Bac
 
 ## B. Databases (per environment)
 
-1. **B1** Create a Choreo-managed PostgreSQL **18** server per environment (dev, prod) on a paid plan with backups (Hobbyist has none). If 18 isn't offered, stop: M3 depends on native `uuidv7()` (fallback: UUIDv7 generated in Ballerina, never v4).
+1. **B1** Create a Choreo-managed PostgreSQL server per environment (dev, prod), **version 15 or later** (staging runs 17, ADR-044), on a paid plan with backups (Hobbyist has none). Below 18 there is no native `uuidv7()`: the migrations create one only when the server lacks it.
    - **B1a Extension check (plan D2).** On each new server run `apps/amplify/amplify-database/checks/d2_extensions.sql` (marketing-tools repo): it lists `pg_partman`, `pg_cron`, `pgaudit`, `citext`, `pg_trgm` and `SELECT version()`. Record the output in the plan's D2 line. `citext` and `pg_trgm` are required; if either is missing, stop and raise it (B18) before running DB Migrate.
-2. **B2** Database `amplify`; bootstrap admin credentials go only into the DB Migrate component's secrets (C5).
+2. **B2** Database `amplify` and **one login** that owns it and one schema of the same name (ADR-043). Every Amplify component uses that login; there are no per-component database users or roles. Its password goes into the secrets of C1, C2 and C5.
 3. **B3** Database `scheduler` with its own user (ADR-026). Never Amplify's users.
 4. **B4** Record backup frequency and retention; restore one backup into dev once (plan M3 "Backups").
 
@@ -85,6 +85,8 @@ Alerts (Choreo logs/metrics): outbox `FAILED`, share failure rate, breaker `OPEN
 
 Every variable each component's `.choreo/component.yaml` declares, checked against the descriptors. Kind: **cfg** = config form, **secret** = config form secret (only ever in Choreo), **conn** = filled by a Choreo connection. Req: **R** required, **O** optional. Values here are non-secret only. "Local/stg" is what the local stack or the stg Novera setup uses today (`local/.env`, gitignored); it is a hint for dev, **not** a prod value. **TBD** means nobody has supplied it yet; do not guess.
 
+**Optional fields: type the defaults on staging.** An optional setting left blank reaches the code as `""`. A blank number, boolean or enum field stops the component from starting, and a blank `CAN...GROUPS` field grants that permission to nobody. Type the default for these. Backend: the nine `CAN...GROUPS`, `ROSTERCACHESECONDS`, `TOPBOARDCACHESECONDS`, `HEADCOUNTCACHESECONDS`, the six `SCORECARD...`, `LINKEDINIDTOKENVALIDATION`, `LINKEDINNONCEMODE` and `WSO2ORGANIZATIONURN`. Jobs: `AMPLIFYONNOVERA`, `AMPLIFYONWEBHOOK` and `LEAVERSWEEPMODE`. Safe to leave blank: `DBSCHEMA`, `CAMPAIGNLINKORIGINS`, `PRIVACYNOTICEURL`, `CHATCARDAVATARURL` and `CHATDEFAULTIMAGEURL`. `DBSSLROOTCERT` is optional for local, but needed on Azure: with the default `VERIFY_FULL` and no path, the driver looks for `~/.postgresql/root.crt`, which the container doesn't have.
+
 Same names in two components (`DBHOST`, `DBPORT`, `DBNAME`, `DBUSER`, `DBPASSWORD`, `DBSSLROOTCERT`, `LINKEDIN*`, `TOKEN*`) take the per-component values below. All names carry the `BAL_CONFIG_VAR_` prefix except `DSN` and `BAL_CONFIG_DATA`.
 
 ### G1. Amplify Backend
@@ -97,8 +99,9 @@ Same names in two components (`DBHOST`, `DBPORT`, `DBNAME`, `DBUSER`, `DBPASSWOR
 | `GATEWAYAUDIENCES` | cfg | R | `amplify-local` | TBD, same source |
 | `DBHOST` / `DBPORT` | cfg | R | compose Postgres | TBD, from the Choreo server (B1) |
 | `DBNAME` | cfg | R | | `amplify` |
-| `DBUSER` | cfg | R | | `amplify_api` |
-| `DBPASSWORD` | secret | R | | Ops-generated (`APIDBPASSWORD` from C1) |
+| `DBUSER` | cfg | R | | The one login (ADR-043), same value in all three components |
+| `DBPASSWORD` | secret | R | | The login's password, same as C1 |
+| `DBSCHEMA` | cfg | O | | Empty = the login name |
 | `DBSSLROOTCERT` | cfg | O | | File-mount path of the managed Postgres CA PEM, e.g. `/home/choreo/db-ca/ca.pem`. TBD until mounted |
 | `JOBSURL` | cfg | R | | The Jobs endpoint's Project URL (C4) |
 | `SCHEDULERURL` | cfg | R | | The Scheduler endpoint's Project URL (C4) |
@@ -146,8 +149,9 @@ Same names in two components (`DBHOST`, `DBPORT`, `DBNAME`, `DBUSER`, `DBPASSWOR
 |---|---|---|---|---|
 | `DBHOST` / `DBPORT` | cfg | R | compose Postgres | TBD (B1) |
 | `DBNAME` | cfg | R | | `amplify` |
-| `DBUSER` | cfg | R | | `amplify_jobs` |
-| `DBPASSWORD` | secret | R | | Ops-generated (`JOBSDBPASSWORD` from C1) |
+| `DBUSER` | cfg | R | | The one login (ADR-043) |
+| `DBPASSWORD` | secret | R | | The login's password, same as C1 |
+| `DBSCHEMA` | cfg | O | | Empty = the login name |
 | `DBSSLROOTCERT` | cfg | O | | Same file-mount path as Backend |
 | `LINKEDINCLIENTID` | cfg | R | `amplify-local` (mock) | TBD, same as Backend |
 | `LINKEDINAPIBASEURL` | cfg | R | mock API URL | `https://api.linkedin.com` |
@@ -183,12 +187,10 @@ Same names in two components (`DBHOST`, `DBPORT`, `DBNAME`, `DBUSER`, `DBPASSWOR
 |---|---|---|---|
 | `DBHOST` / `DBPORT` | cfg | R | TBD (B1) |
 | `DBNAME` | cfg | R | `amplify` |
-| `DBUSER` | cfg | R | Bootstrap admin user, TBD |
-| `DBPASSWORD` | secret | R | Bootstrap admin password, from the Choreo server |
+| `DBUSER` | cfg | R | The one login that owns the database (ADR-043) |
+| `DBPASSWORD` | secret | R | The login's password, from the Choreo server |
+| `DBSCHEMA` | cfg | O | Empty = the login name |
 | `DBSSLROOTCERT` | cfg | O | Same file-mount path |
-| `APIDBPASSWORD` | secret | R | Ops-generated, 16+ chars |
-| `JOBSDBPASSWORD` | secret | R | Ops-generated, 16+ chars |
-| `READONLYDBPASSWORD` | secret | O | Ops-generated, 16+ chars |
 
 ### G5. LinkedIn Mock (dev only)
 
