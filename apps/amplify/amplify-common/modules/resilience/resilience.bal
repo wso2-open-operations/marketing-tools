@@ -15,7 +15,7 @@
 // under the License.
 
 // Outbound HTTP resilience (plan M9): one circuit breaker, optional retry and a private connection pool
-// (bulkhead) per dependency, so a slow LinkedIn can't starve Google Chat. Values come from config.
+// (bulkhead) per dependency, so a slow LinkedIn can't starve Novera. Values come from config.
 
 import ballerina/http;
 
@@ -39,7 +39,7 @@ public type HttpResilience record {|
     decimal resetTimeSeconds = 30;
     # Responses counted as failures (connection errors and timeouts always count)
     int[] breakerStatusCodes = [429, 500, 502, 503, 504];
-    # HTTP-level retries. Keep 0 for calls that aren't idempotent (`POST /rest/posts`, the Chat webhook):
+    # HTTP-level retries. Keep 0 for calls that aren't idempotent (`POST /rest/posts`, Novera's notifications):
     # a retry after a lost response would post twice, so those retry through the outbox instead (ADR-025)
     int retryCount = 0;
     # First retry wait, seconds

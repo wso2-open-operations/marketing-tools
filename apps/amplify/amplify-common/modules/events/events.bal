@@ -76,15 +76,15 @@ public type CampaignRegistered record {|
     string opensAt;
 |};
 
-# S5: the Club card was sent.
+# S5: Novera accepted the announcement.
 public type CampaignAnnounced record {|
     # Campaign id
     string campaignId;
-    # Outbox id of the `CampaignRegistered` row that triggered the card
+    # Outbox id of the `CampaignRegistered` row that triggered the announcement
     int outboxId;
-    # Chat message name returned by the webhook
-    string chatMessageName;
-    # When the card was sent
+    # Delivery marker stored with the announcement (`novera:<campaignId>`; Novera returns no message name)
+    string messageName;
+    # When Novera accepted the announcement
     string sentAt;
 |};
 
