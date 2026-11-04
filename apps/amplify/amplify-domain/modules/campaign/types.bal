@@ -53,7 +53,7 @@ public type Campaign record {|
     types:OrganizationUrn ownerUrn;
     # Public URL of the resource
     string? resourceUrl;
-    # Title shown on the Posts page and the Club card
+    # Title shown on the Posts page and the Novera card
     string title;
     # Summary shown on the card
     string? summary;

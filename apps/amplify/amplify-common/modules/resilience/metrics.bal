@@ -69,7 +69,7 @@ public isolated function exportedBreakerValue(string component, string dependenc
 }
 
 # Outbox backlog gauges: `amplify_outbox_pending`, `amplify_outbox_failed` and `amplify_outbox_oldest_pending_seconds`
-# (-1 when nothing is pending). Alert on the oldest age: a row that sits pending for an hour means Novera, Chat or
+# (-1 when nothing is pending). Alert on the oldest age: a row that sits pending for an hour means Novera or
 # LinkedIn is unconfigured or down, and nothing else says so.
 
 # Gauge names.

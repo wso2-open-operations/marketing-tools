@@ -147,11 +147,58 @@ public isolated function isHttpsUrl(string url) returns boolean =>
 
 # Whether a host is an IP literal in any numeric form: dotted, decimal (`2130706433`), hex
 # (`0x7f000001`) or octal (`0177.0.0.1`). Every such form ends in an all-numeric label, which a DNS
-# name never does. Shared so evidence URLs and card image hosts reject the same set (one regex, no drift).
+# name never does. Shared so evidence URLs and announcement image hosts reject the same set (one regex, no drift).
 #
 # + host - Lowercased host, without user info, port or trailing dot
 # + return - True when the host is an IP literal
 public isolated function isIpLiteralHost(string host) returns boolean {
     string[] labels = re `\.`.split(host);
     return re `[0-9]+|0x[0-9a-f]+`.isFullMatch(labels[labels.length() - 1]);
+}
+
+# Whether an image URL is HTTPS to a public host name. Novera's card shows the picture through Google Chat, which
+# fetches it anonymously, so loopback, private and IP-literal hosts are never sent.
+#
+# + url - Image URL
+# + return - `true` when the URL is HTTPS to a public host name
+public isolated function isPublicHttpsUrl(string url) returns boolean {
+    if !isHttpsUrl(url) {
+        return false;
+    }
+    string rest = url.substring(8).toLowerAscii();
+    int end = rest.length();
+    foreach string sep in ["/", "?", "#"] {
+        int? i = rest.indexOf(sep);
+        if i is int && i < end {
+            end = i;
+        }
+    }
+    string host = rest.substring(0, end);
+    int? at = host.lastIndexOf("@");
+    if at is int {
+        host = host.substring(at + 1);
+    }
+    if host.startsWith("[") {
+        return false; // IPv6 literal: never a public CDN host in practice
+    }
+    int? colon = host.indexOf(":");
+    if colon is int {
+        // A port, when there is one, is 1 to 65535 in digits; anything else is a malformed URL, and the card then
+        // uses its default image instead.
+        string port = host.substring(colon + 1);
+        int|error portNumber = int:fromString(port);
+        if !re `[0-9]{1,5}`.isFullMatch(port) || portNumber !is int || portNumber < 1 || portNumber > 65535 {
+            return false;
+        }
+        host = host.substring(0, colon);
+    }
+    if host.endsWith(".") {
+        host = host.substring(0, host.length() - 1);
+    }
+    // Any IP literal form (dotted, decimal, hex, octal) ends in a numeric label; image CDNs use names.
+    if isIpLiteralHost(host) {
+        return false;
+    }
+    return host != "" && host != "localhost" && !host.endsWith(".localhost") && !host.endsWith(".local")
+        && !host.endsWith(".internal") && host.includes(".");
 }

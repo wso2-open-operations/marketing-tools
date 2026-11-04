@@ -22,18 +22,18 @@ import amplify_domain.recognition;
 import ballerina/test;
 
 final DirectoryRecord[] & readonly DIRECTORY = [
-    {workEmail: "Ada@WSO2.com", team: "Customer Success", subTeam: "Forward Deployed Engineering"},
-    {workEmail: "grace@wso2.com", team: "Customer Success", subTeam: "Forward Deployed Engineering"},
-    {workEmail: "linus@wso2.com", team: "Customer Success", subTeam: "Support"},
-    {workEmail: "ken@wso2.com", team: "Marketing", subTeam: ()},
-    {workEmail: "dennis@wso2.com", team: "Marketing", subTeam: "  "},
-    // Same sub-team name under another team: a different team.
-    {workEmail: "barbara@wso2.com", team: "Engineering", subTeam: "Support"},
+    {workEmail: "Ada@WSO2.com", department: "Customer Success", subTeam: "Forward Deployed Engineering"},
+    {workEmail: "grace@wso2.com", department: "Customer Success", subTeam: "Forward Deployed Engineering"},
+    {workEmail: "linus@wso2.com", department: "Customer Success", subTeam: "Support"},
+    {workEmail: "ken@wso2.com", department: "Marketing", subTeam: ()},
+    {workEmail: "dennis@wso2.com", department: "Marketing", subTeam: "  "},
+    // Same sub-team name under another department: a different team.
+    {workEmail: "barbara@wso2.com", department: "Engineering", subTeam: "Support"},
     // No team at all: left out.
-    {workEmail: "nobody@wso2.com", team: (), subTeam: ()},
+    {workEmail: "nobody@wso2.com", department: (), subTeam: ()},
     // No email (null or missing): skipped, and the rest of the directory still works.
-    {workEmail: (), team: "Customer Success", subTeam: "Forward Deployed Engineering"},
-    {team: "Customer Success", subTeam: "Forward Deployed Engineering"}
+    {workEmail: (), department: "Customer Success", subTeam: "Forward Deployed Engineering"},
+    {department: "Customer Success", subTeam: "Forward Deployed Engineering"}
 ];
 
 @test:Config
@@ -51,9 +51,9 @@ function testRosterFallsBackToTeam() {
 @test:Config
 function testRosterCarriesEachMembersHouse() {
     DirectoryRecord[] rows = [
-        {workEmail: "a@wso2.com", team: "Marketing", house: " Oak "},
-        {workEmail: "b@wso2.com", team: "Marketing"},
-        {workEmail: "c@wso2.com", team: "Marketing", house: "Elm"}
+        {workEmail: "a@wso2.com", department: "Marketing", house: " Oak "},
+        {workEmail: "b@wso2.com", department: "Marketing"},
+        {workEmail: "c@wso2.com", department: "Marketing", house: "Elm"}
     ];
     Roster roster = <Roster>rosterFrom(indexDirectory(rows), "A@wso2.com");
     test:assertEquals(roster.houses, {"a@wso2.com": "Oak", "c@wso2.com": "Elm"}, "a member with no house is left out");
@@ -81,8 +81,8 @@ function testNoRosterWithoutTeamOrDirectoryRow() {
 
 @test:Config
 function testRowsWithoutEmailDontBreakTheDirectory() returns error? {
-    json raw = [{workEmail: "ada@wso2.com", team: "T", subTeam: "S"}, {workEmail: (), team: "T", subTeam: "S"},
-        {firstName: "No email at all", team: "T", subTeam: "S"}];
+    json raw = [{workEmail: "ada@wso2.com", department: "T", subTeam: "S"}, {workEmail: (), department: "T", subTeam: "S"},
+        {firstName: "No email at all", department: "T", subTeam: "S"}];
     DirectoryRecord[] rows = check raw.cloneWithType();
     test:assertEquals(rosterFrom(indexDirectory(rows), "ada@wso2.com")?.emails, ["ada@wso2.com"]);
 }
@@ -91,17 +91,17 @@ function testRowsWithoutEmailDontBreakTheDirectory() returns error? {
 // ---- Business units, employee count, group boards (ADR-035) ------------------------------------------
 
 final DirectoryRecord[] & readonly BU_DIRECTORY = [
-    {workEmail: "a@wso2.com", team: "Engineering", subTeam: "Platform", businessUnit: "Product"},
-    {workEmail: "b@wso2.com", team: "Engineering", subTeam: "Platform", businessUnit: "Product"},
-    {workEmail: "c@wso2.com", team: "Engineering", subTeam: "Digital", businessUnit: "Corporate"},
-    {workEmail: "d@wso2.com", team: "Engineering", subTeam: "Digital", businessUnit: "Product"},
-    {workEmail: "e@wso2.com", team: "Marketing", subTeam: (), businessUnit: "Corporate"},
+    {workEmail: "a@wso2.com", department: "Engineering", subTeam: "Platform", businessUnit: "Product"},
+    {workEmail: "b@wso2.com", department: "Engineering", subTeam: "Platform", businessUnit: "Product"},
+    {workEmail: "c@wso2.com", department: "Engineering", subTeam: "Digital", businessUnit: "Corporate"},
+    {workEmail: "d@wso2.com", department: "Engineering", subTeam: "Digital", businessUnit: "Product"},
+    {workEmail: "e@wso2.com", department: "Marketing", subTeam: (), businessUnit: "Corporate"},
     // Counted in the headcount and its BU, but in no team.
-    {workEmail: "f@wso2.com", team: (), subTeam: (), businessUnit: "Corporate"},
+    {workEmail: "f@wso2.com", department: (), subTeam: (), businessUnit: "Corporate"},
     // Same person twice: counted once.
-    {workEmail: "A@wso2.com", team: "Engineering", subTeam: "Platform", businessUnit: "Product"},
+    {workEmail: "A@wso2.com", department: "Engineering", subTeam: "Platform", businessUnit: "Product"},
     // No email: not an employee we can count.
-    {workEmail: (), team: "Marketing", subTeam: (), businessUnit: "Corporate"}
+    {workEmail: (), department: "Marketing", subTeam: (), businessUnit: "Corporate"}
 ];
 
 @test:Config
@@ -147,7 +147,7 @@ function testGroupRowsSumPointsAndKeepUnplacedPeople() returns error? {
     recognition:EmailPoints[] points = [
         {email: "a@wso2.com", totalPoints: 50}, {email: "b@wso2.com", totalPoints: 30},
         {email: "e@wso2.com", totalPoints: 80}, {email: "stranger@wso2.com", totalPoints: 7},
-        // In a BU but no team: unplaced on the team board, counted on the BU board.
+        // In a BU but no department: unplaced on the team board, counted on the BU board.
         {email: "f@wso2.com", totalPoints: 4}
     ];
     var [teams, unplaced, unplacedPoints] = groupRows(index, snapshot, points, "TEAM", ());
@@ -204,10 +204,10 @@ function testGroupSortReordersButKeepsThePointsRank() returns error? {
 @test:Config
 function testRosterCarriesDirectoryNames() {
     DirectoryRecord[] rows = [
-        {workEmail: "a@wso2.com", firstName: " Ada ", lastName: "Lovelace", team: "Marketing"},
-        {workEmail: "b@wso2.com", firstName: "Grace", team: "Marketing"},
-        {workEmail: "c@wso2.com", team: "Marketing"},
-        {workEmail: "d@wso2.com", firstName: "Dee", lastName: "Outsider", team: ()}
+        {workEmail: "a@wso2.com", firstName: " Ada ", lastName: "Lovelace", department: "Marketing"},
+        {workEmail: "b@wso2.com", firstName: "Grace", department: "Marketing"},
+        {workEmail: "c@wso2.com", department: "Marketing"},
+        {workEmail: "d@wso2.com", firstName: "Dee", lastName: "Outsider", department: ()}
     ];
     DirectoryIndex index = indexDirectory(rows);
     Roster roster = <Roster>rosterFrom(index, "a@wso2.com");

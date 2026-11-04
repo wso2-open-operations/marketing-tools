@@ -348,7 +348,7 @@ isolated function scorecard(Snapshot s, int? headcount, Targets t) returns json 
             measure("shareSuccess", "Share success rate", "PERCENT", attempts == 0 ? 0d : pct(s.shares.published, attempts),
                     s.shares.published, attempts, <decimal>t.targetShareSuccessPct, "AT_LEAST",
                     attempts == 0 ? "No shares this month" : (), attempts == 0 ? true : ()),
-            measure("chatCards", "Chat cards delivered", "PERCENT", cards.total == 0 ? 0d : pct(cards.sent, cards.total),
+            measure("announcements", "Announcements delivered", "PERCENT", cards.total == 0 ? 0d : pct(cards.sent, cards.total),
                     cards.sent, cards.total, 100d, "AT_LEAST", cardNote, cards.total == 0 ? true : ()),
             measure("priorityReach", "Priority campaigns reaching " + t.targetPriorityReachPct.toString() + "% of connected",
                     "PERCENT", livePriority == 0 ? 0d : pct(reachedPriority, livePriority), reachedPriority, livePriority,
