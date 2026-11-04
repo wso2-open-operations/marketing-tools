@@ -185,7 +185,7 @@ function testAnnouncementDeliveryShowsRetriesAndCounts() returns error? {
     // Jobs creates the row and fails once: queued and retrying.
     _ = check jobsDb->execute(`
         INSERT INTO announcement (campaign_id, outbox_id, space, thread_key)
-        VALUES (CAST(${c.id} AS uuid), ${outboxId}, 'dev-test', ${"campaign-" + c.id})`);
+        VALUES (CAST(${c.id} AS uuid), ${outboxId}, 'novera', ${"amplify:" + c.id})`);
     _ = check jobsDb->execute(`UPDATE messaging_outbox SET attempts = 2 WHERE id = ${outboxId}`);
     reporting:Delivery queued = check deliveryFor(apiDb, c.id);
     test:assertEquals(queued.status, "QUEUED");

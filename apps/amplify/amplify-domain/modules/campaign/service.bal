@@ -191,7 +191,7 @@ public isolated function archive(Campaign campaign, time:Utc now) returns Campai
 
 // ---- Use cases ------------------------------------------------------------------------------------
 
-# Registers a campaign (Save, or Save & Share Now) and queues `CampaignRegistered` for the Club card.
+# Registers a campaign (Save, or Save & Share Now) and queues `CampaignRegistered` for the Novera announcement.
 #
 # + repo - Campaign repository
 # + draft - Input
