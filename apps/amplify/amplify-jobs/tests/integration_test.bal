@@ -15,12 +15,11 @@
 // under the License.
 
 // M6 integration test (group `integration`, `AMPLIFY_IT=true`) against a migrated PostgreSQL 18 as
-// `amplify_jobs` / `amplify_api`, with `apps/amplify/linkedin/apps/mock_linkedin` as LinkedIn and the Chat stub
-// below as the Club space: register campaign → announce; connect (mock OAuth, token sealed into today's
+// `amplify_jobs` / `amplify_api`, with `apps/amplify/linkedin/apps/mock_linkedin` as LinkedIn and the Novera stub
+// below (token endpoint and `POST /internal/notifications`): register campaign → announce; connect (mock OAuth, token sealed into today's
 // partition) → share → publish → engagement → points → standing; rerun safety; one run across replicas;
 // stale-lock release; idempotency-key purge. Recipe: docs/migrations/README.md.
 
-import amplify_common.googlechat;
 import amplify_common.linkedin;
 import amplify_common.types;
 import amplify_domain.campaign;
@@ -52,35 +51,35 @@ final string mockClientId = envOr("AMPLIFY_IT_LINKEDIN_CLIENT_ID", "it-client");
 final string mockClientSecret = envOr("AMPLIFY_IT_LINKEDIN_CLIENT_SECRET", "it-secret");
 final string mockRedirectUri = envOr("AMPLIFY_IT_LINKEDIN_REDIRECT", "http://localhost:3000/auth/linkedin/callback");
 
-const int CHAT_STUB_PORT = 9298;
+const int NOVERA_IT_STUB_PORT = 9298;
 
-type ChatLog record {|
+type NoveraLog record {|
     int posts;
-    string[] threadKeys;
+    string[] idempotencyKeys;
     string[] correlationIds;
 |};
 
-isolated ChatLog chatLog = {posts: 0, threadKeys: [], correlationIds: []};
+isolated NoveraLog noveraLog = {posts: 0, idempotencyKeys: [], correlationIds: []};
 
-function chatSnapshot() returns ChatLog {
+function noveraSnapshot() returns NoveraLog {
     lock {
-        return chatLog.clone();
+        return noveraLog.clone();
     }
 }
 
-# Tiny Google Chat stub: accepts the webhook POST and answers like Chat.
-service /v1/spaces on new http:Listener(CHAT_STUB_PORT) {
-    resource function post [string space]/messages(http:Request req, string threadKey) returns http:Ok {
+# Tiny Novera stub: a client-credentials token endpoint and the notifications endpoint, which answers 202 like Novera.
+service / on new http:Listener(NOVERA_IT_STUB_PORT) {
+    resource function post token() returns json => {access_token: "it-token", token_type: "Bearer", expires_in: 3600};
+
+    resource function post internal/notifications(http:Request req) returns http:Accepted {
         string|http:HeaderNotFoundError corr = req.getHeader("X-Correlation-ID");
-        string correlationId = corr is string ? corr : "";
-        int n;
+        string|http:HeaderNotFoundError key = req.getHeader("Idempotency-Key");
         lock {
-            chatLog.posts += 1;
-            chatLog.threadKeys.push(threadKey);
-            chatLog.correlationIds.push(correlationId);
-            n = chatLog.posts;
+            noveraLog.posts += 1;
+            noveraLog.idempotencyKeys.push(key is string ? key : "");
+            noveraLog.correlationIds.push(corr is string ? corr : "");
         }
-        return {body: {name: string `spaces/${space}/messages/m${n}`, thread: {name: string `spaces/${space}/threads/t1`}}};
+        return {body: {accepted: true}};
     }
 }
 
@@ -120,8 +119,8 @@ function itDeps(postgresql:Client jobsDb, postgresql:Client lockDb, linkedin:Lin
     return {
     runStore: new PgRunStore(jobsDb),
     runLock: new PgRunLock(lockDb),
-    chat: new WebhookChat(check new googlechat:WebhookClient({
-        webhookUrl: string `http://localhost:${CHAT_STUB_PORT}/v1/spaces/it/messages?key=k&token=t`}), "dev-test", 0),
+    novera: check new NoveraClient(string `http://localhost:${NOVERA_IT_STUB_PORT}/internal/notifications`,
+        string `http://localhost:${NOVERA_IT_STUB_PORT}/token`, "it-client", "it-secret", [], 5, allowInsecureHttp = true),
     linkedIn: adapter,
     cipher: check testCipher(),
     config: cfg,
@@ -199,18 +198,18 @@ function testM6RunAnnouncesSharesAndScores() returns error? {
             {employeeId: emp, kind: types:REPOST_COMMENTARY, commentary: "Proud of this " + emp}, now);
 
     int postsBefore = check mockPostCount();
-    int chatBefore = chatSnapshot().posts;
+    int noveraBefore = noveraSnapshot().posts;
     RunReport report = check itRun(deps, "it-corr-run");
     test:assertTrue(report.claimed >= 4, "CampaignRegistered, RepostRequested, EngagementRecorded, PointsAwarded...");
     test:assertEquals(report.failed, 0);
 
-    // Announced once, threaded, correlation id propagated.
+    // Announced once through Novera, idempotency key and correlation id propagated.
     test:assertEquals(check itCount(jobsDb, `SELECT count(*)::int FROM announcement_v
-            WHERE campaign_id = CAST(${c.id} AS uuid) AND status = 'SENT' AND chat_message_name IS NOT NULL
-              AND chat_thread_name IS NOT NULL`), 1);
-    ChatLog log = chatSnapshot();
-    test:assertEquals(log.posts, chatBefore + 1);
-    test:assertEquals(log.threadKeys[log.threadKeys.length() - 1], "campaign-" + c.id);
+            WHERE campaign_id = CAST(${c.id} AS uuid) AND status = 'SENT' AND space = 'novera'
+              AND chat_message_name = ${"novera:" + c.id} AND thread_key = ${"amplify:" + c.id}`), 1);
+    NoveraLog log = noveraSnapshot();
+    test:assertEquals(log.posts, noveraBefore + 1);
+    test:assertEquals(log.idempotencyKeys[log.idempotencyKeys.length() - 1], "amplify:" + c.id);
     test:assertEquals(log.correlationIds[log.correlationIds.length() - 1], "it-corr-campaign");
     // Published once on LinkedIn, commentary cleared, engagement + points + standing.
     test:assertEquals(check mockPostCount(), postsBefore + 1);
@@ -235,7 +234,7 @@ function testM6RunAnnouncesSharesAndScores() returns error? {
     _ = check itRun(deps, "it-rerun-1");
     _ = check itRun(deps, "it-rerun-2");
     test:assertEquals(check mockPostCount(), postsBefore + 1, "no double post");
-    test:assertEquals(chatSnapshot().posts, chatBefore + 1, "no second card");
+    test:assertEquals(noveraSnapshot().posts, noveraBefore + 1, "no second announcement");
     test:assertEquals(check itCount(jobsDb, `SELECT count(*)::int FROM scoring_points_ledger WHERE employee_id = ${emp}`), 1,
             "no double ledger row");
 }
