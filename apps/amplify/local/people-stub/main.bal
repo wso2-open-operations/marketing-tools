@@ -76,6 +76,14 @@ service / on stubListener {
             if statuses is string[] && (status !is string || statuses.indexOf(status) is ()) {
                 continue;
             }
+            // amplify-api reads the team from the HR Entity's `department`. An older local directory.json names it
+            // `team`: answer it as `department` too, so that file keeps its rosters without being edited.
+            if row is map<json> && row["department"] is () && row["team"] is string {
+                map<json> moved = row.clone();
+                moved["department"] = row["team"];
+                listed.push(moved);
+                continue;
+            }
             listed.push(row);
         }
         int end = int:min(offset + 'limit, listed.length());

@@ -81,7 +81,7 @@ final http:Client? jobsClient = check newBreakerClient(jobsUrl, jobsTimeoutSecon
 // ---- People directory: team rosters (D13, leaderboards.md) -----------------------------------------
 
 # The HR Entity GraphQL service's URL (the endpoint a GraphQL POST goes to). One paged query returns every
-# current employee with `workEmail`, names, `businessUnit` and `team`. Empty = not configured
+# current employee with `workEmail`, names, `businessUnit`, `team` and `subTeam`. Empty = not configured
 # (`teamStatus: UNAVAILABLE`).
 configurable string hrEntityBaseUrl = "";
 # HR Entity timeout, seconds, per page.
@@ -92,6 +92,15 @@ configurable string hrEntityTokenUrl = "";
 configurable string hrEntityClientId = "";
 # HR Entity client secret (Choreo secret).
 configurable string hrEntityClientSecret = "";
+# Retries after a failed HR Entity call (connection error, or a 500, 502, 503 or 504 answer). The same defaults as the
+# other apps that read the HR Entity (`retryConfig`: count 3, interval 3.0, backOffFactor 2.0, maxWaitInterval 20.0).
+configurable int hrEntityRetryCount = 3;
+# Seconds before the first retry.
+configurable decimal hrEntityRetryInterval = 3.0;
+# Each retry waits this many times longer than the one before.
+configurable float hrEntityRetryBackOffFactor = 2.0;
+# Longest wait between two retries, seconds.
+configurable decimal hrEntityRetryMaxWaitInterval = 20.0;
 # Rows asked for per page. The service answers a page at a time, so the whole company takes several calls.
 configurable int hrEntityPageSize = 1000;
 # Employee statuses the directory lists. `Marked leaver` stays in until the person is `Left`: they still work here.
@@ -106,7 +115,7 @@ configurable decimal rosterCacheSeconds = 86400;
 configurable decimal headcountCacheSeconds = 86400;
 
 final http:Client? peopleDirectoryClient = check newBreakerClient(hrEntityBaseUrl, hrEntityTimeoutSeconds,
-        hrEntityAuth());
+        hrEntityAuth(), hrEntityRetry());
 
 // ---- LinkedIn (S2) ------------------------------------------------------------------------------------
 
@@ -148,8 +157,8 @@ final linkedin:ProviderAdapter? linkedInAdapter = check newLinkedInAdapter();
 final crypto:TokenCipher? tokenCipher = check newTokenCipher();
 final linkedin:IdTokenValidator? idTokenValidator = check newIdTokenValidator();
 
-isolated function newBreakerClient(string url, decimal timeout, http:ClientAuthConfig? auth = ())
-        returns http:Client?|error {
+isolated function newBreakerClient(string url, decimal timeout, http:ClientAuthConfig? auth = (),
+        http:RetryConfig? retryCfg = ()) returns http:Client?|error {
     if url == "" {
         return ();
     }
@@ -165,8 +174,19 @@ isolated function newBreakerClient(string url, decimal timeout, http:ClientAuthC
     if auth is http:ClientAuthConfig {
         config.auth = auth;
     }
+    if retryCfg is http:RetryConfig {
+        config.retryConfig = retryCfg;
+    }
     return check new (url, config);
 }
+
+isolated function hrEntityRetry() returns http:RetryConfig => {
+    count: hrEntityRetryCount,
+    interval: hrEntityRetryInterval,
+    backOffFactor: hrEntityRetryBackOffFactor,
+    maxWaitInterval: hrEntityRetryMaxWaitInterval,
+    statusCodes: [500, 502, 503, 504]
+};
 
 isolated function hrEntityAuth() returns http:OAuth2ClientCredentialsGrantConfig? {
     if hrEntityTokenUrl == "" {
@@ -231,6 +251,22 @@ isolated function checkRedirectUri(string uri, string env) returns error? {
     if uri.length() > 2048 || rest.length() == 0 || rest.startsWith("/") || rest.includes("?") || rest.includes("#")
             || rest.includes("@") || re `[\s\\]`.find(uri) !is () {
         return error("linkedinRedirectUri must have a host and no query, fragment, credentials or spaces");
+    }
+}
+
+# Checks the privacy notice URL at start-up. It goes to the UI and becomes a link in the consent dialog, so a typo
+# or a `javascript:` value must never reach the page.
+#
+# + url - `privacyNoticeUrl`
+# + return - An error that stops startup, or `()` (empty means the dialog shows no link)
+isolated function checkPrivacyNoticeUrl(string url) returns error? {
+    string trimmed = url.trim();
+    if trimmed == "" {
+        return;
+    }
+    if !trimmed.startsWith("https://") || trimmed.length() > 2048 || trimmed.length() == "https://".length()
+            || re `[\s\\]`.find(trimmed) !is () {
+        return error("privacyNoticeUrl must be empty or an absolute https:// URL without spaces");
     }
 }
 
@@ -356,7 +392,7 @@ type Roster record {|
 |};
 
 # The fields of an HR Entity employee Amplify reads. Open: anything else the service returns is ignored and
-# never kept. `house` and `subTeam` are not asked of the service yet, so they stay empty.
+# never kept. `house` (the name) and `houseId` are empty for an employee who has no house.
 type DirectoryRecord record {
     # Work email. Optional: one row without it (a contractor, a placeholder) is skipped, not a reason to
     # reject the whole directory.
@@ -366,13 +402,15 @@ type DirectoryRecord record {
     # Last name
     string? lastName = ();
     # Team
-    string? team = ();
+    string? department = ();
     # Sub-team
     string? subTeam = ();
     # Business unit (BU), the level above team
     string? businessUnit = ();
     # House (a company-wide grouping that cuts across BUs and teams)
     string? house = ();
+    # House id (the HR Entity's `houseId`, an integer), `()` when the employee has no house
+    int? houseId = ();
 };
 
 # Everyone's team, built from one directory response.
@@ -435,7 +473,7 @@ isolated function indexDirectory(DirectoryRecord[] records) returns DirectoryInd
         if fullName != "" {
             nameOf[email] = fullName;
         }
-        string team = (r.team ?: "").trim();
+        string team = (r.department ?: "").trim();
         string subTeam = (r.subTeam ?: "").trim();
         string bu = (r.businessUnit ?: "").trim();
         string house = (r.house ?: "").trim();
@@ -550,9 +588,24 @@ isolated function directoryIndex(string? correlationId) returns (DirectoryIndex 
     return fresh;
 }
 
+# The fields asked of every employee: only what Amplify uses. The HR Entity's `department` is the team (its
+# `team` is the sub-team level, which Amplify does not read).
+const string EMPLOYEE_FIELDS = "workEmail firstName lastName businessUnit department subTeam";
+# The house fields, from hr_entity 1.1.1 (digiops-hr PR #2005).
+const string HOUSE_FIELDS = "houseId house";
+
 # The query, one page of current employees. Only the fields Amplify uses are asked for.
-const string EMPLOYEES_QUERY = "query getEmployees($filter: EmployeeFilter!, $limit: Int, $offset: Int) { "
-        + "employees(filter: $filter, limit: $limit, offset: $offset) { workEmail firstName lastName businessUnit team } }";
+#
+# + includeHouse - Also ask for `houseId` and `house` (the default; `false` only for an HR Entity older than 1.1.1)
+# + return - The GraphQL document
+isolated function employeesQuery(boolean includeHouse = true) returns string =>
+    "query getEmployees($filter: EmployeeFilter!, $limit: Int, $offset: Int) { "
+    + "employees(filter: $filter, limit: $limit, offset: $offset) { " + EMPLOYEE_FIELDS
+    + (includeHouse ? " " + HOUSE_FIELDS : "") + " } }";
+
+# The HR Entity refused the query itself: HTTP 400, or a GraphQL `errors` answer. A service older than
+# hr_entity 1.1.1 answers this way when asked for a field it does not have (`houseId`, `house`).
+type DirectoryQueryRefused distinct error;
 
 # Most pages one directory read will ask for. A service that never runs dry cannot loop the caller forever.
 const int MAX_DIRECTORY_PAGES = 100;
@@ -566,13 +619,26 @@ isolated function fetchDirectory(string? correlationId) returns (DirectoryIndex 
     map<string> headers = correlationId is string ? {[CORRELATION_HEADER]: correlationId} : {};
     DirectoryRecord[] records = [];
     int offset = 0;
+    // House is always asked for. An HR Entity older than 1.1.1 refuses the whole query for it, which would leave
+    // teams, BUs and the employee count unavailable, so the first page is asked again without house and the read
+    // goes on without it (no House column until the service is upgraded).
+    boolean withHouse = true;
     foreach int _ in 0 ..< MAX_DIRECTORY_PAGES {
-        DirectoryRecord[] page = check fetchDirectoryPage(c, headers, pageSize, offset);
-        records.push(...page);
-        if page.length() < pageSize {
+        DirectoryRecord[]|error asked = fetchDirectoryPage(c, headers, pageSize, offset, withHouse);
+        if asked is DirectoryQueryRefused && withHouse && offset == 0 {
+            log:printWarn("People directory refused the house fields; reading without house (needs hr_entity 1.1.1 or later)",
+                    correlationId = correlationId);
+            withHouse = false;
+            asked = fetchDirectoryPage(c, headers, pageSize, offset, false);
+        }
+        DirectoryRecord[] page = check asked;
+        // The end is an empty page, not a short one: the service may cap `limit` below what was asked for, and the
+        // next offset is what came back, so a capped page never skips or ends the read early.
+        if page.length() == 0 {
             return indexDirectory(records);
         }
-        offset += pageSize;
+        records.push(...page);
+        offset += page.length();
     }
     return error(string `People directory did not end within ${MAX_DIRECTORY_PAGES} pages`);
 }
@@ -583,14 +649,19 @@ isolated function fetchDirectory(string? correlationId) returns (DirectoryIndex 
 # + headers - Request headers
 # + pageSize - Rows asked for
 # + offset - Rows to skip
-# + return - The rows, or an error that never carries the response body (it names people)
-isolated function fetchDirectoryPage(http:Client c, map<string> headers, int pageSize, int offset)
-        returns DirectoryRecord[]|error {
+# + includeHouse - Also ask for `houseId` and `house`
+# + return - The rows, or an error that never carries the response body (it names people). A refused query
+# (400 or GraphQL `errors`) is a `DirectoryQueryRefused`
+isolated function fetchDirectoryPage(http:Client c, map<string> headers, int pageSize, int offset,
+        boolean includeHouse = true) returns DirectoryRecord[]|error {
     json body = {
-        query: EMPLOYEES_QUERY,
+        query: employeesQuery(includeHouse),
         variables: {filter: {employeeStatus: hrEntityStatuses}, 'limit: pageSize, offset}
     };
     http:Response res = check c->post("", body, headers);
+    if res.statusCode == 400 {
+        return error DirectoryQueryRefused("People directory refused the query (400)");
+    }
     if res.statusCode != 200 {
         return error(string `People directory answered ${res.statusCode}`);
     }
@@ -601,7 +672,7 @@ isolated function fetchDirectoryPage(http:Client c, map<string> headers, int pag
     }
     json errors = payload["errors"];
     if errors is json[] && errors.length() > 0 {
-        return error("People directory answered with GraphQL errors");
+        return error DirectoryQueryRefused("People directory answered with GraphQL errors");
     }
     json data = payload["data"];
     json employees = data is map<json> ? data["employees"] : ();

@@ -33,7 +33,7 @@ dependencies = [
 [[package]]
 org = "ballerina"
 name = "constraint"
-version = "1.7.2"
+version = "1.7.3"
 dependencies = [
 	{org = "ballerina", name = "jballerina.java"}
 ]
@@ -389,7 +389,7 @@ modules = [
 [[package]]
 org = "wso2"
 name = "amplify_common"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
 	{org = "ballerina", name = "crypto"},
 	{org = "ballerina", name = "file"},

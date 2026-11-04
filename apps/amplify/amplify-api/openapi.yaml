@@ -931,7 +931,7 @@ paths:
         - {name: status, in: query, schema: {type: string, enum: [QUEUED, SENT, FAILED, ALL], default: FAILED}}
       responses:
         "200":
-          description: Club cards, newest first
+          description: Novera announcements, newest first
           content:
             application/json:
               schema: {$ref: "#/components/schemas/AnnouncementList"}
@@ -945,7 +945,7 @@ paths:
       tags: [S5 Admin]
       operationId: retryAnnouncement
       x-access: CAN_ADMIN
-      description: Re-queues a FAILED Club card (by campaign id); the next Run sends it. Refused while `announcements.enabled` is false.
+      description: Re-queues a FAILED Novera announcement (by campaign id); the next Run sends it. Refused while `announcements.enabled` is false.
       parameters:
         - {$ref: "#/components/parameters/CorrelationId"}
         - {$ref: "#/components/parameters/IdempotencyKey"}
@@ -1887,7 +1887,7 @@ components:
             type: object
             required: [key, label, unit, value, target, comparison, status]
             properties:
-              key: {type: string, enum: [connected, expired, shareSuccess, chatCards, priorityReach, active30Days, repostsPerMonth]}
+              key: {type: string, enum: [connected, expired, shareSuccess, announcements, priorityReach, active30Days, repostsPerMonth]}
               label: {type: string}
               unit: {type: string, enum: [PERCENT, COUNT]}
               value: {type: number}

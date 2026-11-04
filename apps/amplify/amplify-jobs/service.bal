@@ -42,6 +42,7 @@ function init() returns error? {
     // The database may still be starting: create the next two weeks of token partitions in the background.
     _ = start ensurePartitionsAtStartup();
     check validateRunConfig(runConfig(), longestCallSeconds());
+    check validateNoveraButtonUrl(noveraButtonUrl, noveraAllowInsecureHttp);
     log:printInfo(string `${COMPONENT} starting on port ${port}`);
     string? tls = store:tlsWarning(dbConfig());
     if tls is string {
@@ -63,7 +64,7 @@ service http:InterceptableService / on jobsListener {
     # + return - Component health
     resource function get health() returns types:HealthStatus => {component: COMPONENT, status: types:UP};
 
-    # Readiness probe: the database breaker isn't open and the database answers. LinkedIn, Chat and the
+    # Readiness probe: the database breaker isn't open and the database answers. LinkedIn, Novera and the
     # token keys are reported but don't fail readiness (a run defers those rows, ADR-025). Each probe also
     # refreshes the `amplify_breaker_state` gauges (ADR-028).
     #
@@ -157,14 +158,16 @@ service http:InterceptableService / on jobsListener {
     # Runs only the leaver sweep (the daily maintenance run includes it). With `leaverSweepMode = DRY_RUN` it
     # reports who would be erased; with `OFF` it does nothing.
     #
+    # + correlationId - Trigger correlation id (`X-Correlation-ID`), passed on to the HR Entity
     # + return - What the sweep did, 503 when the database isn't reachable
-    resource function post maintenance/leavers() returns LeaverSweepReport|http:ServiceUnavailable {
+    resource function post maintenance/leavers(@http:Header {name: "X-Correlation-ID"} string? correlationId)
+            returns LeaverSweepReport|http:ServiceUnavailable {
         postgresql:Client|error dbc = db();
         if dbc is error {
             log:printError("Leaver sweep: database unavailable", resilience:loggable(dbc));
             return <http:ServiceUnavailable>{body: {message: "Database unavailable"}};
         }
-        return runConfiguredSweep(dbc);
+        return runConfiguredSweep(dbc, correlationId);
     }
 
     # Rebuilds every recognition read model from the ledger (recognition is never a source of truth).

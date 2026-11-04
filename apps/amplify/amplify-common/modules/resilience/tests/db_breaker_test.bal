@@ -149,7 +149,7 @@ function retryOnlyOnTransient() {
 function breakerStateGauge() {
     test:assertEquals(breakerStateValue("OPEN"), 2.0);
     test:assertEquals(breakerStateValue("NOT_CONFIGURED"), -1.0);
-    exportBreakerStates("test-component", {database: "OPEN", chat: "CLOSED"});
+    exportBreakerStates("test-component", {database: "OPEN", novera: "CLOSED"});
     exportBreakerStates("test-component", {database: "HALF_OPEN"});
     float? db = exportedBreakerValue("test-component", "database");
     // Tests run without a metrics reporter, so the registry is a no-op (0.0); with a reporter (Choreo,

@@ -32,14 +32,15 @@ function readyWithoutDatabaseIs503AndReportsBreakers() returns error? {
     test:assertEquals(check body.runInProgress, false);
     json breakers = check body.breakers;
     test:assertEquals(check breakers.linkedinApi, "NOT_CONFIGURED", "LinkedIn is reported, not fatal");
-    test:assertEquals(check breakers.googleChat, "NOT_CONFIGURED", "Chat is reported, not fatal");
+    test:assertEquals(check breakers.novera, "NOT_CONFIGURED", "Novera is reported, not fatal");
+    test:assertFalse(breakers is map<json> && breakers.hasKey("googleChat"), "no Google Chat dependency is reported");
     test:assertTrue((check breakers.database) is string);
 }
 
 @test:Config
 function readinessIsGatedOnlyByTheDatabase() {
-    ReadyReport up = readiness(true, {database: "CLOSED", linkedinApi: "OPEN", googleChat: "OPEN"}, true);
-    test:assertEquals(up.status, types:UP, "open LinkedIn/Chat breakers don't fail readiness");
+    ReadyReport up = readiness(true, {database: "CLOSED", linkedinApi: "OPEN", novera: "OPEN"}, true);
+    test:assertEquals(up.status, types:UP, "open LinkedIn/Novera breakers don't fail readiness");
     test:assertEquals(up.database, types:UP);
     test:assertTrue(up.runInProgress);
     ReadyReport down = readiness(false, {database: "OPEN"}, false);
@@ -90,8 +91,7 @@ function runConfigRejectsNonsense() {
 
 @test:Config
 function longestCallIsTheSlowerDependency() {
-    decimal chat = chatTimeoutSeconds + chatMinIntervalSeconds;
-    decimal registered = amplifyOnNovera ? 2d * noveraTimeoutSeconds + chat : chat;
+    decimal registered = amplifyOnNovera ? 2d * noveraTimeoutSeconds : 0d;
     decimal expected = linkedinTimeoutSeconds > registered ? linkedinTimeoutSeconds : registered;
     test:assertEquals(longestCallSeconds(), expected);
 }

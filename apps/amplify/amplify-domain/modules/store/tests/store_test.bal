@@ -141,11 +141,11 @@ function databaseNameCarriesTheSchemaAsAStartupOption() {
     test:assertEquals(databaseOf(cfg()), "amplify", "no schema: the plain database name");
     DbConfig withSchema = {host: "db", database: "amplify", user: "amplify", password: "x",
         schema: "amplify"};
-    test:assertEquals(databaseOf(withSchema), "amplify?options=-c%20search_path%3Damplify,public"
+    test:assertEquals(databaseOf(withSchema), "amplify?options=-c%20search_path%3Damplify,public,pg_temp"
         + "%20-c%20idle_in_transaction_session_timeout%3D30000");
     DbConfig padded = {host: "db", database: "amplify", user: "u", password: "x", schema: " amplify_jobs ",
         idleInTransactionTimeoutMs: 5000};
-    test:assertEquals(databaseOf(padded), "amplify?options=-c%20search_path%3Damplify_jobs,public"
+    test:assertEquals(databaseOf(padded), "amplify?options=-c%20search_path%3Damplify_jobs,public,pg_temp"
         + "%20-c%20idle_in_transaction_session_timeout%3D5000");
 }
 

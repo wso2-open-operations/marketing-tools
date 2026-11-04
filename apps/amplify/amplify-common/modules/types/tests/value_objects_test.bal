@@ -133,3 +133,36 @@ function sharedKernelHelpers() returns error? {
     HealthStatus h = {component: "amplify-api", status: UP};
     test:assertEquals(h.toJson(), {component: "amplify-api", status: "UP"});
 }
+
+@test:Config
+function publicHttpsUrlRefusesNonPublicHosts() {
+    foreach string url in ["https://localhost/a.png", "https://10.1.2.3/a.png", "https://192.168.0.4/a.png",
+            "https://172.20.0.1/a.png", "https://intranet/a.png", "https://user@127.0.0.1:8443/a.png",
+            "https://[::1]/a.png", "", "http://cdn.wso2.com/a.png", "https://172.32.0.1/a.png"] {
+        test:assertFalse(isPublicHttpsUrl(url), url);
+    }
+    test:assertTrue(isPublicHttpsUrl("https://media.licdn.com/dms/image/x.png?e=1&v=beta"));
+}
+
+@test:Config
+function publicHttpsUrlRefusesTrailingDotAndNumericHosts() {
+    foreach string url in ["https://localhost./a.png", "https://0x7f.0.0.1/a.png", "https://127.1/a.png",
+            "https://2130706433/a.png", "https://8.8.8.8/a.png", "https://foo.internal./a.png"] {
+        test:assertFalse(isPublicHttpsUrl(url), url);
+    }
+    test:assertTrue(isPublicHttpsUrl("https://cdn.wso2.com./logo.png"), "a fully qualified public name is fine");
+    // A numeric *first* label is a name, not an IP literal.
+    test:assertTrue(isPublicHttpsUrl("https://10.cdn.example.com/logo.png"));
+}
+
+// A malformed port is a malformed URL: the card falls back to its default image.
+@test:Config
+function publicHttpsUrlRefusesAMalformedPort() {
+    foreach string url in ["https://cdn.example.com:notaport/a.png", "https://cdn.example.com:/a.png",
+            "https://cdn.example.com:0/a.png", "https://cdn.example.com:65536/a.png",
+            "https://cdn.example.com:443:1/a.png", "https://cdn.example.com:+443/a.png"] {
+        test:assertFalse(isPublicHttpsUrl(url), url);
+    }
+    test:assertTrue(isPublicHttpsUrl("https://cdn.example.com:443/a.png"), "a real port is fine");
+    test:assertTrue(isPublicHttpsUrl("https://cdn.example.com:8443/a.png"));
+}
