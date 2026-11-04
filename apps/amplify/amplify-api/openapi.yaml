@@ -1437,7 +1437,7 @@ components:
       required: [period, topN, generatedAt, company, me]
       properties:
         period: {type: string, enum: [MONTH, ALL]}
-        minPoints: {type: integer, nullable: true, description: "Points needed in the month to qualify for the top three (`leaderboard.top_min_points`, default 100); null for ALL"}
+        minPoints: {type: integer, nullable: true, description: "Always null. The Celebrate top three has no points minimum (ADR-037); everyone with points this month is ranked. `leaderboard.top_min_points` is kept for the Coins award, a later phase. Null for ALL."}
         monthStart: {type: string, format: date-time, nullable: true, description: "The 1st 00:00 UTC; null for ALL"}
         monthEnd: {type: string, format: date-time, nullable: true, description: "The next 1st 00:00 UTC; null for ALL"}
         topN: {type: integer}

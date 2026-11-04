@@ -99,17 +99,6 @@ isolated function monthlyTotals(time:Utc now) returns MonthlyTotals|error {
     return fresh;
 }
 
-# The people who earned at least `minPoints` in the month: only they are ranked for the top three. Done per
-# request from the cached totals, so a new `leaderboard.top_min_points` applies at once.
-#
-# + totals - Everyone with points this month
-# + minPoints - Points needed to qualify
-# + return - The qualifying totals
-isolated function qualifying(recognition:EmployeeTotal[] totals, int minPoints) returns recognition:EmployeeTotal[] =>
-    from recognition:EmployeeTotal t in totals
-    where t.totalPoints >= minPoints
-    select t;
-
 # One viewer's Celebrate board: the company top N and their own line, for the configured scope.
 #
 # + p - Caller
@@ -123,23 +112,17 @@ isolated function topBoard(auth:Principal p, string? correlationId) returns http
         recognition:Standing[] top;
         recognition:Standing? mine;
         map<json> scopeInfo;
-        int? ownMonthPoints = ();
         if settings.topScope == "MONTH" {
             MonthlyTotals month = check monthlyTotals(now);
-            recognition:Standing[] ranked = recognition:rankStandings("MONTH", qualifying(month.totals, settings.topMinPoints), {}, topN);
+            recognition:Standing[] ranked = recognition:rankStandings("MONTH", month.totals, {}, topN);
             top = recognition:topN(ranked, topN);
             recognition:Standing[] own = from recognition:Standing s in ranked
                 where s.employeeId == p.employeeId
                 select s;
             mine = own.length() > 0 ? own[0] : ();
-            // Someone under the minimum is not ranked, but still sees their own points and the gap to qualify.
-            recognition:EmployeeTotal[] unranked = from recognition:EmployeeTotal t in month.totals
-                where t.employeeId == p.employeeId && t.totalPoints < settings.topMinPoints
-                select t;
-            ownMonthPoints = unranked.length() > 0 ? unranked[0].totalPoints : ();
             scopeInfo = {
                 period: "MONTH",
-                minPoints: settings.topMinPoints,
+                minPoints: (),
                 monthStart: ts(month.monthStart),
                 monthEnd: ts(recognition:nextMonthStartOf(month.monthStart)),
                 generatedAt: ts(month.loadedAt)
@@ -154,9 +137,6 @@ isolated function topBoard(auth:Principal p, string? correlationId) returns http
             select {employeeId: s.employeeId, displayName: s.displayName, email: s.email,
                 points: s.totalPoints, rank: s.rank, previousRank: s.previousRank};
         map<json> me = <map<json>>personal(p.employeeId, mine, topN).toJson();
-        if ownMonthPoints is int {
-            me["points"] = ownMonthPoints;
-        }
         scopeInfo["me"] = me;
         http:Response res = check jsonBody(scopeInfo);
         cacheable(res, TOP_BOARD_CACHE);
