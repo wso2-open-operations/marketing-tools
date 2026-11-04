@@ -14,8 +14,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Outbox backlog (security review, "operational resilience"). A deferred outbox row, for example a Chat card while
-// the webhook is unconfigured or Novera is down, can wait for ever with nothing to say so. The backlog is read on
+// Outbox backlog (security review, "operational resilience"). A deferred outbox row, for example an announcement while
+// Novera is off, unconfigured or down, can wait for ever with nothing to say so. The backlog is read on
 // every readiness probe (cached for a few seconds), exported as gauges, and logged as a warning when the oldest
 // pending row is older than `outboxAlertSeconds` or any row has failed every attempt.
 
