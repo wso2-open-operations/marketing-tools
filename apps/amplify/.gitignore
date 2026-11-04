@@ -17,6 +17,9 @@ local/*.env
 
 .DS_Store
 
+
+# remove local all together
+local/
 # Load-test scratch (dev JWTs), scripts/load-test.sh
 local/.load/
 
