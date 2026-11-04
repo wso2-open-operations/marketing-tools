@@ -64,17 +64,6 @@ function testANewMonthNeverServesLastMonthsTotals() {
 }
 
 @test:Config
-function testOnlyPeopleWithTheMinimumQualifyForTheTopThree() {
-    recognition:EmployeeTotal[] totals = [
-        {employeeId: "a", displayName: "A", email: "a@wso2.com", totalPoints: 100, lastActivityAt: ()},
-        {employeeId: "b", displayName: "B", email: "b@wso2.com", totalPoints: 99, lastActivityAt: ()},
-        {employeeId: "c", displayName: "C", email: "c@wso2.com", totalPoints: 250, lastActivityAt: ()}
-    ];
-    test:assertEquals(qualifying(totals, 100).map(t => t.employeeId), ["a", "c"], "100 qualifies, 99 does not");
-    test:assertEquals(qualifying(totals, 0).length(), 3, "a minimum of 0 lets everyone in");
-}
-
-@test:Config
 function testTopMinPointsSettingDefaultsTo100() {
     test:assertEquals(settingsOf([]).topMinPoints, 100);
     test:assertEquals(settingsOf([{key: SETTING_TOP_MIN_POINTS, value: 150, updatedBy: "t", updatedAt: THURSDAY, version: 1}]).topMinPoints, 150);

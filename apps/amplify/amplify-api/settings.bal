@@ -31,7 +31,7 @@ type Settings record {|
     # `leaderboard.top_scope`: what the Celebrate top three and My position cover, `MONTH` (this calendar month,
     # UTC) or `ALL` (all time)
     string topScope = "MONTH";
-    # `leaderboard.top_min_points`: points needed in the month to qualify for the Celebrate top three (`MONTH` scope only)
+    # `leaderboard.top_min_points`: points that earn Coins; it no longer gates the Celebrate top three
     int topMinPoints = 100;
     # `team.visibility`: `TEAM` or `COMPANY` (ADR-019)
     string teamVisibility = "TEAM";
