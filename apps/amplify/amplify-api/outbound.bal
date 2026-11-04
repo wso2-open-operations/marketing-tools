@@ -258,6 +258,22 @@ isolated function checkRedirectUri(string uri, string env) returns error? {
     }
 }
 
+# Checks the privacy notice URL at start-up. It goes to the UI and becomes a link in the consent dialog, so a typo
+# or a `javascript:` value must never reach the page.
+#
+# + url - `privacyNoticeUrl`
+# + return - An error that stops startup, or `()` (empty means the dialog shows no link)
+isolated function checkPrivacyNoticeUrl(string url) returns error? {
+    string trimmed = url.trim();
+    if trimmed == "" {
+        return;
+    }
+    if !trimmed.startsWith("https://") || trimmed.length() > 2048 || trimmed.length() == "https://".length()
+            || re `[\s\\]`.find(trimmed) !is () {
+        return error("privacyNoticeUrl must be empty or an absolute https:// URL without spaces");
+    }
+}
+
 # Test seam: the configured LinkedIn redirect URI (what the authorize request and the token exchange carry).
 #
 # + return - The URI

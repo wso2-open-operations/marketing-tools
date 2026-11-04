@@ -183,3 +183,34 @@ function testSweepSettingsAreCheckedAtStartUp() {
     test:assertTrue(validateSweepConfig(config(ERASE, maxPercent = 0), true) is error);
     test:assertTrue(validateSweepConfig(config(ERASE, maxPercent = 101), true) is error);
 }
+
+// A full first page that holds one row without a work email, then a second page: the sweep must read both.
+// (Counting the emails instead of the rows made page one look short, so page two was never read.)
+@test:Config
+function testPagingCountsRowsNotEmails() returns error? {
+    isolated function (int, int) returns [string[], int]|error fetch = isolated function(int size, int offset)
+            returns [string[], int]|error {
+        if offset == 0 {
+            // 3 rows asked for, 3 rows held, but only 2 carry an email
+            return [["a@example.com", "b@example.com"], 3];
+        }
+        return [["c@example.com"], 1];
+    };
+    string[] emails = check collectDirectoryEmails(3, fetch);
+    test:assertEquals(emails, ["a@example.com", "b@example.com", "c@example.com"]);
+}
+
+@test:Config
+function testPagingStopsOnAShortPageAndOnARunawayDirectory() {
+    isolated function (int, int) returns [string[], int]|error once = isolated function(int size, int offset)
+            returns [string[], int]|error => [["a@example.com"], 1];
+    test:assertEquals(collectDirectoryEmails(3, once), ["a@example.com"]);
+
+    isolated function (int, int) returns [string[], int]|error endless = isolated function(int size, int offset)
+            returns [string[], int]|error => [[], size];
+    test:assertTrue(collectDirectoryEmails(3, endless) is error, "a directory that never ends is an error");
+
+    isolated function (int, int) returns [string[], int]|error broken = isolated function(int size, int offset)
+            returns [string[], int]|error => error("down");
+    test:assertTrue(collectDirectoryEmails(3, broken) is error);
+}

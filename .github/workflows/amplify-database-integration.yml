@@ -4,6 +4,9 @@ on:
   pull_request:
     paths:
       - "apps/amplify/amplify-database/**"
+      # The SQL lives in the domain, api and jobs too, so a change there also runs against the database.
+      - "apps/amplify/amplify-domain/**"
+      - "apps/amplify/amplify-common/**"
       - ".github/workflows/amplify-database-integration.yml"
 
 permissions:
@@ -31,8 +34,8 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: ballerina-platform/setup-ballerina@v1.1.3
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: ballerina-platform/setup-ballerina@7f21a19064107a8c9624a9d552e408965f0835a9 # v1.1.3
         with:
           version: 2201.13.3
       - name: Run the integration group
@@ -43,4 +46,16 @@ jobs:
           BAL_CONFIG_VAR_DBUSER: postgres
           BAL_CONFIG_VAR_DBPASSWORD: postgres
           BAL_CONFIG_VAR_DBSSLMODE: DISABLE
+        run: bal test --groups integration --code-coverage=false
+      # The database tests above create the one non-superuser login every component uses (ADR-043). The domain's
+      # repositories run against that same database as that login, which is how staging runs them.
+      - name: Publish amplify-common
+        working-directory: apps/amplify/amplify-common
+        run: bal pack && bal push --repository=local
+      - name: Run the domain integration group as the single login
+        working-directory: apps/amplify/amplify-domain
+        env:
+          AMPLIFY_IT: "true"
+          AMPLIFY_IT_DB_HOST: localhost
+          AMPLIFY_IT_DB_PORT: "5432"
         run: bal test --groups integration --code-coverage=false

@@ -85,15 +85,14 @@ Every setting is a Ballerina `configurable`, set through `BAL_CONFIG_VAR_<NAME>`
 
 | Env name (`BAL_CONFIG_VAR_…`) | api | jobs | db-migrate | Secret | Local (compose) value |
 |---|---|---|---|---|---|
-| `DBHOST`, `DBPORT`, `DBNAME`, `DBUSER` | ✓ | ✓ | ✓ | | `postgres`, 5432, `amplify`, per-component user |
-| `DBPASSWORD` | ✓ | ✓ | ✓ | ✓ | `AMPLIFY_API_DB_PASSWORD` / `AMPLIFY_JOBS_DB_PASSWORD` / `POSTGRES_PASSWORD` |
+| `DBHOST`, `DBPORT`, `DBNAME`, `DBUSER`, `DBSCHEMA` | ✓ | ✓ | ✓ | | `postgres`, 5432, `amplify`, the one login (ADR-043); `DBSCHEMA` empty = the login name |
+| `DBPASSWORD` | ✓ | ✓ | ✓ | ✓ | `AMPLIFY_DB_PASSWORD` (see `local/.env.example`) |
 | `DBSSLMODE` | ✓ | ✓ | ✓ | | `DISABLE` (local only). api, jobs and db-migrate default `VERIFY_FULL` |
 | `DBSSLROOTCERT` | ✓ | ✓ | ✓ | | unset (local `DISABLE`). Choreo: path of the managed Postgres CA PEM, mounted as a file mount; api, jobs and db-migrate warn at start-up when a remote database isn't verified |
-| `APIDBPASSWORD`, `JOBSDBPASSWORD`, `READONLYDBPASSWORD` | | | ✓ | ✓ | from `local/.env` |
 | `ENVIRONMENT` | ✓ | | | | `local` (Choreo: `dev`/`prod`, never `local`) |
 | `GATEWAYJWKSURL`, `GATEWAYISSUER`, `GATEWAYAUDIENCES` | ✓ | | | | unset placeholders; APIM profile sets them |
 | `DEVLOCALJWTENABLED`, `DEVJWKSFILE` | ✓ | | | | `true`, `/dev-jwt/jwks.json` (local only, ADR-023) |
-| `JOBSURL`, `SCHEDULERJOBSURL` | ✓ | | | | `http://amplify-jobs:9091` (Choreo: jobs connection `ServiceURL`) |
+| `JOBSURL`, `SCHEDULERJOBSURL` | ✓ | | | | `http://amplify-jobs:9091` (Choreo: the Jobs endpoint's Project URL) |
 | `SCHEDULERURL` | ✓ | | | | `http://scheduler:8080` (Choreo: scheduler connection) |
 | `MINRUNINTERVALSECONDS`, `RECONCILEDELAYSECONDS` | ✓ | | | | 10, 5 (local only; defaults 60, 15) |
 | `HRENTITYBASEURL` | ✓ | ✓ | | | `http://people-stub:9096/graphql` (Choreo: unset until the HR Entity client is approved, `teamStatus: UNAVAILABLE`). HR Entity GraphQL `employees` query, paged; directory results (teams, names, houses) cached 24 hours. House fields are asked for only when `HRENTITYINCLUDEHOUSE` is true |
