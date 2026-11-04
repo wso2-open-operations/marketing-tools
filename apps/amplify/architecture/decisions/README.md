@@ -9,7 +9,7 @@ One file per decision, dated, short format (Status, Date, Context, Decision, Con
 | [ADR-001](ADR-001-ballerina.md) | Ballerina for all phase 1 services | Accepted |
 | [ADR-002](ADR-002-postgresql-token-partitions.md) | PostgreSQL, schema per context, daily token partitions | Accepted (extension check open) |
 | [ADR-003](ADR-003-worker-shape.md) | `amplify-jobs` HTTP-triggered worker, `amplify-cron` schedules it | Accepted; scheduler part superseded by ADR-026 |
-| [ADR-004](ADR-004-api-proxy-cell-edge.md) | API proxy at the cell edge | Accepted |
+| [ADR-004](ADR-004-api-proxy-cell-edge.md) | API proxy at the cell edge; Backend endpoint Organization-visible | Accepted (amended 2026-11-03) |
 | [ADR-005](ADR-005-data-model-conventions.md) | Phase 1 data model conventions | Accepted |
 | [ADR-006](ADR-006-phase1-scoring-scope.md) | Scoring scope: in-app reposts plus approved external shares | Accepted |
 | [ADR-007](ADR-007-choreo-naming.md) | Choreo project and component naming | Accepted |
