@@ -219,6 +219,7 @@ configurations:
           type: string
           required: false
     - name: BAL_CONFIG_VAR_HRENTITYBASEURL
+    - name: BAL_CONFIG_VAR_HRENTITYINCLUDEHOUSE
       valueFrom:
         configForm:
           displayName: HR Entity GraphQL URL

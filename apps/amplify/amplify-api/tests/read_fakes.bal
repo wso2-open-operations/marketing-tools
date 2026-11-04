@@ -64,7 +64,7 @@ isolated function mockRosterConfigured() returns boolean {
 }
 
 # How the fake directory answers: `ok`, `down` (418, not a breaker status, so the breaker stays closed for
-# the other tests), `garbled` (a body that isn't a directory) or `gqlerror` (a GraphQL `errors` array).
+# the other tests), `unavailable` (503, which opens the breaker: only for a client of its own), `garbled` (a body that isn't a directory) or `gqlerror` (a GraphQL `errors` array).
 isolated string directoryMode = "ok";
 isolated int directoryFetches = 0;
 
@@ -117,8 +117,13 @@ final readonly & string[] RIVERS = ["rv-a@wso2.com", "rv-b@wso2.com", "rv+plus@w
 service /people/graphql on jwksListener {
     isolated resource function post .(@http:Payload json request) returns http:Response {
         string mode;
-        lock {
-            directoryFetches += 1;
+        json variables = request is map<json> ? request["variables"] : ();
+        json firstOffset = variables is map<json> ? variables["offset"] : ();
+        // A directory read is a run of pages from offset 0: count the reads, not the pages.
+        if firstOffset is int && firstOffset == 0 {
+            lock {
+                directoryFetches += 1;
+            }
         }
         lock {
             mode = directoryMode;
@@ -128,13 +133,17 @@ service /people/graphql on jwksListener {
             res.statusCode = 418;
             return res;
         }
+        if mode == "unavailable" {
+            http:Response res = new;
+            res.statusCode = 503;
+            return res;
+        }
         if mode == "garbled" {
             return ok({teamName: "Rivers", members: [{name: "Bob Jones bob@wso2.com"}]});
         }
         if mode == "gqlerror" {
             return ok({errors: [{message: "Bob Jones bob@wso2.com is not allowed"}], data: ()});
         }
-        json variables = request is map<json> ? request["variables"] : ();
         int 'limit = 1000;
         int offset = 0;
         if variables is map<json> {
@@ -144,8 +153,8 @@ service /people/graphql on jwksListener {
             offset = o is int ? o : 0;
         }
         json[] rows = from string m in RIVERS
-            select {workEmail: m.toUpperAscii(), firstName: "R", lastName: m.substring(0, 4), team: "Rivers", businessUnit: "Water"};
-        rows.push({workEmail: "rv-noteam@wso2.com", firstName: "N", team: (), businessUnit: "Land"});
+            select {workEmail: m.toUpperAscii(), firstName: "R", lastName: m.substring(0, 4), team: "Rivers", subTeam: (), businessUnit: "Water"};
+        rows.push({workEmail: "rv-noteam@wso2.com", firstName: "N", team: (), subTeam: (), businessUnit: "Land"});
         int end = int:min(offset + 'limit, rows.length());
         json[] page = offset >= rows.length() ? [] : rows.slice(offset, end);
         return ok({data: {employees: page}});

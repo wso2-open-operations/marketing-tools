@@ -36,3 +36,5 @@ canAdjustPointsGroups = "amplify_po"
 canPoDashboardGroups = "amplify_po"
 canReportsGroups = "amplify_slt,amplify_po"
 canAdminGroups = "amplify_admin"
+
+hrEntityRetryInterval = 0.1
