@@ -96,7 +96,7 @@ Every setting is a Ballerina `configurable`, set through `BAL_CONFIG_VAR_<NAME>`
 | `JOBSURL`, `SCHEDULERJOBSURL` | ✓ | | | | `http://amplify-jobs:9091` (Choreo: jobs connection `ServiceURL`) |
 | `SCHEDULERURL` | ✓ | | | | `http://scheduler:8080` (Choreo: scheduler connection) |
 | `MINRUNINTERVALSECONDS`, `RECONCILEDELAYSECONDS` | ✓ | | | | 10, 5 (local only; defaults 60, 15) |
-| `HRENTITYBASEURL` | ✓ | ✓ | | | `http://people-stub:9096/graphql` (Choreo: unset until the HR Entity client is approved, `teamStatus: UNAVAILABLE`). HR Entity GraphQL `employees` query, paged; directory results (teams, names) cached 24 hours. House is not read yet |
+| `HRENTITYBASEURL` | ✓ | ✓ | | | `http://people-stub:9096/graphql` (Choreo: unset until the HR Entity client is approved, `teamStatus: UNAVAILABLE`). HR Entity GraphQL `employees` query, paged; directory results (teams, names, houses) cached 24 hours. House name and id are always asked for (HR Entity 1.1.1 or later) |
 | `CAMPAIGNLINKORIGINS` | ✓ | | | | `https://www.linkedin.com,https://linkedin.com,http://localhost:19091` (Choreo prod: unset = LinkedIn only; dev may add the mock's public www URL). Origins a campaign's post link may use |
 | `ROSTERCACHESECONDS` | ✓ | | | | unset (default 86400 = 24 hours). TTL of the directory results (teams, names, houses): how long a team move or new hire takes to show without a restart. Only a successful read is kept; a failed refresh keeps serving the last result and asks again on the next call |
 | `HEADCOUNTCACHESECONDS` | ✓ | | | | unset (default 86400 = 24 hours). How long the employee count ("of N") reuses one directory read |

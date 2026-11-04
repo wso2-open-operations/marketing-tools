@@ -153,8 +153,8 @@ service /people/graphql on jwksListener {
             offset = o is int ? o : 0;
         }
         json[] rows = from string m in RIVERS
-            select {workEmail: m.toUpperAscii(), firstName: "R", lastName: m.substring(0, 4), team: "Rivers", subTeam: (), businessUnit: "Water"};
-        rows.push({workEmail: "rv-noteam@wso2.com", firstName: "N", team: (), subTeam: (), businessUnit: "Land"});
+            select {workEmail: m.toUpperAscii(), firstName: "R", lastName: m.substring(0, 4), department: "Rivers", subTeam: (), businessUnit: "Water"};
+        rows.push({workEmail: "rv-noteam@wso2.com", firstName: "N", department: (), subTeam: (), businessUnit: "Land"});
         int end = int:min(offset + 'limit, rows.length());
         json[] page = offset >= rows.length() ? [] : rows.slice(offset, end);
         return ok({data: {employees: page}});

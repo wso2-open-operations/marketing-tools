@@ -148,9 +148,9 @@ function testDirectoryIsReadAPageAtATime() returns error? {
     test:assertEquals(first.length(), 2);
     test:assertEquals(second.length(), 2, "four rows in the fake: two pages of two");
     test:assertEquals(past.length(), 0, "past the end is an empty page");
-    test:assertEquals(first[0].team, "Rivers");
+    test:assertEquals(first[0].department, "Rivers");
     test:assertEquals(first[0].businessUnit, "Water");
-    test:assertEquals(first[0].house, (), "house is not asked of the service");
+    test:assertEquals(first[0].house, (), "the fake has no house for this person");
 }
 
 @test:Config {groups: ["reads"]}

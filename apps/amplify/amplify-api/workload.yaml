@@ -95,8 +95,6 @@ configurations:
       value: "100"
     - name: BAL_CONFIG_VAR_SCORECARDTARGETREPOSTSPERMONTH
       value: "600"
-    - name: BAL_CONFIG_VAR_HRENTITYINCLUDEHOUSE
-      value: "false"
     - name: BAL_CONFIG_VAR_HRENTITYBASEURL
       value: ""
     - name: BAL_CONFIG_VAR_HRENTITYTOKENURL

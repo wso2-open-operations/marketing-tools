@@ -53,7 +53,7 @@ Every POST accepts `Idempotency-Key` (`idempotency.bal`, ADR-024): a repeat with
 
 File: `outbound.bal`.
 
-Calls to amplify-jobs (trigger a run), the HR Entity GraphQL directory (teams, business units, names, headcount, and house name and id when `hrEntityIncludeHouse` is on; OAuth2 client credentials, ADR-045) and LinkedIn (OAuth, ID-token check, token cipher, revoke). Each client has a timeout and a circuit breaker. The breaker states show on `/ready`.
+Calls to amplify-jobs (trigger a run), the HR Entity GraphQL directory (teams, business units, names, headcount, and house name and id; OAuth2 client credentials, ADR-045) and LinkedIn (OAuth, ID-token check, token cipher, revoke). Each client has a timeout and a circuit breaker. The breaker states show on `/ready`.
 
 ## Scheduler sync
 

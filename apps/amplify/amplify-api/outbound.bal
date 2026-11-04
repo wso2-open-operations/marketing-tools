@@ -105,10 +105,6 @@ configurable decimal hrEntityRetryMaxWaitInterval = 20.0;
 configurable int hrEntityPageSize = 1000;
 # Employee statuses the directory lists. `Marked leaver` stays in until the person is `Left`: they still work here.
 configurable string[] hrEntityStatuses = ["Active", "Marked leaver"];
-# Ask the HR Entity for each employee's `houseId` and `house` (name). Off by default: they exist from hr_entity 1.1.1
-# (digiops-hr PR #2005, merged 2026-11-03), and asking an older service for a field it does not have fails the whole
-# read. Turn it on once the service running in the environment is 1.1.1 or later.
-configurable boolean hrEntityIncludeHouse = false;
 # How long the directory results (teams, names) are reused, seconds (default 24 hours). Memory
 # only, never written to the database. Only a successful read is kept: a failed refresh keeps serving the
 # previous result and asks the directory again on the next call, so an outage is never cached.
@@ -396,7 +392,7 @@ type Roster record {|
 |};
 
 # The fields of an HR Entity employee Amplify reads. Open: anything else the service returns is ignored and
-# never kept. `house` (the name) and `houseId` come only when `hrEntityIncludeHouse` is on.
+# never kept. `house` (the name) and `houseId` are empty for an employee who has no house.
 type DirectoryRecord record {
     # Work email. Optional: one row without it (a contractor, a placeholder) is skipped, not a reason to
     # reject the whole directory.
@@ -406,14 +402,14 @@ type DirectoryRecord record {
     # Last name
     string? lastName = ();
     # Team
-    string? team = ();
+    string? department = ();
     # Sub-team
     string? subTeam = ();
     # Business unit (BU), the level above team
     string? businessUnit = ();
     # House (a company-wide grouping that cuts across BUs and teams)
     string? house = ();
-    # House id (the HR Entity's `houseId`, an integer), `()` when not asked for or the employee has none
+    # House id (the HR Entity's `houseId`, an integer), `()` when the employee has no house
     int? houseId = ();
 };
 
@@ -477,7 +473,7 @@ isolated function indexDirectory(DirectoryRecord[] records) returns DirectoryInd
         if fullName != "" {
             nameOf[email] = fullName;
         }
-        string team = (r.team ?: "").trim();
+        string team = (r.department ?: "").trim();
         string subTeam = (r.subTeam ?: "").trim();
         string bu = (r.businessUnit ?: "").trim();
         string house = (r.house ?: "").trim();
@@ -592,17 +588,15 @@ isolated function directoryIndex(string? correlationId) returns (DirectoryIndex 
     return fresh;
 }
 
-# The fields asked of every employee: only what Amplify uses.
-const string EMPLOYEE_FIELDS = "workEmail firstName lastName businessUnit team subTeam";
+# The fields asked of every employee: only what Amplify uses (house from HR Entity 1.1.1).
+const string EMPLOYEE_FIELDS = "workEmail firstName lastName businessUnit department subTeam houseId house";
 
 # The query, one page of current employees. Only the fields Amplify uses are asked for.
 #
-# + includeHouse - Also ask for `houseId` and `house`
 # + return - The GraphQL document
-isolated function employeesQuery(boolean includeHouse) returns string =>
+isolated function employeesQuery() returns string =>
     "query getEmployees($filter: EmployeeFilter!, $limit: Int, $offset: Int) { "
-    + "employees(filter: $filter, limit: $limit, offset: $offset) { " + EMPLOYEE_FIELDS
-    + (includeHouse ? " houseId house" : "") + " } }";
+    + "employees(filter: $filter, limit: $limit, offset: $offset) { " + EMPLOYEE_FIELDS + " } }";
 
 # Most pages one directory read will ask for. A service that never runs dry cannot loop the caller forever.
 const int MAX_DIRECTORY_PAGES = 100;
@@ -639,7 +633,7 @@ isolated function fetchDirectory(string? correlationId) returns (DirectoryIndex 
 isolated function fetchDirectoryPage(http:Client c, map<string> headers, int pageSize, int offset)
         returns DirectoryRecord[]|error {
     json body = {
-        query: employeesQuery(hrEntityIncludeHouse),
+        query: employeesQuery(),
         variables: {filter: {employeeStatus: hrEntityStatuses}, 'limit: pageSize, offset}
     };
     http:Response res = check c->post("", body, headers);

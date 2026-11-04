@@ -17,21 +17,18 @@
 import ballerina/test;
 
 @test:Config {groups: ["reads"]}
-function testTheHouseFieldsAreAskedForOnlyWhenSwitchedOn() {
-    string without = employeesQuery(false);
-    string with = employeesQuery(true);
-    test:assertFalse(without.includes("house"), "an older HR Entity has no house field, and asking for it fails the read");
-    test:assertTrue(with.includes("houseId house"));
-    test:assertTrue(with.includes("workEmail firstName lastName businessUnit team subTeam"), "and the rest is unchanged");
-    test:assertFalse(hrEntityIncludeHouse, "off by default");
+function testTheQueryAlwaysAsksForTheHouseFields() {
+    string query = employeesQuery();
+    test:assertTrue(query.includes("houseId house"), "house is always pulled in");
+    test:assertTrue(query.includes("workEmail firstName lastName businessUnit department subTeam"), "and the rest is unchanged");
 }
 
 @test:Config {groups: ["reads"]}
 function testAnEntityEmployeeWithAHouseFeedsTheIndex() returns error? {
     json rows = [
-        {workEmail: "Ada@WSO2.com", firstName: "Ada", lastName: "L", businessUnit: "Eng", team: "Core", subTeam: (), houseId: 3, house: "Titans"},
-        {workEmail: "grace@wso2.com", firstName: "Grace", lastName: "H", businessUnit: "Eng", team: "Core", subTeam: (), houseId: 3, house: "Titans"},
-        {workEmail: "ken@wso2.com", firstName: "Ken", lastName: "T", businessUnit: "Eng", team: "Core", subTeam: (), houseId: (), house: ()}
+        {workEmail: "Ada@WSO2.com", firstName: "Ada", lastName: "L", businessUnit: "Eng", department: "Core", subTeam: (), houseId: 3, house: "Titans"},
+        {workEmail: "grace@wso2.com", firstName: "Grace", lastName: "H", businessUnit: "Eng", department: "Core", subTeam: (), houseId: 3, house: "Titans"},
+        {workEmail: "ken@wso2.com", firstName: "Ken", lastName: "T", businessUnit: "Eng", department: "Core", subTeam: (), houseId: (), house: ()}
     ];
     DirectoryRecord[] records = check rows.cloneWithType();
     test:assertEquals(records[0].houseId, 3);
