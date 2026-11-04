@@ -26,3 +26,6 @@ local/dev-jwt/*
 
 # Local people-stub roster (real names and emails); copy directory.json.example to start
 local/people-stub/directory.json
+
+# Migration records: kept out of the repo (decision 2026-11-04)
+docs/migrations/
