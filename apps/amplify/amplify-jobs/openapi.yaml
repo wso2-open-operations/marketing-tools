@@ -24,7 +24,7 @@ paths:
       security: []
       description: >-
         Readiness. The body reports the database (breaker not open and `SELECT 1` answers) in `status`, `database` and
-        `breakers`; LinkedIn, Chat and the token keys are reported but not fatal, because a run defers those rows
+        `breakers`; LinkedIn, Novera and the token keys are reported but not fatal, because a run defers those rows
         (ADR-025). A database blip keeps the answer 200 while the database is configured, because Choreo stops routing
         on any non-2xx readiness response; `POST /runs` answers the scheduler's retryable 503 instead.
       responses:

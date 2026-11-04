@@ -90,7 +90,7 @@ isolated function stopContainer() returns error? {
 }
 
 function bareDeps(RunStore runStore, RunLock runLock, RunConfig cfg) returns Deps =>
-    {runStore, runLock, chat: (), linkedIn: (), cipher: (), config: cfg, breakers: noBreakers};
+    {runStore, runLock, novera: (), linkedIn: (), cipher: (), config: cfg, breakers: noBreakers};
 
 function waitForDb(postgresql:Client db, decimal timeoutSeconds) returns boolean {
     decimal waited = 0;

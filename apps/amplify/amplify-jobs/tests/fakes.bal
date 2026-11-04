@@ -15,11 +15,10 @@
 // under the License.
 
 // In-memory fakes for the run's ports: an outbox queue with the same claim/lease/attempt rules as
-// `amplify_domain.store`, a store whose writes feed that queue, and scripted Chat and LinkedIn.
+// `amplify_domain.store`, a store whose writes feed that queue, and scripted Novera and LinkedIn.
 
 import amplify_common.crypto;
 import amplify_common.events;
-import amplify_common.googlechat;
 import amplify_common.linkedin;
 import amplify_common.types;
 import amplify_domain.announcements;
@@ -117,7 +116,18 @@ isolated class MemRunStore {
         }
     }
 
-    # Puts a finished row back in the queue (a duplicate delivery / admin retry).
+    # The admin retry (`requeueTx`): back in the queue with its attempts reset, so it is claimed as attempt 1.
+    isolated function adminRetry(int id) {
+        lock {
+            MemRow r = <MemRow>self.rows[id.toString()];
+            r.status = "PENDING";
+            r.attempts = 0;
+            r.lastError = ();
+            r.dueAt = time:utcNow();
+        }
+    }
+
+    # Puts a finished row back in the queue (a duplicate delivery).
     isolated function redeliver(int id) {
         lock {
             MemRow r = <MemRow>self.rows[id.toString()];
@@ -216,6 +226,8 @@ isolated class MemStore {
     private RunSettings settingsValue = {};
     private boolean duplicateNext = false;
     private boolean publishWriteFails = false;
+    # `SENT`: the next save of a sent announcement fails; `ATTEMPT`: the next save of the attempt marker fails
+    private string? announcementSaveFails = ();
     private int reseals = 0;
 
     isolated function init(MemRunStore queue) {
@@ -310,10 +322,32 @@ isolated class MemStore {
 
     isolated function saveAnnouncement(announcements:Announcement announcement, events:OutboxEvent[] outbox)
             returns error? {
+        boolean sent = announcement.sentAt !is ();
+        boolean marker = announcements:hasUnfinishedAttempt(announcement);
         lock {
+            string? failing = self.announcementSaveFails;
+            if (failing == "SENT" && sent) || (failing == "ATTEMPT" && marker) {
+                self.announcementSaveFails = ();
+                return error("database blip");
+            }
             self.announcementRows[announcement.campaignId] = announcement.clone();
         }
         self.queue.enqueueEvents(outbox, ());
+    }
+
+    # Makes the next announcement save of one kind fail once.
+    #
+    # + kind - `SENT` (after Novera accepted) or `ATTEMPT` (the marker before the call)
+    isolated function failNextAnnouncementSave(string kind) {
+        lock {
+            self.announcementSaveFails = kind;
+        }
+    }
+
+    isolated function putAnnouncement(announcements:Announcement a) {
+        lock {
+            self.announcementRows[a.campaignId] = a.clone();
+        }
     }
 
     isolated function share(string campaignId, types:EmployeeId employeeId) returns sharing:ShareRequest|error? {
@@ -477,62 +511,6 @@ isolated class MemLock {
     }
 }
 
-isolated class FakeChat {
-    *ChatPort;
-
-    private string mode = "ok";
-    private int posts = 0;
-    private decimal delaySeconds = 0;
-    private string? lastCorrelationId = ();
-
-    isolated function setMode(string mode, decimal delaySeconds = 0) {
-        lock {
-            self.mode = mode;
-            self.delaySeconds = delaySeconds;
-        }
-    }
-
-    isolated function postCount() returns int {
-        lock {
-            return self.posts;
-        }
-    }
-
-    isolated function correlation() returns string? {
-        lock {
-            return self.lastCorrelationId;
-        }
-    }
-
-    isolated function space() returns string => "dev-test";
-
-    isolated function post(json message, string threadKey, string? correlationId)
-            returns googlechat:ChatMessage|googlechat:ChatError {
-        string mode;
-        decimal delay;
-        lock {
-            mode = self.mode;
-            delay = self.delaySeconds;
-            self.lastCorrelationId = correlationId;
-        }
-        if delay > 0d {
-            runtime:sleep(delay);
-        }
-        if mode == "429" {
-            return error googlechat:ChatError("rate limited", code = "RATE_LIMITED", httpStatus = 429, retryable = true);
-        }
-        if mode == "400" {
-            return error googlechat:ChatError("bad card", code = "REJECTED", httpStatus = 400, retryable = false);
-        }
-        lock {
-            self.posts += 1;
-            return {name: string `spaces/dev/messages/m${self.posts}`, threadName: "spaces/dev/threads/" + threadKey};
-        }
-    }
-
-    isolated function breaker() returns string => "CLOSED";
-}
-
 isolated class FakeLinkedIn {
     *linkedin:ProviderAdapter;
 
@@ -634,8 +612,7 @@ final RunConfig & readonly TEST_CONFIG = {
     deferSeconds: 900,
     linkedinMaxPostsPerRun: 50,
     linkedinMaxPostsPerDay: 1000,
-    sharePageBaseUrl: "https://one.wso2.com/amplify/celebrate",
-    chatSpace: "dev-test"
+    noveraButtonUrl: "https://one.wso2.com/amplify/celebrate?share={campaignId}"
 };
 
 function testCipher() returns crypto:TokenCipher|error {
@@ -812,27 +789,93 @@ isolated class FakeNovera {
 
     private string mode = "ok";
     private int count = 0;
+    private int callCount = 0;
+    private decimal delaySeconds = 0;
+    private string? lastCorrelationId = ();
+    private string? lastIdempotencyKey = ();
+    private string? lastButton = ();
 
-    isolated function setMode(string mode) {
+    # + mode - `ok`; definitely not sent: `503`, `429`, `401` (retryable), `unreachable` (token endpoint, retryable),
+    # `400` (refused); may have been sent: `500`, `502`, `timeout`
+    # + delaySeconds - Wait before answering
+    isolated function setMode(string mode, decimal delaySeconds = 0) {
         lock {
             self.mode = mode;
+            self.delaySeconds = delaySeconds;
         }
     }
 
+    # Cards Novera accepted.
     isolated function sent() returns int {
         lock {
             return self.count;
         }
     }
 
-    isolated function notify(announcements:NoveraNotification notification, string? correlationId)
-            returns NoveraError? {
+    # Calls made, accepted or not.
+    isolated function calls() returns int {
         lock {
-            if self.mode == "503" {
-                return noveraError("UNAVAILABLE", "down", 503, true);
-            }
-            if self.mode == "400" {
-                return noveraError("REJECTED", "bad", 400, false);
+            return self.callCount;
+        }
+    }
+
+    isolated function correlation() returns string? {
+        lock {
+            return self.lastCorrelationId;
+        }
+    }
+
+    isolated function idempotencyKey() returns string? {
+        lock {
+            return self.lastIdempotencyKey;
+        }
+    }
+
+    isolated function buttonUrl() returns string? {
+        lock {
+            return self.lastButton;
+        }
+    }
+
+    isolated function notify(announcements:NoveraNotification notification, string idempotencyKey,
+            string? correlationId) returns NoveraError? {
+        decimal delay;
+        lock {
+            delay = self.delaySeconds;
+            self.lastCorrelationId = correlationId;
+            self.lastIdempotencyKey = idempotencyKey;
+            self.lastButton = notification.button.url;
+            self.callCount += 1;
+        }
+        if delay > 0d {
+            runtime:sleep(delay);
+        }
+        lock {
+            match self.mode {
+                "503" => {
+                    return noveraError("UNAVAILABLE", "down", 503, true, "NO");
+                }
+                "429" => {
+                    return noveraError("RATE_LIMITED", "rate limited", 429, true, "NO");
+                }
+                "401" => {
+                    return noveraError("UNAVAILABLE", "credentials", 401, true, "NO");
+                }
+                "unreachable" => {
+                    return noveraError("UNAVAILABLE", "token endpoint", (), true, "NO");
+                }
+                "400" => {
+                    return noveraError("REJECTED", "bad", 400, false, "NO");
+                }
+                "500" => {
+                    return noveraError("OUTCOME_UNKNOWN", "server error", 500, false, "UNKNOWN");
+                }
+                "502" => {
+                    return noveraError("OUTCOME_UNKNOWN", "bad gateway", 502, false, "UNKNOWN");
+                }
+                "timeout" => {
+                    return noveraError("OUTCOME_UNKNOWN", "no response", (), false, "UNKNOWN");
+                }
             }
             self.count += 1;
         }
