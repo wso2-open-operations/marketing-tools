@@ -20,7 +20,7 @@ import amplify_common.events;
 
 import ballerina/time;
 
-# `CampaignAnnounced` once the card is sent (key `outbox.id`). A row read back without its outbox id is
+# `CampaignAnnounced` once Novera accepted the announcement (key `outbox.id`). A row read back without its outbox id is
 # keyed by `campaign.id` instead: the column is nullable, and defaulting to `0` would give every such
 # announcement the same key `CampaignAnnounced:0` and drop all but the first.
 #
@@ -32,7 +32,7 @@ public isolated function campaignAnnouncedEvent(Announcement announcement) retur
     events:OutboxEvent event = events:newCampaignAnnounced({
         campaignId: announcement.campaignId,
         outboxId: outboxId ?: 0,
-        chatMessageName: announcement.chatMessageName ?: "",
+        messageName: announcement.messageName ?: "",
         sentAt: sentAt is () ? "" : time:utcToString(sentAt)
     });
     if outboxId is () {
