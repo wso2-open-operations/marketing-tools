@@ -14,7 +14,7 @@ Data: [phase1-data-model › recognition](phase1-data-model.md#recognition--s4-r
 | **Personal** | The viewer only | Own rank, points, `points_to_next_rank`, `points_to_top_n`, movement, last activity. Merges into the podium when the viewer is in the top N | Leaderboard page, "your card" |
 | **My Team** | Every member of that team | Everyone in the viewer's team, ranked within the team: team rank, name, points. Headcount and "active" count on top | Leaderboard page, below your card; Team page for employees |
 
-The Celebrate top three and My position use `GET /leaderboard/top` (this calendar month by default, `leaderboard.top_scope`, monthly totals cached 2 hours: [ADR-037](../../decisions/ADR-037-celebrate-top-three-this-week.md); only people with `leaderboard.top_min_points` (100) that month are ranked); `GET /leaderboard` below stays `ALL` and feeds My Team.
+The Celebrate top three and My position use `GET /leaderboard/top` (this calendar month by default, `leaderboard.top_scope`, monthly totals cached until points change, 2 hours at most: [ADR-037](../../decisions/ADR-037-celebrate-top-three-this-week.md); everyone with points this month is ranked, with no minimum since #268); `GET /leaderboard` below stays `ALL` and feeds My Team.
 
 Period: `ALL` in phase 1. `period` is a parameter on every call so monthly or quarterly boards (plan D6, open) need no API change.
 
@@ -96,7 +96,7 @@ Team members with no standing row have no points yet. They count toward `headcou
 
 ## `GET /leaderboard`
 
-Employee and up. `?period=ALL` (default). ETag `<period>:<standing_version>:<viewer>`, where `<viewer>` is 16 hex characters of a SHA-256 over the viewer's employee id and team (name and size); `Cache-Control: private, max-age=30`, `Vary: Authorization`. The body is per viewer (`me`, `myTeam`), so the ETag has to be too: with only the standings in it, a browser revalidated one user's cached body for another after an account switch and got a 304 (fixed 2026-10-19). A body degraded by a directory outage carries no ETag and is `no-store`. The team index behind `myTeam` is reused for 3 days.
+Employee and up. `?period=ALL` (default). ETag `<period>:<standing_version>:<viewer>`, where `<viewer>` is 16 hex characters of a SHA-256 over the viewer's employee id and team (name and size); `Cache-Control: private, no-cache` (revalidated on every use, so new points show on the next request after they are awarded; was `max-age=30` until 2026-11-05), `Vary: Authorization`. The body is per viewer (`me`, `myTeam`), so the ETag has to be too: with only the standings in it, a browser revalidated one user's cached body for another after an account switch and got a 304 (fixed 2026-10-19). A body degraded by a directory outage carries no ETag and is `no-store`. The team index behind `myTeam` is reused for 3 days.
 
 ```jsonc
 {

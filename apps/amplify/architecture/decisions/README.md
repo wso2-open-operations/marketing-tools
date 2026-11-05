@@ -42,7 +42,7 @@ One file per decision, dated, short format (Status, Date, Context, Decision, Con
 | [ADR-034](ADR-034-share-is-a-repost.md) | The Amplify action is a REPOST of the campaign post; the D5 spike passed | Accepted |
 | [ADR-035](ADR-035-open-leaderboards-and-employee-count.md) | Open leaderboards by company, BU and team; employee count cached 7 days | Accepted |
 | [ADR-036](ADR-036-dashboards-for-amplify-roles.md) | Dashboards for the amplify_* roles, read from a reporting context | Accepted |
-| [ADR-037](ADR-037-celebrate-top-three-this-week.md) | Celebrate top three and My position are for this month, cached 2 hours | Accepted |
+| [ADR-037](ADR-037-celebrate-top-three-this-week.md) | Celebrate top three and My position are for this month, cached 2 hours | Accepted (amended 2026-11-05: reload when points change) |
 | [ADR-038](ADR-038-group-based-access-by-capability.md) | Group-based access by capability; Asgardeo groups per capability from configuration, `GET /me` returns grants | Accepted |
 | [ADR-039](ADR-039-internal-key-for-back-office-components.md) | An internal key (full access) and a scheduler key (`/runs` and partition maintenance only) protect amplify-jobs | Accepted (amended 2026-11-01) |
 | [ADR-040](ADR-040-erasure-leaver-sweep-and-token-grants.md) | One audited erase function, a leaver sweep, narrower token grants, outbox alerting | Accepted |

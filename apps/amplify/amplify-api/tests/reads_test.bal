@@ -85,13 +85,13 @@ function testLeaderboardEtagCacheControlAndRevalidation() returns error? {
     test:assertTrue(check body.me.inTopN);
     string etag = check first.getHeader("ETag");
     test:assertTrue(etag.startsWith("\"ALL:"), etag);
-    test:assertEquals(header(first, "Cache-Control"), "private, max-age=30");
+    test:assertEquals(header(first, "Cache-Control"), "private, no-cache");
     test:assertEquals(header(first, "Vary"), "Authorization");
 
     http:Response revalidated = check send("GET", "/leaderboard", (), token, {"If-None-Match": etag});
     test:assertEquals(revalidated.statusCode, 304);
     test:assertEquals(header(revalidated, "ETag"), etag, "a 304 carries the ETag (RFC 9110)");
-    test:assertEquals(header(revalidated, "Cache-Control"), "private, max-age=30");
+    test:assertEquals(header(revalidated, "Cache-Control"), "private, no-cache");
 
     // The body is per viewer: another user presenting this ETag (a shared browser cache after switching
     // accounts) must get their own 200, never a 304 that would show this user's position.
@@ -412,7 +412,7 @@ function testLeaderboardWithoutRosterConfiguredKeepsItsEtag() returns error? {
     test:assertEquals(res.statusCode, 200);
     test:assertEquals(check (check res.getJsonPayload()).teamStatus, "UNAVAILABLE");
     test:assertTrue(header(res, "ETag") is string, "no roster configured is a stable answer: still revalidated");
-    test:assertEquals(header(res, "Cache-Control"), "private, max-age=30");
+    test:assertEquals(header(res, "Cache-Control"), "private, no-cache");
 }
 
 // ---- /headcount, /leaderboard/groups, /leaderboard/people (ADR-035) -----------------------------------

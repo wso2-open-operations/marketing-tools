@@ -209,9 +209,29 @@ function bumpStandingVersion() {
     }
 }
 
+function currentStandingVersion() returns int {
+    lock {
+        return fakeStandingVersion;
+    }
+}
+
+# Makes the standing version unreadable while the rest of the database answers.
+isolated boolean standingVersionFails = false;
+
+function setStandingVersionFails(boolean fails) {
+    lock {
+        standingVersionFails = fails;
+    }
+}
+
 @test:Mock {functionName: "standingVersion"}
 isolated function mockStandingVersion(string period) returns int|error {
     check dbGate();
+    lock {
+        if standingVersionFails {
+            return error("standing version unavailable");
+        }
+    }
     lock {
         return fakeStandingVersion;
     }

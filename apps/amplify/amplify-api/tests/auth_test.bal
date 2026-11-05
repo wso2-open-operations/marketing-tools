@@ -25,8 +25,8 @@ import ballerina/test;
 import ballerina/time;
 import ballerinax/postgresql;
 
-// No client cache: `/leaderboard` is `private, max-age=30`, and a cached 200 would answer the anonymous and
-// breaker-open calls of later tests without reaching the server.
+// No client cache: `/leaderboard` is cacheable (`private`, revalidated with its ETag), and a cached 200
+// could answer the anonymous and breaker-open calls of later tests without reaching the server.
 final http:Client api = check new (string `http://localhost:${port}`, {cache: {enabled: false}});
 
 function call(string method, string path, string? token) returns http:Response|error {
