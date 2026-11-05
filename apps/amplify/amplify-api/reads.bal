@@ -178,7 +178,8 @@ isolated function viewerTag(string employeeId, Roster? roster) returns string {
 }
 
 # `Cache-Control` of a leaderboard that can be revalidated with its ETag. `no-cache`: the browser revalidates on
-# every use, so a repost shows at once, and an unchanged board costs a 304 (one version read).
+# every use, so new points show on the next request after they are awarded, and an unchanged board costs a 304
+# (one version read).
 const string LEADERBOARD_CACHE = "private, no-cache";
 
 isolated function leaderboard(auth:Principal p, string? correlationId, string period, string? ifNoneMatch)

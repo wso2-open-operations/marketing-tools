@@ -36,7 +36,8 @@ import ballerina/time;
 configurable decimal topBoardCacheSeconds = 7200;
 
 # `Cache-Control` of the top board: the body holds the viewer's own position, so it is private. `no-cache`: the
-# browser asks again each time (answered from memory), so a repost shows on the podium at once.
+# browser asks again each time (answered from memory), so new points show on the podium on the next request after
+# they are awarded. A repost is queued (202); its points are awarded when Amplify Jobs publishes it.
 const string TOP_BOARD_CACHE = "private, no-cache";
 
 # Monthly points per employee as of `loadedAt`.
@@ -84,7 +85,13 @@ isolated function monthlyTotals(time:Utc now) returns MonthlyTotals|error {
     // Read before the totals: a write landing between the two reads leaves the totals newer than the version they
     // are stored with, so the next call reads once more instead of keeping old totals.
     int|error current = standingVersion("ALL");
-    int? version = current is int ? current : ();
+    int? version = ();
+    if current is int {
+        version = current;
+    } else {
+        log:printWarn("Standing version read failed, the top board falls back to its lifetime",
+                reason = resilience:loggable(current).message());
+    }
     MonthlyTotals? stale = ();
     lock {
         MonthlyTotals? hit = monthlyCache;

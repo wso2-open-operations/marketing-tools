@@ -96,7 +96,7 @@ Team members with no standing row have no points yet. They count toward `headcou
 
 ## `GET /leaderboard`
 
-Employee and up. `?period=ALL` (default). ETag `<period>:<standing_version>:<viewer>`, where `<viewer>` is 16 hex characters of a SHA-256 over the viewer's employee id and team (name and size); `Cache-Control: private, no-cache` (revalidated on every use, so a repost shows at once; was `max-age=30` until 2026-11-05), `Vary: Authorization`. The body is per viewer (`me`, `myTeam`), so the ETag has to be too: with only the standings in it, a browser revalidated one user's cached body for another after an account switch and got a 304 (fixed 2026-10-19). A body degraded by a directory outage carries no ETag and is `no-store`. The team index behind `myTeam` is reused for 3 days.
+Employee and up. `?period=ALL` (default). ETag `<period>:<standing_version>:<viewer>`, where `<viewer>` is 16 hex characters of a SHA-256 over the viewer's employee id and team (name and size); `Cache-Control: private, no-cache` (revalidated on every use, so new points show on the next request after they are awarded; was `max-age=30` until 2026-11-05), `Vary: Authorization`. The body is per viewer (`me`, `myTeam`), so the ETag has to be too: with only the standings in it, a browser revalidated one user's cached body for another after an account switch and got a 304 (fixed 2026-10-19). A body degraded by a directory outage carries no ETag and is `no-store`. The team index behind `myTeam` is reused for 3 days.
 
 ```jsonc
 {

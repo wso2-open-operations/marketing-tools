@@ -597,7 +597,7 @@ paths:
       tags: [S4 Recognition]
       operationId: getLeaderboard
       x-access: EMPLOYEE
-      description: "Company top N, personal, and My Team (leaderboards.md, B15). ETag `<period>:<standing_version>:<viewer>` with `Cache-Control: private, no-cache`, so the browser revalidates on every use and a new repost shows at once; `If-None-Match` gives 304 with the same two headers. When the roster lookup failed (`teamStatus = UNAVAILABLE` with a roster configured) the body has no ETag and is `Cache-Control: no-store`, so it is never revalidated into a stale My Team."
+      description: "Company top N, personal, and My Team (leaderboards.md, B15). ETag `<period>:<standing_version>:<viewer>` with `Cache-Control: private, no-cache`, so the browser revalidates on every use and new points show on the next request after they are awarded (a repost is queued and scored when Amplify Jobs publishes it); `If-None-Match` gives 304 with the same two headers. When the roster lookup failed (`teamStatus = UNAVAILABLE` with a roster configured) the body has no ETag and is `Cache-Control: no-store`, so it is never revalidated into a stale My Team."
       parameters:
         - {$ref: "#/components/parameters/CorrelationId"}
         - {$ref: "#/components/parameters/Period"}
@@ -624,7 +624,7 @@ paths:
       tags: [S4 Recognition]
       operationId: getLeaderboardTop
       x-access: EMPLOYEE
-      description: "The Celebrate top three and the caller's own position, company wide. The scope is the `leaderboard.top_scope` setting: `MONTH` (default) covers the current calendar month, the 1st 00:00 UTC to the next 1st, summed from the points ledger; `ALL` is the all-time standings. Everyone with points this month is ranked (no minimum). Monthly totals are shared by every caller and kept in memory until points change: each request compares the `ALL` standing version, which every ledger write bumps, with the one the totals were read at, and reloads when it moved. `topBoardCacheSeconds` (default 2 hours) caps the reuse when nothing changes or the version can't be read; a failed reload serves the previous totals of the same month. `Cache-Control: private, no-cache`, so a repost shows at once. `me` comes from the same totals, so it matches the top three (ADR-037)."
+      description: "The Celebrate top three and the caller's own position, company wide. The scope is the `leaderboard.top_scope` setting: `MONTH` (default) covers the current calendar month, the 1st 00:00 UTC to the next 1st, summed from the points ledger; `ALL` is the all-time standings. Everyone with points this month is ranked (no minimum). Monthly totals are shared by every caller and kept in memory until points change: each request compares the `ALL` standing version, which every ledger write bumps, with the one the totals were read at, and reloads when it moved. `topBoardCacheSeconds` (default 2 hours) caps the reuse when nothing changes or the version can't be read; a failed reload serves the previous totals of the same month. `Cache-Control: private, no-cache`, so new points show on the next request after they are awarded. A repost is only accepted into a queue (`202`): its points, and the `ALL` standing version, change when Amplify Jobs publishes it, so a request made before that still returns the previous points. `me` comes from the same totals, so it matches the top three (ADR-037)."
       parameters:
         - {$ref: "#/components/parameters/CorrelationId"}
       responses:

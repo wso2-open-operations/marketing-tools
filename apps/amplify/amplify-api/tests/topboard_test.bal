@@ -98,7 +98,7 @@ function testAPointsChangeReloadsTheTotalsAtOnce() returns error? {
     MonthlyTotals again = check monthlyTotals(THURSDAY);
     setMonthTotals(());
     dropMonthlyCache();
-    test:assertEquals(after.totals[0].totalPoints, 11, "the new repost counts at once");
+    test:assertEquals(after.totals[0].totalPoints, 11, "the new points count at once");
     test:assertEquals(after.version, currentStandingVersion());
     test:assertEquals(again.totals[0].totalPoints, 11);
     test:assertEquals(takeMonthReads(), 1, "one read for the change, then reused");
@@ -157,7 +157,7 @@ function testTheTopBoardIsAskedForEachTimeAndShowsANewRepostAtOnce() returns err
     test:assertEquals(header(first, "Cache-Control"), "private, no-cache");
     test:assertEquals(check (check first.getJsonPayload()).me.points, 9);
     test:assertEquals(second.statusCode, 200);
-    test:assertEquals(check (check second.getJsonPayload()).me.points, 11, "the repost shows on the next request");
+    test:assertEquals(check (check second.getJsonPayload()).me.points, 11, "the new points show on the next request");
 }
 
 @test:Config
