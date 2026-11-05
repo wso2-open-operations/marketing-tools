@@ -246,7 +246,7 @@ isolated service class SecurityHeadersInterceptor {
         res.setHeader("Content-Security-Policy", "upgrade-insecure-requests");
         res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
         // Responses carry personal data (emails, points): nothing caches them unless the resource says so
-        // (`/leaderboard` and `/po/dashboard` set `private, max-age`).
+        // (`/po/dashboard` sets `private, max-age`; `/leaderboard` and `/leaderboard/top` set `private, no-cache`).
         if !res.hasHeader("Cache-Control") {
             res.setHeader("Cache-Control", "no-store");
         }

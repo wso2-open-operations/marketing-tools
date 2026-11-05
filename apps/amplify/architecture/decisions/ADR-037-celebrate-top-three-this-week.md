@@ -1,6 +1,6 @@
 # ADR-037: Celebrate top three and My position are for this month, cached 2 hours
 
-- **Status:** Accepted. Amended 2026-10-29: the scope was the calendar week, now the calendar month (the file keeps its name so links hold)
+- **Status:** Accepted. Amended 2026-10-29: the scope was the calendar week, now the calendar month (the file keeps its name so links hold). Amended 2026-11-05: the totals reload when points change; 2 hours is only the cap (see below)
 - **Date:** 2026-10-22
 - **Source:** Lead Developer, 2026-10-22; amends ADR-014 (top N is no longer always all-time)
 
@@ -26,6 +26,15 @@ The Celebrate "Top three amplifiers" read the all-time standings, so the same pe
 - On the 1st the board starts empty ("No points yet this month").
 - `previousRank` is not tracked for months (always null).
 - The month sum reads `scoring.points_ledger` from the recognition context, as the rebuild already does.
+
+## Amendment (2026-11-05): the totals reload when points change
+
+On staging a repost at 08:41 UTC stayed off the podium and My position (9 points shown, 11 earned) while the team board already counted it. The monthly totals had been read before the repost and were reused for up to 2 hours, and the browser kept each answer another 60 s.
+
+- **Reload on change.** Every ledger write (repost, adjustment, reversal) bumps the `ALL` standing version in its own transaction (`recognition_apply_ledger_entry`, B12). The cached totals now carry the version they were read at. Each `GET /leaderboard/top` reads the version (one row, as `GET /leaderboard` already does for its ETag) and reloads the totals when it moved. The version is read before the totals, so a write landing between the two reads costs one more reload, never old totals.
+- **2 hours is the cap.** `topBoardCacheSeconds` (default 7200) is now the longest reuse while nothing changes, for changes outside the ledger such as a renamed employee. When the version can't be read, only the age counts, as before. A failed reload still serves the previous totals of the same month.
+- **The browser asks each time.** `GET /leaderboard/top` and `GET /leaderboard` are `private, no-cache` (were `max-age=60` and `max-age=30`). The top board is answered from memory; the leaderboard's ETag turns an unchanged board into a 304. One WSO2 also refreshes both boards after a repost.
+- **Consequences.** A repost shows on the podium, My position and My Team on the next request, replacing decision 5's "up to 2 hours (plus 60 s in the browser)". Each top board request costs one primary-key read. A burst after an announcement still sums the month once per change per replica; callers arriving together on a change may each read once, as before.
 
 ## Links
 
