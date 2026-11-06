@@ -432,6 +432,15 @@ type DirectoryIndex record {|
     # Team key to its business unit, as the directory states it (the key carries it, so a team is never
     # guessed into a BU)
     map<string> teamBu;
+    # Lowercase email to department key (`bu/department`): the team with its sub-team dropped, for the
+    # dashboards' team boards
+    map<string> departmentOf;
+    # Department key to display name
+    map<string> departmentNames;
+    # Department key to member emails, lowercase
+    map<string[]> departmentMembers;
+    # Department key to its business unit, as the directory states it
+    map<string> departmentBu;
     # Everyone the directory returned with a work email, whether or not they have a team
     int total;
     # Lowercase email to display name (first and last name; people without a name are left out)
@@ -448,6 +457,9 @@ isolated [DirectoryIndex & readonly, decimal]? directoryCache = ();
 # always the one the directory gives its members, never worked out. People with neither team nor sub-team
 # are left out of teams (they still count toward the headcount and their BU).
 #
+# The same rows are also grouped by department (the HR Entity's `department`, with the sub-team dropped),
+# which is what the dashboards' team boards rank. A department is one row whatever its sub-teams.
+#
 # + records - Directory rows
 # + return - The index
 isolated function indexDirectory(DirectoryRecord[] records) returns DirectoryIndex & readonly {
@@ -459,6 +471,10 @@ isolated function indexDirectory(DirectoryRecord[] records) returns DirectoryInd
     map<string> houseOf = {};
     map<string[]> houseMembers = {};
     map<string> teamBu = {};
+    map<string> departmentOf = {};
+    map<string> departmentNames = {};
+    map<string[]> departmentMembers = {};
+    map<string> departmentBu = {};
     map<string> nameOf = {};
     string[] everyone = [];
     map<boolean> seen = {};
@@ -489,6 +505,16 @@ isolated function indexDirectory(DirectoryRecord[] records) returns DirectoryInd
             buList.push(email);
             buMembers[bu] = buList;
         }
+        // A department needs the HR Entity's `department`; a sub-team alone cannot be placed in one.
+        if team != "" {
+            string departmentKey = string `${bu}/${team}`;
+            departmentOf[email] = departmentKey;
+            departmentNames[departmentKey] = team;
+            departmentBu[departmentKey] = bu;
+            string[] departmentList = departmentMembers[departmentKey] ?: [];
+            departmentList.push(email);
+            departmentMembers[departmentKey] = departmentList;
+        }
         if team == "" && subTeam == "" {
             continue;
         }
@@ -500,7 +526,8 @@ isolated function indexDirectory(DirectoryRecord[] records) returns DirectoryInd
         list.push(email);
         members[key] = list;
     }
-    return {teamOf, teamNames, members, buOf, buMembers, houseOf, houseMembers, teamBu, total: seen.length(), nameOf, everyone}.cloneReadOnly();
+    return {teamOf, teamNames, members, buOf, buMembers, houseOf, houseMembers, teamBu, departmentOf,
+            departmentNames, departmentMembers, departmentBu, total: seen.length(), nameOf, everyone}.cloneReadOnly();
 }
 
 # The viewer's roster from the index.
@@ -704,13 +731,13 @@ type HouseCount record {|
     int headcount;
 |};
 
-# Employees in one team.
+# Employees in one team or department.
 type TeamCount record {|
-    # Opaque team key (`team/subTeam`), what the board endpoints take as `team`
+    # Opaque key: `bu/team/subTeam` for a team, `bu/department` for a department
     string key;
-    # Team name (the sub-team, or the team when there is no sub-team)
+    # Name (the sub-team, the team, or the department)
     string name;
-    # Business unit most of the team sits in, `()` when the directory names none
+    # Business unit the group sits in, `()` when the directory names none
     string? businessUnit;
     # Employees
     int headcount;
@@ -726,6 +753,8 @@ type HeadcountSnapshot record {|
     HouseCount[] houses;
     # By team, largest first
     TeamCount[] teams;
+    # By department, largest first: the unit the dashboards' team boards rank
+    TeamCount[] departments;
     # When the directory was read (UTC)
     string asOf;
 |};
@@ -753,7 +782,15 @@ isolated function headcountOf(DirectoryIndex index, time:Utc asOf) returns Headc
         let string bu = index.teamBu[key] ?: ""
         order by n descending, name ascending, key ascending
         select {key, name, businessUnit: bu == "" ? () : bu, headcount: n};
-    return {total: index.total, businessUnits, houses, teams, asOf: time:utcToString(asOf)}.cloneReadOnly();
+    TeamCount[] departments = from var [key, emails] in index.departmentMembers.entries()
+        let int n = emails.length()
+        let string name = index.departmentNames[key] ?: key
+        let string bu = index.departmentBu[key] ?: ""
+        order by n descending, name ascending, key ascending
+        select {key, name, businessUnit: bu == "" ? () : bu, headcount: n};
+    return {
+        total: index.total, businessUnits, houses, teams, departments, asOf: time:utcToString(asOf)
+    }.cloneReadOnly();
 }
 
 # The employee count: reused for `headcountCacheSeconds`, then counted again from a fresh directory call

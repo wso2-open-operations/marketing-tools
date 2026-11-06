@@ -138,14 +138,17 @@ isolated function rankGroups(GroupRow[] rows, string sortBy = "rank", string dir
         };
 }
 
-# Teams (or BUs) with their points, from the directory index and the standings. Pure, so it is testable
-# without a database.
+# Groups (departments, BUs or houses) with their points, from the directory index and the standings. Pure,
+# so it is testable without a database.
+#
+# `TEAM` ranks departments: the HR Entity's `department` with the sub-team dropped, so a department is one
+# row whatever its sub-teams. The roster and the team page still group by sub-team (`DirectoryIndex.teamOf`).
 #
 # + index - Directory index
 # + snapshot - Employee count (the denominators)
 # + points - Everyone's points
 # + groupBy - `TEAM`, `BU` or `HOUSE`
-# + bu - Only the teams in this BU (`TEAM` only), or `()`
+# + bu - Only the departments in this BU (`TEAM` only), or `()`
 # + return - The unranked rows and the points of people the directory doesn't place
 isolated function groupRows(DirectoryIndex index, HeadcountSnapshot snapshot, recognition:EmailPoints[] points,
         GroupBy groupBy, string? bu) returns [GroupRow[], int, int] {
@@ -161,7 +164,7 @@ isolated function groupRows(DirectoryIndex index, HeadcountSnapshot snapshot, re
                 headcount: h.headcount};
         }
     } else {
-        foreach TeamCount t in snapshot.teams {
+        foreach TeamCount t in snapshot.departments {
             if bu is string && t.businessUnit != bu {
                 continue;
             }
@@ -173,7 +176,7 @@ isolated function groupRows(DirectoryIndex index, HeadcountSnapshot snapshot, re
     int unassignedPoints = 0;
     foreach recognition:EmailPoints e in points {
         string? key = groupBy == "BU" ? index.buOf[e.email]
-            : groupBy == "HOUSE" ? index.houseOf[e.email] : index.teamOf[e.email];
+            : groupBy == "HOUSE" ? index.houseOf[e.email] : index.departmentOf[e.email];
         if key is () {
             unassignedPeople += 1;
             unassignedPoints += e.totalPoints;
