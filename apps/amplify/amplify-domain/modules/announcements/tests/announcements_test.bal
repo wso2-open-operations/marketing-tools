@@ -208,3 +208,38 @@ function adminRetryClearsBothTheFailureAndTheMarker() returns error? {
     test:assertEquals(code(retryAnnouncement(attempted)), types:ERR_ANNOUNCEMENT_NOT_FAILED,
             "a queued attempt is not retried by hand");
 }
+
+// ---- Novera seen counts (V023) ---------------------------------------------------------------------
+
+@test:Config
+function referenceGoesOutOnlyWhenAskedForAndOnlyWhenUrlSafe() returns error? {
+    CampaignCardSource c = {campaignId: "0192f0e0-aaaa-7bbb-8ccc-123456789abc", title: "T", summary: (), imageUrl: (),
+        isPriority: false};
+    NoveraNotification plain = check buildNoveraNotification(c, BUTTON);
+    test:assertFalse(plain.hasKey("reference"), "an older Novera refuses unknown fields: no reference by default");
+    NoveraNotification counted = check buildNoveraNotification(c, BUTTON, withReference = true);
+    test:assertEquals(counted?.reference, "0192f0e0-aaaa-7bbb-8ccc-123456789abc");
+}
+
+@test:Config
+function onlyUrlSafeIdsAreNoveraIds() {
+    foreach string ok in ["0b9a7c1e-1f2d-4c3b-9a8e-7d6c5b4a3f21", "amplify:c1", "a.b_c-d"] {
+        test:assertTrue(isNoveraId(ok), ok);
+    }
+    string long = "";
+    foreach int _ in 0 ..< 101 {
+        long += "a";
+    }
+    foreach string bad in ["", "a/b", "../x", "a b", "a?b", long] {
+        test:assertFalse(isNoveraId(bad), bad);
+    }
+}
+
+@test:Config
+function aSentAnnouncementKeepsNoverasBroadcastId() returns error? {
+    Announcement a = check queueAnnouncement((), "c1", 42, T0);
+    Announcement sent = check markSent(a, "novera:c1", T0, "0b9a7c1e-1f2d-4c3b-9a8e-7d6c5b4a3f21");
+    test:assertEquals(sent.noveraNotificationId, "0b9a7c1e-1f2d-4c3b-9a8e-7d6c5b4a3f21");
+    test:assertEquals((check markSent(a, "novera:c1", T0)).noveraNotificationId, (), "an older Novera returns no id");
+    test:assertEquals((check markSent(a, "novera:c1", T0, "a/b")).noveraNotificationId, (), "an unsafe id is dropped");
+}
