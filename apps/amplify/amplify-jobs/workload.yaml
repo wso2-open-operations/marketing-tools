@@ -89,3 +89,5 @@ configurations:
       value: ""
     - name: BAL_CONFIG_VAR_AMPLIFYONNOVERA
       value: "true"
+    - name: BAL_CONFIG_VAR_NOVERASEENSTATSENABLED
+      value: "false"

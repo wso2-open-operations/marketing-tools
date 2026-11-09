@@ -794,6 +794,72 @@ isolated class FakeNovera {
     private string? lastCorrelationId = ();
     private string? lastIdempotencyKey = ();
     private string? lastButton = ();
+    private string? lastReference = ();
+    # Broadcast id returned with an accepted card (`()` = an older Novera)
+    private string? acceptedId = ();
+    # Seen count (or an error code) per broadcast id
+    private map<announcements:NoveraSeenStats|string> statsById = {};
+    private string[] statsAsked = [];
+
+    # + id - Broadcast id the next accepted cards get back
+    isolated function returnId(string? id) {
+        lock {
+            self.acceptedId = id;
+        }
+    }
+
+    # + id - Broadcast id
+    # + answer - The count, or an error code: `NOT_FOUND`, `BAD_RESPONSE`, `500`, `503`, `429`, `401`, `down` (no answer)
+    isolated function setStats(string id, announcements:NoveraSeenStats|string answer) {
+        lock {
+            self.statsById[id] = answer.clone();
+        }
+    }
+
+    # Broadcast ids asked for a count, in order.
+    isolated function statsCalls() returns string[] {
+        lock {
+            return self.statsAsked.clone();
+        }
+    }
+
+    isolated function reference() returns string? {
+        lock {
+            return self.lastReference;
+        }
+    }
+
+    isolated function stats(string notificationId, string? correlationId)
+            returns announcements:NoveraSeenStats|NoveraError {
+        lock {
+            self.statsAsked.push(notificationId);
+            announcements:NoveraSeenStats|string? answer = self.statsById[notificationId];
+            if answer is announcements:NoveraSeenStats {
+                return answer.clone();
+            }
+            match answer {
+                "BAD_RESPONSE" => {
+                    return noveraError("BAD_RESPONSE", "not a count", 200, false, "NO");
+                }
+                "500" => {
+                    return noveraError("UNAVAILABLE", "server error", 500, true, "NO");
+                }
+                "503" => {
+                    return noveraError("UNAVAILABLE", "down", 503, true, "NO");
+                }
+                "429" => {
+                    return noveraError("RATE_LIMITED", "rate limited", 429, true, "NO");
+                }
+                "401" => {
+                    return noveraError("UNAVAILABLE", "credentials", 401, true, "NO");
+                }
+                "down" => {
+                    return noveraError("UNAVAILABLE", "no answer", (), true, "NO");
+                }
+            }
+            return noveraError("NOT_FOUND", "unknown broadcast", 404, false, "NO");
+        }
+    }
 
     # + mode - `ok`; definitely not sent: `503`, `429`, `401` (retryable), `unreachable` (token endpoint, retryable),
     # `400` (refused); may have been sent: `500`, `502`, `timeout`
@@ -838,13 +904,14 @@ isolated class FakeNovera {
     }
 
     isolated function notify(announcements:NoveraNotification notification, string idempotencyKey,
-            string? correlationId) returns NoveraError? {
+            string? correlationId) returns string|NoveraError? {
         decimal delay;
         lock {
             delay = self.delaySeconds;
             self.lastCorrelationId = correlationId;
             self.lastIdempotencyKey = idempotencyKey;
             self.lastButton = notification.button.url;
+            self.lastReference = notification?.reference;
             self.callCount += 1;
         }
         if delay > 0d {
@@ -878,8 +945,69 @@ isolated class FakeNovera {
                 }
             }
             self.count += 1;
+            return self.acceptedId;
         }
     }
 
     isolated function breaker() returns string => "CLOSED";
+}
+
+# Announcements with a Novera broadcast id, and the counts saved for them (`NoveraStatsStore`).
+isolated class MemNoveraStats {
+    *NoveraStatsStore;
+
+    private announcements:NoveraStatsTarget[] due = [];
+    private map<announcements:NoveraSeenStats?> saved = {};
+    private string[] savedOrder = [];
+    private boolean dueFails = false;
+    private int[] asked = [];
+
+    isolated function init(announcements:NoveraStatsTarget[] due) {
+        self.due = due.clone();
+    }
+
+    isolated function failDueList() {
+        lock {
+            self.dueFails = true;
+        }
+    }
+
+    isolated function noveraStatsDue(int windowDays, int refreshSeconds, int 'limit)
+            returns announcements:NoveraStatsTarget[]|error {
+        lock {
+            if self.dueFails {
+                return error("database blip");
+            }
+            self.asked = [windowDays, refreshSeconds, 'limit];
+            return self.due.length() > 'limit ? self.due.slice(0, 'limit).clone() : self.due.clone();
+        }
+    }
+
+    isolated function saveNoveraStats(string campaignId, announcements:NoveraSeenStats? stats, time:Utc checkedAt)
+            returns error? {
+        lock {
+            self.saved[campaignId] = stats.clone();
+            self.savedOrder.push(campaignId);
+        }
+    }
+
+    # Campaign ids saved, in order (a time-only save included).
+    isolated function savedIds() returns string[] {
+        lock {
+            return self.savedOrder.clone();
+        }
+    }
+
+    isolated function savedFor(string campaignId) returns announcements:NoveraSeenStats? {
+        lock {
+            return self.saved[campaignId].clone();
+        }
+    }
+
+    # `[windowDays, refreshSeconds, limit]` of the last due query.
+    isolated function query() returns int[] {
+        lock {
+            return self.asked.clone();
+        }
+    }
 }

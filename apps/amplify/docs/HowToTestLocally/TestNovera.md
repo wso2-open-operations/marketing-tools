@@ -246,3 +246,39 @@ Because `agent_dm_spaces` holds only your row, a broadcast can reach only you. C
 docker run -d --name novera-mysql -p 3306:3306 -e MYSQL_ROOT_PASSWORD=devpass mysql:8.4 --event-scheduler=ON
 docker exec -i novera-mysql mysql -uroot -pdevpass < projects/wso2-digital-agents/po-agent/src/db/schema.sql
 ```
+
+## 11. Seen counts (V023)
+
+A Novera with seen counts answers an announcement with `{"accepted": true, "notificationId": "..."}` and serves
+`GET /internal/notifications/{notificationId}/stats` (`recipients`, `seen`, …). amplify-jobs sends each card's post id
+as `reference`, keeps the id, and copies the count during runs. All of it is behind
+`BAL_CONFIG_VAR_NOVERASEENSTATSENABLED` (default `false`): an older Novera refuses unknown fields, so turn it on only
+once the Novera you call knows `reference`.
+
+### With the mock
+
+The mock gives every card a new id and makes up the count (`MOCK_RECIPIENTS`, default 900; `MOCK_SEEN`, default 312,
+or `grow` to add 25 on every stats call; `MOCK_NO_ID=true` behaves like an older Novera).
+
+```bash
+cd local/novera-mock && MOCK_SEEN=grow node server.mjs
+```
+
+Jobs settings: `NOVERA_NOTIFY_URL=http://host.docker.internal:3003/internal/notifications`,
+`NOVERA_TOKEN_URL=http://host.docker.internal:3003/token`, any client id and secret, `NOVERA_ALLOW_INSECURE_HTTP=true`,
+`NOVERA_SEEN_STATS_ENABLED=true`. Without Docker, run amplify-jobs with `bal run` and the same values as
+`BAL_CONFIG_VAR_*` (`localhost` instead of `host.docker.internal`), against a local PostgreSQL migrated by
+amplify-database.
+
+1. Create a post (New Post in One WSO2, or `POST /campaigns` on amplify-api). The mock logs `reference` = the post id
+   and the broadcast id it returned; `announcement.novera_notification_id` holds that id.
+2. The first run after sending copies the count: the run log shows `noveraStats=1` and the row gets
+   `novera_recipients`, `novera_seen` and `novera_checked_at`. Later runs refresh it every
+   `noveraStatsRefreshSeconds` (default 10800). To refresh sooner while testing, set
+   `BAL_CONFIG_VAR_NOVERASTATSREFRESHSECONDS=60` or clear the time:
+   `UPDATE announcement SET novera_checked_at = NULL;`.
+3. Operations board (`GET /dashboards/operations`): the post's `announcement` carries `recipients`, `seen` and
+   `seenCheckedAt`.
+
+Counts stop refreshing `noveraStatsWindowDays` (default 14) after sending. A broadcast the mock doesn't know (restart
+it) answers 404: the row keeps only the time and waits a refresh interval.

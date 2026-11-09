@@ -18,8 +18,9 @@
 // the Club space webhook). A campaign announcement goes to `POST /internal/notifications`, and Novera sends it as a
 // card to everyone who has a chat open with it.
 // Mirrors the Today I Learned backend's novera client (cs-tools apps/today-i-learned/backend/internal/novera).
-// Novera answers 202 before it has sent anything, so there is no message name to keep. No HTTP-level retry: the
-// outbox retries (ADR-025).
+// Novera answers 202 before it has sent anything, so there is no message name to keep; a Novera with seen counts
+// returns its broadcast id instead, and `GET .../{id}/stats` later says how many of the DMs have read past the card.
+// No HTTP-level retry: the outbox retries (ADR-025).
 // Novera does not dedupe (owner decision 2026-11-03: it ignores `Idempotency-Key`), so Amplify announces a campaign
 // at most once on its own: every error says whether the card definitely did not go out (`delivered = "NO"`: the
 // client could not be built, the breaker was open, or Novera answered 401, 403, 429, 503 or another refusal) or
@@ -38,7 +39,8 @@ type NoveraDelivery "NO"|"UNKNOWN";
 
 # Why Novera did not accept an announcement.
 type NoveraErrorDetail record {|
-    # `UNAVAILABLE`, `RATE_LIMITED`, `REJECTED` or `OUTCOME_UNKNOWN`
+    # `UNAVAILABLE`, `RATE_LIMITED`, `REJECTED` or `OUTCOME_UNKNOWN`; the stats call also gives `NOT_FOUND` and
+    # `BAD_RESPONSE`
     string code;
     # HTTP status, `()` when there was no response
     int? httpStatus;
@@ -55,9 +57,19 @@ const string IDEMPOTENCY_HEADER = "Idempotency-Key";
 
 # Port to Novera's notifications endpoint.
 type NoveraPort isolated object {
+    # Sends one announcement. Accepted: Novera's broadcast id when it returned one, else `()`.
     isolated function notify(announcements:NoveraNotification notification, string idempotencyKey,
-            string? correlationId) returns NoveraError?;
+            string? correlationId) returns string|NoveraError?;
+    # A broadcast's seen count. `NOT_FOUND` when Novera doesn't know the id.
+    isolated function stats(string notificationId, string? correlationId)
+            returns announcements:NoveraSeenStats|NoveraError;
     isolated function breaker() returns string;
+};
+
+# The fields of Novera's stats answer that Amplify reads (the others are ignored).
+type NoveraStatsBody record {
+    int recipients;
+    int seen;
 };
 
 # `NoveraPort` over the Choreo gateway, with a client-credentials token from an application subscribed to
@@ -109,7 +121,7 @@ isolated class NoveraClient {
     }
 
     isolated function notify(announcements:NoveraNotification notification, string idempotencyKey,
-            string? correlationId) returns NoveraError? {
+            string? correlationId) returns string|NoveraError? {
         http:Client|error conn = self.connect();
         if conn is error {
             // The token fetch failed while the client was built: no request reached Novera.
@@ -135,7 +147,8 @@ isolated class NoveraClient {
         }
         int status = response.statusCode;
         if status == http:STATUS_ACCEPTED || status == http:STATUS_OK {
-            return;
+            // The card is accepted whatever the body says: a missing, odd or unreadable id only means no seen count.
+            return notificationIdOf(response);
         }
         if status == http:STATUS_TOO_MANY_REQUESTS {
             return noveraError("RATE_LIMITED", "Novera rate limited", status, true, "NO");
@@ -157,6 +170,40 @@ isolated class NoveraClient {
         }
         return noveraError("REJECTED", string `Novera refused the announcement with HTTP ${status}`, status, false,
                 "NO");
+    }
+
+    isolated function stats(string notificationId, string? correlationId)
+            returns announcements:NoveraSeenStats|NoveraError {
+        if !announcements:isNoveraId(notificationId) {
+            return noveraError("REJECTED", "Novera broadcast id is not URL-safe", (), false, "NO");
+        }
+        http:Client|error conn = self.connect();
+        if conn is error {
+            return noveraError("UNAVAILABLE", "Novera token endpoint unreachable", (), true, "NO");
+        }
+        string base = self.path.endsWith("/") ? self.path.substring(0, self.path.length() - 1) : self.path;
+        http:Response|http:ClientError response = conn->get(string `${base}/${notificationId}/stats`,
+                resilience:correlationHeaders(correlationId));
+        if response is http:ClientError {
+            return noveraError("UNAVAILABLE", response is http:UpstreamServiceUnavailableError
+                ? "Novera circuit open" : "Novera stats call failed: no response", (), true, "NO");
+        }
+        int status = response.statusCode;
+        if status == http:STATUS_NOT_FOUND {
+            return noveraError("NOT_FOUND", "Novera doesn't know this broadcast", status, false, "NO");
+        }
+        if status == http:STATUS_TOO_MANY_REQUESTS {
+            return noveraError("RATE_LIMITED", "Novera rate limited", status, true, "NO");
+        }
+        if status != http:STATUS_OK {
+            return noveraError("UNAVAILABLE", string `Novera stats answered HTTP ${status}`, status, true, "NO");
+        }
+        json|error body = response.getJsonPayload();
+        NoveraStatsBody|error parsed = body is json ? body.cloneWithType() : body;
+        if parsed is error || parsed.recipients < 0 || parsed.seen < 0 || parsed.seen > parsed.recipients {
+            return noveraError("BAD_RESPONSE", "Novera stats answer is not a valid count", status, false, "NO");
+        }
+        return {recipients: parsed.recipients, seen: parsed.seen};
     }
 
     isolated function breaker() returns string {
@@ -200,6 +247,20 @@ isolated class NoveraClient {
         }
         return created;
     }
+}
+
+# Novera's broadcast id from an accepted notification (`{"accepted": true, "notificationId": "..."}`), when the
+# body has a URL-safe one. An older Novera answers without it.
+#
+# + response - The 200 or 202
+# + return - The id, or `()`
+isolated function notificationIdOf(http:Response response) returns string? {
+    json|error body = response.getJsonPayload();
+    if body !is map<json> {
+        return ();
+    }
+    json id = body["notificationId"];
+    return id is string && announcements:isNoveraId(id) ? id : ();
 }
 
 isolated function noveraError(string code, string message, int? httpStatus, boolean retryable,

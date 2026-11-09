@@ -54,6 +54,15 @@ type RunConfig record {|
     string noveraButtonUrl;
     string? cardAvatarUrl = ();
     string? defaultImageUrl = ();
+    # Send `reference` with each card and refresh Novera's seen counts (`noveraSeenStatsEnabled`). Off until Novera
+    # knows the field: an older Novera refuses the whole card
+    boolean noveraSeenStatsEnabled = false;
+    # Count only broadcasts sent this many days back or less (`noveraStatsWindowDays`)
+    int noveraStatsWindowDays = 14;
+    # Least time between two counts of one broadcast, seconds (`noveraStatsRefreshSeconds`)
+    int noveraStatsRefreshSeconds = 10800;
+    # Most broadcasts counted per run (`noveraStatsBatch`)
+    int noveraStatsBatch = 20;
 |};
 
 # App settings a run reads once (`config_app_setting`).
@@ -110,6 +119,15 @@ type Store isolated object {
     isolated function appendLedger(scoring:LedgerAppend append) returns boolean|error;
 };
 
+# Announcements' Novera seen counts: which are due, and saving one.
+type NoveraStatsStore isolated object {
+    isolated function noveraStatsDue(int windowDays, int refreshSeconds, int 'limit)
+        returns announcements:NoveraStatsTarget[]|error;
+    # `stats = ()`: Novera doesn't know the broadcast; only the time is kept.
+    isolated function saveNoveraStats(string campaignId, announcements:NoveraSeenStats? stats, time:Utc checkedAt)
+        returns error?;
+};
+
 # One run at a time across replicas.
 type RunLock isolated object {
     isolated function tryAcquire() returns boolean|error;
@@ -125,6 +143,8 @@ type Deps record {|
     crypto:TokenCipher? cipher;
     RunConfig config;
     isolated function () returns map<string> breakers;
+    # Where seen counts are read and saved; `()` = no refresh
+    NoveraStatsStore? noveraStats = ();
 |};
 
 // ---- PostgreSQL ------------------------------------------------------------------------------------
@@ -132,6 +152,7 @@ type Deps record {|
 # `RunStore` over the `amplify_jobs` client.
 isolated class PgRunStore {
     *RunStore;
+    *NoveraStatsStore;
 
     private final postgresql:Client db;
 
@@ -166,6 +187,13 @@ isolated class PgRunStore {
 
     isolated function forRow(string correlationId, int topN) returns Store =>
         new PgStore(self.db, {actorId: store:SYSTEM.actorId, roles: store:SYSTEM.roles, correlationId}, topN);
+
+    isolated function noveraStatsDue(int windowDays, int refreshSeconds, int 'limit)
+            returns announcements:NoveraStatsTarget[]|error =>
+        announcements:noveraStatsDue(self.db, windowDays, refreshSeconds, 'limit);
+
+    isolated function saveNoveraStats(string campaignId, announcements:NoveraSeenStats? stats, time:Utc checkedAt)
+            returns error? => announcements:saveNoveraStats(self.db, campaignId, stats, checkedAt);
 }
 
 # `Store` over the context repositories, acting as `system` with the row's correlation id.

@@ -14,12 +14,17 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Local stand-in for Novera's gateway: POST /token (client credentials) and POST /internal/notifications.
-// Logs every notification's JSON and answers 202. Nothing reaches Google Chat.
+// Local stand-in for Novera's gateway: POST /token (client credentials), POST /internal/notifications and
+// GET /internal/notifications/{id}/stats (seen counts, V023). Logs every notification's JSON and answers 202 with a
+// new broadcast id. Nothing reaches Google Chat.
+// Seen counts are made up: MOCK_RECIPIENTS (default 900) DMs, and MOCK_SEEN (default 312) of them seen; set
+// MOCK_SEEN=grow to add 25 seen on every stats call, so repeated runs show the count climbing.
+// MOCK_NO_ID=true answers like a Novera from before seen counts ({"accepted": true}, no id; stats 404).
 // If CHECK_URL is set (local Novera, e.g. http://localhost:3002/internal/notifications), the body is also
 // sent there and its verdict is logged: 400 = Novera's schema rejects it, 503 = schema OK (no Google key).
 // Run: node server.mjs   (PORT defaults to 3003)
 import http from "node:http";
+import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -61,6 +66,13 @@ function buildCard(n) {
 
 const PORT = Number(process.env.PORT || 3003);
 const CHECK_URL = process.env.CHECK_URL || "";
+const MOCK_RECIPIENTS = Number(process.env.MOCK_RECIPIENTS || 900);
+const MOCK_SEEN = process.env.MOCK_SEEN || "312";
+const MOCK_NO_ID = process.env.MOCK_NO_ID === "true";
+// Broadcasts by id: what Amplify sent (source, reference, title) and the made-up count.
+const broadcasts = new Map();
+const REFERENCE = /^[A-Za-z0-9._:-]{1,100}$/;
+const STATS_PATH = /^\/internal\/notifications\/([A-Za-z0-9._:-]{1,100})\/stats$/;
 
 // req.url is the raw request target: percent-encoded, maybe with a query string and/or a trailing slash.
 // Decode it and drop the trailing slash so /token, /token/ and /tok%65n all reach the same handler.
@@ -94,6 +106,10 @@ http.createServer(async (req, res) => {
     let json;
     try { json = JSON.parse(raw); } catch { console.log("[mock-novera] not JSON:", raw); return send(res, 400, { error: "not JSON" }); }
     console.log(`\n[mock-novera] ${new Date().toISOString()} notification\n${JSON.stringify(json, null, 2)}`);
+    // Novera's own check: an optional reference of 1-100 URL-safe characters.
+    if (json.reference !== undefined && (typeof json.reference !== "string" || !REFERENCE.test(json.reference))) {
+      return send(res, 400, { error: "reference must be 1-100 letters, digits, '.', '_', ':' or '-'." });
+    }
     lastCard = buildCard(json);
     mkdirSync(OUT_DIR, { recursive: true });
     writeFileSync(OUT_DIR + "last-card.json", JSON.stringify(lastCard, null, 2));
@@ -106,7 +122,25 @@ http.createServer(async (req, res) => {
         console.log(`[mock-novera] real Novera says ${r.status} ${t} (400 = schema rejected, 503 = schema ok)`);
       } catch (e) { console.log("[mock-novera] real Novera unreachable:", e.message); }
     }
-    return send(res, 202, { accepted: true });
+    if (MOCK_NO_ID) return send(res, 202, { accepted: true });
+    const notificationId = randomUUID();
+    const seen = MOCK_SEEN === "grow" ? 0 : Math.min(Number(MOCK_SEEN), MOCK_RECIPIENTS);
+    const now = new Date().toISOString();
+    broadcasts.set(notificationId, { source: json.source, reference: json.reference ?? null, seen, createdAt: now });
+    console.log(`[mock-novera] broadcast ${notificationId} (reference ${json.reference ?? "none"})`);
+    return send(res, 202, { accepted: true, notificationId });
+  }
+  const stats = req.method === "GET" ? STATS_PATH.exec(path ?? "") : null;
+  if (stats) {
+    const b = broadcasts.get(stats[1]);
+    if (!b || MOCK_NO_ID) return send(res, 404, { error: "unknown notification" });
+    if (MOCK_SEEN === "grow") b.seen = Math.min(b.seen + 25, MOCK_RECIPIENTS);
+    const now = new Date().toISOString();
+    console.log(`[mock-novera] stats ${stats[1]}: seen ${b.seen} of ${MOCK_RECIPIENTS}`);
+    return send(res, 200, {
+      notificationId: stats[1], source: b.source, reference: b.reference, recipients: MOCK_RECIPIENTS,
+      sent: MOCK_RECIPIENTS, failed: 0, seen: b.seen, createdAt: b.createdAt, finishedAt: b.createdAt, lastCheckedAt: now,
+    });
   }
   if (req.method === "GET" && path === "/card") return send(res, lastCard ? 200 : 404, lastCard ?? { error: "no notification yet" });
   if (path === "/health") return send(res, 200, { status: "ok" });
