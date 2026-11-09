@@ -105,9 +105,17 @@ isolated function pct(int n, int d) returns decimal => d <= 0 ? 0d : (<decimal>n
 # + return - Ratio or `()`
 isolated function ratio(int n, int d) returns decimal? => d <= 0 ? () : (<decimal>n / <decimal>d).round(3);
 
+# A post's announcement for the boards: delivery status, and Novera's seen count once it has one (V023).
+#
+# + delivery - Delivery by campaign id
+# + campaignId - Campaign
+# + return - `DashboardAnnouncement`
 isolated function announcementOf(map<reporting:Delivery> delivery, string campaignId) returns json {
     reporting:Delivery? d = delivery[campaignId];
-    return d is () ? {status: "NONE", attempts: (), sentAt: ()} : {status: d.status, attempts: d.attempts, sentAt: tsOpt(d.sentAt)};
+    return d is ()
+        ? {status: "NONE", attempts: (), sentAt: (), recipients: (), seen: (), seenCheckedAt: ()}
+        : {status: d.status, attempts: d.attempts, sentAt: tsOpt(d.sentAt), recipients: d.recipients, seen: d.seen,
+            seenCheckedAt: tsOpt(d.seenCheckedAt)};
 }
 
 isolated function dashboardCampaignJson(reporting:CampaignRow p, map<reporting:Delivery> delivery) returns json => {

@@ -654,7 +654,8 @@ isolated function fixedSnapshot() returns Snapshot => {
         dashPost("p-ancient", "Ancient", "EVENT", false, "CLOSED", 80, 99)
     ],
     delivery: {
-        "p-launch": {status: "SENT", attempts: (), sentAt: DASH_NOW},
+        "p-launch": {status: "SENT", attempts: (), sentAt: DASH_NOW, recipients: 900, seen: 312,
+            seenCheckedAt: time:utcAddSeconds(DASH_NOW, 3 * 3600)},
         "p-event": {status: "QUEUED", attempts: 3, sentAt: ()}
     },
     shares: {queued: 1, published: 57, failed: 3, failedByReason: {NEEDS_RECONNECT: 2, PROVIDER_REJECTED: 1, RETRIES_EXHAUSTED: 0}},
