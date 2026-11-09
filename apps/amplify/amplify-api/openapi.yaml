@@ -1663,7 +1663,7 @@ components:
         sentAt: {type: string, format: date-time, nullable: true}
         recipients: {type: integer, nullable: true, description: "DMs Novera sent the card to, from its last seen count; null until counted (V023)"}
         seen: {type: integer, nullable: true, description: "Of those, people who have read their chat past the card (Google Chat read state); null until counted"}
-        seenCheckedAt: {type: string, format: date-time, nullable: true, description: "When Novera last counted; refreshed every few hours for 14 days after sending"}
+        seenCheckedAt: {type: string, format: date-time, nullable: true, description: "When Novera last counted; refreshed on each amplify-jobs run (every 5 minutes by default) for 14 days after sending"}
     DashboardCampaignRow:
       type: object
       required: [campaignId, title, categoryCode, categoryLabel, isPriority, opensAt, closesAt, reposts, repostsWithCommentary]
