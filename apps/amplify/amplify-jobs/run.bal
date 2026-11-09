@@ -204,9 +204,13 @@ isolated function refreshNoveraStats(Deps deps, string correlationId, decimal st
         announcements:NoveraSeenStats? count = ();
         if stats is NoveraError {
             NoveraErrorDetail d = stats.detail();
-            log:printWarn("Novera seen count not read", campaignId = target.campaignId, errorCode = d.code,
-                    httpStatus = d.httpStatus, correlationId = correlationId);
-            boolean answered = d.code == "NOT_FOUND" || d.code == "BAD_RESPONSE" || d.code == "REJECTED";
+            // NOT_COUNTED is routine (Novera's read-state check is off or hasn't reached the card yet): no warning.
+            if d.code != "NOT_COUNTED" {
+                log:printWarn("Novera seen count not read", campaignId = target.campaignId, errorCode = d.code,
+                        httpStatus = d.httpStatus, correlationId = correlationId);
+            }
+            boolean answered = d.code == "NOT_FOUND" || d.code == "BAD_RESPONSE" || d.code == "REJECTED"
+                    || d.code == "NOT_COUNTED";
             if !answered {
                 int? status = d.httpStatus;
                 // No answer, a refused credential, a limit, or the gateway or Novera saying it is down: the rest

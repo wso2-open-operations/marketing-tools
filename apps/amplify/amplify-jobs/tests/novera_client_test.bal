@@ -253,6 +253,8 @@ function statsAreReadFromTheBroadcastsStatsPath() returns error? {
             sent: 898, failed: 2, seen: 312, createdAt: "2026-11-09T10:00:00Z", finishedAt: "2026-11-09T10:01:00Z",
             lastCheckedAt: "2026-11-09T12:00:00Z"}];
         noveraStubStats["n-over"] = [200, {recipients: 3, seen: 4}];
+        noveraStubStats["n-unchecked"] = [200, {recipients: 900, seen: 0, lastCheckedAt: ()}];
+        noveraStubStats["n-no-time"] = [200, {recipients: 900, seen: 0}];
         noveraStubStats["n-text"] = [200, "not json"];
         noveraStubStats["n-down"] = [503, ()];
     }
@@ -266,6 +268,11 @@ function statsAreReadFromTheBroadcastsStatsPath() returns error? {
     foreach string id in ["n-over", "n-text"] {
         announcements:NoveraSeenStats|NoveraError bad = novera.stats(id, ());
         test:assertTrue(bad is NoveraError && bad.detail().code == "BAD_RESPONSE", id);
+    }
+    foreach string id in ["n-unchecked", "n-no-time"] {
+        announcements:NoveraSeenStats|NoveraError notYet = novera.stats(id, ());
+        test:assertTrue(notYet is NoveraError && notYet.detail().code == "NOT_COUNTED" && !notYet.detail().retryable,
+                id + ": a count Novera hasn't checked is not 'seen 0'");
     }
     announcements:NoveraSeenStats|NoveraError down = novera.stats("n-down", ());
     test:assertTrue(down is NoveraError && down.detail().code == "UNAVAILABLE" && down.detail().httpStatus == 503);

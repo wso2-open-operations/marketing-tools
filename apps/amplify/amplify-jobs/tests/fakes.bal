@@ -841,6 +841,9 @@ isolated class FakeNovera {
                 "BAD_RESPONSE" => {
                     return noveraError("BAD_RESPONSE", "not a count", 200, false, "NO");
                 }
+                "NOT_COUNTED" => {
+                    return noveraError("NOT_COUNTED", "not checked yet", 200, false, "NO");
+                }
                 "500" => {
                     return noveraError("UNAVAILABLE", "server error", 500, true, "NO");
                 }

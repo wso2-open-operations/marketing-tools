@@ -89,16 +89,21 @@ function aRunCopiesTheDueCountsAndKeepsGoingPastAnswersForOneBroadcast() returns
         {campaignId: "c1", notificationId: "n1"},
         {campaignId: "c2", notificationId: "n2"},
         {campaignId: "c3", notificationId: "n3"},
-        {campaignId: "c4", notificationId: "n4"}
+        {campaignId: "c4", notificationId: "n4"},
+        {campaignId: "c5", notificationId: "n5"}
     ]);
     w.novera.setStats("n1", {recipients: 900, seen: 312});
     w.novera.setStats("n2", "NOT_FOUND");
     w.novera.setStats("n3", "500");
     w.novera.setStats("n4", "BAD_RESPONSE");
+    w.novera.setStats("n5", "NOT_COUNTED");
     RunReport r = check run(w);
     test:assertEquals(r.noveraStats, 1, "one count saved");
-    test:assertEquals(w.novera.statsCalls(), ["n1", "n2", "n3", "n4"], "a 500 for one broadcast doesn't stop the rest");
-    test:assertEquals(stats.savedIds(), ["c1", "c2", "c4"], "unknown and unreadable keep the time; a 500 is retried");
+    test:assertEquals(w.novera.statsCalls(), ["n1", "n2", "n3", "n4", "n5"],
+            "a 500 for one broadcast doesn't stop the rest");
+    test:assertEquals(stats.savedIds(), ["c1", "c2", "c4", "c5"],
+            "unknown, unreadable and not yet checked keep the time; a 500 is retried");
+    test:assertEquals(stats.savedFor("c5"), (), "not yet checked by Novera: no count, so the board never says Seen 0");
     test:assertEquals(stats.savedFor("c1"), {recipients: 900, seen: 312});
     test:assertEquals(stats.savedFor("c2"), ());
     test:assertEquals(stats.query(), [14, 240, 20], "window, refresh interval and batch come from the config");

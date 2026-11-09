@@ -279,6 +279,8 @@ amplify-database.
    `UPDATE announcement SET novera_checked_at = NULL;`.
 3. Operations board (`GET /dashboards/operations`): the post's `announcement` carries `recipients`, `seen` and
    `seenCheckedAt`.
+4. A count Novera hasn't checked yet (`lastCheckedAt` null: its read-state check is off or hasn't reached the card) is
+   not stored, so the board shows only "Sent" rather than "Seen 0". The run logs no warning for it.
 
 Counts stop refreshing `noveraStatsWindowDays` (default 14) after sending. A broadcast the mock doesn't know (restart
 it) answers 404: the row keeps only the time and waits a refresh interval.

@@ -39,8 +39,8 @@ type NoveraDelivery "NO"|"UNKNOWN";
 
 # Why Novera did not accept an announcement.
 type NoveraErrorDetail record {|
-    # `UNAVAILABLE`, `RATE_LIMITED`, `REJECTED` or `OUTCOME_UNKNOWN`; the stats call also gives `NOT_FOUND` and
-    # `BAD_RESPONSE`
+    # `UNAVAILABLE`, `RATE_LIMITED`, `REJECTED` or `OUTCOME_UNKNOWN`; the stats call also gives `NOT_FOUND`,
+    # `BAD_RESPONSE` and `NOT_COUNTED`
     string code;
     # HTTP status, `()` when there was no response
     int? httpStatus;
@@ -70,6 +70,8 @@ type NoveraPort isolated object {
 type NoveraStatsBody record {
     int recipients;
     int seen;
+    # When Novera last checked who read the card; null until its read-state check has looked (off, or not yet run)
+    string? lastCheckedAt?;
 };
 
 # `NoveraPort` over the Choreo gateway, with a client-credentials token from an application subscribed to
@@ -202,6 +204,12 @@ isolated class NoveraClient {
         NoveraStatsBody|error parsed = body is json ? body.cloneWithType() : body;
         if parsed is error || parsed.recipients < 0 || parsed.seen < 0 || parsed.seen > parsed.recipients {
             return noveraError("BAD_RESPONSE", "Novera stats answer is not a valid count", status, false, "NO");
+        }
+        // Until Novera's read-state check has looked at the card, `seen` is 0 because nobody has counted, not because
+        // nobody has read it: never show that as "Seen 0".
+        if parsed?.lastCheckedAt is () {
+            return noveraError("NOT_COUNTED", "Novera has not checked who read this broadcast yet", status, false,
+                    "NO");
         }
         return {recipients: parsed.recipients, seen: parsed.seen};
     }
