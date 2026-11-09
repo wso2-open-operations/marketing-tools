@@ -274,8 +274,8 @@ amplify-database.
    and the broadcast id it returned; `announcement.novera_notification_id` holds that id.
 2. The first run after sending copies the count: the run log shows `noveraStats=1` and the row gets
    `novera_recipients`, `novera_seen` and `novera_checked_at`. Later runs refresh it every
-   `noveraStatsRefreshSeconds` (default 10800). To refresh sooner while testing, set
-   `BAL_CONFIG_VAR_NOVERASTATSREFRESHSECONDS=60` or clear the time:
+   `noveraStatsRefreshSeconds` (default 240, so every 5-minute run). To refresh between runs while testing, clear
+   the time and trigger a run:
    `UPDATE announcement SET novera_checked_at = NULL;`.
 3. Operations board (`GET /dashboards/operations`): the post's `announcement` carries `recipients`, `seen` and
    `seenCheckedAt`.

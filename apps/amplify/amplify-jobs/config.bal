@@ -99,8 +99,9 @@ configurable string noveraButtonUrl = "";
 configurable boolean noveraSeenStatsEnabled = false;
 # Count only broadcasts sent this many days back or less (Novera stops checking read state after its own window).
 configurable int noveraStatsWindowDays = 14;
-# Least time between two counts of one broadcast, seconds (default 3 hours).
-configurable int noveraStatsRefreshSeconds = 10800;
+# Least time between two counts of one broadcast, seconds (minimum 60). The default, 4 minutes, is a little under
+# the 5-minute run schedule, so every run refreshes the counts.
+configurable int noveraStatsRefreshSeconds = 240;
 # Most broadcasts counted per run, within what is left of `runMaxSeconds`.
 configurable int noveraStatsBatch = 20;
 

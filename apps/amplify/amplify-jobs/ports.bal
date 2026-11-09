@@ -60,7 +60,7 @@ type RunConfig record {|
     # Count only broadcasts sent this many days back or less (`noveraStatsWindowDays`)
     int noveraStatsWindowDays = 14;
     # Least time between two counts of one broadcast, seconds (`noveraStatsRefreshSeconds`)
-    int noveraStatsRefreshSeconds = 10800;
+    int noveraStatsRefreshSeconds = 240;
     # Most broadcasts counted per run (`noveraStatsBatch`)
     int noveraStatsBatch = 20;
 |};

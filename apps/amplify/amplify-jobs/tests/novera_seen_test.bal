@@ -101,7 +101,7 @@ function aRunCopiesTheDueCountsAndKeepsGoingPastAnswersForOneBroadcast() returns
     test:assertEquals(stats.savedIds(), ["c1", "c2", "c4"], "unknown and unreadable keep the time; a 500 is retried");
     test:assertEquals(stats.savedFor("c1"), {recipients: 900, seen: 312});
     test:assertEquals(stats.savedFor("c2"), ());
-    test:assertEquals(stats.query(), [14, 10800, 20], "window, refresh interval and batch come from the config");
+    test:assertEquals(stats.query(), [14, 240, 20], "window, refresh interval and batch come from the config");
 }
 
 @test:Config

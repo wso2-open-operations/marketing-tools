@@ -91,3 +91,5 @@ configurations:
       value: "true"
     - name: BAL_CONFIG_VAR_NOVERASEENSTATSENABLED
       value: "false"
+    - name: BAL_CONFIG_VAR_NOVERASTATSREFRESHSECONDS
+      value: "240"
