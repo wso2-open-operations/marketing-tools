@@ -204,6 +204,7 @@ function testAnnouncementRetry() returns error? {
 
     http:Response retried = check send("POST", string `/admin/announcements/${failedId}/retry`, (), admin);
     test:assertEquals(retried.statusCode, 202);
+    test:assertEquals(snapshotCacheSize(), 0, "the board reads fresh after a retry");
     check assertShape(retried, "Announcement");
     test:assertEquals(check (check retried.getJsonPayload()).status, "QUEUED");
     http:Response twice = check send("POST", string `/admin/announcements/${failedId}/retry`, (), admin);

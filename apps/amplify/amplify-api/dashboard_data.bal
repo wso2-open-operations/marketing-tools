@@ -50,6 +50,13 @@ isolated function snapshot() returns Snapshot & readonly|error {
     return fresh;
 }
 
+# Drops the cached snapshot, so the next board read sees an admin's change (retry, send) at once.
+isolated function dropSnapshot() {
+    lock {
+        snapshotCache = ();
+    }
+}
+
 # Number of cached snapshots (0 or 1), a test seam.
 #
 # + return - 1 when a snapshot is cached

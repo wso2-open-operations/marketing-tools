@@ -290,14 +290,18 @@ function testAnnouncementSendQueuesAnUnannouncedCampaign() returns error? {
     boolean due = check db->queryRow(`SELECT next_attempt_at <= now() AND last_error IS NULL
                                       FROM messaging_outbox WHERE idempotency_key = ${key}`);
     test:assertTrue(due);
+    string board = check db->queryRow(`SELECT status FROM announcement_v WHERE campaign_id = CAST(${c.id} AS uuid)`);
+    test:assertEquals(board, "QUEUED", "the board reads Queued at once");
 
     // Missing: written as PENDING.
+    _ = check db->execute(`DELETE FROM announcement WHERE campaign_id = CAST(${c.id} AS uuid)`);
     _ = check db->execute(`DELETE FROM messaging_outbox WHERE idempotency_key = ${key}`);
     check repo.send(c.id, ev);
     string status = check db->queryRow(`SELECT status FROM messaging_outbox WHERE idempotency_key = ${key}`);
     test:assertEquals(status, "PENDING");
 
-    // Running or sent: refused.
+    // Running or sent: refused (before any announcement row exists).
+    _ = check db->execute(`DELETE FROM announcement WHERE campaign_id = CAST(${c.id} AS uuid)`);
     _ = check db->execute(`UPDATE messaging_outbox SET status = 'IN_PROGRESS', locked_by = 'run-x',
                            locked_until = now() + interval '5 minutes' WHERE idempotency_key = ${key}`);
     assertCode(repo.send(c.id, ev), types:ERR_ANNOUNCEMENT_NOT_FAILED);

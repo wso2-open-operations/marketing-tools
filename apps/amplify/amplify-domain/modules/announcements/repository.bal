@@ -20,7 +20,7 @@
 // outbox row (ADR-024) and, in the same transaction, clears `failed_at`, `last_error` and `attempted_at` on the
 // announcement row (the person decided to send again), so the board reads Queued at once, even while the worker
 // defers the row (Novera off). A send does the same for a campaign that has no announcement row yet: it makes the
-// `CampaignRegistered` outbox row due now, or writes it when it is missing.
+// `CampaignRegistered` outbox row due now (writing it when missing) and adds a queued `announcement` row.
 // Column names predate Novera: `thread_key` holds the idempotency key and `chat_message_name` the delivery marker.
 // `chat_thread_name` (V011, Club webhook threads) is no longer read or written; old rows keep their value.
 
@@ -165,7 +165,7 @@ public isolated class PgAnnouncementRepository {
                 fail types:domainError(types:ERR_ALREADY_ANNOUNCED,
                         "This post already has an announcement; use Retry if it failed");
             }
-            if existing is sql:Error && !store:isNoRows(existing) {
+            if !store:isNoRows(existing) {
                 fail existing;
             }
             string|sql:Error state = self.db->queryRow(`
@@ -186,6 +186,14 @@ public isolated class PgAnnouncementRepository {
                     ? "The card is being sent right now"
                     : "The card was already sent");
             }
+            // A queued announcement row, so the board reads Queued at once: without it the post stays "Not announced"
+            // until a run claims the outbox row (never, while Novera is off). The worker sends a queued row that has
+            // no attempt marker.
+            int outboxId = check self.db->queryRow(`SELECT id FROM messaging_outbox WHERE idempotency_key = ${key}`);
+            _ = check self.db->execute(`
+                INSERT INTO announcement (campaign_id, outbox_id, space, thread_key)
+                VALUES (CAST(${campaignId} AS uuid), ${outboxId}, ${NOVERA_SPACE}, ${announcementKey(campaignId)})
+                ON CONFLICT (campaign_id) DO NOTHING`);
             check store:writeAudit(self.db, store:auditOf(self.actor, "AnnouncementSendRequested",
                     ANNOUNCEMENT_TABLE, campaignId));
             check commit;

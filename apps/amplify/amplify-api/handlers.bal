@@ -610,6 +610,7 @@ isolated function sendAnnouncement(auth:Principal p, string? correlationId, stri
         }
         announcements:AnnouncementRepository repo = check announcementRepository(actor);
         check repo.send(campaignId, campaign:campaignRegisteredEvent(c, false));
+        dropSnapshot();
         _ = triggerJobs("/runs", correlationId);
         return <http:Accepted>{body: {campaignId, status: "QUEUED"}};
     } on fail error e {
@@ -631,6 +632,7 @@ isolated function retryAnnouncement(auth:Principal p, string? correlationId, str
         }
         announcements:Announcement queued = check announcements:retryAnnouncement(current);
         check repo.requeue(campaignId);
+        dropSnapshot();
         _ = triggerJobs("/runs", correlationId);
         return <http:Accepted>{body: announcementDto(queued)};
     } on fail error e {
