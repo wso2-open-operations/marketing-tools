@@ -21,8 +21,9 @@
 // bumps the `ALL` standing version in its own transaction, and each request compares that version (one row)
 // with the one the totals were read at (ADR-037 amendment 2026-11-05). `topBoardCacheSeconds` (default 2 hours)
 // is only the longest reuse, a safety net for changes outside the ledger. The viewer's own line ("My position")
-// comes from the same cached totals, so it matches the top three. `leaderboard.top_scope = ALL` serves the
-// all-time standings instead.
+// comes from the same cached totals, so it matches the top three. Ties on points are ordered by who reached
+// them first (the earliest last ledger entry); callers with `CAN_DASHBOARD` also get that time as `reachedAt`.
+// `leaderboard.top_scope = ALL` serves the all-time standings instead.
 
 import amplify_api.auth;
 import amplify_common.resilience;
@@ -152,9 +153,12 @@ isolated function topBoard(auth:Principal p, string? correlationId) returns http
             scopeInfo = {period: "ALL", minPoints: (), monthStart: (), monthEnd: (), generatedAt: ts(now)};
         }
         scopeInfo["topN"] = topN;
+        // `reachedAt` (when the person got their points, the tie-break) goes only to dashboard readers.
+        boolean showReached = can(p, auth:CAN_DASHBOARD);
         scopeInfo["company"] = from recognition:Standing s in top
             select {employeeId: s.employeeId, displayName: s.displayName, email: s.email,
-                points: s.totalPoints, rank: s.rank, previousRank: s.previousRank};
+                points: s.totalPoints, rank: s.rank, previousRank: s.previousRank,
+                reachedAt: showReached ? tsOpt(s.lastActivityAt) : ()};
         map<json> me = <map<json>>personal(p.employeeId, mine, topN).toJson();
         scopeInfo["me"] = me;
         http:Response res = check jsonBody(scopeInfo);

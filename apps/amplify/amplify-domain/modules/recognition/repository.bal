@@ -49,7 +49,7 @@ public isolated function topStandings(postgresql:Client db, string periodKey = P
                points_to_next_rank, points_to_top_n, last_activity_at
         FROM recognition_standing
         WHERE period_key = ${periodKey} AND rank <= ${topN} AND total_points > 0
-        ORDER BY rank, display_name, employee_id`);
+        ORDER BY rank, last_activity_at NULLS LAST, display_name, employee_id`);
     return from StandingRow r in rows
         select toStanding(r);
 }

@@ -17,8 +17,12 @@
 // Reference implementation of the re-rank step (M3 does it with one window-function UPDATE). Tests pin
 // the rules so the SQL can be checked against the same cases.
 
+import ballerina/time;
+
 # Ranks totals the way `recognition_standing` stores them: SQL dense rank by points (ties share a rank,
-# so the top N may hold more than N people), then name for a stable order.
+# so the top N may hold more than N people). Within a tie the order is who reached the points first (the
+# earliest `lastActivityAt`; no timestamp sorts last), then name and id for a stable order. The Celebrate
+# podium takes its first three rows in this order.
 # `pointsToTopN` = points of the lowest-ranked person inside the top N − own points + 1, or 0 when already
 # in (leaderboards.md). `pointsToNextRank` = points of the next better rank − own points.
 #
@@ -30,7 +34,8 @@
 public isolated function rankStandings(string periodKey, EmployeeTotal[] totals, map<int> previousRanks = {},
         int topN = DEFAULT_TOP_N) returns Standing[] {
     EmployeeTotal[] sorted = from EmployeeTotal t in totals
-        order by t.totalPoints descending, t.displayName ascending, t.employeeId ascending
+        order by t.totalPoints descending, reachedKey(t.lastActivityAt) ascending, t.displayName ascending,
+            t.employeeId ascending
         select t;
     int[] rankPoints = [];
     foreach EmployeeTotal t in sorted {
@@ -58,6 +63,12 @@ public isolated function rankStandings(string periodKey, EmployeeTotal[] totals,
     }
     return standings;
 }
+
+# Sort key for "reached the points first": seconds since the epoch, or a far future value when unknown.
+#
+# + at - Time of the person's latest points entry
+# + return - Key, smaller is earlier
+isolated function reachedKey(time:Utc? at) returns decimal => at is () ? 99999999999999d : <decimal>at[0] + at[1];
 
 # Company top N (B15): everyone whose dense rank is within `topN`.
 #
