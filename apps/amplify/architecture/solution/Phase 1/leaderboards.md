@@ -64,10 +64,10 @@ All against `recognition.standing` (PK `(period_key, employee_id)`, indexes `(pe
 
 ```sql
 -- Company top N (ties can return more than N rows)
-SELECT employee_id, display_name, email, total_points, rank, previous_rank
+SELECT employee_id, display_name, email, total_points, rank, previous_rank, last_activity_at
 FROM recognition.standing
 WHERE period_key = $period AND rank <= $top_n
-ORDER BY rank, display_name;
+ORDER BY rank, last_activity_at NULLS LAST, display_name, employee_id;  -- tie: who reached the points first
 
 -- Personal (single PK lookup; no row = no points yet)
 SELECT total_points, rank, previous_rank, points_to_next_rank, points_to_top_n, last_activity_at
