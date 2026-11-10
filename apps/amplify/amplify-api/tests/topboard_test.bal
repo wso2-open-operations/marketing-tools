@@ -160,6 +160,33 @@ function testTheTopBoardIsAskedForEachTimeAndShowsANewRepostAtOnce() returns err
     test:assertEquals(check (check second.getJsonPayload()).me.points, 11, "the new points show on the next request");
 }
 
+// Three people tied on points: the one who got there first is first. Only dashboard readers see the times.
+@test:Config {groups: ["reads"]}
+function testTiedTopBoardOrdersByWhoReachedThePointsFirstAndShowsTheTimeOnlyToDashboardReaders() returns error? {
+    dropMonthlyCache();
+    clearSettings();
+    function (string, string, int, string) returns recognition:EmployeeTotal at =
+        (id, name, points, when) => {employeeId: id, displayName: name, email: id + "@wso2.com", totalPoints: points,
+            lastActivityAt: checkpanic time:utcFromString(when)};
+    setMonthTotals([
+        at("tie-a", "Avery", 45, "2026-10-20T09:00:00Z"),
+        at("tie-b", "Blake", 45, "2026-10-20T08:00:00Z"),
+        at("tie-c", "Casey", 45, "2026-10-20T07:00:00Z")
+    ]);
+    http:Response po = check send("GET", "/leaderboard/top", (), check rvToken("tie-po", groups = ["amplify_po"]));
+    http:Response employee = check send("GET", "/leaderboard/top", (), check rvToken("tie-emp"));
+    json poBody = check po.getJsonPayload();
+    json empBody = check employee.getJsonPayload();
+    setMonthTotals(());
+    dropMonthlyCache();
+    json[] poList = check (check poBody.company).ensureType();
+    json[] empList = check (check empBody.company).ensureType();
+    test:assertEquals(from json e in poList select (<map<json>>e)["employeeId"].toString(), ["tie-c", "tie-b", "tie-a"]);
+    test:assertEquals(from json e in empList select (<map<json>>e)["employeeId"].toString(), ["tie-c", "tie-b", "tie-a"]);
+    test:assertEquals((<map<json>>poList[0])["reachedAt"], "2026-10-20T07:00:00Z");
+    test:assertEquals((<map<json>>empList[0])["reachedAt"], (), "no time for an ordinary employee");
+}
+
 @test:Config
 function testANewMonthNeverServesLastMonthsTotals() {
     seedMonth(THURSDAY, 60, currentStandingVersion());

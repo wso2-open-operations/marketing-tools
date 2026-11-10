@@ -28,12 +28,29 @@ function totals() returns EmployeeTotal[] => [
 function total(string id, string name, int points) returns EmployeeTotal =>
     {employeeId: id, displayName: name, email: name.toLowerAscii() + "@wso2.com", totalPoints: points, lastActivityAt: ()};
 
+function totalAt(string id, string name, int points, string at) returns EmployeeTotal {
+    EmployeeTotal t = total(id, name, points);
+    t.lastActivityAt = checkpanic time:utcFromString(at);
+    return t;
+}
+
 @test:Config
 function denseRankSharesTies() {
     Standing[] s = rankStandings(PERIOD_ALL, totals(), {"e4": 2});
     test:assertEquals(s.map(r => r.rank), [1, 2, 2, 3, 4]);
     test:assertEquals(s[3].previousRank, 2, "movement arrow source");
     test:assertEquals(topN(s).length(), 4, "ties can return more than N rows");
+}
+
+@test:Config
+function tiedPointsOrderByWhoReachedThemFirst() {
+    EmployeeTotal late = totalAt("e1", "Avery", 50, "2026-11-10T09:00:00Z");
+    EmployeeTotal early = totalAt("e2", "Blake", 50, "2026-11-10T08:00:00Z");
+    EmployeeTotal unknown = total("e0", "Aaron", 50);
+    EmployeeTotal ahead = totalAt("e9", "Zed", 60, "2026-11-10T10:00:00Z");
+    Standing[] s = rankStandings(PERIOD_ALL, [unknown, late, ahead, early]);
+    test:assertEquals(s.map(r => r.employeeId), ["e9", "e2", "e1", "e0"], "points, then earliest time, no time last");
+    test:assertEquals(s.map(r => r.rank), [1, 2, 2, 2], "the rank is still shared");
 }
 
 @test:Config
