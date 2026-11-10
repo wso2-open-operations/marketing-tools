@@ -11,11 +11,11 @@ permissions:
 
 jobs:
   integration:
-    # The oldest supported server (15), the one staging runs (17) and the newest (native uuidv7(), ADR-044).
+    # The server staging runs (17, ADR-044). 15 and 18 are not used, so they are not tested.
     strategy:
       fail-fast: false
       matrix:
-        pg: ["15", "17", "18"]
+        pg: ["17"]
     name: integration (PostgreSQL ${{ matrix.pg }})
     runs-on: ubuntu-latest
     services:
