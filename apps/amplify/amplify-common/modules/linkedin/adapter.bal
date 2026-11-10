@@ -79,6 +79,10 @@ public isolated class LinkedInAdapter {
     # don't list `nonce` on `/oauth/v2/authorization`; send it, then pass the same value to
     # `IdTokenValidator.validate`, only once a real LinkedIn app is seen to echo it in the ID token.
     #
+    # `enable_extended_login=true` makes LinkedIn's sign-in page offer "Sign in with Google", "Sign in with Apple"
+    # and passkey on iPhone, iPad and in-app browsers too; without it LinkedIn offers them on desktop and Android
+    # browsers only (LinkedIn authorization code flow docs). LinkedIn still decides which buttons appear.
+    #
     # + state - Single-use `oauth_state.state`
     # + nonce - `oauth_state.nonce`, or `()` to send none
     # + return - Authorization URL
@@ -88,7 +92,8 @@ public isolated class LinkedInAdapter {
             "client_id": self.clientId,
             "redirect_uri": self.redirectUri,
             "state": state,
-            "scope": string:'join(" ", ...REQUIRED_SCOPES)
+            "scope": string:'join(" ", ...REQUIRED_SCOPES),
+            "enable_extended_login": "true"
         };
         if nonce is string && nonce.length() > 0 {
             params["nonce"] = nonce;

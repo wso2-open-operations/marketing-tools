@@ -150,6 +150,8 @@ function authorizationUrlCarriesClientStateAndScopes() returns error? {
     test:assertTrue(authUrl.includes("state=st-1"));
     test:assertTrue(authUrl.includes("redirect_uri=https%3A%2F%2Fone.wso2.com%2Fcb"));
     test:assertTrue(authUrl.includes("scope=openid%20profile%20w_member_social"));
+    // Google, Apple and passkey sign-in on LinkedIn's page on every device, not only desktop and Android.
+    test:assertTrue(authUrl.includes("enable_extended_login=true"));
 }
 
 @test:Config
