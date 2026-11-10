@@ -21,6 +21,7 @@
 // and the paging guards.
 
 import amplify_common.crypto;
+import amplify_common.events;
 import amplify_common.types;
 import amplify_domain.announcements;
 import amplify_domain.campaign;
@@ -248,6 +249,66 @@ function testAnnouncementRequeueSkipsARowInProgress() returns error? {
     string status = check db->queryRow(`SELECT status FROM messaging_outbox WHERE idempotency_key = ${key}`);
     test:assertEquals(status, "PENDING");
     assertCode(repo.requeue(types:newUuidV7()), types:ERR_NOT_FOUND);
+    check db.close();
+}
+
+// The admin retry clears the failure on the announcement row too, so the board reads Queued at once.
+@test:Config {groups: ["integration"], enable: itEnabled}
+function testAnnouncementRequeueClearsTheFailedAnnouncement() returns error? {
+    postgresql:Client db = check api();
+    string po = check newEmployee(db, "annclr");
+    campaign:Campaign c = check registerCampaign(db, po);
+    string key = "CampaignRegistered:" + c.id;
+    _ = check db->execute(`UPDATE messaging_outbox SET status = 'FAILED', attempts = 5 WHERE idempotency_key = ${key}`);
+    _ = check db->execute(`INSERT INTO announcement (campaign_id, space, thread_key, failed_at, last_error, attempted_at)
+                           VALUES (CAST(${c.id} AS uuid), 'novera', ${"amplify:" + c.id}, now(), 'HTTP 503', now())`);
+    announcements:PgAnnouncementRepository repo = new (db, poActor(po));
+    check repo.requeue(c.id);
+    string status = check db->queryRow(`SELECT status FROM announcement_v WHERE campaign_id = CAST(${c.id} AS uuid)`);
+    test:assertEquals(status, "QUEUED");
+    boolean cleared = check db->queryRow(`SELECT attempted_at IS NULL AND last_error IS NULL FROM announcement
+                                          WHERE campaign_id = CAST(${c.id} AS uuid)`);
+    test:assertTrue(cleared, "the attempt marker is cleared with the failure");
+    check db.close();
+}
+
+// The admin send: a campaign with no announcement row. PENDING is made due, a missing outbox row is written,
+// a DONE or running row and an existing announcement are refused.
+@test:Config {groups: ["integration"], enable: itEnabled}
+function testAnnouncementSendQueuesAnUnannouncedCampaign() returns error? {
+    postgresql:Client db = check api();
+    string po = check newEmployee(db, "annsnd");
+    campaign:Campaign c = check registerCampaign(db, po);
+    string key = "CampaignRegistered:" + c.id;
+    announcements:PgAnnouncementRepository repo = new (db, poActor(po));
+    events:OutboxEvent ev = campaign:campaignRegisteredEvent(c, false);
+
+    // PENDING, deferred and waiting: made due now.
+    _ = check db->execute(`UPDATE messaging_outbox SET next_attempt_at = now() + interval '1 day',
+                           last_error = 'Novera is off or not configured' WHERE idempotency_key = ${key}`);
+    check repo.send(c.id, ev);
+    boolean due = check db->queryRow(`SELECT next_attempt_at <= now() AND last_error IS NULL
+                                      FROM messaging_outbox WHERE idempotency_key = ${key}`);
+    test:assertTrue(due);
+
+    // Missing: written as PENDING.
+    _ = check db->execute(`DELETE FROM messaging_outbox WHERE idempotency_key = ${key}`);
+    check repo.send(c.id, ev);
+    string status = check db->queryRow(`SELECT status FROM messaging_outbox WHERE idempotency_key = ${key}`);
+    test:assertEquals(status, "PENDING");
+
+    // Running or sent: refused.
+    _ = check db->execute(`UPDATE messaging_outbox SET status = 'IN_PROGRESS', locked_by = 'run-x',
+                           locked_until = now() + interval '5 minutes' WHERE idempotency_key = ${key}`);
+    assertCode(repo.send(c.id, ev), types:ERR_ANNOUNCEMENT_NOT_FAILED);
+    _ = check db->execute(`UPDATE messaging_outbox SET status = 'DONE', processed_at = now(), locked_by = NULL,
+                           locked_until = NULL WHERE idempotency_key = ${key}`);
+    assertCode(repo.send(c.id, ev), types:ERR_ANNOUNCEMENT_NOT_FAILED);
+
+    // Already has an announcement row: refused, retry is the way.
+    _ = check db->execute(`INSERT INTO announcement (campaign_id, space, thread_key)
+                           VALUES (CAST(${c.id} AS uuid), 'novera', ${"amplify:" + c.id})`);
+    assertCode(repo.send(c.id, ev), types:ERR_ALREADY_ANNOUNCED);
     check db.close();
 }
 

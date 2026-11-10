@@ -89,6 +89,7 @@ public final Rule[] & readonly ACTIVITY_MATRIX = [
     // S5 / Admin
     {method: "GET", path: "/admin/announcements", requires: CAN_ADMIN, capability: "admin.announcements"},
     {method: "POST", path: "/admin/announcements/{id}/retry", requires: CAN_ADMIN, capability: "admin.announcements", useCase: "Only while FAILED; announcements.enabled"},
+    {method: "POST", path: "/admin/announcements/{id}/send", requires: CAN_ADMIN, capability: "admin.announcements", useCase: "Only for a post with no announcement; announcements.enabled"},
     {method: "GET", path: "/admin/settings", requires: CAN_ADMIN, capability: "admin.settings"},
     {method: "PUT", path: "/admin/settings", requires: CAN_ADMIN, capability: "admin.settings", useCase: "Optimistic lock; Coin settings hidden"},
     {method: "POST", path: "/admin/scheduler/sync", requires: CAN_ADMIN, capability: "admin.settings", useCase: "Pushes the schedule settings to the scheduler (ADR-026)"}

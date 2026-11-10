@@ -727,6 +727,21 @@ service http:InterceptableService / on apiListener {
                 isolated function() returns http:StatusCodeResponse => retryAnnouncement(p, c, idFinal));
     }
 
+    # Queues the Novera announcement of a post that has none yet.
+    #
+    # + ctx - Request context
+    # + req - Request
+    # + id - Campaign id
+    # + return - 202, or problem details
+    resource function post admin/announcements/[string id]/send(http:RequestContext ctx, http:Request req)
+            returns http:Response|error {
+        final auth:Principal & readonly p = (check principalOf(ctx)).cloneReadOnly();
+        final string? c = cid(ctx);
+        final string idFinal = id;
+        return idempotent(ctx, req, p, "/admin/announcements/" + id + "/send", (),
+                isolated function() returns http:StatusCodeResponse => sendAnnouncement(p, c, idFinal));
+    }
+
     # Settings.
     #
     # + ctx - Request context

@@ -20,3 +20,8 @@ Building the published API (M5) hit five places where the design docs left the m
 
 - Published stable codes: `DUPLICATE_ACTION`, `LINKEDIN_NOT_CONNECTED`, `NEEDS_RECONNECT`, `CAMPAIGN_CLOSED` are API names for the domain codes `SHARE_ALREADY_*`, (no connection), `CONNECTION_NEEDS_RECONNECT`, `CAMPAIGN_NOT_OPEN`; the full list is `Problem.code.x-stable-codes` in `openapi.yaml`.
 - The dashboard tiles run in one transaction (READ COMMITTED, so tiles can differ by in-flight writes); move to REPEATABLE READ if PO sees drift.
+
+## Amendment 2026-11-10: retry clears the announcement row; admin send
+
+- **Retry shows Queued at once.** `requeue` now also clears `failed_at`, `last_error` and `attempted_at` on the `announcement` row in the same transaction as the outbox reset. Before, only the worker cleared them, and only after it got past its deferral gates, so a retry with Novera off (or the run not yet fired) left the board on "Failed after retries". The worker is unchanged: a queued row with no attempt marker is sent; the `attempts > 1` guard on a still-FAILED row stays.
+- **`POST /admin/announcements/{id}/send`** (`CAN_ADMIN`, `announcements.enabled`) queues the announcement of an open post that has no `announcement` row (the board's "Not announced"). It makes the `CampaignRegistered` outbox row due now (`PENDING`), resets a `FAILED` one like a retry, or writes the row when it is missing (`campaignRegisteredEvent`, `shareNow = false`). Refused with 409 `ALREADY_ANNOUNCED` when an announcement row exists (a failed one is retried instead), `ANNOUNCEMENT_NOT_FAILED` when the row is running or done, and `CAMPAIGN_CLOSED` / `CAMPAIGN_ARCHIVED` for a post that is over. Audited as `AnnouncementSendRequested`.
