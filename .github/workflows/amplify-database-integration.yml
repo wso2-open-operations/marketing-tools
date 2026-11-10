@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   integration:
-    # The server staging runs (17, ADR-044). 15 and 18 are not used, so they are not tested.
+    # The server staging runs (17). 15 and 18 are not used, so they are not tested.
     strategy:
       fail-fast: false
       matrix:
