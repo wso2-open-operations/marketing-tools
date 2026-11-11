@@ -43,11 +43,13 @@ public isolated function shareStatus(ShareRequest request) returns ShareStatus {
 # + command - The request
 # + id - New UUIDv7
 # + now - Current time
+# + minOwnWords - Words of their own the thoughts need (see `ownWordCount`); 0 = no check
 # + return - The request (attempt 1), or a domain error
 public isolated function newShareRequest(CampaignSnapshot campaign, ConnectionSnapshot? connection, ShareCommand command,
-        string id, time:Utc now) returns ShareRequest|types:DomainError {
+        string id, time:Utc now, int minOwnWords = COMMENTARY_MIN_OWN_WORDS_OFF)
+        returns ShareRequest|types:DomainError {
     check ensureShareable(campaign, connection);
-    string? commentary = check validCommentary(command.kind, command.commentary);
+    string? commentary = check validCommentary(command.kind, command.commentary, campaign, minOwnWords);
     return {
         id,
         campaignId: campaign.id,
@@ -76,9 +78,11 @@ public isolated function newShareRequest(CampaignSnapshot campaign, ConnectionSn
 # + campaign - Campaign snapshot
 # + connection - Connection snapshot
 # + command - The new request
+# + minOwnWords - Words of their own the thoughts need (see `ownWordCount`); 0 = no check
 # + return - The re-queued request, or a domain error
 public isolated function retryShare(ShareRequest request, CampaignSnapshot campaign, ConnectionSnapshot? connection,
-        ShareCommand command) returns ShareRequest|types:DomainError {
+        ShareCommand command, int minOwnWords = COMMENTARY_MIN_OWN_WORDS_OFF)
+        returns ShareRequest|types:DomainError {
     ShareStatus status = shareStatus(request);
     if status == PUBLISHED {
         return types:domainError(types:ERR_SHARE_ALREADY_PUBLISHED, "You already shared this campaign");
@@ -89,7 +93,7 @@ public isolated function retryShare(ShareRequest request, CampaignSnapshot campa
     check ensureShareable(campaign, connection);
     ShareRequest retried = request.clone();
     retried.kind = command.kind;
-    retried.commentary = check validCommentary(command.kind, command.commentary);
+    retried.commentary = check validCommentary(command.kind, command.commentary, campaign, minOwnWords);
     retried.failedAt = ();
     retried.failureReason = ();
     retried.lastErrorCode = ();
@@ -205,16 +209,18 @@ public isolated function failForLostConnection(ShareRequest request, time:Utc no
 # + connection - Connection snapshot
 # + command - The request
 # + now - Current time
+# + minOwnWords - Words of their own the thoughts need (see `ownWordCount`); 0 = no check
 # + return - The queued request, a domain error, or a repository error
 public isolated function requestShare(ShareRepository repo, CampaignSnapshot campaign, ConnectionSnapshot? connection,
-        ShareCommand command, time:Utc now) returns ShareRequest|error {
+        ShareCommand command, time:Utc now, int minOwnWords = COMMENTARY_MIN_OWN_WORDS_OFF)
+        returns ShareRequest|error {
     ShareRequest? existing = check repo.findByCampaignAndEmployee(campaign.id, command.employeeId);
     if existing is ShareRequest {
-        ShareRequest retried = check retryShare(existing, campaign, connection, command);
+        ShareRequest retried = check retryShare(existing, campaign, connection, command, minOwnWords);
         check repo.update(retried, existing.version, [repostRequestedEvent(retried)]);
         return retried;
     }
-    ShareRequest request = check newShareRequest(campaign, connection, command, types:newUuidV7(), now);
+    ShareRequest request = check newShareRequest(campaign, connection, command, types:newUuidV7(), now, minOwnWords);
     check repo.insert(request, [repostRequestedEvent(request)]);
     return request;
 }
@@ -231,7 +237,8 @@ isolated function ensureShareable(CampaignSnapshot campaign, ConnectionSnapshot?
     return ();
 }
 
-isolated function validCommentary(types:ShareKind kind, string? raw) returns string?|types:DomainError {
+isolated function validCommentary(types:ShareKind kind, string? raw, CampaignSnapshot campaign, int minOwnWords)
+        returns string?|types:DomainError {
     string? commentary = types:trimToNil(raw);
     if types:hasCommentary(kind) {
         if commentary is () {
@@ -241,10 +248,56 @@ isolated function validCommentary(types:ShareKind kind, string? raw) returns str
             return types:domainError(types:ERR_COMMENTARY_TOO_LONG,
                     string `Your thoughts must be at most ${COMMENTARY_MAX_LENGTH} characters`);
         }
+        // The bonus is for the employee's own words: thoughts that only repeat the post (its title pasted in, as a
+        // script did) don't earn it.
+        if minOwnWords > 0 && ownWordCount(commentary, campaign) < minOwnWords {
+            return types:domainError(types:ERR_COMMENTARY_NOT_OWN_WORDS,
+                    string `Add at least ${minOwnWords} words of your own; words copied from the post don't count`);
+        }
         return commentary;
     }
     if commentary !is () {
         return types:domainError(types:ERR_COMMENTARY_NOT_ALLOWED, "A plain repost has no commentary");
     }
     return ();
+}
+
+# Distinct words in `thoughts` that are not in the campaign title or summary. Case, punctuation, links, `#` and
+# `@` don't matter, and one-character words (`a`, `5` in `5.1`) don't count, so pasting the title back, adding
+# hashtags of its words or repeating a word earns nothing.
+#
+# + thoughts - The employee's words
+# + campaign - Campaign snapshot (title and summary)
+# + return - How many distinct words of their own the thoughts have
+public isolated function ownWordCount(string thoughts, CampaignSnapshot campaign) returns int {
+    map<boolean> post = wordsOf(campaign.title);
+    foreach string word in wordsOf(campaign.summary).keys() {
+        post[word] = true;
+    }
+    int own = 0;
+    foreach string word in wordsOf(thoughts).keys() {
+        if !post.hasKey(word) {
+            own += 1;
+        }
+    }
+    return own;
+}
+
+# Distinct words of `text`: lower-cased (ASCII), links removed, split on anything that isn't a letter or a digit,
+# one-character words left out.
+#
+# + text - Text, or `()`
+# + return - The words, as map keys
+isolated function wordsOf(string? text) returns map<boolean> {
+    map<boolean> words = {};
+    if text is () {
+        return words;
+    }
+    string withoutLinks = re `https?://\S+`.replaceAll(text.toLowerAscii(), " ");
+    foreach string word in re `[^\p{L}\p{N}]+`.split(withoutLinks) {
+        if word.length() > 1 {
+            words[word] = true;
+        }
+    }
+    return words;
 }

@@ -44,6 +44,11 @@ configurable string campaignLinkOrigins = "https://www.linkedin.com,https://link
 # Privacy notice the LinkedIn consent dialog links to. Empty = the dialog shows no link.
 configurable string privacyNoticeUrl = "";
 
+# Words of their own an employee's thoughts need for a share with thoughts (`REPOST_COMMENTARY`,
+# `SHARE_COMMENTARY`): distinct words that aren't in the post's title or summary. Thoughts with fewer are refused
+# with `COMMENTARY_NOT_OWN_WORDS`, so pasting the title back doesn't earn the bonus. 0 turns the check off.
+configurable int commentaryMinOwnWords = 5;
+
 // Stops startup on a value that is not empty or https (checked once, like the redirect URI).
 final () privacyNoticeUrlChecked = check checkPrivacyNoticeUrl(privacyNoticeUrl);
 
@@ -449,9 +454,16 @@ isolated function requestShare(auth:Principal p, string? correlationId, string i
             return conflicted(LINKEDIN_NOT_CONNECTED, "Connect your LinkedIn account first", correlationId);
         }
         sharing:ShareRequest request = check sharing:requestShare(check shareRepository(actor),
-                {id: c.id, provider: c.provider, resourceUrn: c.resourceUrn, open: campaign:isOpen(c, now)},
+                {
+                    id: c.id,
+                    provider: c.provider,
+                    resourceUrn: c.resourceUrn,
+                    open: campaign:isOpen(c, now),
+                    title: c.title,
+                    summary: c.summary
+                },
                 {memberUrn: linked.memberUrn, usable: connection:canShare(linked, now, settings.reminderDays)},
-                {employeeId: p.employeeId, kind, commentary: body.commentary}, now);
+                {employeeId: p.employeeId, kind, commentary: body.commentary}, now, commentaryMinOwnWords);
         return <http:Accepted>{body: shareDto(request)};
     } on fail error e {
         return failure(e, correlationId, "Request share");
