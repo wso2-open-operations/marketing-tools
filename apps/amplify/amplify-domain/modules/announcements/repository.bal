@@ -15,10 +15,12 @@
 // under the License.
 
 
-// PostgreSQL reads of `announcement` for the admin screen and dashboard (M5), and the admin retry.
-// `amplify_api` can only read `announcement`; the jobs worker owns its writes. A retry
-// re-queues the announcement's `CampaignRegistered` outbox row instead (ADR-024): the worker clears `failed_at` and
-// `attempted_at` (the person decided to send again) and sends it to Novera.
+// PostgreSQL reads of `announcement` for the admin screen and dashboard (M5), and the admin retry and send.
+// The jobs worker owns the announcement's normal writes. A retry re-queues the announcement's `CampaignRegistered`
+// outbox row (ADR-024) and, in the same transaction, clears `failed_at`, `last_error` and `attempted_at` on the
+// announcement row (the person decided to send again), so the board reads Queued at once, even while the worker
+// defers the row (Novera off). A send does the same for a campaign that has no announcement row yet: it makes the
+// `CampaignRegistered` outbox row due now (writing it when missing) and adds a queued `announcement` row.
 // Column names predate Novera: `thread_key` holds the idempotency key and `chat_message_name` the delivery marker.
 // `chat_thread_name` (V011, Club webhook threads) is no longer read or written; old rows keep their value.
 
@@ -65,6 +67,15 @@ public type AnnouncementRepository isolated object {
     # + campaignId - Campaign
     # + return - `NOT_FOUND` when there is no outbox row, or another error
     public isolated function requeue(string campaignId) returns error?;
+
+    # Admin send: queues the announcement of a campaign that has none yet. Makes its `CampaignRegistered` outbox row
+    # due now (a `PENDING` one), resets a `FAILED` one, or writes `event` when the row is missing.
+    #
+    # + campaignId - Campaign
+    # + event - The `CampaignRegistered` outbox event to write when none exists
+    # + return - `ALREADY_ANNOUNCED` when an announcement row exists, `ANNOUNCEMENT_NOT_FAILED` when the row is
+    #            being sent or was sent, or another error
+    public isolated function send(string campaignId, events:OutboxEvent event) returns error?;
 };
 
 # `AnnouncementRepository` over PostgreSQL.
@@ -129,8 +140,62 @@ public isolated class PgAnnouncementRepository {
                     ? "The card is being sent right now"
                     : state == "DONE" ? "The card was already sent" : "The card is already queued");
             }
+            // The announcement row mirrors what the worker would clear on its next claim, so the board shows Queued
+            // now. The attempt marker goes too: the person decided to send again.
+            _ = check self.db->execute(`
+                UPDATE announcement SET failed_at = NULL, last_error = NULL, attempted_at = NULL
+                WHERE campaign_id = CAST(${campaignId} AS uuid)`);
             check store:writeAudit(self.db, store:auditOf(self.actor, "AnnouncementRetried", ANNOUNCEMENT_TABLE,
                     campaignId));
+            check commit;
+        }
+    }
+
+    public isolated function send(string campaignId, events:OutboxEvent event) returns error? {
+        final events:OutboxEvent & readonly frozen = event.cloneReadOnly();
+        return store:inTransaction(isolated function () returns error? => self.sendTx(campaignId, frozen));
+    }
+
+    private isolated function sendTx(string campaignId, events:OutboxEvent event) returns error? {
+        string key = events:idempotencyKey(events:CAMPAIGN_REGISTERED, campaignId);
+        transaction {
+            int|sql:Error existing = self.db->queryRow(`
+                SELECT 1 FROM announcement WHERE campaign_id = CAST(${campaignId} AS uuid)`);
+            if existing is int {
+                fail types:domainError(types:ERR_ALREADY_ANNOUNCED,
+                        "This post already has an announcement; use Retry if it failed");
+            }
+            if !store:isNoRows(existing) {
+                fail existing;
+            }
+            string|sql:Error state = self.db->queryRow(`
+                SELECT status FROM messaging_outbox WHERE idempotency_key = ${key} FOR UPDATE`);
+            if state is sql:Error && !store:isNoRows(state) {
+                fail state;
+            }
+            if state is sql:Error {
+                _ = check store:writeOutbox(self.db, [event]);
+            } else if state == "PENDING" || state == "FAILED" {
+                _ = check self.db->execute(`
+                    UPDATE messaging_outbox
+                    SET status = 'PENDING', attempts = 0, next_attempt_at = now(), locked_by = NULL,
+                        locked_until = NULL, last_error = NULL, processed_at = NULL
+                    WHERE idempotency_key = ${key}`);
+            } else {
+                fail types:domainError(types:ERR_ANNOUNCEMENT_NOT_FAILED, state == "IN_PROGRESS"
+                    ? "The card is being sent right now"
+                    : "The card was already sent");
+            }
+            // A queued announcement row, so the board reads Queued at once: without it the post stays "Not announced"
+            // until a run claims the outbox row (never, while Novera is off). The worker sends a queued row that has
+            // no attempt marker.
+            int outboxId = check self.db->queryRow(`SELECT id FROM messaging_outbox WHERE idempotency_key = ${key}`);
+            _ = check self.db->execute(`
+                INSERT INTO announcement (campaign_id, outbox_id, space, thread_key)
+                VALUES (CAST(${campaignId} AS uuid), ${outboxId}, ${NOVERA_SPACE}, ${announcementKey(campaignId)})
+                ON CONFLICT (campaign_id) DO NOTHING`);
+            check store:writeAudit(self.db, store:auditOf(self.actor, "AnnouncementSendRequested",
+                    ANNOUNCEMENT_TABLE, campaignId));
             check commit;
         }
     }

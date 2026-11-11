@@ -17,6 +17,7 @@ Paths: `apps/…` = `apps/amplify/…`. Local commands run from `apps/amplify/`.
 | Maintenance now | `POST {jobs}/maintenance/partitions` (either key; also rotates token keys: `token_rotation` in the response) |
 | Scheduler sync now | `POST /admin/scheduler/sync` (admin) |
 | Retry one announcement | `POST /admin/announcements/{id}/retry` (admin) |
+| Send a post that shows Not announced | `POST /admin/announcements/{id}/send` (admin): makes its queue entry due now, or writes it when missing |
 | Kill switches | `PUT /admin/settings` `sharing.enabled` / `announcements.enabled` |
 | DB shell (local) | `docker compose exec postgres psql -U postgres -d amplify` |
 | Refresh team rosters now | Restart Amplify Backend (the people-directory index lives in memory, §13) |
@@ -37,7 +38,7 @@ The outbox is `messaging_outbox`, status ∈ {`PENDING`,`IN_PROGRESS`,`DONE`,`FA
    WHERE status='FAILED' AND event_type='CampaignRegistered'
    ORDER BY created_at DESC;
    ```
-2. `POST /admin/announcements/{campaignId}/retry` (admin token). This resets that row to `PENDING`/`attempts=0` and audits `AnnouncementRetried` (`amplify-domain/modules/announcements/repository.bal`, `requeue`).
+2. `POST /admin/announcements/{campaignId}/retry` (admin token). This resets that row to `PENDING`/`attempts=0`, clears the failure on the `announcement` row (the board reads Queued at once) and audits `AnnouncementRetried` (`amplify-domain/modules/announcements/repository.bal`, `requeue`).
 
 **1b. Manual reprocess of FAILED rows (gap — use with care).** Shape mirrors the announcement `requeue`; scope it by `event_type`/`aggregate_id` — **never reset all FAILED rows blindly** (some fail permanently).
 1. Inspect first:

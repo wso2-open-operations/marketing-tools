@@ -588,6 +588,36 @@ isolated function reverseEntry(auth:Principal p, string? correlationId, string r
 
 // ---- S5 Admin ---------------------------------------------------------------------------------------
 
+# Admin send: queues the Novera announcement of an open post that has none yet (`Not announced`).
+isolated function sendAnnouncement(auth:Principal p, string? correlationId, string id) returns http:StatusCodeResponse {
+    do {
+        string campaignId = check uuidOf(id, "id");
+        Settings settings = check loadSettings();
+        if !settings.announcementsEnabled {
+            return conflicted(FEATURE_DISABLED, "Announcements are paused right now", correlationId);
+        }
+        store:Actor actor = actorOf(p, correlationId);
+        campaign:Campaign? c = check (check campaignRepository(actor)).findById(campaignId);
+        if c is () {
+            return notFound("Campaign not found", correlationId);
+        }
+        campaign:CampaignStatus status = campaign:campaignStatus(c, time:utcNow());
+        if status == campaign:ARCHIVED {
+            return conflicted(types:ERR_CAMPAIGN_ARCHIVED, "An archived post is not announced", correlationId);
+        }
+        if status == campaign:CLOSED {
+            return conflicted(CAMPAIGN_CLOSED, "A closed post is not announced", correlationId);
+        }
+        announcements:AnnouncementRepository repo = check announcementRepository(actor);
+        check repo.send(campaignId, campaign:campaignRegisteredEvent(c, false));
+        dropSnapshot();
+        _ = triggerJobs("/runs", correlationId);
+        return <http:Accepted>{body: {campaignId, status: "QUEUED"}};
+    } on fail error e {
+        return failure(e, correlationId, "Send announcement");
+    }
+}
+
 isolated function retryAnnouncement(auth:Principal p, string? correlationId, string id) returns http:StatusCodeResponse {
     do {
         string campaignId = check uuidOf(id, "id");
@@ -602,6 +632,7 @@ isolated function retryAnnouncement(auth:Principal p, string? correlationId, str
         }
         announcements:Announcement queued = check announcements:retryAnnouncement(current);
         check repo.requeue(campaignId);
+        dropSnapshot();
         _ = triggerJobs("/runs", correlationId);
         return <http:Accepted>{body: announcementDto(queued)};
     } on fail error e {

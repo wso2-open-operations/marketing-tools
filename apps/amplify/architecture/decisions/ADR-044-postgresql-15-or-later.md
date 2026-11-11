@@ -21,7 +21,8 @@ The design assumed PostgreSQL 18 for two features: the native `uuidv7()` (column
   values stay atomic.
 - **Local and tests:** Compose and the test scripts pin `postgres:17` (17.11, by digest). The data volumes mount at
   `/var/lib/postgresql/data`; an existing 18 volume must be recreated (`make down`, `make up`). The database
-  integration workflow (`amplify-database-integration.yml`) runs on 15, 17 and 18.
+  integration workflow (`amplify-database-integration.yml`) runs on 17 only: 15 and 18 are not used, so CI does not
+  test them. The floor and the 18 behavior above describe what the runner and V001 allow, not what CI verifies.
 
 ## Consequences
 

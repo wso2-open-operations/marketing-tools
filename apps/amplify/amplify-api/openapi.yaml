@@ -961,6 +961,28 @@ paths:
         "404": {$ref: "#/components/responses/Problem"}
         "409": {$ref: "#/components/responses/Problem"}
         "503": {$ref: "#/components/responses/Problem"}
+  /admin/announcements/{id}/send:
+    parameters: [{$ref: "#/components/parameters/CampaignId"}]
+    post:
+      tags: [S5 Admin]
+      operationId: sendAnnouncement
+      x-access: CAN_ADMIN
+      description: Queues the Novera announcement of an open post that has none yet (the Operations board's Not announced); the next Run sends it. A post whose announcement failed is retried instead (409 ANNOUNCEMENT_NOT_FAILED). Refused while `announcements.enabled` is false.
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      responses:
+        "202":
+          description: Queued
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AnnouncementSend"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
   /admin/settings:
     get:
       tags: [S5 Admin]
@@ -2017,6 +2039,12 @@ components:
         sentAt: {type: string, format: date-time, nullable: true}
         failedAt: {type: string, format: date-time, nullable: true}
         lastError: {type: string, nullable: true}
+    AnnouncementSend:
+      type: object
+      required: [campaignId, status]
+      properties:
+        campaignId: {type: string}
+        status: {type: string, enum: [QUEUED]}
     AnnouncementList:
       type: object
       required: [items]

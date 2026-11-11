@@ -19,6 +19,7 @@
 // closed they go through `db()`, so an open breaker still answers 503 (db_breaker_test.bal).
 
 import amplify_common.crypto;
+import amplify_common.events;
 import amplify_common.linkedin;
 import amplify_common.types;
 import amplify_domain.announcements;
@@ -570,6 +571,7 @@ isolated function mockTokenRepository() returns connection:TokenRepository|error
 isolated class FakeAnnouncements {
     *announcements:AnnouncementRepository;
     private map<announcements:Announcement> rows = {};
+    private string[] sent = [];
 
     isolated function put(announcements:Announcement a) {
         lock {
@@ -601,8 +603,18 @@ isolated class FakeAnnouncements {
                 announcements:Announcement queued = a.clone();
                 queued.failedAt = ();
                 queued.lastError = ();
+                queued.attemptedAt = ();
                 self.rows[campaignId] = queued;
             }
+        }
+    }
+
+    public isolated function send(string campaignId, events:OutboxEvent event) returns error? {
+        lock {
+            if self.rows.hasKey(campaignId) {
+                return types:domainError(types:ERR_ALREADY_ANNOUNCED, "This post already has an announcement");
+            }
+            self.sent.push(campaignId);
         }
     }
 }

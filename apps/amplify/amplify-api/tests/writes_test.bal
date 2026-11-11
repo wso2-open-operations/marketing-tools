@@ -204,6 +204,7 @@ function testAnnouncementRetry() returns error? {
 
     http:Response retried = check send("POST", string `/admin/announcements/${failedId}/retry`, (), admin);
     test:assertEquals(retried.statusCode, 202);
+    test:assertEquals(snapshotCacheSize(), 0, "the board reads fresh after a retry");
     check assertShape(retried, "Announcement");
     test:assertEquals(check (check retried.getJsonPayload()).status, "QUEUED");
     http:Response twice = check send("POST", string `/admin/announcements/${failedId}/retry`, (), admin);
@@ -212,6 +213,34 @@ function testAnnouncementRetry() returns error? {
     test:assertEquals((check send("POST", string `/admin/announcements/${SAMPLE_UUID}/retry`, (), admin)).statusCode, 404);
     test:assertEquals((check send("POST", "/admin/announcements/nope/retry", (), admin)).statusCode, 400);
     _ = announcements:QUEUED;
+}
+
+@test:Config {groups: ["writes"]}
+function testAnnouncementSend() returns error? {
+    string po = check mint({sub: "po-send", email: "po-send@wso2.com", groups: [PO_GROUP]});
+    http:Response made = check send("POST", "/campaigns", registerBody("urn:li:share:9501"), po);
+    test:assertEquals(made.statusCode, 201);
+    string id = (check (check made.getJsonPayload()).campaign.id).toString();
+    string admin = check mint({sub: "adm-send", email: "adm-send@wso2.com", groups: [ADMIN_GROUP]});
+
+    setSetting("announcements.enabled", false);
+    http:Response paused = check send("POST", string `/admin/announcements/${id}/send`, (), admin);
+    clearSettings();
+    test:assertEquals(check codeIn(paused), "FEATURE_DISABLED");
+
+    http:Response sent = check send("POST", string `/admin/announcements/${id}/send`, (), admin);
+    test:assertEquals(sent.statusCode, 202);
+    check assertShape(sent, "AnnouncementSend");
+    test:assertEquals(check (check sent.getJsonPayload()).status, "QUEUED");
+    test:assertEquals((check send("POST", string `/admin/announcements/${id}/send`, (), po)).statusCode, 403);
+
+    fakeAnnouncements.put({campaignId: id, outboxId: 1, space: "novera", idempotencyKey: "amplify:" + id,
+        messageName: (), queuedAt: [1760000000, 0], sentAt: (), failedAt: (), lastError: ()});
+    http:Response again = check send("POST", string `/admin/announcements/${id}/send`, (), admin);
+    test:assertEquals(again.statusCode, 409);
+    test:assertEquals(check codeIn(again), "ALREADY_ANNOUNCED");
+    test:assertEquals((check send("POST", string `/admin/announcements/${SAMPLE_UUID}/send`, (), admin)).statusCode, 404);
+    test:assertEquals((check send("POST", "/admin/announcements/nope/send", (), admin)).statusCode, 400);
 }
 
 // ---- Settings ------------------------------------------------------------------------------------------
