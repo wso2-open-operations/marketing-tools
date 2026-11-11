@@ -171,6 +171,9 @@ services:
       BAL_CONFIG_VAR_TOKENKEYS: ${TOKEN_ENCRYPTION_KEY_ID:?}:${TOKEN_ENCRYPTION_KEY:?}
       BAL_CONFIG_VAR_TOKENCURRENTKEYID: ${TOKEN_ENCRYPTION_KEY_ID:?}
       BAL_CONFIG_VAR_AMPLIFYONNOVERA: ${AMPLIFY_ON_NOVERA:-true}
+      # Pacing between one employee's LinkedIn posts, minutes. Off locally so `make e2e` publishes at once; set it to
+      # try pacing (Choreo default 10).
+      BAL_CONFIG_VAR_SHAREPUBLISHGAPMINUTES: ${SHARE_PUBLISH_GAP_MINUTES:-0}
       # Novera (Google Chat assistant), the one announcement channel (ADR-047): the Choreo gateway URL of its
       # POST /internal/notifications and the client-credentials application subscribed to it. Empty settings =
       # announcements defer. Local try-out: run local/novera-mock (node server.mjs, :3003) and see docs/HowToTestLocally/TestNovera.md.

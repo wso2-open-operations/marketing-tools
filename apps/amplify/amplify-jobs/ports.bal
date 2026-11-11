@@ -50,6 +50,10 @@ type RunConfig record {|
     decimal deferSeconds;
     int linkedinMaxPostsPerRun;
     int linkedinMaxPostsPerDay;
+    # Least seconds between two posts of the same employee (pacing.bal); 0 = no pacing
+    int publishGapSeconds = 0;
+    # Most extra seconds added to a paced post
+    int publishJitterSeconds = 0;
     # Novera card button URL template (`noveraButtonUrl`); empty = not configured
     string noveraButtonUrl;
     string? cardAvatarUrl = ();
@@ -95,6 +99,8 @@ type Store isolated object {
     isolated function saveAnnouncement(announcements:Announcement announcement, events:OutboxEvent[] outbox)
         returns error?;
     isolated function share(string campaignId, types:EmployeeId employeeId) returns sharing:ShareRequest|error?;
+    # When the employee's latest share was published, `()` if none was (pacing).
+    isolated function lastPublishedAt(types:EmployeeId employeeId) returns time:Utc|error?;
     isolated function recordPublish(sharing:PublishResult result, int expectedVersion) returns error?;
     # Settles a publish `recordPublish` refused with an engagement unique violation (domain review H-5).
     # True when settled on the existing engagement, false when none matches.
@@ -196,6 +202,9 @@ isolated class PgStore {
 
     isolated function share(string campaignId, types:EmployeeId employeeId) returns sharing:ShareRequest|error? =>
         (new sharing:PgShareRepository(self.db, self.actor)).findByCampaignAndEmployee(campaignId, employeeId);
+
+    isolated function lastPublishedAt(types:EmployeeId employeeId) returns time:Utc|error? =>
+        sharing:lastPublishedAt(self.db, employeeId);
 
     isolated function recordPublish(sharing:PublishResult result, int expectedVersion) returns error? =>
         (new sharing:PgShareRepository(self.db, self.actor)).recordPublish(result, expectedVersion);

@@ -98,6 +98,9 @@ isolated function validateRunConfig(RunConfig cfg, decimal longestCallSeconds) r
     if cfg.linkedinMaxPostsPerRun < 0 || cfg.linkedinMaxPostsPerDay < 0 {
         return error("linkedinMaxPostsPerRun and linkedinMaxPostsPerDay must not be negative");
     }
+    if cfg.publishGapSeconds < 0 || cfg.publishJitterSeconds < 0 {
+        return error("sharePublishGapMinutes and sharePublishJitterMinutes must not be negative");
+    }
     if cfg.backoffBaseSeconds <= 0d || cfg.backoffMaxSeconds < cfg.backoffBaseSeconds || cfg.deferSeconds <= 0d {
         return error("backoffBaseSeconds and deferSeconds must be positive and backoffMaxSeconds >= backoffBaseSeconds");
     }

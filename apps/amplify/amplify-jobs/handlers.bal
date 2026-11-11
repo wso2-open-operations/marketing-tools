@@ -259,6 +259,13 @@ isolated function handleRepostRequested(HandlerContext ctx, events:RepostRequest
         // post. Posting again could duplicate it, so fail the row for an operator to reconcile by hand.
         return failed("a previous publish attempt may already have posted; manual review required");
     }
+    // Pacing (pacing.bal): one post per employee per gap. Runs never overlap and handle rows one by one, so the
+    // post an earlier row of this run made is already committed here. Waiting doesn't use up an attempt.
+    decimal paceDelay = paceDelaySeconds(check ctx.store.lastPublishedAt(event.employeeId), ctx.now,
+            ctx.config.publishGapSeconds, ctx.config.publishJitterSeconds, share.id);
+    if paceDelay > 0d {
+        return deferFor(paceDelay, store:PACED_NOTE_PREFIX + "this employee's previous post went out less than the gap ago");
+    }
 
     connection:LinkedInConnection? conn = check ctx.store.connection(event.employeeId);
     if conn is () || !connection:canShare(conn, ctx.now, ctx.settings.reminderDays) {
