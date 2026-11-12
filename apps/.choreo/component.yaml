@@ -177,3 +177,10 @@ configurations:
           displayName: Announce shares through Novera (true or false; default true)
           type: boolean
           required: false
+    # Pacing: least minutes between two LinkedIn posts of the same employee (default 10; 0 = off).
+    - name: BAL_CONFIG_VAR_SHAREPUBLISHGAPMINUTES
+      valueFrom:
+        configForm:
+          displayName: Minutes between one employee's LinkedIn posts (default 10, 0 = off)
+          type: number
+          required: false

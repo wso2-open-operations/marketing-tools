@@ -207,6 +207,67 @@ function repostPublishesOnceRecordsEngagementAndScoresOnce() returns error? {
 }
 
 @test:Config
+function oneEmployeesSharesGoOutOneAtATime() returns error? {
+    World w = harness();
+    RunConfig paced = check TEST_CONFIG.cloneWithType();
+    paced.publishGapSeconds = 600;
+    paced.publishJitterSeconds = 300;
+    w.deps.config = paced;
+    time:Utc now = time:utcNow();
+    check connectedEmployee(w.mem, w.cipher, "emp-pace", now);
+    check connectedEmployee(w.mem, w.cipher, "emp-other", now);
+    // Three shares queued at once by one employee (a burst, or a script), one by another employee.
+    int[] burst = [];
+    foreach int i in 0 ..< 3 {
+        string cid = types:newUuidV7();
+        w.mem.putCampaign(openCampaign(cid, now));
+        var share = queuedShare(cid, "emp-pace", now);
+        w.mem.putShare(share);
+        burst.push(w.queue.enqueue(events:REPOST_REQUESTED, repostRequested(share.id, cid, "emp-pace")));
+    }
+    string otherCid = types:newUuidV7();
+    w.mem.putCampaign(openCampaign(otherCid, now));
+    var other = queuedShare(otherCid, "emp-other", now);
+    w.mem.putShare(other);
+    int otherRow = w.queue.enqueue(events:REPOST_REQUESTED, repostRequested(other.id, otherCid, "emp-other"));
+
+    RunReport r = check run(w);
+    test:assertEquals(w.linkedIn.postCount(), 2, "one post per employee in this run");
+    test:assertEquals(w.queue.statusOf(burst[0])[0], "DONE");
+    test:assertEquals(w.queue.statusOf(otherRow)[0], "DONE", "another employee is not held back");
+    test:assertEquals(r.deferred, 2);
+    foreach int id in burst.slice(1) {
+        [string, int, string?] [status, attempts, _] = w.queue.statusOf(id);
+        test:assertEquals(status, "PENDING");
+        test:assertEquals(attempts, 0, "waiting does not use up an attempt");
+        decimal delay = time:utcDiffSeconds(w.queue.dueAtOf(id), now);
+        test:assertTrue(delay >= 590d && delay <= 905d, string `waits the gap plus up to the jitter, got ${delay}`);
+    }
+    test:assertEquals(w.mem.ledgerSize(), 2, "points only for what was posted");
+}
+
+@test:Config
+function paceDelayKeepsTheGapAndAddsJitter() {
+    time:Utc now = [1790000000, 0];
+    test:assertEquals(paceDelaySeconds((), now, 600, 300, "s1"), 0d, "first post goes now");
+    test:assertEquals(paceDelaySeconds(time:utcAddSeconds(now, -700), now, 600, 300, "s1"), 0d, "gap already passed");
+    test:assertEquals(paceDelaySeconds(time:utcAddSeconds(now, -100), now, 0, 300, "s1"), 0d, "0 turns pacing off");
+    test:assertEquals(paceDelaySeconds(time:utcAddSeconds(now, -100), now, 600, 0, "s1"), 500d, "rest of the gap");
+    decimal withJitter = paceDelaySeconds(time:utcAddSeconds(now, -100), now, 600, 300, "s1");
+    test:assertTrue(withJitter >= 500d && withJitter <= 800d, withJitter.toString());
+    test:assertEquals(paceDelaySeconds(time:utcAddSeconds(now, -100), now, 600, 300, "s1"), withJitter,
+            "same share and same last post, same wait");
+    map<boolean> seen = {};
+    foreach int i in 0 ..< 20 {
+        int j = jitterOf(string `share-${i}`, 300);
+        test:assertTrue(j >= 0 && j <= 300);
+        seen[j.toString()] = true;
+    }
+    test:assertTrue(seen.length() > 5, "jitter varies between shares");
+    test:assertEquals(jitterOf("s1", 0), 0);
+}
+
+@test:Config
 function linkedIn401RevokesConnectionAndFailsShare() returns error? {
     World w = harness();
     time:Utc now = time:utcNow();

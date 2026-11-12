@@ -2,3 +2,6 @@
 [wso2.amplify_jobs]
 internalApiKey = "test-internal-key-0123456789abcdef0123456789"
 schedulerApiKey = "test-scheduler-key-0123456789abcdef012345"
+# Pacing off for the service and integration tests, which publish through the real run config; run_test.bal
+# covers pacing with its own config.
+sharePublishGapMinutes = 0

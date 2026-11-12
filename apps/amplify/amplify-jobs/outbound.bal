@@ -110,6 +110,8 @@ isolated function runConfig() returns RunConfig => {
     deferSeconds,
     linkedinMaxPostsPerRun,
     linkedinMaxPostsPerDay,
+    publishGapSeconds: sharePublishGapMinutes * 60,
+    publishJitterSeconds: sharePublishJitterMinutes * 60,
     noveraButtonUrl: noveraButtonUrl.trim(),
     cardAvatarUrl: noveraIconUrl.trim() == "" ? () : noveraIconUrl.trim(),
     defaultImageUrl: noveraDefaultImageUrl.trim() == "" ? () : noveraDefaultImageUrl.trim()

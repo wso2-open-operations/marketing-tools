@@ -88,6 +88,12 @@ isolated class MemRunStore {
         }
     }
 
+    isolated function dueAtOf(int id) returns time:Utc {
+        lock {
+            return (<MemRow>self.rows[id.toString()]).dueAt;
+        }
+    }
+
     isolated function statusOf(int id) returns [string, int, string?] {
         lock {
             MemRow r = <MemRow>self.rows[id.toString()];
@@ -353,6 +359,23 @@ isolated class MemStore {
     isolated function share(string campaignId, types:EmployeeId employeeId) returns sharing:ShareRequest|error? {
         lock {
             return self.shares[campaignId + "|" + employeeId].clone();
+        }
+    }
+
+    isolated function lastPublishedAt(types:EmployeeId employeeId) returns time:Utc|error? {
+        lock {
+            time:Utc? latest = ();
+            foreach sharing:ShareRequest r in self.shares {
+                time:Utc? at = r.publishedAt;
+                if r.employeeId != employeeId || at is () {
+                    continue;
+                }
+                time:Utc? current = latest;
+                if current is () || time:utcDiffSeconds(at, current) > 0d {
+                    latest = at;
+                }
+            }
+            return latest;
         }
     }
 

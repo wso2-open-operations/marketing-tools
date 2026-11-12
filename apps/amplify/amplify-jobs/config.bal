@@ -56,6 +56,11 @@ configurable resilience:HttpResilience linkedinApiResilience = {};
 configurable int linkedinMaxPostsPerRun = 50;
 # LinkedIn posts per UTC day across runs, counted from published shares (app daily limit budget).
 configurable int linkedinMaxPostsPerDay = 1000;
+# Least time between two LinkedIn posts for the same employee, minutes (pacing.bal). Sharing many posts at once
+# still queues them all; they go out one at a time. 0 turns pacing off.
+configurable int sharePublishGapMinutes = 10;
+# Most extra wait added to a paced post, minutes, so an employee's posts don't land at exact intervals.
+configurable int sharePublishJitterMinutes = 5;
 
 // ---- Novera (Google Chat assistant): the one announcement channel (M6a) -----------------------------
 
