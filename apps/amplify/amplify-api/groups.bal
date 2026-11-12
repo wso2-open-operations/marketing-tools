@@ -138,6 +138,20 @@ isolated function rankGroups(GroupRow[] rows, string sortBy = "rank", string dir
         };
 }
 
+# The row key of a department. Without a BU filter a department is one row whatever BU its people sit in, so it
+# is keyed by its name (case-insensitive); with a BU filter the BU-scoped key keeps that BU's slice apart.
+isolated function departmentRowKey(string departmentKey, string name, string? bu) returns string {
+    return bu is string ? departmentKey : name.trim().toLowerAscii();
+}
+
+isolated function departmentRowKeyOf(DirectoryIndex index, string email, string? bu) returns string? {
+    string? departmentKey = index.departmentOf[email];
+    if departmentKey is () {
+        return ();
+    }
+    return departmentRowKey(departmentKey, index.departmentNames[departmentKey] ?: departmentKey, bu);
+}
+
 # Groups (departments, BUs or houses) with their points, from the directory index and the standings. Pure,
 # so it is testable without a database.
 #
@@ -168,15 +182,23 @@ isolated function groupRows(DirectoryIndex index, HeadcountSnapshot snapshot, re
             if bu is string && t.businessUnit != bu {
                 continue;
             }
-            rows[t.key] = {key: t.key, name: t.name, businessUnit: t.businessUnit, points: 0, participants: 0,
-                headcount: t.headcount};
+            string rowKey = departmentRowKey(t.key, t.name, bu);
+            GroupRow? existing = rows[rowKey];
+            if existing is GroupRow {
+                // The same department name under another BU: one row, headcounts rolled up.
+                existing.headcount += t.headcount;
+                continue;
+            }
+            // Shown in upper case, so "Customer Success" and "CUSTOMER SUCCESS" from different BUs read as one name.
+            rows[rowKey] = {key: rowKey, name: t.name.trim().toUpperAscii(), businessUnit: bu is string ? t.businessUnit : (),
+                points: 0, participants: 0, headcount: t.headcount};
         }
     }
     int unassignedPeople = 0;
     int unassignedPoints = 0;
     foreach recognition:EmailPoints e in points {
         string? key = groupBy == "BU" ? index.buOf[e.email]
-            : groupBy == "HOUSE" ? index.houseOf[e.email] : index.departmentOf[e.email];
+            : groupBy == "HOUSE" ? index.houseOf[e.email] : departmentRowKeyOf(index, e.email, bu);
         if key is () {
             unassignedPeople += 1;
             unassignedPoints += e.totalPoints;
