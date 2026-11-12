@@ -139,6 +139,15 @@ function thoughtsCopiedFromThePostAreRefused() {
     // Repeats and one-character words don't count: "great" is the only word of their own.
     test:assertEquals(thoughtsOn(INTEGRATOR, "great great great a b c d e WSO2 Integrator"),
             types:ERR_COMMENTARY_NOT_OWN_WORDS);
+    // A row of hashtags or mentions isn't thoughts, even when their words aren't in the post.
+    test:assertEquals(thoughtsOn(INTEGRATOR, "#excellent #proud #teamwork #shipping #congratulations"),
+            types:ERR_COMMENTARY_NOT_OWN_WORDS);
+    test:assertEquals(thoughtsOn(INTEGRATOR, "@alice @bob @carol @dave @erin WSO2 Integrator"),
+            types:ERR_COMMENTARY_NOT_OWN_WORDS);
+    // Case outside ASCII doesn't matter either: a French title pasted back in capitals.
+    CampaignSnapshot french = {id: "c2", provider: types:LINKEDIN, resourceUrn: "urn:li:share:7001", open: true,
+        title: "équipe école été élève énergie"};
+    test:assertEquals(thoughtsOn(french, "ÉQUIPE ÉCOLE ÉTÉ ÉLÈVE ÉNERGIE"), types:ERR_COMMENTARY_NOT_OWN_WORDS);
 }
 
 @test:Config
@@ -163,6 +172,9 @@ function ownWordsCountDistinctWordsOutsideThePost() {
     test:assertEquals(ownWordCount("Proud of our team, proud of our team!", INTEGRATOR), 4);
     CampaignSnapshot noSummary = {id: "c1", provider: types:LINKEDIN, resourceUrn: "urn:li:share:6999", open: true};
     test:assertEquals(ownWordCount("Great news everyone", noSummary), 3);
+    // Hashtags and mentions add nothing, but the words around them still count.
+    test:assertEquals(ownWordCount("Proud of our team #proud @alice", INTEGRATOR), 4);
+    test:assertEquals(ownWordCount("Ελληνικά ΚΑΛΆ ΝΈΑ καλά νέα", noSummary), 3);
 }
 
 @test:Config

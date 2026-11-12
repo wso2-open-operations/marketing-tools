@@ -262,9 +262,9 @@ isolated function validCommentary(types:ShareKind kind, string? raw, CampaignSna
     return ();
 }
 
-# Distinct words in `thoughts` that are not in the campaign title or summary. Case, punctuation, links, `#` and
-# `@` don't matter, and one-character words (`a`, `5` in `5.1`) don't count, so pasting the title back, adding
-# hashtags of its words or repeating a word earns nothing.
+# Distinct words in `thoughts` that are not in the campaign title or summary. Case (in any script), punctuation and
+# links don't matter; hashtags and @-mentions in the thoughts aren't words at all; and one-character words (`a`, `5`
+# in `5.1`) don't count. So pasting the title back, a row of hashtags or repeating a word earns nothing.
 #
 # + thoughts - The employee's words
 # + campaign - Campaign snapshot (title and summary)
@@ -275,7 +275,9 @@ public isolated function ownWordCount(string thoughts, CampaignSnapshot campaign
         post[word] = true;
     }
     int own = 0;
-    foreach string word in wordsOf(thoughts).keys() {
+    // Whole `#tag` and `@name` tokens go first: their text isn't the employee's thoughts. In the post, a hashtag's
+    // word still counts as the post's (wordsOf drops only the `#`), so `WSO2` stays copied after `#WSO2`.
+    foreach string word in wordsOf(re `[#@]\S*`.replaceAll(thoughts, " ")).keys() {
         if !post.hasKey(word) {
             own += 1;
         }
@@ -283,7 +285,7 @@ public isolated function ownWordCount(string thoughts, CampaignSnapshot campaign
     return own;
 }
 
-# Distinct words of `text`: lower-cased (ASCII), links removed, split on anything that isn't a letter or a digit,
+# Distinct words of `text`: lower-cased in any script, links removed, split on anything that isn't a letter or a digit,
 # one-character words left out.
 #
 # + text - Text, or `()`
@@ -293,7 +295,7 @@ isolated function wordsOf(string? text) returns map<boolean> {
     if text is () {
         return words;
     }
-    string withoutLinks = re `https?://\S+`.replaceAll(text.toLowerAscii(), " ");
+    string withoutLinks = re `https?://\S+`.replaceAll(types:lowerCase(text), " ");
     foreach string word in re `[^\p{L}\p{N}]+`.split(withoutLinks) {
         if word.length() > 1 {
             words[word] = true;
