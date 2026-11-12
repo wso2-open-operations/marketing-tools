@@ -77,6 +77,12 @@ public type Delivery record {|
     int? attempts;
     # When the card went out
     time:Utc? sentAt;
+    # DMs Novera sent the card to, from its last seen count (V023); `()` until counted
+    int? recipients = ();
+    # Of those, people who have read their chat past the card; `()` until counted
+    int? seen = ();
+    # When Novera last counted
+    time:Utc? seenCheckedAt = ();
 |};
 
 # Reposts in one calendar month.
@@ -220,15 +226,18 @@ public isolated function connectionBreakdown(postgresql:Client db) returns Conne
 # + return - Delivery by campaign id (campaigns without an announcement row are left out), or an error
 public isolated function deliveryOf(postgresql:Client db, string[] campaignIds) returns map<Delivery>|error {
     string ids = store:arrayLiteral(campaignIds);
-    stream<record {|string campaign_id; string status; int? attempts; time:Utc? sent_at;|}, error?> rows = db->query(`
-        SELECT a.campaign_id::text AS campaign_id, a.status, o.attempts, a.sent_at
+    stream<record {|string campaign_id; string status; int? attempts; time:Utc? sent_at; int? novera_recipients;
+            int? novera_seen; time:Utc? novera_checked_at;|}, error?> rows = db->query(`
+        SELECT a.campaign_id::text AS campaign_id, a.status, o.attempts, a.sent_at, a.novera_recipients,
+               a.novera_seen, a.novera_checked_at
         FROM announcement_v a
         LEFT JOIN messaging_outbox o ON o.id = a.outbox_id
         WHERE a.campaign_id = ANY (CAST(${ids} AS uuid[]))`);
     map<Delivery> result = {};
     check from var r in rows
         do {
-            result[r.campaign_id] = {status: r.status, attempts: r.status == "QUEUED" ? r.attempts : (), sentAt: r.sent_at};
+            result[r.campaign_id] = {status: r.status, attempts: r.status == "QUEUED" ? r.attempts : (), sentAt: r.sent_at,
+                recipients: r.novera_recipients, seen: r.novera_seen, seenCheckedAt: r.novera_checked_at};
         };
     return result;
 }

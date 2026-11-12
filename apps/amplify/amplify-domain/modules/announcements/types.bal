@@ -48,6 +48,9 @@ public type Announcement record {|
     # Attempt marker (column `attempted_at`, V022): written before the Novera call and cleared only when the call
     # definitely sent nothing. A queued row that still carries it may already have reached Novera
     time:Utc? attemptedAt = ();
+    # Novera's id for the broadcast (column `novera_notification_id`, V023), when Novera returned one; the key for
+    # its seen counts
+    string? noveraNotificationId = ();
 |};
 
 # What the card needs from the campaign (S1 → S5, Customer/Supplier).
@@ -80,4 +83,23 @@ public type NoveraNotification record {|
     string imageUrl?;
     # The Amplify button: opens the configured link (`noveraButtonUrl`) for this campaign
     record {|string url; string label;|} button;
+    # The campaign id, so Novera can count who has seen the card (V023). Sent only when seen stats are on: a Novera
+    # that predates them refuses unknown fields
+    string reference?;
+|};
+
+# Who has seen a broadcast, as Novera counts it (`GET /internal/notifications/{id}/stats`).
+public type NoveraSeenStats record {|
+    # DMs the card went to
+    int recipients;
+    # Of those, people whose chat was read past the card
+    int seen;
+|};
+
+# An announcement whose Novera seen counts are due for a refresh.
+public type NoveraStatsTarget record {|
+    # Campaign
+    string campaignId;
+    # Novera's broadcast id
+    string notificationId;
 |};

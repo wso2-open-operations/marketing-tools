@@ -96,7 +96,8 @@ isolated function productionDeps(PgRunStore db, PgRunLock lockDb) returns Deps =
     linkedIn: linkedInAdapter,
     cipher: tokenCipher,
     config: runConfig(),
-    breakers: breakerStates
+    breakers: breakerStates,
+    noveraStats: db
 };
 
 isolated function runConfig() returns RunConfig => {
@@ -112,5 +113,9 @@ isolated function runConfig() returns RunConfig => {
     linkedinMaxPostsPerDay,
     noveraButtonUrl: noveraButtonUrl.trim(),
     cardAvatarUrl: noveraIconUrl.trim() == "" ? () : noveraIconUrl.trim(),
-    defaultImageUrl: noveraDefaultImageUrl.trim() == "" ? () : noveraDefaultImageUrl.trim()
+    defaultImageUrl: noveraDefaultImageUrl.trim() == "" ? () : noveraDefaultImageUrl.trim(),
+    noveraSeenStatsEnabled,
+    noveraStatsWindowDays,
+    noveraStatsRefreshSeconds,
+    noveraStatsBatch
 };

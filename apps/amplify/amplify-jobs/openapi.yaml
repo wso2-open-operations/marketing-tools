@@ -155,6 +155,7 @@ components:
         failed: {type: integer}
         staleReleased: {type: integer}
         linkedinPosts: {type: integer}
+        noveraStats: {type: integer, description: "Announcements whose Novera seen count was refreshed (V023)"}
         connections:
           type: object
           properties:

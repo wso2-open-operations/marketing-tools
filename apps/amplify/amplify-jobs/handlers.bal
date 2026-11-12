@@ -187,7 +187,8 @@ isolated function handleCampaignRegistered(HandlerContext ctx, events:CampaignRe
     announcements:CampaignCardSource campaignSource = {campaignId: c.id, title: c.title, summary: c.summary,
         imageUrl: c.imageUrl, isPriority: c.isPriority};
     announcements:NoveraNotification|types:DomainError notification = announcements:buildNoveraNotification(
-            campaignSource, ctx.config.noveraButtonUrl, ctx.config.cardAvatarUrl, ctx.config.defaultImageUrl);
+            campaignSource, ctx.config.noveraButtonUrl, ctx.config.cardAvatarUrl, ctx.config.defaultImageUrl,
+            withReference = ctx.config.noveraSeenStatsEnabled);
     if notification is types:DomainError {
         // Start-up validation refuses a bad template, so this is only a guard: nothing is sent.
         return deferFor(ctx.config.deferSeconds, "Novera button URL is invalid");
@@ -202,9 +203,9 @@ isolated function handleCampaignRegistered(HandlerContext ctx, events:CampaignRe
         return retryLater("attempt marker could not be saved; nothing sent");
     }
     // The stored key goes out on every attempt, in case Novera ever honours `Idempotency-Key`.
-    NoveraError? rejected = novera.notify(notification, attempted.idempotencyKey, ctx.correlationId);
-    if rejected is NoveraError {
-        NoveraErrorDetail d = rejected.detail();
+    string|NoveraError? accepted = novera.notify(notification, attempted.idempotencyKey, ctx.correlationId);
+    if accepted is NoveraError {
+        NoveraErrorDetail d = accepted.detail();
         string note = string `Novera ${d.code} (HTTP ${d.httpStatus.toString()})`;
         if d.delivered == "UNKNOWN" {
             // The request may have reached Novera (no answer, or a 5xx other than 503): no automatic retry.
@@ -224,10 +225,11 @@ isolated function handleCampaignRegistered(HandlerContext ctx, events:CampaignRe
         check ctx.store.saveAnnouncement(check announcements:markFailed(cleared, note, ctx.now), []);
         return failed(note);
     }
-    // Novera answers 202 before it sends, so there is no message name: a stable marker stands in. If this save
-    // fails, the row retries and finds the attempt marker (case "delivery unknown"), so there is no second card.
+    // Novera answers 202 before it sends, so there is no message name: a stable marker stands in, with Novera's
+    // broadcast id when it returned one (the key for its seen count). If this save fails, the row retries and finds
+    // the attempt marker (case "delivery unknown"), so there is no second card.
     announcements:Announcement done = check announcements:markSent(attempted,
-        string `${announcements:NOVERA_SPACE}:${c.id}`, ctx.now);
+        string `${announcements:NOVERA_SPACE}:${c.id}`, ctx.now, accepted);
     check ctx.store.saveAnnouncement(done, [announcements:campaignAnnouncedEvent(done)]);
     return {kind: DONE, note: "announced"};
 }

@@ -16,10 +16,12 @@
 
 // The Run (plan M6): one at a time (in-process flag + PostgreSQL advisory lock), release stale locks,
 // sweep, then claim outbox batches `FOR UPDATE SKIP LOCKED` and dispatch each row until the queue is
-// empty or the row/time budget is spent. Ends with one structured run log line.
+// empty or the row/time budget is spent, then copy Novera's seen counts for recent announcements (V023) with
+// what is left of the time budget. Ends with one structured run log line.
 
 import amplify_common.resilience;
 import amplify_common.types;
+import amplify_domain.announcements;
 import amplify_domain.store;
 
 import ballerina/log;
@@ -47,6 +49,8 @@ type RunReport record {|
     int staleReleased;
     # LinkedIn posts made
     int linkedinPosts;
+    # Announcements whose Novera seen count was refreshed
+    int noveraStats = 0;
     # Connection sweep (derived status)
     ConnectionSweep connections;
     # Breaker state per dependency at the end of the run
@@ -151,6 +155,7 @@ isolated function execute(Deps deps, string? correlationId) returns RunReport|er
         }
     }
 
+    report.noveraStats = refreshNoveraStats(deps, correlationId ?: runId, started);
     report.linkedinPosts = budget.used();
     isolated function () returns map<string> breakers = deps.breakers;
     report.breakers = breakers();
@@ -159,10 +164,77 @@ isolated function execute(Deps deps, string? correlationId) returns RunReport|er
     log:printInfo("Run finished", runId = report.runId, correlationId = report.correlationId,
             claimed = report.claimed, succeeded = report.succeeded, retried = report.retried,
             deferred = report.deferred, failed = report.failed, staleReleased = report.staleReleased,
-            linkedinPosts = report.linkedinPosts, expiringConnections = report.connections.expiring,
+            linkedinPosts = report.linkedinPosts, noveraStats = report.noveraStats,
+            expiringConnections = report.connections.expiring,
             needsReconnect = report.connections.needsReconnect, breakers = report.breakers.toString(),
             durationMs = report.durationMs);
     return report;
+}
+
+# Copies Novera's seen counts for recent broadcasts (V023), oldest count first, within what is left of the run's
+# time budget. Never fails the run: a count that can't be read is tried again on a later run. A broadcast Novera
+# doesn't know, or an answer that isn't a count, keeps only the time it was asked, so it waits a refresh interval.
+# Novera unreachable, down (502, 503, 504), refusing the credentials or rate limiting stops the batch; a 500 skips
+# only that broadcast.
+#
+# + deps - Dependencies
+# + correlationId - Sent to Novera and logged
+# + started - Run start (monotonic seconds)
+# + return - Counts saved
+isolated function refreshNoveraStats(Deps deps, string correlationId, decimal started) returns int {
+    RunConfig cfg = deps.config;
+    NoveraPort? novera = deps.novera;
+    NoveraStatsStore? statsStore = deps.noveraStats;
+    if !cfg.noveraSeenStatsEnabled || novera is () || statsStore is () || cfg.noveraStatsBatch < 1 {
+        return 0;
+    }
+    announcements:NoveraStatsTarget[]|error due = statsStore.noveraStatsDue(cfg.noveraStatsWindowDays,
+            cfg.noveraStatsRefreshSeconds, cfg.noveraStatsBatch);
+    if due is error {
+        log:printWarn("Novera seen counts not refreshed: due list unavailable", resilience:loggable(due),
+                correlationId = correlationId);
+        return 0;
+    }
+    int saved = 0;
+    foreach announcements:NoveraStatsTarget target in due {
+        if time:monotonicNow() - started >= <decimal>cfg.maxSeconds {
+            break;
+        }
+        announcements:NoveraSeenStats|NoveraError stats = novera.stats(target.notificationId, correlationId);
+        announcements:NoveraSeenStats? count = ();
+        if stats is NoveraError {
+            NoveraErrorDetail d = stats.detail();
+            // NOT_COUNTED is routine (Novera's read-state check is off or hasn't reached the card yet): no warning.
+            if d.code != "NOT_COUNTED" {
+                log:printWarn("Novera seen count not read", campaignId = target.campaignId, errorCode = d.code,
+                        httpStatus = d.httpStatus, correlationId = correlationId);
+            }
+            boolean answered = d.code == "NOT_FOUND" || d.code == "BAD_RESPONSE" || d.code == "REJECTED"
+                    || d.code == "NOT_COUNTED";
+            if !answered {
+                int? status = d.httpStatus;
+                // No answer, a refused credential, a limit, or the gateway or Novera saying it is down: the rest
+                // would fail the same way. Another status (a 500) may be about this broadcast only.
+                if status is () || d.code == "RATE_LIMITED" || status == 401 || status == 403 || status == 502
+                        || status == 503 || status == 504 {
+                    break;
+                }
+                continue;
+            }
+        } else {
+            count = stats;
+        }
+        error? written = statsStore.saveNoveraStats(target.campaignId, count, time:utcNow());
+        if written is error {
+            log:printWarn("Novera seen count not saved", resilience:loggable(written), campaignId = target.campaignId,
+                    correlationId = correlationId);
+            continue;
+        }
+        if count !is () {
+            saved += 1;
+        }
+    }
+    return saved;
 }
 
 isolated function processRow(Deps deps, store:OutboxRow row, RunSettings settings, LinkedInBudget budget,

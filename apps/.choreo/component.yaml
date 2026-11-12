@@ -177,3 +177,15 @@ configurations:
           displayName: Announce shares through Novera (true or false; default true)
           type: boolean
           required: false
+    - name: BAL_CONFIG_VAR_NOVERASEENSTATSENABLED
+      valueFrom:
+        configForm:
+          displayName: "Novera seen counts: send each card's post id and copy Novera's count of who read it (true or false; default false). Turn on only after Novera supports it"
+          type: boolean
+          required: false
+    - name: BAL_CONFIG_VAR_NOVERASTATSREFRESHSECONDS
+      valueFrom:
+        configForm:
+          displayName: "Novera seen counts: least seconds between two counts of one card (default 240, so every 5-minute run; minimum 60)"
+          type: number
+          required: false

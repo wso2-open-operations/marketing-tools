@@ -91,9 +91,13 @@ function testOperationsBoardNumbers() returns error? {
     test:assertEquals(campaigns.length(), 4);
     test:assertEquals(check campaigns[0].repostsWithCommentary, 12, "reposts with the employee's own commentary");
     test:assertEquals(check campaigns[1].repostsWithCommentary, 0);
-    test:assertEquals(check campaigns[0].announcement, {status: "SENT", attempts: (), sentAt: "2025-10-20T22:40:00Z"});
+    test:assertEquals(check campaigns[0].announcement, {status: "SENT", attempts: (), sentAt: "2025-10-20T22:40:00Z",
+        recipients: 900, seen: 312, seenCheckedAt: "2025-10-21T01:40:00Z"});
     test:assertEquals(check campaigns[1].announcement.attempts, 3, "the retry the worker is on");
     test:assertEquals(check campaigns[2].announcement.status, "NONE", "no announcement row yet");
+    test:assertEquals(check campaigns[1].announcement.seen, (), "not counted yet: no seen count");
+    test:assertEquals(check campaigns[2].announcement, {status: "NONE", attempts: (), sentAt: (), recipients: (),
+        seen: (), seenCheckedAt: ()}, "every field is present on a post with no announcement");
 
     // Without the directory the board still renders, with no headcount and no never-connected figure.
     setDirectory("down");

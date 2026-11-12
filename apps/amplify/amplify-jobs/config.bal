@@ -94,6 +94,16 @@ configurable string noveraDefaultImageUrl = "";
 # `{campaignId}`; checked at start-up. Empty = Novera button not configured: announcements wait, a card never goes
 # out without its button.
 configurable string noveraButtonUrl = "";
+# Seen counts (V023): send each card's campaign id as `reference` and copy Novera's count of who has read past the
+# card. Turn on only once Novera knows `reference`: an older Novera refuses the whole card (HTTP 400).
+configurable boolean noveraSeenStatsEnabled = false;
+# Count only broadcasts sent this many days back or less (Novera stops checking read state after its own window).
+configurable int noveraStatsWindowDays = 14;
+# Least time between two counts of one broadcast, seconds (minimum 60). The default, 4 minutes, is a little under
+# the 5-minute run schedule, so every run refreshes the counts.
+configurable int noveraStatsRefreshSeconds = 240;
+# Most broadcasts counted per run, within what is left of `runMaxSeconds`.
+configurable int noveraStatsBatch = 20;
 
 // ---- Token keys ----------------------------------------------------------------------------------------
 

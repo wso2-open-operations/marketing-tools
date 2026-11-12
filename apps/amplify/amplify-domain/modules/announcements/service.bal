@@ -68,16 +68,26 @@ public isolated function announcementKey(string campaignId) returns string => NO
 # + announcement - Queued announcement
 # + messageName - Delivery marker (`novera:{campaignId}`)
 # + now - Current time
+# + noveraNotificationId - Novera's broadcast id, when it returned one
 # + return - The sent announcement, or `ANNOUNCEMENT_NOT_QUEUED`
-public isolated function markSent(Announcement announcement, string messageName, time:Utc now)
-        returns Announcement|types:DomainError {
+public isolated function markSent(Announcement announcement, string messageName, time:Utc now,
+        string? noveraNotificationId = ()) returns Announcement|types:DomainError {
     check ensureQueued(announcement);
     Announcement sent = announcement.clone();
     sent.sentAt = now;
     sent.messageName = messageName;
     sent.lastError = ();
+    sent.noveraNotificationId = noveraNotificationId is string && isNoveraId(noveraNotificationId)
+        ? noveraNotificationId : ();
     return sent;
 }
+
+# Whether a value is safe as a Novera reference or broadcast id: 1-100 letters, digits, `.`, `_`, `:` or `-`, the
+# shape both sides check (it goes into a URL path as is).
+#
+# + value - Candidate
+# + return - True when it fits
+public isolated function isNoveraId(string value) returns boolean => re `[A-Za-z0-9._:-]{1,100}`.isFullMatch(value);
 
 # Records a failed announcement (Novera refused it, or retries ran out).
 #
@@ -169,10 +179,13 @@ isolated function ensureQueued(Announcement announcement) returns types:DomainEr
 # + iconUrl - Icon beside the title, kept only when it is https
 # + defaultImageUrl - Picture used when the campaign's own image is missing or unusable (Chat fetches it, so it
 # must be public https)
+# + withReference - Send the campaign id as `reference`, so Novera counts who has seen the card. Only for a Novera
+# that knows the field: an older one refuses the whole card
 # + return - The notification: icon, title, subtitle, picture, summary and an Amplify button, or
 # `INVALID_BUTTON_URL` when the template can't give a link (never a card without a button)
 public isolated function buildNoveraNotification(CampaignCardSource campaign, string buttonUrlTemplate,
-        string? iconUrl = (), string? defaultImageUrl = ()) returns NoveraNotification|types:DomainError {
+        string? iconUrl = (), string? defaultImageUrl = (), boolean withReference = false)
+        returns NoveraNotification|types:DomainError {
     string buttonUrl = check buttonUrlFor(buttonUrlTemplate, campaign.campaignId);
     string? summary = campaign.summary;
     string body = summary is () || summary.trim() == "" ? "A new post is ready to share." : summary.trim();
@@ -191,6 +204,9 @@ public isolated function buildNoveraNotification(CampaignCardSource campaign, st
         n.imageUrl = imageUrl;
     } else if defaultImageUrl is string && types:isPublicHttpsUrl(defaultImageUrl) {
         n.imageUrl = defaultImageUrl;
+    }
+    if withReference && isNoveraId(campaign.campaignId) {
+        n.reference = campaign.campaignId;
     }
     return n;
 }

@@ -45,6 +45,7 @@ type AnnouncementRow record {|
     time:Utc? failed_at;
     string? last_error;
     time:Utc? attempted_at;
+    string? novera_notification_id;
 |};
 
 # Persistence port for the admin side of S5.
@@ -95,7 +96,7 @@ public isolated class PgAnnouncementRepository {
     public isolated function findByCampaign(string campaignId) returns Announcement|error? {
         AnnouncementRow|error row = self.db->queryRow(`
             SELECT campaign_id::text AS campaign_id, outbox_id, space, thread_key, chat_message_name,
-                   queued_at, sent_at, failed_at, last_error, attempted_at
+                   queued_at, sent_at, failed_at, last_error, attempted_at, novera_notification_id
             FROM announcement WHERE campaign_id = CAST(${campaignId} AS uuid)`);
         if row is error {
             return store:isNoRows(row) ? () : row;
@@ -107,7 +108,7 @@ public isolated class PgAnnouncementRepository {
         sql:ParameterizedQuery cond = status is () ? `` : `WHERE status = ${status}`;
         stream<AnnouncementRow, error?> rows = self.db->query(sql:queryConcat(`
             SELECT campaign_id::text AS campaign_id, outbox_id, space, thread_key, chat_message_name,
-                   queued_at, sent_at, failed_at, last_error, attempted_at
+                   queued_at, sent_at, failed_at, last_error, attempted_at, novera_notification_id
             FROM announcement_v `, cond, ` ORDER BY queued_at DESC LIMIT ${'limit}`));
         return from AnnouncementRow r in rows
             select toAnnouncement(r);
@@ -248,7 +249,8 @@ public isolated class PgAnnouncementWriter {
                 SET chat_message_name = ${a.messageName},
                     sent_at = CAST(${store:ts(a.sentAt)} AS timestamptz),
                     failed_at = CAST(${store:ts(a.failedAt)} AS timestamptz), last_error = ${a.lastError},
-                    attempted_at = CAST(${store:ts(a.attemptedAt)} AS timestamptz)
+                    attempted_at = CAST(${store:ts(a.attemptedAt)} AS timestamptz),
+                    novera_notification_id = ${a.noveraNotificationId}
                 WHERE campaign_id = CAST(${a.campaignId} AS uuid)`);
             _ = check store:writeOutbox(self.db, outbox, self.actor.correlationId);
             string action = outbox.length() > 0 ? outbox[0].eventType
@@ -259,6 +261,54 @@ public isolated class PgAnnouncementWriter {
             check commit;
         }
     }
+}
+
+# Announcements whose Novera seen counts are due: sent with a Novera broadcast id inside the window, and never
+# counted or counted longer ago than the refresh interval. The oldest count goes first, so one broadcast that keeps
+# failing can't hold the others back for long.
+#
+# + db - Client (`amplify_jobs`)
+# + windowDays - Only broadcasts sent this many days back or less
+# + refreshSeconds - Least time between two counts of one broadcast
+# + 'limit - Most rows
+# + return - The due announcements, or an error
+public isolated function noveraStatsDue(postgresql:Client db, int windowDays, int refreshSeconds, int 'limit)
+        returns NoveraStatsTarget[]|error {
+    stream<record {|string campaign_id; string novera_notification_id;|}, error?> rows = db->query(`
+        SELECT campaign_id::text AS campaign_id, novera_notification_id
+        FROM announcement
+        WHERE novera_notification_id IS NOT NULL AND sent_at IS NOT NULL
+          AND sent_at >= now() - make_interval(days => CAST(${windowDays} AS int))
+          AND (novera_checked_at IS NULL
+               OR novera_checked_at < now() - make_interval(secs => CAST(${refreshSeconds} AS double precision)))
+        ORDER BY novera_checked_at NULLS FIRST, sent_at DESC
+        LIMIT ${'limit}`);
+    return from var r in rows
+        select {campaignId: r.campaign_id, notificationId: r.novera_notification_id};
+}
+
+# Saves a Novera seen count. With no count (Novera doesn't know the broadcast), only the time is kept, so the row
+# waits a refresh interval instead of being asked again on every run. Not audited: a count is a reading, not a
+# decision.
+#
+# + db - Client (`amplify_jobs`)
+# + campaignId - Campaign
+# + stats - The count, or `()` to record only that it was asked
+# + checkedAt - When Novera answered
+# + return - An error
+public isolated function saveNoveraStats(postgresql:Client db, string campaignId, NoveraSeenStats? stats,
+        time:Utc checkedAt) returns error? {
+    if stats is () {
+        _ = check db->execute(`
+            UPDATE announcement SET novera_checked_at = CAST(${store:ts(checkedAt)} AS timestamptz)
+            WHERE campaign_id = CAST(${campaignId} AS uuid)`);
+        return;
+    }
+    _ = check db->execute(`
+        UPDATE announcement
+        SET novera_recipients = ${stats.recipients}, novera_seen = ${stats.seen},
+            novera_checked_at = CAST(${store:ts(checkedAt)} AS timestamptz)
+        WHERE campaign_id = CAST(${campaignId} AS uuid)`);
 }
 
 # Announcement status by campaign id, for the dashboard campaign tile.
@@ -289,5 +339,6 @@ isolated function toAnnouncement(AnnouncementRow r) returns Announcement => {
     sentAt: r.sent_at,
     failedAt: r.failed_at,
     lastError: r.last_error,
-    attemptedAt: r.attempted_at
+    attemptedAt: r.attempted_at,
+    noveraNotificationId: r.novera_notification_id
 };
