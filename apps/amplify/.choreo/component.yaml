@@ -281,6 +281,13 @@ configurations:
           displayName: Privacy notice URL (shown in the LinkedIn consent dialog)
           type: string
           required: false
+    # Words of their own a share with thoughts needs (not taken from the post's title or summary); default 5, 0 = off.
+    - name: BAL_CONFIG_VAR_COMMENTARYMINOWNWORDS
+      valueFrom:
+        configForm:
+          displayName: Words of their own needed for a share with thoughts (default 5, 0 = off)
+          type: number
+          required: false
     # ID-token validation on connect (off by default; turn on once a real LinkedIn app returns the ID token).
     - name: BAL_CONFIG_VAR_LINKEDINIDTOKENVALIDATION
       valueFrom:

@@ -127,6 +127,8 @@ configurations:
       value: "urn:li:organization:1477"
     - name: BAL_CONFIG_VAR_PRIVACYNOTICEURL
       value: ""
+    - name: BAL_CONFIG_VAR_COMMENTARYMINOWNWORDS
+      value: "5"
     - name: BAL_CONFIG_VAR_TOKENKEYS
       valueFrom:
         secretRef:

@@ -116,6 +116,79 @@ function commentaryRulesFollowTheKind() {
             types:ERR_COMMENTARY_NOT_ALLOWED);
 }
 
+final CampaignSnapshot INTEGRATOR = {
+    id: "c1",
+    provider: types:LINKEDIN,
+    resourceUrn: "urn:li:share:6999",
+    open: true,
+    title: "WSO2 Integrator 5.1 is here",
+    summary: "Faster builds, new AI connectors and a fresh low-code designer."
+};
+
+function thoughtsOn(CampaignSnapshot campaign, string text, int minOwnWords = 5) returns string =>
+    code(newShareRequest(campaign, ACTIVE_CONNECTION, withThoughts(text), "s1", T0, minOwnWords));
+
+@test:Config
+function thoughtsCopiedFromThePostAreRefused() {
+    // The title pasted back (what the console script sent), with case and punctuation changed.
+    test:assertEquals(thoughtsOn(INTEGRATOR, "WSO2 Integrator 5.1 is here"), types:ERR_COMMENTARY_NOT_OWN_WORDS);
+    test:assertEquals(thoughtsOn(INTEGRATOR, "wso2 INTEGRATOR 5.1 is here!!!"), types:ERR_COMMENTARY_NOT_OWN_WORDS);
+    // Title and summary words, hashtags of them and a link add nothing of their own.
+    test:assertEquals(thoughtsOn(INTEGRATOR, "#WSO2 #Integrator: new AI connectors, faster builds https://wso2.com/x"),
+            types:ERR_COMMENTARY_NOT_OWN_WORDS);
+    // Repeats and one-character words don't count: "great" is the only word of their own.
+    test:assertEquals(thoughtsOn(INTEGRATOR, "great great great a b c d e WSO2 Integrator"),
+            types:ERR_COMMENTARY_NOT_OWN_WORDS);
+    // A row of hashtags or mentions isn't thoughts, even when their words aren't in the post.
+    test:assertEquals(thoughtsOn(INTEGRATOR, "#excellent #proud #teamwork #shipping #congratulations"),
+            types:ERR_COMMENTARY_NOT_OWN_WORDS);
+    test:assertEquals(thoughtsOn(INTEGRATOR, "@alice @bob @carol @dave @erin WSO2 Integrator"),
+            types:ERR_COMMENTARY_NOT_OWN_WORDS);
+    // Case outside ASCII doesn't matter either: a French title pasted back in capitals.
+    CampaignSnapshot french = {id: "c2", provider: types:LINKEDIN, resourceUrn: "urn:li:share:7001", open: true,
+        title: "équipe école été élève énergie"};
+    test:assertEquals(thoughtsOn(french, "ÉQUIPE ÉCOLE ÉTÉ ÉLÈVE ÉNERGIE"), types:ERR_COMMENTARY_NOT_OWN_WORDS);
+}
+
+@test:Config
+function thoughtsNeedTheMinimumOfTheirOwnWords() {
+    // Four of their own (proud, of, our, team): one short of five.
+    test:assertEquals(thoughtsOn(INTEGRATOR, "Proud of our team. WSO2 Integrator 5.1 is here"),
+            types:ERR_COMMENTARY_NOT_OWN_WORDS);
+    // Six of their own.
+    test:assertEquals(thoughtsOn(INTEGRATOR, "Proud of our team, worth trying the new WSO2 Integrator"), "OK");
+    // The threshold is the caller's: four is enough at four, and 0 turns the check off.
+    test:assertEquals(thoughtsOn(INTEGRATOR, "Proud of our team. WSO2 Integrator 5.1 is here", 4), "OK");
+    test:assertEquals(thoughtsOn(INTEGRATOR, "WSO2 Integrator 5.1 is here", 0), "OK");
+    test:assertEquals(code(newShareRequest(INTEGRATOR, ACTIVE_CONNECTION, withThoughts("WSO2 Integrator"), "s1", T0)),
+            "OK", "off unless the caller asks for it");
+    // Letters outside ASCII are words too.
+    test:assertEquals(thoughtsOn(INTEGRATOR, "Très fier de notre équipe à Colombo"), "OK");
+}
+
+@test:Config
+function ownWordsCountDistinctWordsOutsideThePost() {
+    test:assertEquals(ownWordCount("WSO2 Integrator 5.1 is here", INTEGRATOR), 0);
+    test:assertEquals(ownWordCount("Proud of our team, proud of our team!", INTEGRATOR), 4);
+    CampaignSnapshot noSummary = {id: "c1", provider: types:LINKEDIN, resourceUrn: "urn:li:share:6999", open: true};
+    test:assertEquals(ownWordCount("Great news everyone", noSummary), 3);
+    // Hashtags and mentions add nothing, but the words around them still count.
+    test:assertEquals(ownWordCount("Proud of our team #proud @alice", INTEGRATOR), 4);
+    test:assertEquals(ownWordCount("Ελληνικά ΚΑΛΆ ΝΈΑ καλά νέα", noSummary), 3);
+}
+
+@test:Config
+function retryChecksTheNewThoughts() returns error? {
+    ShareRequest first = check newShareRequest(INTEGRATOR, ACTIVE_CONNECTION, repost(), "s1", T0, 5);
+    ShareRequest failed = check markFailed(first, types:PROVIDER_REJECTED, "422", T0);
+    test:assertEquals(code(retryShare(failed, INTEGRATOR, ACTIVE_CONNECTION, withThoughts("WSO2 Integrator 5.1"), 5)),
+            types:ERR_COMMENTARY_NOT_OWN_WORDS);
+    InMemoryShares repo = new;
+    test:assertEquals(code(requestShare(repo, INTEGRATOR, ACTIVE_CONNECTION, withThoughts("WSO2 Integrator"), T0, 5)),
+            types:ERR_COMMENTARY_NOT_OWN_WORDS);
+    test:assertEquals(repo.count(), 0, "a refused share stores nothing");
+}
+
 @test:Config
 function publishClearsCommentaryAndRecordsEngagement() returns error? {
     ShareRequest r = check newShareRequest(OPEN_CAMPAIGN, ACTIVE_CONNECTION, withThoughts(), "s1", T0);
