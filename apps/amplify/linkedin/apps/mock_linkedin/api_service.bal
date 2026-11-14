@@ -47,16 +47,17 @@ service http:InterceptableService / on apiListener {
         if token !is store:AccessToken {
             return token;
         }
+        MockMember profile = memberProfile(token.memberSub);
         UserInfo info = {
-            sub: member.sub,
-            name: string `${member.givenName} ${member.familyName}`,
-            given_name: member.givenName,
-            family_name: member.familyName,
-            picture: member.picture,
-            locale: member.locale
+            sub: profile.sub,
+            name: string `${profile.givenName} ${profile.familyName}`,
+            given_name: profile.givenName,
+            family_name: profile.familyName,
+            picture: profile.picture,
+            locale: profile.locale
         };
         if token.scopes.indexOf(SCOPE_EMAIL) !is () {
-            info.email = member.email;
+            info.email = profile.email;
             info.email_verified = true;
         }
         return info;

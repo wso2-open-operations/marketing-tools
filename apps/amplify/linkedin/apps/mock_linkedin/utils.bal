@@ -40,6 +40,30 @@ isolated function utcDay() returns string => time:utcToString(time:utcNow()).sub
 # + return - `urn:li:person:{sub}`
 isolated function personUrn(string sub) returns string => PERSON_URN_PREFIX + sub;
 
+# Returns a new member id, for `memberPerAuthorization`.
+#
+# + return - A random 12 character id
+isolated function newMemberSub() returns string =>
+    re `-`.replaceAll(uuid:createType4AsString(), "").substring(0, 12);
+
+# Returns the profile for a member id: the configured `member` for its own id, otherwise a made-up member.
+#
+# + sub - Member id from the access token
+# + return - Profile claims for that member
+isolated function memberProfile(string sub) returns MockMember {
+    if sub == member.sub {
+        return member;
+    }
+    return {
+        sub,
+        givenName: "Mock",
+        familyName: string `Member ${sub.substring(0, 4)}`,
+        email: string `${sub}@example.com`,
+        picture: member.picture,
+        locale: member.locale
+    };
+}
+
 # Returns a random token-like value, shaped like LinkedIn's `AQ...` strings.
 #
 # + return - Random value
