@@ -75,6 +75,8 @@ configurations:
       value: "amplify_po"
     - name: BAL_CONFIG_VAR_CANADJUSTPOINTSGROUPS
       value: "amplify_po"
+    - name: BAL_CONFIG_VAR_CANPEOPLEOPSGROUPS
+      value: "amplify_po,amplify_slt,amplify_admin"
     - name: BAL_CONFIG_VAR_CANPODASHBOARDGROUPS
       value: "amplify_po"
     - name: BAL_CONFIG_VAR_CANREPORTSGROUPS

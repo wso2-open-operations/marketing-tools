@@ -101,10 +101,10 @@ services:
       # The mock issues no ID token, so this only makes sense against real LinkedIn.
       BAL_CONFIG_VAR_LINKEDINIDTOKENVALIDATION: ${LINKEDIN_ID_TOKEN_VALIDATION:-false}
       BAL_CONFIG_VAR_LINKEDINNONCEMODE: ${LINKEDIN_NONCE_MODE:-OFF}
-      # The company page posts must belong to. Default = WSO2's page; local/.env can point at a test page.
+      # The company page posts must belong to. Default = Chore Labs' page; local/.env can point at a test page.
       BAL_CONFIG_VAR_WSO2ORGANIZATIONURN: ${WSO2_ORGANIZATION_URN:-urn:li:organization:1477}
       # Privacy notice link in the LinkedIn consent dialog, sent to the UI in GET /me.
-      BAL_CONFIG_VAR_PRIVACYNOTICEURL: ${PRIVACY_NOTICE_URL:-https://wso2.com/privacy-policy}
+      BAL_CONFIG_VAR_PRIVACYNOTICEURL: ${PRIVACY_NOTICE_URL:-https://choreolabs.com/privacy-policy}
       # Team rosters (D13) = people-stub's HR Entity GraphQL route by default: copy local/people-stub/directory.json.example to directory.json (gitignored) and edit it.
       BAL_CONFIG_VAR_HRENTITYBASEURL: ${HR_ENTITY_URL:-http://people-stub:9096/graphql}
       # Post links: LinkedIn, plus the mock's browser-facing origin for local demos.
@@ -122,6 +122,7 @@ services:
       # Access (ADR-038): Asgardeo groups per capability, comma separated. local/.env overrides.
       BAL_CONFIG_VAR_CANCAMPAIGNGROUPS: ${AMPLIFY_CAN_CAMPAIGN_GROUPS:-amplify_po,amplify_marketing}
       BAL_CONFIG_VAR_CANDASHBOARDGROUPS: ${AMPLIFY_CAN_DASHBOARD_GROUPS:-amplify_po,amplify_marketing,amplify_slt,amplify_admin}
+      BAL_CONFIG_VAR_CANPEOPLEOPSGROUPS: ${AMPLIFY_CAN_PEOPLE_OPS_GROUPS:-amplify_po,amplify_slt,amplify_admin}
       BAL_CONFIG_VAR_CANEXPORTGROUPS: ${AMPLIFY_CAN_EXPORT_GROUPS:-amplify_po,amplify_marketing,amplify_slt,amplify_admin}
       BAL_CONFIG_VAR_CANREVIEWSHARESGROUPS: ${AMPLIFY_CAN_REVIEW_SHARES_GROUPS:-amplify_po}
       BAL_CONFIG_VAR_CANPOINTRULESGROUPS: ${AMPLIFY_CAN_POINT_RULES_GROUPS:-amplify_po}
@@ -174,8 +175,8 @@ services:
       # Novera (Google Chat assistant), the one announcement channel (ADR-047): the Choreo gateway URL of its
       # POST /internal/notifications and the client-credentials application subscribed to it. Empty settings =
       # announcements defer. Local try-out: run local/novera-mock (node server.mjs, :3003) and see docs/HowToTestLocally/TestNovera.md.
-      BAL_CONFIG_VAR_NOVERAICONURL: ${NOVERA_ICON_URL:-}
-      BAL_CONFIG_VAR_NOVERADEFAULTIMAGEURL: ${NOVERA_DEFAULT_IMAGE_URL:-}
+      BAL_CONFIG_VAR_NOVERAICONURL: ${NOVERA_ICON_URL:-https://one.wso2.com/amplify/amplify-logo-dark.png}
+      BAL_CONFIG_VAR_NOVERADEFAULTIMAGEURL: ${NOVERA_DEFAULT_IMAGE_URL:-https://choreolabs.com/themes/wso2theme/images/choreo/brand/choreo-labs-icon-white.png}
       # The card button's link: a URL template whose {campaignId} is replaced with the post's id. Empty = announcements wait.
       BAL_CONFIG_VAR_NOVERABUTTONURL: ${NOVERA_BUTTON_URL:-https://one.wso2.com/amplify/celebrate?share={campaignId}}
       BAL_CONFIG_VAR_NOVERANOTIFYURL: ${NOVERA_NOTIFY_URL:-}

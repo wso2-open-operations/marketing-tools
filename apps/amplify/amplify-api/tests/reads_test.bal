@@ -215,8 +215,7 @@ function testTeamPageIsForDashboardRolesAndListsTheCompany() returns error? {
     test:assertEquals(employee.statusCode, 403, "plain employees don't get the team board");
 
     // Every dashboard role sees everyone the directory lists, points or not.
-    foreach [string, string] role in [["po-team", PO_GROUP], ["mk-team", MARKETING_GROUP], ["slt-team", SLT_GROUP],
-            ["ad-team", ADMIN_GROUP]] {
+    foreach [string, string] role in [["po-team", PO_GROUP], ["slt-team", SLT_GROUP], ["ad-team", ADMIN_GROUP]] {
         http:Response res = check send("GET", "/team", (), check rvToken(role[0], groups = [role[1]]));
         test:assertEquals(res.statusCode, 200, role[1]);
         check assertShape(res, "TeamPage");
@@ -239,8 +238,11 @@ function testTeamPageIsForDashboardRolesAndListsTheCompany() returns error? {
     test:assertEquals(check plus.rank, ());
     test:assertEquals(check plus.houseName, (), "no house in the directory: null");
     test:assertEquals(check entries[0].actions.canReverse, true, "PO can adjust");
-    json marketing = check (check send("GET", "/team", (), check rvToken("mk-team", groups = [MARKETING_GROUP]))).getJsonPayload();
-    test:assertEquals(check (<json[]>check marketing.entries)[0].actions.canAdjust, false, "Marketing only reads");
+    json slt = check (check send("GET", "/team", (), check rvToken("slt-team", groups = [SLT_GROUP]))).getJsonPayload();
+    test:assertEquals(check (<json[]>check slt.entries)[0].actions.canAdjust, false, "SLT only reads");
+    // Marketing holds CAN_DASHBOARD but not CAN_PEOPLE_OPS.
+    http:Response marketing = check send("GET", "/team", (), check rvToken("mk-team", groups = [MARKETING_GROUP]));
+    test:assertEquals(marketing.statusCode, 403, "Marketing doesn't get the People Operations board");
 
     // A person in a house shows it; the rest have none.
     setDirectory("house");

@@ -86,7 +86,10 @@ function registerCampaign(postgresql:Client db, string actor) returns campaign:C
         title: "Integration campaign",
         categoryCode: "PRODUCT",
         tags: ["Ballerina", "it"],
-        resourceUrl: "https://www.linkedin.com/feed/update/x"
+        resourceUrl: "https://www.linkedin.com/feed/update/x",
+        // Opened a minute ago: Postgres computes OPEN from its own clock, and a Docker VM clock even a
+        // second behind this process would otherwise show a campaign opened "now" as still SCHEDULED.
+        opensAt: time:utcAddSeconds(time:utcNow(), -60)
     }, {wso2OrganizationUrn: WSO2_ORG}, actor, true, time:utcNow());
 
 // ---- campaign ------------------------------------------------------------------------------------
