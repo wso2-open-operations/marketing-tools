@@ -36,7 +36,7 @@ public const string CARD_SUBTITLE = "Choreo Labs Amplify · new post to share";
 public const string CARD_SUBTITLE_PRIORITY = "Choreo Labs Amplify · priority post";
 
 # What the Club card shows for one campaign (domains S5): image, title, summary, and an openLink button to
-# One Choreo Labs' Celebrate page with the campaign's share dialog open (incoming webhooks can't take button clicks).
+# One WSO2's Celebrate page with the campaign's share dialog open (incoming webhooks can't take button clicks).
 public type CampaignCard record {|
     # Campaign id, used for the card id and thread key
     string campaignId;
