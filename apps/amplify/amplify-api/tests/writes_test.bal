@@ -140,12 +140,12 @@ function testShareKillSwitch() returns error? {
 
 @test:Config {groups: ["writes"]}
 function testShareThoughtsNeedOwnWords() returns error? {
-    // registerBody's title is "WSO2 at KubeCon".
+    // registerBody's title is "Choreo Labs at KubeCon".
     string id = check registered("urn:li:share:9121", check po());
     string emp = check employee("emp-words-1");
     connect("emp-words-1");
     http:Response copied = check send("POST", string `/campaigns/${id}/shares`,
-            {kind: "REPOST_COMMENTARY", commentary: "WSO2 at KubeCon!"}, emp);
+            {kind: "REPOST_COMMENTARY", commentary: "Choreo Labs at KubeCon!"}, emp);
     test:assertEquals(copied.statusCode, 422);
     test:assertEquals(check codeIn(copied), "COMMENTARY_NOT_OWN_WORDS");
     http:Response own = check send("POST", string `/campaigns/${id}/shares`,

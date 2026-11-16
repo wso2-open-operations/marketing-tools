@@ -40,7 +40,7 @@ case "$(sed -n 's/^GOOGLE_CHAT_WEBHOOK_URL=//p' local/.env | tail -1)" in
   ''|*chat-stub*|*localhost:9095*|*127.0.0.1:9095*) ;;
   *) echo "e2e reads the chat-stub: unset GOOGLE_CHAT_WEBHOOK_URL in local/.env (or point it at chat-stub) and restart the stack" >&2; exit 1 ;;
 esac
-# Posts must belong to the page amplify-api is configured with (local/.env, default WSO2's page).
+# Posts must belong to the page amplify-api is configured with (local/.env, default Choreo Labs' page).
 ORG_URN=$(sed -n 's/^WSO2_ORGANIZATION_URN=//p' local/.env | tail -1)
 ORG_URN=${ORG_URN:-urn:li:organization:1477}
 MINT=local/dev-jwt/mint-dev-jwt.sh

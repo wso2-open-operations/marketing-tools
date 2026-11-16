@@ -197,15 +197,15 @@ function testCreatePostWithBadPayloadIsBadRequest() returns error? {
 function testArticlePostNeedsATitle() returns error? {
     string token = check accessToken("w_member_social");
     map<json> post = <map<json>>textPost(uniqueText());
-    post["content"] = {article: {'source: "https://wso2.com/blog/x"}};
+    post["content"] = {article: {'source: "https://choreolabs.com/blog/x"}};
     http:Response untitled = check apiClient->post("/rest/posts", post, restliHeaders(token));
     test:assertEquals(untitled.statusCode, http:STATUS_BAD_REQUEST);
     test:assertEquals(check (check untitled.getJsonPayload()).message, "content.article.title is required");
-    post["content"] = {article: {'source: "https://wso2.com/blog/x", title: "  "}};
+    post["content"] = {article: {'source: "https://choreolabs.com/blog/x", title: "  "}};
     http:Response blank = check apiClient->post("/rest/posts", post, restliHeaders(token));
     test:assertEquals(blank.statusCode, http:STATUS_BAD_REQUEST);
     post["commentary"] = uniqueText();
-    post["content"] = {article: {'source: "https://wso2.com/blog/x", title: "WSO2 blog"}};
+    post["content"] = {article: {'source: "https://choreolabs.com/blog/x", title: "Choreo Labs blog"}};
     http:Response titled = check apiClient->post("/rest/posts", post, restliHeaders(token));
     test:assertEquals(titled.statusCode, http:STATUS_CREATED);
 }

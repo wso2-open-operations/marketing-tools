@@ -289,9 +289,9 @@ function testRemoveKeepsTheConnectionWhenLinkedInCantRevoke() returns error? {
 function testPrivacyNoticeUrlStartupRules() {
     test:assertEquals(checkPrivacyNoticeUrl(""), (), "empty = no link");
     test:assertEquals(checkPrivacyNoticeUrl("  "), ());
-    test:assertEquals(checkPrivacyNoticeUrl("https://wso2.com/privacy-policy/"), ());
+    test:assertEquals(checkPrivacyNoticeUrl("https://choreolabs.com/privacy-policy/"), ());
     foreach string url in ["javascript:alert(1)", "http://wso2.com/privacy", "wso2.com/privacy", "https://",
-            "https://wso2.com/a b", "data:text/html,x"] {
+            "https://choreolabs.com/a b", "data:text/html,x"] {
         test:assertTrue(checkPrivacyNoticeUrl(url) is error, url);
     }
 }
