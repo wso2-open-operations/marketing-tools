@@ -81,7 +81,7 @@ public final Rule[] & readonly ACTIVITY_MATRIX = [
     {method: "GET", path: "/dashboards/glance", requires: CAN_DASHBOARD, capability: "dashboards.glance.read", useCase: "At a glance numbers"},
     {method: "GET", path: "/dashboards/scorecard", requires: CAN_DASHBOARD, capability: "dashboards.scorecard.read", useCase: "Scorecard against the scorecard.* targets"},
     {method: "GET", path: "/me/points", requires: EMPLOYEE, capability: "points.read_own"},
-    {method: "GET", path: "/team", requires: EMPLOYEE, capability: "team.read", useCase: "Roster team or company per ADR-014/ADR-019; CAN_ADJUST_POINTS company"},
+    {method: "GET", path: "/team", requires: CAN_PEOPLE_OPS, capability: "team.read", useCase: "Team board under People Operations: the whole company roster, joined to the standings"},
     {method: "GET", path: "/team/{employeeId}/history", requires: EMPLOYEE, capability: "team.history.read", useCase: "Without CAN_ADJUST_POINTS: the caller, or a member of the caller's roster team (team.visibility = COMPANY does not widen it, ADR-035), else 403 TEAM_SCOPE (leaderboards.md); CAN_ADJUST_POINTS any (team.history.read_any)"},
     {method: "GET", path: "/po/dashboard", requires: CAN_PO_DASHBOARD, capability: "po.dashboard"},
     {method: "GET", path: "/reports/participation", requires: CAN_REPORTS, capability: "reports.read", useCase: "Phase 2", built: false},

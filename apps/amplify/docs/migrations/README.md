@@ -49,7 +49,7 @@ BAL_CONFIG_VAR_ITENABLED=true BAL_CONFIG_VAR_DBPORT=55432 BAL_CONFIG_VAR_DBPASSW
 cd ../amplify-domain
 AMPLIFY_IT=true AMPLIFY_IT_DB_PORT=55432 bal test --groups integration
 
-# 3. The Run (M6): mock_linkedin on 19190/19191 as LinkedIn, an in-test Chat stub on 9298.
+# 3. The Run (M6): mock_linkedin on 19190/19191 as LinkedIn, an in-test Novera stub on 9298.
 cat > /tmp/mock-it.toml <<'TOML'
 [wso2.mock_linkedin]
 apiPort = 19190

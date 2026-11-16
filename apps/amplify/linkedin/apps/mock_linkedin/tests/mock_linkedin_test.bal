@@ -521,3 +521,22 @@ function createPost(string token, string commentary) returns http:Response|error
 }
 
 function uniqueText() returns string => "Mock post " + uuid:createType4AsString();
+
+@test:Config
+function testMemberProfileIsTheConfiguredMemberForItsOwnId() {
+    MockMember profile = memberProfile(member.sub);
+    test:assertEquals(profile.email, member.email);
+    test:assertEquals(profile.givenName, member.givenName);
+}
+
+@test:Config
+function testMemberProfileForAnotherIdIsMadeUpAndUnique() {
+    string a = newMemberSub();
+    string b = newMemberSub();
+    test:assertNotEquals(a, b);
+    test:assertEquals(a.length(), 12);
+    MockMember profile = memberProfile(a);
+    test:assertEquals(profile.sub, a);
+    test:assertEquals(profile.email, a + "@example.com");
+    test:assertNotEquals(profile.email, member.email);
+}

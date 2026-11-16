@@ -46,7 +46,7 @@ The LinkedIn Marketing API is versioned by a `YYYYMM` string sent on every call 
 
 ## 3. Pilot comms (WSO2 Club space)
 
-Announcements go to the **WSO2 Club Group** Google Chat space (ADR-007, plan M6a) via the incoming webhook, using the `chatSpace = club` config in prod.
+Announcements go out as Novera cards to everyone who has added Novera (the Club chat space webhook was removed on 2026-11-03).
 
 **Comms plan:**
 

@@ -36,13 +36,13 @@ type Caller record {|
 final Caller[] & readonly MATRIX_CALLERS = [
     {label: "employee", sub: "mx-emp", groups: [], grants: [auth:EMPLOYEE]},
     {label: "po", sub: "mx-po", groups: [PO_GROUP], grants: [auth:EMPLOYEE, auth:CAN_CAMPAIGN, auth:CAN_DASHBOARD,
-        auth:CAN_EXPORT, auth:CAN_REVIEW_SHARES, auth:CAN_POINT_RULES, auth:CAN_ADJUST_POINTS, auth:CAN_PO_DASHBOARD,
+        auth:CAN_PEOPLE_OPS, auth:CAN_EXPORT, auth:CAN_REVIEW_SHARES, auth:CAN_POINT_RULES, auth:CAN_ADJUST_POINTS, auth:CAN_PO_DASHBOARD,
         auth:CAN_REPORTS]},
     {label: "marketing", sub: "mx-mkt", groups: [MARKETING_GROUP], grants: [auth:EMPLOYEE, auth:CAN_CAMPAIGN,
         auth:CAN_DASHBOARD, auth:CAN_EXPORT]},
-    {label: "slt", sub: "mx-slt", groups: [SLT_GROUP], grants: [auth:EMPLOYEE, auth:CAN_DASHBOARD, auth:CAN_EXPORT,
+    {label: "slt", sub: "mx-slt", groups: [SLT_GROUP], grants: [auth:EMPLOYEE, auth:CAN_DASHBOARD, auth:CAN_PEOPLE_OPS, auth:CAN_EXPORT,
         auth:CAN_REPORTS]},
-    {label: "admin", sub: "mx-adm", groups: [ADMIN_GROUP], grants: [auth:EMPLOYEE, auth:CAN_DASHBOARD, auth:CAN_EXPORT,
+    {label: "admin", sub: "mx-adm", groups: [ADMIN_GROUP], grants: [auth:EMPLOYEE, auth:CAN_DASHBOARD, auth:CAN_PEOPLE_OPS, auth:CAN_EXPORT,
         auth:CAN_ADMIN]},
     {label: "campaign-only", sub: "mx-cmp", groups: [CAMPAIGN_ONLY_GROUP], grants: [auth:EMPLOYEE, auth:CAN_CAMPAIGN]}
 ];

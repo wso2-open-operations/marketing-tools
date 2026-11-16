@@ -520,7 +520,6 @@ modules = [
 	{org = "wso2", packageName = "amplify_common", moduleName = "amplify_common"},
 	{org = "wso2", packageName = "amplify_common", moduleName = "amplify_common.crypto"},
 	{org = "wso2", packageName = "amplify_common", moduleName = "amplify_common.events"},
-	{org = "wso2", packageName = "amplify_common", moduleName = "amplify_common.googlechat"},
 	{org = "wso2", packageName = "amplify_common", moduleName = "amplify_common.linkedin"},
 	{org = "wso2", packageName = "amplify_common", moduleName = "amplify_common.resilience"},
 	{org = "wso2", packageName = "amplify_common", moduleName = "amplify_common.types"}

@@ -34,7 +34,9 @@ bal test
 ## OAuth 2.0 flow
 
 Same 3-legged authorization code flow as LinkedIn. There is no login or consent page: every
-authorization signs in as the configured `member` and approves straight away.
+authorization signs in as the configured `member` and approves straight away. Set `memberPerAuthorization = true`
+(`BAL_CONFIG_VAR_MEMBERPERAUTHORIZATION`) to sign in as a new made-up member each time instead, so many employees can
+each link their own LinkedIn account in one local stack.
 
 1. Send the browser to the authorization endpoint:
 

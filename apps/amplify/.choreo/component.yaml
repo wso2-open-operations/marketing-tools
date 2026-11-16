@@ -164,6 +164,12 @@ configurations:
           displayName: Asgardeo groups for adjust/reverse points (comma separated; default amplify_po; leave empty for the default)
           type: string
           required: false
+    - name: BAL_CONFIG_VAR_CANPEOPLEOPSGROUPS
+      valueFrom:
+        configForm:
+          displayName: Asgardeo groups for the People Operations Team board (comma separated; default amplify_po,amplify_slt,amplify_admin; leave empty for the default)
+          type: string
+          required: false
     - name: BAL_CONFIG_VAR_CANPODASHBOARDGROUPS
       valueFrom:
         configForm:

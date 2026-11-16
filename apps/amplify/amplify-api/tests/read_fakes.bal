@@ -66,7 +66,8 @@ isolated function mockRosterConfigured() returns boolean {
 
 # How the fake directory answers: `ok`, `down` (418, not a breaker status, so the breaker stays closed for
 # the other tests), `unavailable` (503, which opens the breaker: only for a client of its own), `garbled` (a body that isn't a directory), `gqlerror` (a GraphQL `errors` array),
-# or `nohouse` / `nohouse400` (an HR Entity older than 1.1.1: a query asking for house gets GraphQL errors / a 400).
+# or `nohouse` / `nohouse400` (an HR Entity older than 1.1.1: a query asking for house gets GraphQL errors / a 400),
+# or `house` (rv-a is in the house Oak; every other mode leaves everyone without one).
 isolated string directoryMode = "ok";
 isolated int directoryFetches = 0;
 
@@ -166,7 +167,9 @@ service /people/graphql on jwksListener {
             offset = o is int ? o : 0;
         }
         json[] rows = from string m in RIVERS
-            select {workEmail: m.toUpperAscii(), firstName: "R", lastName: m.substring(0, 4), department: "Rivers", subTeam: (), businessUnit: "Water"};
+            select {workEmail: m.toUpperAscii(), firstName: "R", lastName: m.substring(0, 4), department: "Rivers", subTeam: (), businessUnit: "Water",
+                houseId: mode == "house" && m == "rv-a@wso2.com" ? 1 : (),
+                house: mode == "house" && m == "rv-a@wso2.com" ? "Oak" : ()};
         rows.push({workEmail: "rv-noteam@wso2.com", firstName: "N", department: (), subTeam: (), businessUnit: "Land"});
         int end = int:min(offset + 'limit, rows.length());
         json[] page = offset >= rows.length() ? [] : rows.slice(offset, end);

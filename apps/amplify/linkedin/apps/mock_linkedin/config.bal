@@ -59,7 +59,12 @@ configurable boolean enableMockAdmin = false;
 @display {label: "Mock admin key", kind: "password"}
 configurable string mockAdminKey = "";
 
-# The member every authorization signs in as.
+# When true, every authorization signs in as a new member (a fresh id, name and email each time) instead of `member`.
+# For local demos with many employees: Amplify links one LinkedIn member to one employee, so a single fixed member
+# can serve only one person. Keep it off for tests that expect `member`.
+configurable boolean memberPerAuthorization = false;
+
+# The member every authorization signs in as, unless `memberPerAuthorization` is on.
 configurable MockMember member = {
     sub: "782bbtaQ",
     givenName: "Avery",
