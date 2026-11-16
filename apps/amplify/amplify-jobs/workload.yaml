@@ -69,9 +69,9 @@ configurations:
     - name: BAL_CONFIG_VAR_TOKENCURRENTKEYID
       value: ""
     - name: BAL_CONFIG_VAR_NOVERAICONURL
-      value: ""
+      value: "https://one.wso2.com/amplify/amplify-logo-dark.png"
     - name: BAL_CONFIG_VAR_NOVERADEFAULTIMAGEURL
-      value: ""
+      value: "https://choreolabs.com/themes/wso2theme/images/choreo/brand/choreo-labs-icon-white.png"
     - name: BAL_CONFIG_VAR_NOVERABUTTONURL
       value: ""
     - name: BAL_CONFIG_VAR_NOVERANOTIFYURL

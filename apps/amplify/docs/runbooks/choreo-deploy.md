@@ -128,6 +128,7 @@ Same names in two components (`DBHOST`, `DBPORT`, `DBNAME`, `DBUSER`, `DBPASSWOR
 | `CANADJUSTPOINTSGROUPS` | cfg | O | | Asgardeo groups for adjust/reverse points, comma separated. Empty = the default `amplify_po` |
 | `CANADMINGROUPS` | cfg | O | | Asgardeo groups for admin, comma separated. Empty = the default `amplify_admin` |
 | `CANCAMPAIGNGROUPS` | cfg | O | | Asgardeo groups for campaigns, comma separated. Empty = the default `amplify_po,amplify_marketing` |
+| `CANPEOPLEOPSGROUPS` | cfg | O | | Asgardeo groups for the People Operations Team board, comma separated. Empty = the default `amplify_po,amplify_slt,amplify_admin` |
 | `CANDASHBOARDGROUPS` | cfg | O | | Asgardeo groups for dashboards, comma separated. Empty = the default `amplify_po,amplify_marketing,amplify_slt,amplify_admin` |
 | `CANEXPORTGROUPS` | cfg | O | | Asgardeo groups for dashboard CSV export, comma separated. Empty = the default `amplify_po,amplify_marketing,amplify_slt,amplify_admin` |
 | `CANPODASHBOARDGROUPS` | cfg | O | | Asgardeo groups for the PO dashboard, comma separated. Empty = the default `amplify_po` |

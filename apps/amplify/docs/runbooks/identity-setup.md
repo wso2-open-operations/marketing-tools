@@ -60,11 +60,12 @@ Access groups (`BAL_CONFIG_VAR_CAN<CAPABILITY>GROUPS`; defaults in `amplify-api/
 | Configurable | Grants | Default |
 | --- | --- | --- |
 | `canCampaignGroups` | `CAN_CAMPAIGN`: register, edit, archive campaigns; any status | `amplify_po,amplify_marketing` |
-| `canDashboardGroups` | `CAN_DASHBOARD`: Dashboarding boards, person popup | `amplify_po,amplify_marketing,amplify_slt,amplify_admin` |
+| `canDashboardGroups` | `CAN_DASHBOARD`: Dashboards boards, person popup | `amplify_po,amplify_marketing,amplify_slt,amplify_admin` |
 | `canExportGroups` | `CAN_EXPORT`: dashboard CSV (names, emails) | `amplify_po,amplify_marketing,amplify_slt,amplify_admin` |
 | `canReviewSharesGroups` | `CAN_REVIEW_SHARES`: external-share queue | `amplify_po` |
 | `canPointRulesGroups` | `CAN_POINT_RULES`: point rules | `amplify_po` |
 | `canAdjustPointsGroups` | `CAN_ADJUST_POINTS`: adjust/reverse, company Team page, anyone's history | `amplify_po` |
+| `canPeopleOpsGroups` | `CAN_PEOPLE_OPS`: the People Operations Team board | `amplify_po,amplify_slt,amplify_admin` |
 | `canPoDashboardGroups` | `CAN_PO_DASHBOARD`: PO dashboard | `amplify_po` |
 | `canReportsGroups` | `CAN_REPORTS`: SLT reports (phase 2) | `amplify_slt,amplify_po` |
 | `canAdminGroups` | `CAN_ADMIN`: settings, kill switches, scheduler sync, announcement retry | `amplify_admin` |

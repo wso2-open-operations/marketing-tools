@@ -190,15 +190,15 @@ function evidenceProviderAndUrnAreDetected() returns error? {
 
 @test:Config
 function httpsUrlCheck() {
-    test:assertTrue(isHttpsUrl("https://wso2.com/x.png"));
+    test:assertTrue(isHttpsUrl("https://choreolabs.com/x.png"));
     test:assertFalse(isHttpsUrl("http://wso2.com/x.png"));
     test:assertFalse(isHttpsUrl("https://"));
     test:assertFalse(isHttpsUrl("https://a b"));
     // Regression (PR #102 review): `.` does not match a line break, so CR and LF used to slip through.
-    test:assertFalse(isHttpsUrl("https://wso2.com/x.png\r\nSet-Cookie: a=b"));
-    test:assertFalse(isHttpsUrl("https://wso2.com/a\n\nb"));
-    test:assertFalse(isHttpsUrl("https://wso2.com/x.png\n"));
-    test:assertFalse(isHttpsUrl("https://wso2.com/a\tb"));
+    test:assertFalse(isHttpsUrl("https://choreolabs.com/x.png\r\nSet-Cookie: a=b"));
+    test:assertFalse(isHttpsUrl("https://choreolabs.com/a\n\nb"));
+    test:assertFalse(isHttpsUrl("https://choreolabs.com/x.png\n"));
+    test:assertFalse(isHttpsUrl("https://choreolabs.com/a\tb"));
 }
 
 // Regression (deep review RC-02): the `/posts/...-activity-N` branch built a PostUrn without
