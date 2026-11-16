@@ -92,6 +92,12 @@ services:
       - thunderid-db:/opt/thunderid/database
       - thunderid-certs:/opt/thunderid/config/certs:ro
       - thunderid-secrets:/opt/thunderid/config/secrets:ro
+      # Amplify branding on the sign-in page (the left panel is compiled into the gate bundle, so the file is
+      # replaced; the names match this pinned image, so re-copy them from the image when the pin moves).
+      - ./branding/SignInSlogan-Tolf_PI8.js:/opt/thunderid/apps/gate/assets/SignInSlogan-Tolf_PI8.js:ro
+      - ./branding/logo.svg:/opt/thunderid/apps/gate/assets/images/logo.svg:ro
+      - ./branding/logo-inverted.svg:/opt/thunderid/apps/gate/assets/images/logo-inverted.svg:ro
+      - ./branding/gate-config.js:/opt/thunderid/apps/gate/config.js:ro
 
 volumes:
   hr-entity-db:

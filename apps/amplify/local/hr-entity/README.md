@@ -88,3 +88,7 @@ The mock answers only the fields the query names, and refuses an unknown field w
 - Real HR Entity auth (OAuth client credentials, `HRENTITYTOKENURL`): the mock accepts any caller.
 - The real service's other fields and queries; only what Amplify asks for (`employeeStatus` filter, paging, the fields in `outbound.bal`) is modelled.
 - Photos: `employeeThumbnail` is empty.
+
+## Sign-in page branding
+
+The ThunderID sign-in page shows Amplify's logo and a short description of what Amplify is for. The left panel is compiled into ThunderID's gate bundle, so `branding/` holds replacement files mounted over it: `logo.svg` and `logo-inverted.svg` (light and dark pages), `SignInSlogan-Tolf_PI8.js` (the text) and `gate-config.js` (the product name). The file names belong to the pinned image. When the image pin changes, copy the new originals out (`docker run --rm <image> cat /opt/thunderid/apps/gate/assets/SignInSlogan-*.js`) and reapply the text.

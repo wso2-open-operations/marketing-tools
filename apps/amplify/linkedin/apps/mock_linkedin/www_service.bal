@@ -27,7 +27,8 @@ listener http:Listener wwwListener = new (wwwPort, host = listenerHost,
     requestLimits = {maxEntityBodySize: maxUploadBytes + 8192});
 
 # Mock of LinkedIn's 3-legged OAuth 2.0 authorization code flow. There is no login page:
-# every authorization signs in as the configured `member` and consents straight away.
+# every authorization signs in as the configured `member` (or, with `memberPerAuthorization`, as a new member each
+# time) and consents straight away.
 @display {
     label: "Mock LinkedIn OAuth 2.0",
     id: "linkedin/mock-oauth"
@@ -77,7 +78,7 @@ service http:InterceptableService /oauth/v2 on wwwListener {
                     clientId,
                     redirectUri: redirect_uri,
                     scopes: scopes.cloneReadOnly(),
-                    memberSub: member.sub,
+                    memberSub: memberPerAuthorization ? newMemberSub() : member.sub,
                     expiresAt: nowSeconds() + <decimal>authorizationCodeTtlSeconds
                 });
                 log:printInfo("Authorization code issued", correlationId = correlationId(ctx), scopes = scopes);
