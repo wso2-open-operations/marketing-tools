@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+reviews:
+  review_status: true
+  # The summary replaces the line `@coderabbitai summary` in the PR description (see pull_request_template.md).
+  high_level_summary: true
+  high_level_summary_placeholder: "@coderabbitai summary"
+  auto_review:
+    enabled: true
+    base_branches: ["main"]
+chat:
+  auto_reply: true
