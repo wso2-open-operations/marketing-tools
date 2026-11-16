@@ -191,7 +191,7 @@ function publishRepostSendsHeadersAndReadsRestliId() returns error? {
         authorUrn: "urn:li:person:782bbtaQ",
         kind: types:REPOST_COMMENTARY,
         targetUrn: "urn:li:share:6999",
-        commentary: "Proud of the #ChoreLabs team @ work"
+        commentary: "Proud of the #ChoreoLabs team @ work"
     });
     test:assertEquals(urn, "urn:li:share:7000000000000000001");
     json sent;
@@ -200,7 +200,7 @@ function publishRepostSendsHeadersAndReadsRestliId() returns error? {
     }
     test:assertEquals(sent, {
         author: "urn:li:person:782bbtaQ",
-        commentary: "Proud of the \\#ChoreLabs team \\@ work",
+        commentary: "Proud of the \\#ChoreoLabs team \\@ work",
         visibility: "PUBLIC",
         distribution: {feedDistribution: "MAIN_FEED", targetEntities: [], thirdPartyDistributionChannels: []},
         lifecycleState: "PUBLISHED",
@@ -334,9 +334,9 @@ function authorizationUrlUsesBrowserBaseAndOptionalNonce() returns error? {
 @test:Config
 function shareArticleAlwaysCarriesATitle() returns error? {
     json body = buildPostPayload({authorUrn: "urn:li:person:a", kind: types:SHARE_COMMENTARY,
-        targetUrn: "urn:li:share:1", targetUrl: "https://choreolabs.com/blog/x", targetTitle: "  Chore Labs is a Leader  ",
+        targetUrn: "urn:li:share:1", targetUrl: "https://choreolabs.com/blog/x", targetTitle: "  Choreo Labs is a Leader  ",
         commentary: "Nice"});
-    test:assertEquals(check body.content, {article: {'source: "https://choreolabs.com/blog/x", title: "Chore Labs is a Leader"}});
+    test:assertEquals(check body.content, {article: {'source: "https://choreolabs.com/blog/x", title: "Choreo Labs is a Leader"}});
     string long = "";
     foreach int i in 0 ..< 450 {
         long += "t";

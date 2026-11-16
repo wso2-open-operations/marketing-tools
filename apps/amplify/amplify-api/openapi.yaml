@@ -3,7 +3,7 @@ info:
   title: Amplify API
   version: 1.0.0
   description: |
-    Chore Labs Amplify phase 1 published API (M5). Reached only through the Choreo API proxy at the cell edge
+    Choreo Labs Amplify phase 1 published API (M5). Reached only through the Choreo API proxy at the cell edge
     (ADR-004); the proxy forwards the caller as a signed backend JWT in `x-jwt-assertion` (ADR-022).
 
     - Access: every operation names the grant it needs in `x-access` (`EMPLOYEE` = any signed-in
@@ -1364,7 +1364,7 @@ components:
       properties:
         evidenceUrl: {type: string, minLength: 1, maxLength: 2048, description: "Any public HTTPS URL; never fetched. `lnkd.in` short links are refused (`INVALID_EVIDENCE_URL`): one post could otherwise be claimed twice"}
         activityId: {type: string, minLength: 1, maxLength: 100, pattern: "^[0-9]+$", description: "A LinkedIn post number (the activity id: the digits in `urn:li:activity:<number>` or `...-activity-<number>-...`). Amplify builds the canonical post URL from it, stores that as `evidenceUrl`, and so it collides with any other form of the same post (`EVIDENCE_ALREADY_CLAIMED`)"}
-        certified: {type: boolean, enum: [true], description: "\"I certify this is related to Chore Labs\" (must be true)"}
+        certified: {type: boolean, enum: [true], description: "\"I certify this is related to Choreo Labs\" (must be true)"}
         campaignId: {type: string, format: uuid}
     ExternalShare:
       type: object

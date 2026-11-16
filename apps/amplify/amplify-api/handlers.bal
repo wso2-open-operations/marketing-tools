@@ -35,7 +35,7 @@ import ballerina/http;
 import ballerina/log;
 import ballerina/time;
 
-# The Chore Labs company page; campaigns must point at its resources.
+# The Choreo Labs company page; campaigns must point at its resources.
 configurable string wso2OrganizationUrn = "urn:li:organization:1477";
 # Origins a campaign's post link may use, comma separated (`scheme://host[:port]`). LinkedIn only in prod;
 # dev and demo environments add the mock's www origin.

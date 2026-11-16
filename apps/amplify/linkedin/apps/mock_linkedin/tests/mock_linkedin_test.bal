@@ -205,7 +205,7 @@ function testArticlePostNeedsATitle() returns error? {
     http:Response blank = check apiClient->post("/rest/posts", post, restliHeaders(token));
     test:assertEquals(blank.statusCode, http:STATUS_BAD_REQUEST);
     post["commentary"] = uniqueText();
-    post["content"] = {article: {'source: "https://choreolabs.com/blog/x", title: "Chore Labs blog"}};
+    post["content"] = {article: {'source: "https://choreolabs.com/blog/x", title: "Choreo Labs blog"}};
     http:Response titled = check apiClient->post("/rest/posts", post, restliHeaders(token));
     test:assertEquals(titled.statusCode, http:STATUS_CREATED);
 }

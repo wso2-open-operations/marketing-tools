@@ -273,7 +273,7 @@ configurations:
         configForm:
           displayName: LinkedIn OAuth base URL
           type: string
-    # The company page a registered post must belong to (default Chore Labs' page, urn:li:organization:1477).
+    # The company page a registered post must belong to (default Choreo Labs' page, urn:li:organization:1477).
     - name: BAL_CONFIG_VAR_WSO2ORGANIZATIONURN
       valueFrom:
         configForm:

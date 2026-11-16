@@ -48,7 +48,7 @@ public isolated function isOpen(Campaign campaign, time:Utc now) returns boolean
 
 // ---- Aggregate rules (pure) -----------------------------------------------------------------------
 
-# Builds a new campaign, enforcing its invariants: valid resource URN on the Chore Labs page, title and category
+# Builds a new campaign, enforcing its invariants: valid resource URN on the Choreo Labs page, title and category
 # present, HTTPS links, lowercase unique tags, and `closesAt > opensAt` with the C7 default window.
 #
 # + draft - Input
@@ -62,7 +62,7 @@ public isolated function newCampaign(CampaignDraft draft, CampaignPolicy policy,
     types:PostUrn resourceUrn = check types:parsePostUrn(draft.resourceUrn);
     types:OrganizationUrn ownerUrn = check types:parseOrganizationUrn(draft.ownerUrn);
     if ownerUrn != policy.wso2OrganizationUrn {
-        return types:domainError(types:ERR_NOT_WSO2_RESOURCE, "The post must be on the Chore Labs company page");
+        return types:domainError(types:ERR_NOT_WSO2_RESOURCE, "The post must be on the Choreo Labs company page");
     }
     string title = check validTitle(draft.title);
     string categoryCode = check validCategory(draft.categoryCode);
@@ -291,7 +291,7 @@ isolated function validSummary(string? raw) returns string?|types:DomainError {
 }
 
 # A post link, if given, must use one of the allowed origins. Every employee's card links to it, so a
-# foreign host would be a phishing link with Chore Labs' name on it.
+# foreign host would be a phishing link with Choreo Labs' name on it.
 #
 # + raw - Link as sent
 # + origins - Allowed origins, lowercase `scheme://host[:port]`
