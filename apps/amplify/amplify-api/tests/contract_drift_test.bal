@@ -153,7 +153,7 @@ function testDomainEnumsMatchTheSpec() returns error? {
             announcements:FAILED]],
         [["LedgerEntry", "sourceType"], [types:ENGAGEMENT, types:EXTERNAL_SHARE, types:ADJUSTMENT, types:REVERSAL]],
         [["LedgerEntry", "status"], [types:HELD, types:PAID]],
-        [["Me", "grants", "items"], [auth:EMPLOYEE, auth:CAN_CAMPAIGN, auth:CAN_DASHBOARD, auth:CAN_EXPORT,
+        [["Me", "grants", "items"], [auth:EMPLOYEE, auth:CAN_CAMPAIGN, auth:CAN_DASHBOARD, auth:CAN_PEOPLE_OPS, auth:CAN_EXPORT,
             auth:CAN_REVIEW_SHARES, auth:CAN_POINT_RULES, auth:CAN_ADJUST_POINTS, auth:CAN_PO_DASHBOARD, auth:CAN_REPORTS,
             auth:CAN_ADMIN]]
     ];

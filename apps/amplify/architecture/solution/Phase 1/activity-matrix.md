@@ -10,23 +10,24 @@ Enforced twice: API proxy scopes per resource, then the Ballerina request interc
 
 **Role columns** show who gets each row with the **default** group lists: `EMP` = no Amplify group. `PO` = `amplify_po`. `MKT` = `amplify_marketing`. `SLT` = `amplify_slt`. `ADM` = `amplify_admin`. Changing who gets a capability is a configuration change, not a code change.
 
-| Grant | Default groups |
-| --- | --- |
-| `CAN_CAMPAIGN` | `amplify_po`, `amplify_marketing` |
-| `CAN_DASHBOARD` | `amplify_po`, `amplify_marketing`, `amplify_slt`, `amplify_admin` |
-| `CAN_EXPORT` | `amplify_po`, `amplify_marketing`, `amplify_slt`, `amplify_admin` |
-| `CAN_REVIEW_SHARES` | `amplify_po` |
-| `CAN_POINT_RULES` | `amplify_po` |
-| `CAN_ADJUST_POINTS` | `amplify_po` |
-| `CAN_PO_DASHBOARD` | `amplify_po` |
-| `CAN_REPORTS` | `amplify_slt`, `amplify_po` |
-| `CAN_ADMIN` | `amplify_admin` |
+| Grant | Opens in One WSO2 | Default groups |
+| --- | --- | --- |
+| `CAN_CAMPAIGN` | Marketing group: New Post, Current Posts | `amplify_po`, `amplify_marketing` |
+| `CAN_DASHBOARD` | Dashboards group: the five boards, person popup | `amplify_po`, `amplify_marketing`, `amplify_slt`, `amplify_admin` |
+| `CAN_PEOPLE_OPS` | People Operations group: Team | `amplify_po`, `amplify_slt`, `amplify_admin` (no Marketing; add a People Operations group when one exists) |
+| `CAN_EXPORT` | Dashboard CSV export (no menu item) | `amplify_po`, `amplify_marketing`, `amplify_slt`, `amplify_admin` |
+| `CAN_REVIEW_SHARES` | External-share review (no UI yet) | `amplify_po` |
+| `CAN_POINT_RULES` | Point rules (no UI yet) | `amplify_po` |
+| `CAN_ADJUST_POINTS` | Adjust and reverse points (no UI yet) | `amplify_po` |
+| `CAN_PO_DASHBOARD` | PO dashboard (no UI yet) | `amplify_po` |
+| `CAN_REPORTS` | SLT reports (phase 2, no UI yet) | `amplify_slt`, `amplify_po` |
+| `CAN_ADMIN` | Settings, scheduler, announcement retry (no UI yet) | `amplify_admin` |
 
 "Own" means the row's `employee_id` is the caller, taken from the token, never from the request.
 
 **CRUD.** C create · R read · U update · D delete/archive · X action (state transition). `—` = denied (403).
 
-**Phasing (2026-10-19).** Every row below is built and enforced. Phase 1 One WSO2 screens use only: `GET /me`, campaigns (read; PO/MKT register and edit through New Post and Current Posts), categories, LinkedIn connect, `POST /campaigns/{id}/shares`, `GET /me/shares` and `GET /leaderboard`. External shares and PO review, point rules and PO adjust/reverse are phase 3; points history, Team, the PO dashboard and reports are phase 2. Those endpoints stay reachable through the proxy with the roles shown here, so the matrix applies to them in phase 1 too.
+**Phasing (2026-10-19).** Every row below is built and enforced. Phase 1 One WSO2 screens use only: `GET /me`, campaigns (read; PO/MKT register and edit through New Post and Current Posts), categories, LinkedIn connect, `POST /campaigns/{id}/shares`, `GET /me/shares` and `GET /leaderboard`. External shares and PO review, point rules and PO adjust/reverse are phase 3; points history, the PO dashboard and reports are phase 2. The Team board (People Operations menu, `CAN_PEOPLE_OPS`) is built and gated now. Those endpoints stay reachable through the proxy with the roles shown here, so the matrix applies to them in phase 1 too.
 
 ## Matrix
 
@@ -58,13 +59,13 @@ Enforced twice: API proxy scopes per resource, then the Ballerina request interc
 | C2 | `POST /po/points/{reference}/reverse` | `CAN_ADJUST_POINTS` | — | C (reversal row) | — | — | — | Reason required; only on an entry not already reversed; append-only ledger. ADR-010 |
 | S4 Recognition | `GET /leaderboard` | `EMPLOYEE` | R | R | R | R | R | Three views: company top N (`leaderboard.top_n` = 3), personal, My Team (ADR-014). The full company list is `/leaderboard/people` (ADR-035) |
 | S4 | `GET /leaderboard/people?scope=&bu=&team=` | `EMPLOYEE` | R | R | R | R | R | People ranked in the company, a BU or a team. Open to every employee ([ADR-035](../../decisions/ADR-035-open-leaderboards-and-employee-count.md)); `BU`/`TEAM` default to the caller's own. Needs the people directory (503 otherwise) |
-| S4 | `GET /leaderboard/groups?by=TEAM\| `EMPLOYEE` |BU&bu=` | R | R | R | R | R | Teams or BUs ranked by points, with participants and headcount. Open to every employee (ADR-035) |
+| S4 | `GET /leaderboard/groups?by=TEAM or BU&bu=` | `EMPLOYEE` | R | R | R | R | R | Teams or BUs ranked by points, with participants and headcount. Open to every employee (ADR-035) |
 | S4 | `GET /headcount` | `EMPLOYEE` | R | R | R | R | R | Employees overall, by BU and team, from the people directory; memory cache 7 days (ADR-035) |
 | S6 Dashboards | `GET /dashboards/operations`, `/campaigns`, `/participation`, `/glance`, `/scorecard` | `CAN_DASHBOARD` | — | R | R | R | R | Every `amplify_*` role, never a plain employee (403 `ROLE_NOT_PERMITTED`). Read-only, one 60 s snapshot ([ADR-036](../../decisions/ADR-036-dashboards-for-amplify-roles.md)) |
 | S6 | `GET /dashboards/people/{employeeId}` | `CAN_DASHBOARD` | — | R | R | R | R | One person's Post Performance popup (ADR-036) |
 | S6 | `GET /dashboards/export?from=&to=` | `CAN_EXPORT` | — | R | R | R | R | Raw rows behind the boards as CSV, with names and emails. Its own grant so the export can be narrowed (e.g. to PO and Admin) without code (R16) |
 | S4 | `GET /me/points` | `EMPLOYEE` | R own | R own | R own | R own | R own | Points only, no Coin value (A11) |
-| S6 | `GET /team?q=&sort=&page=` | `CAN_DASHBOARD` | — | R | R | R | R | The Team board under Dashboarding: the whole company roster from the people directory, joined to the standings (emails for One WSO2 enrichment). A plain employee gets 403 `ROLE_NOT_PERMITTED` |
+| S6 | `GET /team?q=&sort=&page=` | `CAN_PEOPLE_OPS` | — | R | — | R | R | The Team board under People Operations: the whole company roster from the people directory, joined to the standings (emails for One WSO2 enrichment). A plain employee gets 403 `ROLE_NOT_PERMITTED` |
 | S4 | `GET /team/{employeeId}/history` | `EMPLOYEE` | R own + team | R any | R own + team | R own + team | R own + team | Without `CAN_ADJUST_POINTS`: own, or a member of the caller's team from the people-app directory (sub-team, else team; ADR-019) (`team.visibility = COMPANY` does not widen it, ADR-035), else 403 `TEAM_SCOPE` ([leaderboards.md](leaderboards.md)). `CAN_ADJUST_POINTS` sees any row (needed for adjust/reverse) |
 | S4 | `GET /po/dashboard` | `CAN_PO_DASHBOARD` | — | R | — | — | — | Phase 1 (ADR-013); shape defined in M0c B6 |
 | S4 (phase 2) | `GET /reports/participation`, `GET /reports/campaigns` | `CAN_REPORTS` | — | R | — | R | — | Phase 2; read-only DB user |

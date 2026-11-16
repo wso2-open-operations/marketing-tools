@@ -25,6 +25,8 @@ public enum Access {
     CAN_CAMPAIGN,
     # The Dashboarding boards and the person popup (ADR-036)
     CAN_DASHBOARD,
+    # The Team board under People Operations: the whole company roster joined to the standings
+    CAN_PEOPLE_OPS,
     # The raw CSV export behind the boards (names and emails)
     CAN_EXPORT,
     # The external-share review queue
@@ -47,6 +49,8 @@ public type AccessGroups record {|
     string[] canCampaign = [];
     # Groups granted `CAN_DASHBOARD`
     string[] canDashboard = [];
+    # Groups granted `CAN_PEOPLE_OPS`
+    string[] canPeopleOps = [];
     # Groups granted `CAN_EXPORT`
     string[] canExport = [];
     # Groups granted `CAN_REVIEW_SHARES`
@@ -77,6 +81,7 @@ public isolated function groupList(string value) returns string[] & readonly =>
 isolated function grantTable(AccessGroups access) returns [Access, string[]][] => [
     [CAN_CAMPAIGN, access.canCampaign],
     [CAN_DASHBOARD, access.canDashboard],
+    [CAN_PEOPLE_OPS, access.canPeopleOps],
     [CAN_EXPORT, access.canExport],
     [CAN_REVIEW_SHARES, access.canReviewShares],
     [CAN_POINT_RULES, access.canPointRules],

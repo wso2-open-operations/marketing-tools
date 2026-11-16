@@ -3,7 +3,7 @@ info:
   title: Amplify API
   version: 1.0.0
   description: |
-    WSO2 Amplify phase 1 published API (M5). Reached only through the Choreo API proxy at the cell edge
+    Chore Labs Amplify phase 1 published API (M5). Reached only through the Choreo API proxy at the cell edge
     (ADR-004); the proxy forwards the caller as a signed backend JWT in `x-jwt-assertion` (ADR-022).
 
     - Access: every operation names the grant it needs in `x-access` (`EMPLOYEE` = any signed-in
@@ -723,8 +723,8 @@ paths:
     get:
       tags: [S4 Recognition]
       operationId: getTeamPage
-      x-access: CAN_DASHBOARD
-      description: "Team board for the dashboards (PO, Marketing, SLT and Admin by default; plain employees get 403). Lists the whole company roster from the people directory (names included), joined to the standings: a person nobody has recorded points for is an entry with `points` 0, `employeeId` null and `rank` null, whether or not they have ever signed in. When the directory is unavailable the list falls back to the people with points and `teamStatus` is `UNAVAILABLE`. Search, sort and page on the server."
+      x-access: CAN_PEOPLE_OPS
+      description: "Team board under People Operations (PO, Marketing, SLT and Admin by default; plain employees get 403). Lists the whole company roster from the people directory (names included), joined to the standings: a person nobody has recorded points for is an entry with `points` 0, `employeeId` null and `rank` null, whether or not they have ever signed in. When the directory is unavailable the list falls back to the people with points and `teamStatus` is `UNAVAILABLE`. Search, sort and page on the server."
       parameters:
         - {$ref: "#/components/parameters/CorrelationId"}
         - {$ref: "#/components/parameters/Period"}
@@ -1169,7 +1169,7 @@ components:
         grants:
           description: Grants from those groups; `EMPLOYEE` always. The UI gates on these, never on group names
           type: array
-          items: {type: string, enum: [EMPLOYEE, CAN_CAMPAIGN, CAN_DASHBOARD, CAN_EXPORT, CAN_REVIEW_SHARES, CAN_POINT_RULES, CAN_ADJUST_POINTS, CAN_PO_DASHBOARD, CAN_REPORTS, CAN_ADMIN]}
+          items: {type: string, enum: [EMPLOYEE, CAN_CAMPAIGN, CAN_DASHBOARD, CAN_PEOPLE_OPS, CAN_EXPORT, CAN_REVIEW_SHARES, CAN_POINT_RULES, CAN_ADJUST_POINTS, CAN_PO_DASHBOARD, CAN_REPORTS, CAN_ADMIN]}
         capabilities: {type: array, items: {type: string}}
         linkedin:
           type: object
@@ -1364,7 +1364,7 @@ components:
       properties:
         evidenceUrl: {type: string, minLength: 1, maxLength: 2048, description: "Any public HTTPS URL; never fetched. `lnkd.in` short links are refused (`INVALID_EVIDENCE_URL`): one post could otherwise be claimed twice"}
         activityId: {type: string, minLength: 1, maxLength: 100, pattern: "^[0-9]+$", description: "A LinkedIn post number (the activity id: the digits in `urn:li:activity:<number>` or `...-activity-<number>-...`). Amplify builds the canonical post URL from it, stores that as `evidenceUrl`, and so it collides with any other form of the same post (`EVIDENCE_ALREADY_CLAIMED`)"}
-        certified: {type: boolean, enum: [true], description: "\"I certify this is related to WSO2\" (must be true)"}
+        certified: {type: boolean, enum: [true], description: "\"I certify this is related to Chore Labs\" (must be true)"}
         campaignId: {type: string, format: uuid}
     ExternalShare:
       type: object

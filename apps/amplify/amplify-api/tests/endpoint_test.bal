@@ -63,7 +63,7 @@ function connect(string employeeId) {
 function registerBody(string urn) returns json => {
     resourceUrn: urn,
     ownerUrn: WSO2_PAGE,
-    title: "WSO2 at KubeCon",
+    title: "Chore Labs at KubeCon",
     categoryCode: "PRODUCT",
     tags: ["Kubernetes", "Events"]
 };
