@@ -723,8 +723,8 @@ paths:
     get:
       tags: [S4 Recognition]
       operationId: getTeamPage
-      x-access: EMPLOYEE
-      description: "Team page. Employees see their own team (roster from the people directory, server side); `CAN_ADJUST_POINTS` sees the company. `team.visibility = COMPANY` widens it for everyone (ADR-019). The list is the whole roster from the directory (names included), joined to the standings: a person nobody has recorded points for is an entry with `points` 0, `employeeId` null and `rank` null, whether or not they ever signed in. Directory results are reused for 24 hours (`rosterCacheSeconds`). With the directory down and nothing cached, the team view lists only the caller (`teamStatus` UNAVAILABLE) and the company view only people with points (`teamStatus` UNAVAILABLE, `headcount` null)."
+      x-access: CAN_PEOPLE_OPS
+      description: "Team board under People Operations (PO, Marketing, SLT and Admin by default; plain employees get 403). Lists the whole company roster from the people directory (names included), joined to the standings: a person nobody has recorded points for is an entry with `points` 0, `employeeId` null and `rank` null, whether or not they have ever signed in. When the directory is unavailable the list falls back to the people with points and `teamStatus` is `UNAVAILABLE`. Search, sort and page on the server."
       parameters:
         - {$ref: "#/components/parameters/CorrelationId"}
         - {$ref: "#/components/parameters/Period"}
@@ -1169,7 +1169,7 @@ components:
         grants:
           description: Grants from those groups; `EMPLOYEE` always. The UI gates on these, never on group names
           type: array
-          items: {type: string, enum: [EMPLOYEE, CAN_CAMPAIGN, CAN_DASHBOARD, CAN_EXPORT, CAN_REVIEW_SHARES, CAN_POINT_RULES, CAN_ADJUST_POINTS, CAN_PO_DASHBOARD, CAN_REPORTS, CAN_ADMIN]}
+          items: {type: string, enum: [EMPLOYEE, CAN_CAMPAIGN, CAN_DASHBOARD, CAN_PEOPLE_OPS, CAN_EXPORT, CAN_REVIEW_SHARES, CAN_POINT_RULES, CAN_ADJUST_POINTS, CAN_PO_DASHBOARD, CAN_REPORTS, CAN_ADMIN]}
         capabilities: {type: array, items: {type: string}}
         linkedin:
           type: object
@@ -1578,6 +1578,7 @@ components:
               teamRank: {type: integer, description: "Dense rank within the list; every zero-point person shares the last rank. Ties order by name, then email"}
               previousRank: {type: integer, nullable: true}
               lastActivityAt: {type: string, format: date-time, nullable: true}
+              houseName: {type: string, nullable: true, description: "The person's house from the people directory; null when they have none or the directory is unavailable"}
               actions:
                 type: object
                 required: [canAdjust, canReverse]

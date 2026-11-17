@@ -127,12 +127,12 @@ Employee and up. `?period=ALL` (default). ETag `<period>:<standing_version>:<vie
 
 ## `GET /team`
 
-`?period=ALL&q=&sort=rank|points|name&page=0&size=25`. Employees get their own team (`scope: "TEAM"`); `amplify_po` gets the company (`scope: "COMPANY"`), plus `?team=` / `?department=` filters that the UI turns into an email list from One WSO2 data. Emails are returned so One WSO2 can add photo, team and department (ADR-009).
+`?period=ALL&q=&sort=rank|points|name&page=0&size=25`. The Team board under Dashboarding: only callers with `CAN_DASHBOARD` (a plain employee gets `403 ROLE_NOT_PERMITTED`), and they all get the whole company (`scope` is always `"COMPANY"`). Emails are returned so One WSO2 can add photo, team and department.
 
 ```jsonc
 {
   "period": "ALL",
-  "scope": "TEAM",                       // TEAM | COMPANY
+  "scope": "COMPANY",                    // always COMPANY on this endpoint
   "page": 0, "size": 25, "total": 18,
   "summary": { "headcount": 18, "activeCount": 11 },   // C8: headcount from the people-app directory, active from standing
   "entries": [
@@ -149,7 +149,7 @@ Employee and up. `?period=ALL` (default). ETag `<period>:<standing_version>:<vie
 ## Tests
 
 - Ties at rank N return every tied row; `pointsToTopN` is 0 for them.
-- An employee can't read a non-team member through `/team`, `/team/{id}/history` or a crafted `q`.
+- A plain employee gets 403 from `/team`, and can't read a non-team member through `/team/{id}/history`.
 - Directory down with nothing cached → `teamStatus: UNAVAILABLE`, rest of the response 200; an expired index is still served while a refresh fails.
 - One directory call serves every viewer until the index expires.
 - Another viewer's `If-None-Match` gets their own 200, never a 304.

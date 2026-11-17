@@ -8,7 +8,7 @@ Inputs: requirements doc, the phase 1 scope change, the One WSO2 webapp review, 
 ## Phase 1 Scope 
 ONE WSO2 app module, one Choreo project (the Amplify cell) fronted by an API proxy, two backend deployables (`amplify-api`, `amplify-jobs`) plus the scheduler (`akornatskyy/scheduler`, ADR-026) and one Postgres database. Employees connect LinkedIn once and share or repost WSO2 posts **through Amplify**, using the self-serve `w_member_social` permission. That needs no partner approval and costs nothing. Promotion done outside the app comes in as an **external share** (UI: "My Campaign"), reviewed by PO. 
 
-New posts are announced in the **WSO2 Club Group** Google Chat space by webhook. Points are **held in the ledger**.
+New posts are announced through **Novera**, the Google Chat assistant, which sends a card to each person who has added it. Points are **held in the ledger**.
 
 **Moved to later phases** (which phase: [requirements-map › Other phases](requirements-map.md#other-phases-refine-later)): the Amplify agent, classifier, LLM gateway, AMP and ThunderID; a separate queue service (phase 1 uses an outbox/jobs table in Postgres); engagement sync through the Community Management API (approval is still pending); the Coin issuer; HR Entity team and location sync; SLT reports; the employee data-deletion path (C3, ADR-016).
 
@@ -70,11 +70,11 @@ SUPPORTING  ┃  ┌────────────────────
             ┃  │ chat notifier in jobs   │  │ PO dashboard                 │                                     ┃
             ┃  └────────────┬────────────┘  └──────────────────────────────┘                                     ┃
             ┗━━━━━━━━━━━━━━━┿━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-                            │ ACL: incoming webhook             S2 and C1 ──► LinkedIn (ACL: OAuth/OIDC, provider adapter)
+                            │ ACL: Novera notifications API     S2 and C1 ──► LinkedIn (ACL: OAuth/OIDC, provider adapter)
             ┌───────────────▼──────────┐                         ┌──────────────────────────────────────────────┐
-EXTERNAL    │ GOOGLE CHAT   [EXTERNAL] │                         │ LINKEDIN                          [EXTERNAL] │
-            │ Club space               │                         │ Sign In with LinkedIn (OIDC: sub → person)   │
-            │ incoming webhook, cardsV2│                         │ Share on LinkedIn: POST /rest/posts          │
+EXTERNAL    │ NOVERA        [EXTERNAL] │                         │ LINKEDIN                          [EXTERNAL] │
+            │ Google Chat assistant    │                         │ Sign In with LinkedIn (OIDC: sub → person)   │
+            │ card to each Novera user │                         │ Share on LinkedIn: POST /rest/posts          │
             └──────────────────────────┘                         │ self-serve · w_member_social · no approval   │
                                                                  └──────────────────────────────────────────────┘
 
@@ -96,8 +96,8 @@ C = core subdomain   S = supporting subdomain   OHS/PL = open host service + pub
 | LinkedIn Connection (S2) | Supporting | Consent plus a token vault. Needed for sharing, but not the differentiator |
 | External Sharing (S3) | Supporting | Intake for promotion Amplify can't see: an employee's own LinkedIn post, a Medium article, a blog. PO-reviewed |
 | Recognition (S4) | Supporting | Read models: leaderboard, my points, PO views |
-| Announcements (S5) | Supporting | Builds the Club card for a campaign. The webhook itself is generic |
-| SSO, Google Chat, LinkedIn | Generic / external | Used as they are, behind clear boundaries |
+| Announcements (S5) | Supporting | Builds the notification for a campaign. Novera sends the card |
+| SSO, Novera, LinkedIn | Generic / external | Used as they are, behind clear boundaries |
 
 ## Bounded contexts
 
@@ -173,7 +173,7 @@ Projections over the C2 ledger, stored as **pre-built tables** (`recognition.sta
 | C1 → C2 | Customer/Supplier | `EngagementRecorded` (`EngagementDeleted` future, ADR-018) | Auto-scored / reversed |
 | S3 → C2 | Customer/Supplier | `ExternalShareApproved` / `ExternalShareAmplified` | PO-allocated; T4 top-up |
 | C2 → S4 | Published events | `PointsAwarded/Adjusted/Reversed` | |
-| S5 → Google Chat | **ACL** | Incoming webhook, cardsV2 | |
+| S5 → Novera | **ACL** | `POST /internal/notifications` through the Choreo gateway | |
 | amplify-api → One WSO2 | **OHS + Published Language** | REST, OpenAPI 3, published through the API proxy at the cell edge | One WSO2 gates on `GET /me` capabilities and hides items a role doesn't allow |
 
 ## Domain events (outbox / jobs table)
@@ -209,7 +209,7 @@ Deployables: **One WSO2 Amplify module** (UI), **Amplify API Proxy** (cell ingre
 | External share | An employee's claim for an action Amplify didn't see, submitted from My Campaign. PO-reviewed. (Replaces the old "check-in" wording, D2) |
 | Own post | An external share for the employee's original WSO2-related post |
 | Points | Ledger credits. Held in phase 1; shown as points only, no Coin value |
-| Club space | The Google Chat space where new campaigns are announced |
+| Novera card | The Google Chat card Novera sends to each person who added it when a campaign is announced |
 | Run | One amplify-jobs pass: announce, publish shares, score |
 
 ## What changes from the Choreo L2

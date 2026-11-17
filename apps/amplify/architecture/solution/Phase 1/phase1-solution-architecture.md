@@ -36,7 +36,7 @@ flowchart TB
         end
         subgraph JOBS["amplify-jobs (one worker)"]
             C1J["C1 provider adapter<br/>publish shares"]
-            S5["S5 Announcements<br/>chat notifier"]
+            S5["S5 Announcements<br/>Novera notifier"]
             C2J["C2 score pass"]
             MNT["daily maintenance<br/>partitions · outbox purge"]
         end
@@ -46,7 +46,7 @@ flowchart TB
     end
 
     LI["LinkedIn<br/>OAuth + OIDC · Share on LinkedIn<br/>w_member_social"]
-    GC["Google Chat<br/>WSO2 Club Group<br/>incoming webhook"]
+    GC["Novera<br/>Google Chat assistant<br/>card to each Novera user"]
 
     EMP --> UI
     MKT --> UI
@@ -63,7 +63,7 @@ flowchart TB
     JOBS --> DB
     S2 -->|"OAuth code exchange"| LI
     C1J -->|"POST /rest/posts"| LI
-    S5 -->|"cardsV2"| GC
+    S5 -->|"POST /internal/notifications"| GC
     GC -. "card opens share page" .-> UI
 
     subgraph LATER["Later phases (not built in phase 1)"]

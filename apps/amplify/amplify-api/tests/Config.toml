@@ -29,6 +29,7 @@ schedulerApiKey = "test-scheduler-key-0123456789abcdef012345"
 # a capability is shared by configuration alone.
 canCampaignGroups = "amplify_po, amplify_marketing, amplify_campaign_extra"
 canDashboardGroups = "amplify_po,amplify_marketing,amplify_slt,amplify_admin"
+canPeopleOpsGroups = "amplify_po,amplify_slt,amplify_admin"
 canExportGroups = "amplify_po,amplify_marketing,amplify_slt,amplify_admin"
 canReviewSharesGroups = "amplify_po"
 canPointRulesGroups = "amplify_po"

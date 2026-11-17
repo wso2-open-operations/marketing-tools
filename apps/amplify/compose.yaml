@@ -124,6 +124,7 @@ services:
       # Access (ADR-038): Asgardeo groups per capability, comma separated. local/.env overrides.
       BAL_CONFIG_VAR_CANCAMPAIGNGROUPS: ${AMPLIFY_CAN_CAMPAIGN_GROUPS:-amplify_po,amplify_marketing}
       BAL_CONFIG_VAR_CANDASHBOARDGROUPS: ${AMPLIFY_CAN_DASHBOARD_GROUPS:-amplify_po,amplify_marketing,amplify_slt,amplify_admin}
+      BAL_CONFIG_VAR_CANPEOPLEOPSGROUPS: ${AMPLIFY_CAN_PEOPLE_OPS_GROUPS:-amplify_po,amplify_slt,amplify_admin}
       BAL_CONFIG_VAR_CANEXPORTGROUPS: ${AMPLIFY_CAN_EXPORT_GROUPS:-amplify_po,amplify_marketing,amplify_slt,amplify_admin}
       BAL_CONFIG_VAR_CANREVIEWSHARESGROUPS: ${AMPLIFY_CAN_REVIEW_SHARES_GROUPS:-amplify_po}
       BAL_CONFIG_VAR_CANPOINTRULESGROUPS: ${AMPLIFY_CAN_POINT_RULES_GROUPS:-amplify_po}
@@ -273,14 +274,6 @@ services:
       retries: 30
     ports:
       - "127.0.0.1:19091:9091"
-    networks: [internal]
-
-  # Local Google Chat webhook stub (M6a): logs each card (docker compose logs -f chat-stub).
-  # GET /stub/messages, PUT /stub/status/{code}: docker compose exec chat-stub wget -qO- localhost:9095/stub/messages
-  chat-stub:
-    build:
-      context: local/chat-stub
-    read_only: true
     networks: [internal]
 
   # Local people-app directory stub (D13): GET /employees/basic-info from local/people-stub/directory.json

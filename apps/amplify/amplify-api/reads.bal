@@ -301,43 +301,30 @@ isolated function teamView(auth:Principal p, string? correlationId, string perio
         } else {
             return badRequest("sort must be rank, points or name", correlationId);
         }
-        Settings settings = check loadSettings();
-        boolean company = can(p, auth:CAN_ADJUST_POINTS) || settings.teamVisibility == "COMPANY";
+        // Only callers with the dashboards grant get here (the access matrix), and they see the whole company.
         TeamStatus teamStatus = "OK";
         int? headcount = ();
         string? search = q is string && q.trim().length() > 0 ? q.trim() : ();
         recognition:RosterPage result;
-        if company {
-            // Everyone the directory lists, points or not. Directory down: the people with points, flagged
-            // `UNAVAILABLE`. No directory configured: the people with points, as before.
-            DirectoryIndex|error index = rosterConfigured() ? directoryIndex(correlationId) : error("not configured");
-            if index is DirectoryIndex {
-                recognition:RosterMember[] everyone = everyoneIn(index);
-                headcount = everyone.length();
-                result = check rosterPageOf(period, everyone, search, orderBy, page, size);
-            } else {
-                if rosterConfigured() {
-                    log:printWarn("Company list falls back to people with points: directory unavailable",
-                            reason = index.message(), correlationId = correlationId);
-                    teamStatus = "UNAVAILABLE";
-                }
-                result = rosterPageFrom(check teamPageOf(period, (), search, orderBy, page, size));
-            }
+        // Everyone the directory lists, points or not. Directory down: the people with points, flagged
+        // `UNAVAILABLE`. No directory configured: the people with points, as before.
+        DirectoryIndex|error index = rosterConfigured() ? directoryIndex(correlationId) : error("not configured");
+        if index is DirectoryIndex {
+            recognition:RosterMember[] everyone = everyoneIn(index);
+            headcount = everyone.length();
+            result = check rosterPageOf(period, everyone, search, orderBy, page, size);
         } else {
-            var [roster, status] = rosterStatus(p, correlationId);
-            teamStatus = status;
-            if roster is Roster {
-                headcount = roster.emails.length();
-                result = check rosterPageOf(period, membersOf(roster), search, orderBy, page, size);
-            } else {
-                // No roster: the caller still sees themselves, never the company.
-                result = rosterPageFrom(check teamPageOf(period, [p.email], search, orderBy, page, size));
+            if rosterConfigured() {
+                log:printWarn("Company list falls back to people with points: directory unavailable",
+                        reason = index.message(), correlationId = correlationId);
+                teamStatus = "UNAVAILABLE";
             }
+            result = rosterPageFrom(check teamPageOf(period, (), search, orderBy, page, size));
         }
         boolean adjuster = can(p, auth:CAN_ADJUST_POINTS);
         return {
             period,
-            scope: <TeamScope>(company ? "COMPANY" : "TEAM"),
+            scope: <TeamScope>"COMPANY",
             page,
             size,
             total: result.total,
@@ -353,6 +340,8 @@ isolated function teamView(auth:Principal p, string? correlationId, string perio
                     teamRank: e.teamRank,
                     previousRank: e.previousRank,
                     lastActivityAt: tsOpt(e.lastActivityAt),
+                    // From the directory; empty for someone with no house, or when the directory is down.
+                    houseName: index is DirectoryIndex ? index.houseOf[e.email.toLowerAscii()] : (),
                     actions: {canAdjust: adjuster, canReverse: adjuster}
                 }
         };

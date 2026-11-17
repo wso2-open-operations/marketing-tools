@@ -104,7 +104,7 @@ No **Skipped gate** (High) findings: nothing is in stage or prod yet, so no late
 
 - dev/stage deploys; staging developer testing (entity/backend APIs via Postman; web apps via test cases).
 - Collaborative privileges/roles session.
-- Connected apps for external integrations: LinkedIn, Google Chat (Choreo connections).
+- Connected apps for external integrations: LinkedIn and Novera (Choreo connections).
 - Choreo pipeline deploy with config maps/secrets/OAuth/DB.
 - Release note; rollback plan.
 - Stage 7 (UAT) runs inside this stage before the production approval.
