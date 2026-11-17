@@ -62,16 +62,16 @@ final json & readonly EXPECTED_CARD = {
             cardId: "campaign-0192f0c4-0000-7000-8000-000000000001",
             card: {
                 header: {
-                    title: "WSO2 named a Leader <again>",
-                    subtitle: "WSO2 Amplify · priority post",
+                    title: "Choreo Labs named a Leader <again>",
+                    subtitle: "Choreo Labs Amplify · priority post",
                     imageUrl: "https://media.wso2.com/amplify-avatar.png",
                     imageType: "CIRCLE",
-                    imageAltText: "WSO2 Amplify"
+                    imageAltText: "Choreo Labs Amplify"
                 },
                 sections: [
                     {
                         widgets: [
-                            {image: {imageUrl: "https://media.wso2.com/leader.png", altText: "WSO2 named a Leader <again>"}},
+                            {image: {imageUrl: "https://media.wso2.com/leader.png", altText: "Choreo Labs named a Leader <again>"}},
                             {textParagraph: {text: "Read why &amp; share it &lt;today&gt;"}},
                             {
                                 buttonList: {
@@ -99,7 +99,7 @@ final json & readonly EXPECTED_CARD = {
 function campaignCardSnapshot() returns error? {
     json card = check buildCampaignCard({
         campaignId: "0192f0c4-0000-7000-8000-000000000001",
-        title: "  WSO2 named a Leader <again> ",
+        title: "  Choreo Labs named a Leader <again> ",
         summary: "Read why & share it <today>",
         imageUrl: "https://media.wso2.com/leader.png",
         sharePageUrl: "https://one.wso2.com/amplify/campaigns/0192f0c4-0000-7000-8000-000000000001",

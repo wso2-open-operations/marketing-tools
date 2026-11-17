@@ -156,7 +156,7 @@ Same names in two components (`DBHOST`, `DBPORT`, `DBNAME`, `DBUSER`, `DBPASSWOR
 | `CHATSPACE` | cfg | O | `Amplify Demo` locally; `dev-test` in Choreo dev | `club` |
 | `CHATCARDAVATARURL` | cfg | O | `https://fonts.gstatic.com/s/e/notoemoji/17.0/1f50a/72.png` | Same URL is fine; confirm |
 | `CHATDEFAULTIMAGEURL` | cfg | O | `https://raw.githubusercontent.com/BechtelCanDoIt/marketing-tools/5e5006aadd4a031021265342a20ff0fcda3102b7/apps/amplify/amplify-jobs/img/WSO2-Amplify-Poster-Default.png` (fork) | TBD, same file pinned to a commit in the WSO2-managed repo |
-| `SHAREPAGEBASEURL` | cfg | R | `https://one.wso2.com/amplify/celebrate` | TBD, the One WSO2 team confirms the prod Celebrate page |
+| `SHAREPAGEBASEURL` | cfg | R | `https://one.choreolabs.com/amplify/celebrate` | TBD, the One WSO2 team confirms the prod Celebrate page |
 | `NOVERANOTIFYURL` | cfg | O | `https://apis-stg.wso2.com/people-ops-suite/po-agent/v1.0/internal/notifications` (stg) | TBD, prod gateway URL of `POST /internal/notifications` (https) |
 | `NOVERATOKENURL` | cfg | O | `https://api.asgardeo.io/t/wso2/oauth2/token` (stg app) | TBD |
 | `NOVERACLIENTID` | cfg | O | stg application id (in `local/.env`) | TBD, a prod application subscribed to Novera's API |

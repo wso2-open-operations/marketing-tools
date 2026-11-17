@@ -276,7 +276,7 @@ public isolated function ownWordCount(string thoughts, CampaignSnapshot campaign
     }
     int own = 0;
     // Whole `#tag` and `@name` tokens go first: their text isn't the employee's thoughts. In the post, a hashtag's
-    // word still counts as the post's (wordsOf drops only the `#`), so `WSO2` stays copied after `#WSO2`.
+    // word still counts as the post's (wordsOf drops only the `#`), so `Choreo Labs` stays copied after `#ChoreoLabs`.
     foreach string word in wordsOf(re `[#@]\S*`.replaceAll(thoughts, " ")).keys() {
         if !post.hasKey(word) {
             own += 1;

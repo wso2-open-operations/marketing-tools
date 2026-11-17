@@ -15,4 +15,4 @@
 // under the License.
 
 # Product name, shared by every Amplify component in logs and health bodies.
-public const string PRODUCT = "WSO2 Amplify";
+public const string PRODUCT = "Choreo Labs Amplify";

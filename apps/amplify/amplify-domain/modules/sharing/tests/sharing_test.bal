@@ -134,7 +134,7 @@ function thoughtsCopiedFromThePostAreRefused() {
     test:assertEquals(thoughtsOn(INTEGRATOR, "WSO2 Integrator 5.1 is here"), types:ERR_COMMENTARY_NOT_OWN_WORDS);
     test:assertEquals(thoughtsOn(INTEGRATOR, "wso2 INTEGRATOR 5.1 is here!!!"), types:ERR_COMMENTARY_NOT_OWN_WORDS);
     // Title and summary words, hashtags of them and a link add nothing of their own.
-    test:assertEquals(thoughtsOn(INTEGRATOR, "#WSO2 #Integrator: new AI connectors, faster builds https://wso2.com/x"),
+    test:assertEquals(thoughtsOn(INTEGRATOR, "#ChoreoLabs #Integrator: new AI connectors, faster builds https://choreolabs.com/x"),
             types:ERR_COMMENTARY_NOT_OWN_WORDS);
     // Repeats and one-character words don't count: "great" is the only word of their own.
     test:assertEquals(thoughtsOn(INTEGRATOR, "great great great a b c d e WSO2 Integrator"),

@@ -94,7 +94,7 @@ configurable string noveraIconUrl = "";
 # image.
 configurable string noveraDefaultImageUrl = "";
 # The Novera card button's link (`BAL_CONFIG_VAR_NOVERABUTTONURL`): a URL template in which every `{campaignId}` is
-# replaced with the post's id, e.g. `https://one.wso2.com/amplify/celebrate?share={campaignId}` (the Celebrate page
+# replaced with the post's id, e.g. `https://one.choreolabs.com/amplify/celebrate?share={campaignId}` (the Celebrate page
 # with that post's share dialog). Must be https (http only with `noveraAllowInsecureHttp`) and contain
 # `{campaignId}`; checked at start-up. Empty = Novera button not configured: announcements wait, a card never goes
 # out without its button.
