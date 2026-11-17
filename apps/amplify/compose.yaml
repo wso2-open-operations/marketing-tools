@@ -182,7 +182,7 @@ services:
       BAL_CONFIG_VAR_NOVERAICONURL: ${NOVERA_ICON_URL:-}
       BAL_CONFIG_VAR_NOVERADEFAULTIMAGEURL: ${NOVERA_DEFAULT_IMAGE_URL:-https://one.choreolabs.com/amplify/amplify-logo-dark.png}
       # The card button's link: a URL template whose {campaignId} is replaced with the post's id. Empty = announcements wait.
-      BAL_CONFIG_VAR_NOVERABUTTONURL: ${NOVERA_BUTTON_URL:-https://one.wso2.com/amplify/celebrate?share={campaignId}}
+      BAL_CONFIG_VAR_NOVERABUTTONURL: ${NOVERA_BUTTON_URL:-https://one.choreolabs.com/amplify/celebrate?share={campaignId}}
       BAL_CONFIG_VAR_NOVERANOTIFYURL: ${NOVERA_NOTIFY_URL:-}
       BAL_CONFIG_VAR_NOVERATOKENURL: ${NOVERA_TOKEN_URL:-}
       BAL_CONFIG_VAR_NOVERACLIENTID: ${NOVERA_CLIENT_ID:-}

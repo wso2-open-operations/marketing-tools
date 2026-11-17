@@ -73,7 +73,7 @@ configurations:
     - name: BAL_CONFIG_VAR_NOVERADEFAULTIMAGEURL
       value: "https://one.choreolabs.com/amplify/amplify-logo-dark.png"
     - name: BAL_CONFIG_VAR_NOVERABUTTONURL
-      value: ""
+      value: "https://one.choreolabs.com/amplify/celebrate?share={campaignId}"
     - name: BAL_CONFIG_VAR_NOVERANOTIFYURL
       value: ""
     - name: BAL_CONFIG_VAR_NOVERATOKENURL
