@@ -61,4 +61,11 @@ case "$(printf '%s' "${mock:-true}" | tr '[:upper:]' '[:lower:]')" in
     ;;
 esac
 
+# Linux has no host.docker.internal, so the local Novera mock URLs would not resolve there. Add it on Linux only (compose.linux.yaml).
+# Docker Desktop and Rancher Desktop already provide the right address; host-gateway would replace it with the
+# VM's bridge address and the containers could no longer reach the host. Callers that pass their own -f flags choose their files.
+if [ "$(uname -s)" = Linux ] && [ -z "${COMPOSE_FILE:-}" ]; then
+  export COMPOSE_FILE="$ROOT/compose.yaml:$ROOT/compose.linux.yaml"
+fi
+
 exec docker compose --project-directory "$ROOT" --env-file "$ENV_FILE" "$@"
