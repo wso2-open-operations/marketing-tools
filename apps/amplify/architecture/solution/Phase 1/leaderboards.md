@@ -52,8 +52,7 @@ If the directory has never loaded and is down, or the breaker is open with nothi
 | Company top N, full company list, BU and team boards, team and BU rankings ([ADR-035](../../decisions/ADR-035-open-leaderboards-and-employee-count.md)) | yes | yes | yes |
 | Own rank, points, gaps, history | yes | yes | yes (as employees) |
 | My Team (own team only) | yes | yes | yes (as employees) |
-| Team page, own team (search, expand history) | yes, read-only | yes | as employees |
-| Team page, **whole company** (search, sort, filter by team/department) | no | **yes**, with Adjust / Reverse (ADR-010) | no |
+| Team page, **whole company** (search, sort, filter by team/department): `GET /team`, `CAN_PEOPLE_OPS` | no (403) | yes, with Adjust / Reverse (ADR-010) | `amplify_slt`, `amplify_admin` yes; `amplify_marketing` no (403) |
 | Another employee's points history (`GET /team/{id}/history`) | only a member of the viewer's team | anyone | as employees |
 
 Setting `team.visibility` (`TEAM` default, or `COMPANY`) lets PO widen the Team page later without a release ([ADR-019](../../decisions/ADR-019-leaderboard-team-visibility.md)). Enforced in `amplify-api` (the real gate); the UI only hides.
@@ -127,7 +126,7 @@ Employee and up. `?period=ALL` (default). ETag `<period>:<standing_version>:<vie
 
 ## `GET /team`
 
-`?period=ALL&q=&sort=rank|points|name&page=0&size=25`. The Team board under Dashboarding: only callers with `CAN_DASHBOARD` (a plain employee gets `403 ROLE_NOT_PERMITTED`), and they all get the whole company (`scope` is always `"COMPANY"`). Emails are returned so One WSO2 can add photo, team and department.
+`?period=ALL&q=&sort=rank|points|name&page=0&size=25`. The Team board under Dashboarding: only callers with `CAN_PEOPLE_OPS` (`amplify_po`, `amplify_slt` and `amplify_admin` by default). A caller with only `CAN_DASHBOARD`, or a plain employee, gets `403 ROLE_NOT_PERMITTED`. Callers who pass get the whole company (`scope` is always `"COMPANY"`). Emails are returned so One WSO2 can add photo, team and department.
 
 ```jsonc
 {

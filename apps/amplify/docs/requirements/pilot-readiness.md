@@ -53,7 +53,7 @@ Announcements go out as Novera cards to everyone who has added Novera (the Club 
 | When | Message | Channel | Owner |
 | --- | --- | --- | --- |
 | T-3 working days | "Amplify pilot starts <date>: connect LinkedIn, repost WSO2 campaigns, earn points." Link the share page. | Club space | PO |
-| Go-live day | First campaign announced automatically by Amplify (the webhook card). Optional pinned intro card from the team. | Club space (Amplify card) | System / PO |
+| Go-live day | First campaign announced automatically by Amplify: the card goes to Novera users, not the Club space. The Club space stays the channel for the team's optional human-authored intro card. | Novera (automated card); Club space (optional intro card) | System / PO |
 | Weekly during pilot | Leaderboard callout (company top N) + one featured campaign, posted by the team (not automated in phase 1). | Club space | PO |
 | Reconnect reminder | Employees in the reminder window see the reconnect banner in the UI; there is no automated chat reminder in phase 1 (plan M6, ADR-025 item 13). | One WSO2 UI | System |
 
@@ -75,7 +75,7 @@ Four metrics for the pilot. Compute from the Amplify schema (queries below run a
 | **Connected employees** | Employees with an **ACTIVE** LinkedIn connection | `connection_member_connection_v` | ≥ 60% of the pilot group by week 4 |
 | **Shares per campaign** | Published in-app reposts per open campaign | `sharing_share_request_v` (`PUBLISHED`), grouped by campaign | ≥ 40% of connected employees share each weekly campaign |
 | **External shares reviewed within SLA** | PO decisions on external shares within `po.review_sla_hours` (48) | `external_sharing_external_share` (`decided_at - created_at`) | ≥ 90% within 48 h |
-| **Announcement delivery rate** | Campaign cards SENT vs (SENT + FAILED) | `announcement_v` | ≥ 98% |
+| **Announcement Novera acceptance** | Campaign cards SENT vs (SENT + FAILED). SENT means Novera's handler answered 202, not that a recipient got the card; measuring recipient delivery needs delivery data from Novera | `announcement_v` | ≥ 98% |
 
 **Queries**
 
@@ -96,7 +96,7 @@ SELECT
   count(*)                                                              AS total
 FROM external_sharing_external_share;
 
--- Announcement delivery rate
+-- Announcement Novera acceptance (SENT = Novera answered 202, not recipient delivery)
 SELECT
   count(*) FILTER (WHERE sent_at IS NOT NULL)  AS sent,
   count(*) FILTER (WHERE failed_at IS NOT NULL) AS failed

@@ -113,6 +113,7 @@ Every setting is a Ballerina `configurable`, set through `BAL_CONFIG_VAR_<NAME>`
 | `TOKENKEYS`, `TOKENCURRENTKEYID` | ✓ | ✓ | | ✓ (keys) | `local-1:<random base64 32 bytes>`, `local-1` |
 | `AMPLIFYONNOVERA` | | ✓ | | | `true` (`AMPLIFY_ON_NOVERA`): announce a campaign through Novera |
 | `NOVERANOTIFYURL`, `NOVERATOKENURL`, `NOVERACLIENTID`, `NOVERASCOPES` | | ✓ | | | empty (Novera's `POST /internal/notifications` through its Choreo gateway, the token endpoint, the subscribed application, optional scopes) |
+| `NOVERABUTTONURL` | | ✓ | | | required URL template containing `{campaignId}` (`NOVERA_BUTTON_URL`): the card button's link; announcements wait while it is empty. Compose defaults it to the Celebrate page |
 | `NOVERACLIENTSECRET` | | ✓ | | ✓ | empty (that application's secret) |
 
 Scheduler: `DSN` (secret, its own database/user). Mock LinkedIn: `LISTENERHOST=0.0.0.0`, `WWWBASEURL`, `CLIENTID`, `CLIENTSECRET` (secret), and `BAL_CONFIG_DATA` for `redirectUris`. Tuning knobs with safe defaults (run batch sizes, timeouts, breakers, LinkedIn ceilings) are in each component's `config.bal`; set them the same way when needed.

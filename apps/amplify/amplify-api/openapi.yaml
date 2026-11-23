@@ -724,7 +724,7 @@ paths:
       tags: [S4 Recognition]
       operationId: getTeamPage
       x-access: CAN_PEOPLE_OPS
-      description: "Team board under People Operations (PO, Marketing, SLT and Admin by default; plain employees get 403). Lists the whole company roster from the people directory (names included), joined to the standings: a person nobody has recorded points for is an entry with `points` 0, `employeeId` null and `rank` null, whether or not they have ever signed in. When the directory is unavailable the list falls back to the people with points and `teamStatus` is `UNAVAILABLE`. Search, sort and page on the server."
+      description: "Team board under People Operations (PO, SLT and Admin by default; plain employees get 403). Lists the whole company roster from the people directory (names included), joined to the standings: a person nobody has recorded points for is an entry with `points` 0, `employeeId` null and `rank` null, whether or not they have ever signed in. When the directory is unavailable the list falls back to the people with points and `teamStatus` is `UNAVAILABLE`. Search, sort and page on the server."
       parameters:
         - {$ref: "#/components/parameters/CorrelationId"}
         - {$ref: "#/components/parameters/Period"}

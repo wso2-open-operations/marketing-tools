@@ -97,7 +97,7 @@ Announcements go through Novera (`NOVERACLIENTID` / `NOVERACLIENTSECRET` on `amp
 2. Update the `NOVERACLIENTSECRET` secret **[console]**, redeploy `amplify-jobs`.
 3. Verify: `Save & Share Now` on a test campaign, and confirm the Novera card arrives.
 4. Revoke the old secret.
-5. A `401` or `403` on every announcement means the credential or subscription is wrong. Announcements stay queued and retry; they are not lost.
+5. A `401` or `403` on every announcement means the credential or subscription is wrong. Amplify retries those (nothing was sent), up to `maxAttempts`; after that the announcement is marked `FAILED`. After fixing the credential or subscription, retry each failed one with `POST /admin/announcements/{id}/retry` (see section 1a).
 
 ## 5. Bump `LinkedIn-Version`
 

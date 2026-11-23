@@ -51,7 +51,7 @@ Check: both services are healthy in prod.
 1. Proxy targets the Backend's Project endpoint. If Choreo refuses that, set the endpoint to `Organization` and record it in an ADR.
 2. Import `amplify-api/openapi.yaml`. Key manager is Asgardeo. Per-resource scopes come from `x-access`; rate limits are tighter on shares and external shares than on reads.
 3. Turn on backend JWT. Copy its JWKS URL, issuer and audience into the Backend's `GATEWAYJWKSURL`, `GATEWAYISSUER`, `GATEWAYAUDIENCES` and redeploy the Backend.
-4. Security headers at the proxy if supported. If the org uses egress control, allow only `api.linkedin.com`, `www.linkedin.com`, `chat.googleapis.com` and the people-app gateway host.
+4. Security headers at the proxy if supported. If the org uses egress control, allow only `api.linkedin.com`, `www.linkedin.com`, the hosts of the configured Novera notification URL (`NOVERANOTIFYURL`) and token URL (`NOVERATOKENURL`) and the people-app gateway host.
 
 ### Step 5: One WSO2 UI
 
@@ -64,7 +64,7 @@ Deployed by the One WSO2 team after the proxy is live. They need the proxy URL. 
 | Choreo org admin access | Ops |
 | Prod LinkedIn app client id and secret, redirect URI | LinkedIn app owner |
 | `NOVERANOTIFYURL`, `NOVERATOKENURL`, `NOVERACLIENTID`, `NOVERACLIENTSECRET` | Novera owner (prod gateway URL and a prod application subscribed to Novera's API) |
-| `NOVERAICONURL`, `NOVERADEFAULTIMAGEURL`, `NOVERABUTTONURL` (optional) | Repo; public HTTPS image pinned to a commit; One WSO2 team for the prod Celebrate page |
+| `NOVERAICONURL`, `NOVERADEFAULTIMAGEURL`, `NOVERABUTTONURL` (required) | Repo; public HTTPS image pinned to a commit; One WSO2 team for the prod Celebrate page. `NOVERABUTTONURL` must be an https URL template containing `{campaignId}`; verify the deployed value, because announcements wait without it. The icon and default image are optional |
 | Asgardeo setup, including **`groups`, `email` and `name` in the access token** (not only the id_token) and the `rolesClaim` / `emailClaim` / `nameClaim` names in the backend JWT | `identity-setup.md`, "Token requirements" |
 | Generated DB passwords (`APIDBPASSWORD`, `JOBSDBPASSWORD`, `READONLYDBPASSWORD`), `TOKENKEYS` | Ops generates and stores only in Choreo |
 
