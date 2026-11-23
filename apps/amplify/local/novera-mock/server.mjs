@@ -21,6 +21,7 @@
 //   POST /token                  client-credentials token (any client id and secret is accepted)
 //   POST /internal/notifications the same body Novera takes; answers 202
 //   GET  /card                   the last Chat message built from a notification (404 before the first)
+//   GET  /history                every card since start (newest last, capped at 200): [{receivedAt, notification, card}]
 //   GET  /health
 // Every notification is logged and its card written to OUT_DIR.
 //
@@ -36,6 +37,8 @@ import { fileURLToPath } from "node:url";
 // `fileURLToPath` decodes a checkout path with a space (`my%20dir`); a trailing slash is added so `OUT_DIR=/tmp/x` works.
 const OUT_DIR = ((dir) => (dir.endsWith("/") ? dir : dir + "/"))(process.env.OUT_DIR || fileURLToPath(new URL("./out/", import.meta.url)));
 let lastCard = null;
+const HISTORY_MAX = 200;
+const history = [];
 
 // Port of buildCard() in wso2-digital-agents/po-agent/src/chat/notify.ts (as of main 3a1138d).
 // `imageUrl` (image widget) and `button` {url,label} (buttonList) are on branch feat/notification-image-button.
@@ -103,6 +106,8 @@ http.createServer(async (req, res) => {
     try { json = JSON.parse(raw); } catch { console.log("[mock-novera] not JSON:", raw); return send(res, 400, { error: "not JSON" }); }
     console.log(`\n[mock-novera] ${new Date().toISOString()} notification\n${JSON.stringify(json, null, 2)}`);
     lastCard = buildCard(json);
+    history.push({ receivedAt: new Date().toISOString(), notification: json, card: lastCard });
+    if (history.length > HISTORY_MAX) history.shift();
     mkdirSync(OUT_DIR, { recursive: true });
     writeFileSync(OUT_DIR + "last-card.json", JSON.stringify(lastCard, null, 2));
     writeFileSync(OUT_DIR + "last-card-builder.json", JSON.stringify(lastCard.cardsV2[0].card, null, 2));
@@ -117,6 +122,7 @@ http.createServer(async (req, res) => {
     return send(res, 202, { accepted: true });
   }
   if (req.method === "GET" && path === "/card") return send(res, lastCard ? 200 : 404, lastCard ?? { error: "no notification yet" });
+  if (req.method === "GET" && path === "/history") return send(res, 200, history);
   if (path === "/health") return send(res, 200, { status: "ok" });
   send(res, 404, { error: "not found" });
 }).listen(PORT, "0.0.0.0", () => console.log(`[mock-novera] LOCAL DEVELOPMENT ONLY. Listening on ${PORT}; nothing is sent to Google Chat`));

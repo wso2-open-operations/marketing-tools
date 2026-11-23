@@ -34,6 +34,18 @@ esac
 NOVERA_MOCK="${NOVERA_MOCK:-http://localhost:3003}"
 curl -fsS -o /dev/null "$NOVERA_MOCK/card" 2>/dev/null || [ "$(curl -s -o /dev/null -w '%{http_code}' "$NOVERA_MOCK/card")" = 404 ] \
   || { echo "e2e needs local/novera-mock running at $NOVERA_MOCK (cd local/novera-mock && node server.mjs)" >&2; exit 1; }
+# amplify-jobs must really announce through the mock: both the notification URL and the token URL, as the jobs
+# container sees them, must point at the mock (host.docker.internal or localhost, same port as NOVERA_MOCK).
+# Checked before any campaign exists, so a misconfigured stack fails here and not after a campaign was created.
+mock_port="${NOVERA_MOCK##*:}"
+jobs_env_value() { "${COMPOSE[@]}" exec -T amplify-jobs printenv "$1" 2>/dev/null | tr -d '\r' || true; }
+for pair in "BAL_CONFIG_VAR_NOVERANOTIFYURL:/internal/notifications" "BAL_CONFIG_VAR_NOVERATOKENURL:/token"; do
+  var="${pair%%:*}"; want="${pair#*:}"; got="$(jobs_env_value "$var")"
+  case "$got" in
+    "http://host.docker.internal:${mock_port}${want}" | "http://localhost:${mock_port}${want}" | "http://127.0.0.1:${mock_port}${want}") ;;
+    *) echo "e2e needs amplify-jobs to use local/novera-mock: $var is '${got:-<empty>}', expected http://host.docker.internal:${mock_port}${want}. Set NOVERA_NOTIFY_URL, NOVERA_TOKEN_URL and NOVERA_ALLOW_INSECURE_HTTP=true in local/.env and recreate amplify-jobs." >&2; exit 1 ;;
+  esac
+done
 # Posts must belong to the page amplify-api is configured with (local/.env, default Choreo Labs' page).
 ORG_URN=$(sed -n 's/^WSO2_ORGANIZATION_URN=//p' local/.env | tail -1)
 ORG_URN=${ORG_URN:-urn:li:organization:1477}
@@ -99,7 +111,12 @@ CAMPAIGN_ID=$(jq -r '.campaign.id // .id' <<<"$campaign")
 echo "campaign $CAMPAIGN_ID"
 
 step "scheduler -> amplify-jobs POST /runs -> novera-mock got the card"
-card_posted() { curl -fsS "$NOVERA_MOCK/card" 2>/dev/null | grep -q "$TITLE"; }
+# Reads the mock's history, not just its latest card, so a later card from another run cannot hide this one.
+card_posted() {
+  curl -fsS "$NOVERA_MOCK/history" 2>/dev/null \
+    | jq -e --arg t "$TITLE" --arg c "$CAMPAIGN_ID" \
+      '[.[] | select((.card | tostring | contains($t)) and ((.notification.button.url // "") | contains($c)))] | length > 0' >/dev/null
+}
 wait_for 60 "Novera card for '$TITLE'" card_posted
 run_ok() { internal_get amplify-api http://scheduler:8080/jobs/amplify-run/history | grep -q '"status":"completed"'; }
 wait_for 30 "scheduler job history shows a successful amplify-run" run_ok
