@@ -191,6 +191,8 @@ services:
       BAL_CONFIG_VAR_NOVERASCOPES: ${NOVERA_SCOPES:-}
       # Local only: accept an http notify URL (local/novera-mock). Never set in Choreo.
       BAL_CONFIG_VAR_NOVERAALLOWINSECUREHTTP: ${NOVERA_ALLOW_INSECURE_HTTP:-false}
+    # Lets the local Novera mock URLs (host.docker.internal) resolve on Linux; Docker Desktop already has the name.
+    extra_hosts: ["host.docker.internal:host-gateway"]
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:9091/ready >/dev/null"]
       interval: 5s

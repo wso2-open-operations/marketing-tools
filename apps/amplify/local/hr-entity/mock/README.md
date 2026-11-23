@@ -69,6 +69,8 @@ In `local/.env`, then restart amplify-api and amplify-jobs (amplify-api keeps it
 HR_ENTITY_URL=http://host.docker.internal:19097/graphql
 ```
 
+This route works on Docker Desktop (macOS, Windows), where containers resolve `host.docker.internal` and reach the host's published port. On Linux it needs two more things: the container must resolve the name (add `extra_hosts: ["host.docker.internal:host-gateway"]` to the amplify-api and amplify-jobs services) and the mock must be reachable on the host gateway address, but `local/hr-entity/compose.yaml` publishes it on `127.0.0.1:19097` only (change the port mapping to `19097:9096`, or run Amplify on the `amplify-hr-entity` compose network and use `http://hr-entity:9096/graphql`). A host-side `curl localhost:19097` below does not prove a container can reach it; test from inside, for example `docker compose exec amplify-jobs wget -qO- "$HR_ENTITY_URL"` with a GraphQL body.
+
 Leave `HR_ENTITY_TOKEN_URL`, `HR_ENTITY_CLIENT_ID` and `HR_ENTITY_CLIENT_SECRET` empty (no auth). Other Amplify settings that shape what it reads: `HRENTITYPAGESIZE` (default 1000) and `HRENTITYSTATUSES` (default `["Active","Marked leaver"]`); the cast here is all `Active`.
 
 ## Check it works

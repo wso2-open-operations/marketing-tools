@@ -31,7 +31,7 @@ Seed and bootstrap files only run on an empty volume, so after `gen.mjs` changes
 
 ## The cast
 
-200 employees. Everyone signs in to ThunderID with their email and **`Password2026!`** (override with `DEFAULT_PASSWORD`; it applies to every user at first start).
+200 employees. Everyone signs in to ThunderID with their email and **`Password2026!`** (`DEFAULT_PASSWORD` overrides it for the admin user `admin@example.com` only; the generated employee accounts keep `Password2026!`, which is written into `thunder/10-amplify.yaml` by `gen.mjs`, so change it there and reseed with `down -v`).
 
 | Email | Amplify group (ThunderID `groups` claim) |
 |---|---|

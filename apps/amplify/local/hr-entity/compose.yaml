@@ -57,7 +57,9 @@ services:
   # ---- ThunderID (the repo's own quick-start layout) + the Amplify cast ----------------------------------------
   thunderid-db-init:
     image: ghcr.io/thunder-id/thunderid:1.0.0@sha256:12b7348b6727b756b8155c5157804bc05ef5d0ffa5f42bc6307747bd18425a36
-    command: sh -c "cp -r /opt/thunderid/database/* /data/"
+    # Copy the packaged databases only into storage with no installation yet (no configdb.db); later starts, including
+    # a normal down/up, keep the existing files. Re-copying over a live installation corrupts it.
+    command: sh -c "[ -f /data/configdb.db ] || cp -r /opt/thunderid/database/* /data/"
     volumes:
       - thunderid-db:/data
     restart: "no"
