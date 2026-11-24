@@ -71,7 +71,7 @@ configurations:
       valueFrom:
         configForm:
           displayName: LinkedIn posts per UTC day across runs (default 480, under the Development tier's 500 a day; leave empty for the default)
-          type: string
+          type: number
           required: false
     - name: BAL_CONFIG_VAR_INTERNALAPIKEY
       valueFrom:
