@@ -86,18 +86,26 @@ function testMentionReadModels() returns error? {
     string linked = check newEmployee(db, label + "b");
     string removed = check newEmployee(db, label + "c");
     string unlinked = check newEmployee(db, label + "d");
+    string revoked = check newEmployee(db, label + "e");
     _ = check linkMember(db, cipher, caller, "urn:li:person:" + uniq());
     _ = check linkMember(db, cipher, linked, "urn:li:person:" + uniq(), "Bee LinkedIn");
     _ = check linkMember(db, cipher, removed, "urn:li:person:" + uniq());
     _ = check connection:removeConnection(new connection:PgConnectionRepository(db, {actorId: removed}), removed,
             time:utcNow());
+    connection:LinkedInConnection revokedConn = check linkMember(db, cipher, revoked, "urn:li:person:" + uniq());
+    check (new connection:PgConnectionRepository(db, {actorId: revoked})).save(
+            check connection:revoke(revokedConn, time:utcNow()), revokedConn.version);
     connection:MentionableMember[] found = check connection:searchMentionable(db, "Name " + label, caller);
-    test:assertEquals(found.map(m => m.employeeId), [linked], "linked only: not the caller, removed or unlinked");
+    test:assertEquals(found.map(m => m.employeeId), [linked],
+            "linked only: not the caller, removed, revoked or unlinked");
     test:assertEquals(found[0].displayName, "Name " + label + "b");
     test:assertEquals(connection:mentionName(found[0]), "Bee LinkedIn", "LinkedIn's name is the mention text");
+    // The LinkedIn name Amplify holds is never searched, so it can't be probed.
+    test:assertEquals((check connection:searchMentionable(db, "Bee LinkedIn", caller)).filter(
+            m => m.employeeId == linked).length(), 0, "no match on the stored LinkedIn name");
     // `%` and `_` in the query are literal.
     test:assertEquals((check connection:searchMentionable(db, "%", caller)).filter(m => m.employeeId == linked).length(), 0);
-    connection:MentionableMember[] byIds = check connection:mentionableByIds(db, [linked, removed, unlinked]);
+    connection:MentionableMember[] byIds = check connection:mentionableByIds(db, [linked, removed, unlinked, revoked]);
     test:assertEquals(byIds.map(m => m.employeeId), [linked]);
     check db.close();
 }

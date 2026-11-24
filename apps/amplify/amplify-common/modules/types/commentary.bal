@@ -64,6 +64,10 @@ public isolated function mentionTokens(string text) returns MentionToken[] {
 # character such as Unicode bold counts 2), with each mention token counted as its label only. LinkedIn
 # doesn't document how it counts, so both sides use this one rule.
 #
+# Known gap: the post shows the LinkedIn name Amplify holds for a mention, not the label the employee saw, so the
+# posted text can be a few characters longer or shorter than this count. A post that ends up over LinkedIn's
+# limit is refused by LinkedIn and the share fails `PROVIDER_REJECTED`; it is never cut short.
+#
 # + text - Commentary with mention tokens
 # + return - Length
 public isolated function commentaryLength(string text) returns int {

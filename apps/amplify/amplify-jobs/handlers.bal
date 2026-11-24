@@ -49,10 +49,14 @@ type HandlerContext record {|
     time:Utc now;
 |};
 
-# LinkedIn posts this run may still make (per-run and per-day ceilings).
+# LinkedIn posts this run may still make (per-run and per-day ceilings), and whether posting halted because
+# several members were refused the same way.
 isolated class LinkedInBudget {
     private int remaining;
     private int usedCount = 0;
+    # Members refused with a 403, by refusal key (`code|serviceErrorCode`)
+    private map<string[]> refusedMembers = {};
+    private string? haltedOn = ();
 
     isolated function init(int remaining) {
         self.remaining = remaining < 0 ? 0 : remaining;
@@ -75,6 +79,37 @@ isolated class LinkedInBudget {
     isolated function used() returns int {
         lock {
             return self.usedCount;
+        }
+    }
+
+    # Records a 403 for a member. Once `SAME_REFUSAL_HALT_MEMBERS` distinct members got the same refusal, posting
+    # halts for the rest of the run.
+    #
+    # + refusal - Refusal key (`code|serviceErrorCode`)
+    # + memberUrn - Member the call was made for
+    # + return - True when this refusal halted the run
+    isolated function recordRefusal(string refusal, string memberUrn) returns boolean {
+        lock {
+            if self.haltedOn !is () {
+                return false;
+            }
+            string[] members = self.refusedMembers[refusal] ?: [];
+            if members.indexOf(memberUrn) is () {
+                members.push(memberUrn);
+            }
+            self.refusedMembers[refusal] = members;
+            if members.length() >= SAME_REFUSAL_HALT_MEMBERS {
+                self.haltedOn = refusal;
+                return true;
+            }
+            return false;
+        }
+    }
+
+    # + return - The refusal key posting halted on, or `()` while posting goes on
+    isolated function halted() returns string? {
+        lock {
+            return self.haltedOn;
         }
     }
 }
@@ -108,11 +143,11 @@ isolated function route(HandlerContext ctx) returns Outcome|error {
         }
         events:CONNECTION_REVOKED => {
             events:ConnectionRevoked event = check ctx.row.payload.cloneWithType();
-            return failSharesForLostConnection(ctx, event.employeeId);
+            return failSharesForLostConnection(ctx, event.employeeId, event.revokedAt);
         }
         events:CONNECTION_REMOVED => {
             events:ConnectionRemoved event = check ctx.row.payload.cloneWithType();
-            return failSharesForLostConnection(ctx, event.employeeId);
+            return failSharesForLostConnection(ctx, event.employeeId, event.removedAt);
         }
         events:EXTERNAL_SHARE_APPROVED|events:EXTERNAL_SHARE_AMPLIFIED => {
             // amplify-api already wrote the award in the decision's transaction (ADR-024 item 1). Scoring
@@ -287,6 +322,13 @@ isolated function handleRepostRequested(HandlerContext ctx, events:RepostRequest
             : retryLater("token could not be decrypted");
     }
     resealOnUse(ctx, cipher, token);
+    // Mentions are read before the budget and the in-flight marker: a store error here means nothing was sent, so
+    // the row simply retries (through `dispatch`) without a used-up post or a marker that would fail it next run.
+    map<linkedin:MentionTarget> mentions = check resolveMentions(ctx, share.commentary);
+    string? haltedOn = ctx.budget.halted();
+    if haltedOn is string {
+        return deferFor(ctx.config.deferSeconds, string `LinkedIn posting halted this run (${haltedOn})`);
+    }
     // Taken only right before the call, so a share that never reaches LinkedIn doesn't use up the ceiling.
     if !ctx.budget.take() {
         return deferFor(ctx.config.deferSeconds, "LinkedIn post ceiling reached");
@@ -304,7 +346,7 @@ isolated function handleRepostRequested(HandlerContext ctx, events:RepostRequest
         // generic default.
         targetTitle: c is () ? () : c.title,
         commentary: share.commentary,
-        mentions: check resolveMentions(ctx, share.commentary),
+        mentions,
         correlationId: ctx.correlationId
     });
     if posted is linkedin:ProviderError {
@@ -364,11 +406,25 @@ isolated function handleLinkedInFailure(HandlerContext ctx, sharing:ShareRequest
     // The call returned an error, so it did not post: clear the in-flight marker before the row is retried or
     // failed (a retry must not read it as "may already have posted").
     sharing:ShareRequest cleared = check clearInFlight(ctx, share);
+    int? serviceCode = d.serviceErrorCode;
+    if d.httpStatus == 403 {
+        // The same 403 for several members in one run is about the app, not their grants: halt posting for the
+        // rest of the run, and don't revoke this member's connection or fail the share on it.
+        string refusal = string `${d.code}|${serviceCode is int ? serviceCode.toString() : "-"}`;
+        if ctx.budget.recordRefusal(refusal, conn.memberUrn) {
+            log:printError("LinkedIn refused several members with the same 403; posting halted for this run. "
+                    + "Check the app's LinkedIn products and permissions", refusal = refusal,
+                    members = SAME_REFUSAL_HALT_MEMBERS, correlationId = ctx.correlationId);
+            return deferFor(ctx.config.deferSeconds, string `LinkedIn posting halted this run (${refusal})`);
+        }
+    }
     if d.code == linkedin:UNAUTHORIZED || d.code == linkedin:FORBIDDEN {
-        // 401: token expired or revoked by the member at LinkedIn. 403 `ACCESS_DENIED`: the token lacks the scope
-        // (a member post needs only `w_member_social`), so the grant is no longer good either. The connection is
-        // revoked and its token row deleted, so `GET /me` asks for a re-link (B9); this share fails with it, and
-        // `ConnectionRevoked` fails the employee's other queued shares.
+        // 401: token expired or revoked by the member at LinkedIn. `FORBIDDEN` is only the 403 whose body says the
+        // member's token lacks the permission (`ACCESS_DENIED`; a member post needs only `w_member_social`), so
+        // the grant is no longer good either. Any other 403 is `REJECTED` and falls through to
+        // `PROVIDER_REJECTED` below without touching the connection. The connection is revoked and its token row
+        // deleted, so `GET /me` asks for a re-link (B9); this share fails with it, and `ConnectionRevoked` fails
+        // the employee's other queued shares.
         connection:ConnectionChange|types:DomainError change = connection:revoke(conn, ctx.now);
         if change is connection:ConnectionChange {
             check ctx.store.saveConnection(change, conn.version);
@@ -384,7 +440,6 @@ isolated function handleLinkedInFailure(HandlerContext ctx, sharing:ShareRequest
         // 429, 5xx, timeout or open breaker: the share stays QUEUED (B14) and the outbox retries.
         return ctx.finalAttempt ? failShare(ctx, cleared, types:RETRIES_EXHAUSTED, d.code, note) : retryLater(note);
     }
-    int? serviceCode = d.serviceErrorCode;
     return failShare(ctx, cleared, types:PROVIDER_REJECTED, serviceCode is int ? serviceCode.toString() : d.code, note);
 }
 
@@ -430,16 +485,37 @@ isolated function resolveMentions(HandlerContext ctx, string? commentary) return
 }
 
 # `ConnectionRevoked` / `ConnectionRemoved`: the employee's queued shares can't be posted any more, so they fail
-# with `NEEDS_RECONNECT` and the UI asks for a re-link. A share carrying the in-flight marker may already be on
-# LinkedIn; it is left for the publish path's manual review instead.
+# with `NEEDS_RECONNECT` and the UI asks for a re-link. Only shares requested at or before the loss fail: when
+# the event is handled late, the employee may have re-linked and queued new shares since. If the connection is
+# usable again now, nothing fails. A share carrying the in-flight marker may already be on LinkedIn; it is left
+# for the publish path's manual review instead.
 #
 # + ctx - Context
 # + employeeId - Employee whose connection was lost
+# + lostAtText - The event's `revokedAt` / `removedAt`
 # + return - Outcome, or a store error (the outbox retries)
-isolated function failSharesForLostConnection(HandlerContext ctx, types:EmployeeId employeeId) returns Outcome|error {
+isolated function failSharesForLostConnection(HandlerContext ctx, types:EmployeeId employeeId, string lostAtText)
+        returns Outcome|error {
+    connection:LinkedInConnection? current = check ctx.store.connection(employeeId);
+    if connection:canShare(current, ctx.now, ctx.settings.reminderDays) {
+        return done("connection usable again; queued shares left to publish");
+    }
+    time:Utc|error parsedLostAt = time:utcFromString(lostAtText);
+    time:Utc lostAt;
+    if parsedLostAt is error {
+        // Never expected (the event is written with `time:utcToString`): fall back to now, the old behaviour.
+        log:printWarn("Lost-connection event time could not be read; using now", correlationId = ctx.correlationId);
+        lostAt = ctx.now;
+    } else {
+        lostAt = parsedLostAt;
+    }
     int failedCount = 0;
     foreach sharing:ShareRequest share in check ctx.store.queuedShares(employeeId) {
         if share.lastErrorCode == PUBLISH_IN_FLIGHT {
+            continue;
+        }
+        if types:isBefore(lostAt, share.requestedAt) {
+            // Requested after the loss: the publish path checks the connection when it gets there.
             continue;
         }
         sharing:ShareRequest? failedShare = sharing:failForLostConnection(share, ctx.now);

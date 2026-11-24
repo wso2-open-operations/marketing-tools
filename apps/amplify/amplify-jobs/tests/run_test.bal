@@ -255,6 +255,128 @@ function rejectedTokenForcesRelink(string mode, string emp) returns error? {
 }
 
 @test:Config
+function other403FailsTheShareAndKeepsTheConnection() returns error? {
+    World w = harness();
+    time:Utc now = time:utcNow();
+    string cid = types:newUuidV7();
+    string otherCid = types:newUuidV7();
+    w.mem.putCampaign(openCampaign(cid, now));
+    w.mem.putCampaign(openCampaign(otherCid, now));
+    sharing:ShareRequest share = queuedShare(cid, "emp-403o", now);
+    w.mem.putShare(share);
+    w.mem.putShare(queuedShare(otherCid, "emp-403o", now));
+    check connectedEmployee(w.mem, w.cipher, "emp-403o", now);
+    var before = check w.mem.connection("emp-403o");
+    string tokenId = before is () ? "" : (<connection:TokenRef>before.currentToken).tokenId;
+    w.linkedIn.setMode("403-other");
+    int id = w.queue.enqueue(events:REPOST_REQUESTED, repostRequested(share.id, cid, "emp-403o"));
+    _ = check run(w);
+    test:assertEquals(w.queue.statusOf(id)[0], "DONE");
+    var failedShare = check w.mem.share(cid, "emp-403o");
+    test:assertTrue(failedShare !is () && failedShare.failureReason == types:PROVIDER_REJECTED
+            && failedShare.lastErrorCode == "100", "fails on LinkedIn's code, not NEEDS_RECONNECT");
+    var conn = check w.mem.connection("emp-403o");
+    test:assertTrue(conn !is () && conn.revokedAt is () && conn.currentToken !is (), "connection untouched");
+    test:assertTrue(w.mem.hasToken(tokenId), "token row kept");
+    test:assertEquals(w.queue.countByType(events:CONNECTION_REVOKED), 0);
+    var otherShare = check w.mem.share(otherCid, "emp-403o");
+    test:assertTrue(otherShare !is () && otherShare.failedAt is (), "the other queued share is left alone");
+}
+
+@test:Config
+function sameRefusalForSeveralMembersHaltsPosting() returns error? {
+    World w = harness();
+    time:Utc now = time:utcNow();
+    string cid = types:newUuidV7();
+    w.mem.putCampaign(openCampaign(cid, now));
+    w.linkedIn.setMode("403-other");
+    string[] employees = ["emp-h1", "emp-h2", "emp-h3", "emp-h4"];
+    foreach string emp in employees {
+        sharing:ShareRequest share = queuedShare(cid, emp, now);
+        w.mem.putShare(share);
+        check connectedEmployee(w.mem, w.cipher, emp, now);
+        _ = w.queue.enqueue(events:REPOST_REQUESTED, repostRequested(share.id, cid, emp));
+    }
+    RunReport report = check run(w);
+    foreach string emp in employees.slice(0, 2) {
+        var refused = check w.mem.share(cid, emp);
+        test:assertTrue(refused !is () && refused.failureReason == types:PROVIDER_REJECTED, emp);
+    }
+    // The third member refused the same way halts the run: that share and the next stay queued, unfailed.
+    foreach string emp in employees.slice(2) {
+        var waiting = check w.mem.share(cid, emp);
+        test:assertTrue(waiting !is () && waiting.failedAt is () && waiting.lastErrorCode is (), emp);
+    }
+    test:assertEquals(w.linkedIn.last()[0], "bearer-emp-h3", "the fourth share never called LinkedIn");
+    test:assertEquals(report.deferred, 2);
+    foreach string emp in employees {
+        var conn = check w.mem.connection(emp);
+        test:assertTrue(conn !is () && conn.revokedAt is (), emp + ": connection untouched");
+    }
+}
+
+@test:Config
+function mentionReadErrorRetriesWithoutMarkerOrBudget() returns error? {
+    World w = harness();
+    time:Utc now = time:utcNow();
+    string cid = types:newUuidV7();
+    w.mem.putCampaign(openCampaign(cid, now));
+    sharing:ShareRequest share = queuedShare(cid, "emp-mx", now);
+    share.commentary = "Thanks @[Jay](amplify:person:jane@wso2.com)";
+    w.mem.putShare(share);
+    check connectedEmployee(w.mem, w.cipher, "emp-mx", now);
+    w.mem.putMentionable({employeeId: "jane@wso2.com", memberUrn: "urn:li:person:jane1", displayName: "Jane S",
+        memberName: "Jane Smith"});
+    w.mem.failNextMentionable();
+    int id = w.queue.enqueue(events:REPOST_REQUESTED, repostRequested(share.id, cid, "emp-mx"));
+    RunReport first = check run(w);
+    test:assertEquals(w.queue.statusOf(id)[0], "PENDING", "retried");
+    test:assertEquals(first.linkedinPosts, 0, "no budget slot used");
+    test:assertEquals(w.linkedIn.postCount(), 0);
+    var afterError = check w.mem.share(cid, "emp-mx");
+    test:assertTrue(afterError !is () && afterError.lastErrorCode is () && afterError.failedAt is (),
+            "no in-flight marker left behind");
+    w.queue.makeAllDue();
+    _ = check run(w);
+    test:assertEquals(w.queue.statusOf(id)[0], "DONE", "the retry publishes");
+    test:assertEquals(w.linkedIn.postCount(), 1);
+}
+
+@test:Config
+function lateLostConnectionEventSkipsSharesQueuedAfterIt() returns error? {
+    World w = harness();
+    time:Utc now = time:utcNow();
+    time:Utc lostAt = time:utcAddSeconds(now, -600);
+    string oldCid = types:newUuidV7();
+    string newCid = types:newUuidV7();
+    sharing:ShareRequest old = queuedShare(oldCid, "emp-late", time:utcAddSeconds(lostAt, -60));
+    w.mem.putShare(old);
+    // Queued after the loss (the employee re-linked, then the connection expired again before the event ran).
+    w.mem.putShare(queuedShare(newCid, "emp-late", time:utcAddSeconds(lostAt, 60)));
+    _ = w.queue.enqueue(events:CONNECTION_REVOKED, {employeeId: "emp-late", provider: "linkedin",
+        memberUrn: "urn:li:person:emp-late", revokedAt: time:utcToString(lostAt)});
+    _ = check run(w);
+    var oldShare = check w.mem.share(oldCid, "emp-late");
+    test:assertTrue(oldShare !is () && oldShare.failureReason == types:NEEDS_RECONNECT, "requested before: fails");
+    var newShare = check w.mem.share(newCid, "emp-late");
+    test:assertTrue(newShare !is () && newShare.failedAt is (), "requested after the loss: left alone");
+}
+
+@test:Config
+function lostConnectionEventSkipsWhenTheConnectionIsUsableAgain() returns error? {
+    World w = harness();
+    time:Utc now = time:utcNow();
+    string cid = types:newUuidV7();
+    w.mem.putShare(queuedShare(cid, "emp-back", time:utcAddSeconds(now, -1200)));
+    check connectedEmployee(w.mem, w.cipher, "emp-back", now);
+    _ = w.queue.enqueue(events:CONNECTION_REMOVED, {employeeId: "emp-back", provider: "linkedin",
+        memberUrn: "urn:li:person:emp-back", removedAt: time:utcToString(time:utcAddSeconds(now, -600))});
+    _ = check run(w);
+    var share = check w.mem.share(cid, "emp-back");
+    test:assertTrue(share !is () && share.failedAt is (), "re-linked since: nothing fails");
+}
+
+@test:Config
 function connectionRemovedFailsQueuedSharesButNotAnInFlightOne() returns error? {
     World w = harness();
     time:Utc now = time:utcNow();

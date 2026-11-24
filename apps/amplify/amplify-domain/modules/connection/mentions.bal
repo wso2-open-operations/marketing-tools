@@ -47,9 +47,10 @@ type MentionableRow record {|
     string? member_name;
 |};
 
-# Typeahead: linked colleagues whose directory or LinkedIn name contains `query` (case-insensitive), the
-# caller excluded. A removed connection is left out (the member gave Amplify up); a revoked one stays, since
-# the member URN is still theirs. Rows whose only name is an id are left out (never show an id as a name).
+# Typeahead: linked colleagues whose directory name contains `query` (case-insensitive), the caller excluded.
+# Only the directory name is matched, so a search can't be used to probe the LinkedIn names Amplify holds. A
+# removed or revoked connection is left out: only a member whose link is still good can be mentioned. Rows whose
+# only name is an id are left out (never show an id as a name).
 #
 # + db - Client
 # + query - Text after `@`
@@ -64,17 +65,18 @@ public isolated function searchMentionable(postgresql:Client db, string query, t
         SELECT mc.employee_id, mc.member_urn, e.display_name, mc.member_name
         FROM connection_member_connection mc
         JOIN identity_employee e ON e.employee_id = mc.employee_id
-        WHERE mc.provider = ${types:LINKEDIN} AND mc.removed_at IS NULL AND mc.employee_id <> ${callerId}
+        WHERE mc.provider = ${types:LINKEDIN} AND mc.removed_at IS NULL AND mc.revoked_at IS NULL
+          AND mc.employee_id <> ${callerId}
           AND e.display_name <> e.employee_id
           AND e.display_name !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-          AND (lower(e.display_name) LIKE ${pattern} ESCAPE '\'
-               OR lower(coalesce(mc.member_name, '')) LIKE ${pattern} ESCAPE '\')
+          AND lower(e.display_name) LIKE ${pattern} ESCAPE '\'
         ORDER BY (lower(e.display_name) LIKE ${prefix} ESCAPE '\') DESC, e.display_name, mc.employee_id
         LIMIT ${'limit < 1 ? 1 : 'limit}`);
     return from MentionableRow r in rows select toMentionable(r);
 }
 
-# The linked colleagues behind mention refs, for writing the post. Removed connections are left out.
+# The linked colleagues behind mention refs, for writing the post. Removed and revoked connections are left
+# out, so their tokens are written as plain text.
 #
 # + db - Client
 # + employeeIds - Employees named in the commentary's mention tokens
@@ -89,7 +91,7 @@ public isolated function mentionableByIds(postgresql:Client db, types:EmployeeId
         SELECT mc.employee_id, mc.member_urn, coalesce(e.display_name, '') AS display_name, mc.member_name
         FROM connection_member_connection mc
         LEFT JOIN identity_employee e ON e.employee_id = mc.employee_id
-        WHERE mc.provider = ${types:LINKEDIN} AND mc.removed_at IS NULL
+        WHERE mc.provider = ${types:LINKEDIN} AND mc.removed_at IS NULL AND mc.revoked_at IS NULL
           AND mc.employee_id = ANY (CAST(${ids} AS text[]))`);
     return from MentionableRow r in rows select toMentionable(r);
 }

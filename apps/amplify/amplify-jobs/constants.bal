@@ -22,3 +22,7 @@ const string COMPONENT = "amplify-jobs";
 const string PUBLISH_IN_FLIGHT = "PUBLISH_IN_FLIGHT";
 # Mention ref of the company page (`linkedinOrgUrn`); amplify-api suggests the same ref.
 const string ORG_MENTION_REF = "org:wso2";
+# Distinct members refused with the same LinkedIn 403 in one run before posting halts for the rest of the run.
+# Several members refused the same way points at the app (its product access or permissions), not at their
+# grants, so the run stops instead of revoking more connections.
+const int SAME_REFUSAL_HALT_MEMBERS = 3;

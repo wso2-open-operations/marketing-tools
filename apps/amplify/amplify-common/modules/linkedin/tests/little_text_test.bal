@@ -60,3 +60,18 @@ function mentionNameIsEscaped() {
     test:assertEquals(toLittleText("@[A](amplify:person:a)", {"person:a": {name: "A (Team) *", urn: "urn:li:person:a1"}}),
             "@[A \\(Team\\) \\*](urn:li:person:a1)");
 }
+
+@test:Config
+function hashtagRightAfterAMentionIsNotAWordStart() {
+    map<MentionTarget> targets = {"person:jane@wso2.com": {name: "Jane Smith", urn: "urn:li:person:abc123"}};
+    // The reader sees "Jane Smith#tag": the `#` follows a letter, so it stays text.
+    test:assertEquals(toLittleText("@[Jane](amplify:person:jane@wso2.com)#tag", targets),
+            "@[Jane Smith](urn:li:person:abc123)\\#tag");
+    // Unresolved, the reader sees "@Bob#tag".
+    test:assertEquals(toLittleText("@[Bob](amplify:person:bob@wso2.com)#tag"), "\\@Bob\\#tag");
+    // A space between still starts a word.
+    test:assertEquals(toLittleText("@[Jane](amplify:person:jane@wso2.com) #tag", targets),
+            "@[Jane Smith](urn:li:person:abc123) {hashtag|\\#|tag}");
+    test:assertEquals(escapeWithHashtags("#tag", "a"), "\\#tag");
+    test:assertEquals(escapeWithHashtags("#tag", " "), "{hashtag|\\#|tag}");
+}

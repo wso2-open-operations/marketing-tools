@@ -227,6 +227,7 @@ isolated class MemStore {
     private RunSettings settingsValue = {};
     private boolean duplicateNext = false;
     private boolean publishWriteFails = false;
+    private boolean mentionableFails = false;
     # `SENT`: the next save of a sent announcement fails; `ATTEMPT`: the next save of the attempt marker fails
     private string? announcementSaveFails = ();
     private int reseals = 0;
@@ -372,9 +373,20 @@ isolated class MemStore {
         }
     }
 
+    # Test switch: make the next `mentionable` read fail like a database blip.
+    isolated function failNextMentionable() {
+        lock {
+            self.mentionableFails = true;
+        }
+    }
+
     isolated function mentionable(types:EmployeeId[] employeeIds) returns connection:MentionableMember[]|error {
         readonly & types:EmployeeId[] ids = employeeIds.cloneReadOnly();
         lock {
+            if self.mentionableFails {
+                self.mentionableFails = false;
+                return error sql:DatabaseError("Connection reset", errorCode = 0, sqlState = "08006");
+            }
             connection:MentionableMember[] found = from connection:MentionableMember m in self.mentionables
                 where ids.indexOf(m.employeeId) !is ()
                 select m;
@@ -614,7 +626,13 @@ isolated class FakeLinkedIn {
                     return providerError(linkedin:UNAUTHORIZED, 401, false);
                 }
                 "403" => {
+                    // The member's token lacks the permission (`ACCESS_DENIED`).
                     return providerError(linkedin:FORBIDDEN, 403, false);
+                }
+                "403-other" => {
+                    // A 403 that isn't the member's access denied: the adapter's `REJECTED`.
+                    return error linkedin:ProviderError("LinkedIn failed", code = linkedin:REJECTED, httpStatus = 403,
+                        serviceErrorCode = 100, retryable = false);
                 }
                 "429" => {
                     return providerError(linkedin:RATE_LIMITED, 429, true);

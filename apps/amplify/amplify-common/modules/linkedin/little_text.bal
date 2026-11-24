@@ -45,17 +45,24 @@ final regexp:RegExp TARGET_URN = re `urn:li:(?:person|organization):[A-Za-z0-9_\
 public isolated function toLittleText(string text, map<MentionTarget> targets = {}) returns string {
     string[] parts = [];
     int cursor = 0;
+    // What the reader sees right before the next stretch of text: a `#` straight after a mention is not at the
+    // start of a word.
+    string? shownBefore = ();
     foreach types:MentionToken token in types:mentionTokens(text) {
-        parts.push(escapeWithHashtags(text.substring(cursor, token.startIndex)));
+        parts.push(escapeWithHashtags(text.substring(cursor, token.startIndex), shownBefore));
         MentionTarget? target = targets[token.ref];
+        string shown;
         if target is MentionTarget && TARGET_URN.isFullMatch(target.urn) && target.name.trim().length() > 0 {
-            parts.push(string `@[${escapeLittleText(target.name.trim())}](${target.urn})`);
+            shown = target.name.trim();
+            parts.push(string `@[${escapeLittleText(shown)}](${target.urn})`);
         } else {
-            parts.push(escapeLittleText("@" + token.label));
+            shown = "@" + token.label;
+            parts.push(escapeLittleText(shown));
         }
+        shownBefore = lastChar(shown);
         cursor = token.endIndex;
     }
-    parts.push(escapeWithHashtags(text.substring(cursor)));
+    parts.push(escapeWithHashtags(text.substring(cursor), shownBefore));
     return string:'join("", ...parts);
 }
 
@@ -63,14 +70,17 @@ public isolated function toLittleText(string text, map<MentionTarget> targets = 
 # hashtag template. `C#`, `#` alone or `#_x` stay escaped.
 #
 # + text - Plain text
+# + precededBy - The character the reader sees right before `text` (for example the end of a mention), or `()`
+# when `text` starts the post
 # + return - Little text
-public isolated function escapeWithHashtags(string text) returns string {
+public isolated function escapeWithHashtags(string text, string? precededBy = ()) returns string {
     string[] parts = [];
     int length = text.length();
     int i = 0;
     int plainStart = 0;
     while i < length {
-        if text.substring(i, i + 1) == "#" && (i == 0 || !WORD_CHAR.isFullMatch(text.substring(i - 1, i))) {
+        string? previous = i == 0 ? precededBy : text.substring(i - 1, i);
+        if text.substring(i, i + 1) == "#" && (previous is () || !WORD_CHAR.isFullMatch(previous)) {
             int j = i + 1;
             while j < length && TAG_CHAR.isFullMatch(text.substring(j, j + 1)) {
                 j += 1;
@@ -88,3 +98,6 @@ public isolated function escapeWithHashtags(string text) returns string {
     parts.push(escapeLittleText(text.substring(plainStart)));
     return string:'join("", ...parts);
 }
+
+isolated function lastChar(string text) returns string? =>
+    text.length() == 0 ? () : text.substring(text.length() - 1);

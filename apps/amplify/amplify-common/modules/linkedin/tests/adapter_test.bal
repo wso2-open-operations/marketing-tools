@@ -84,9 +84,13 @@ service / on stubListener {
 
     resource function post rest/posts(@http:Header string Authorization, @http:Header string LinkedIn\-Version,
             @http:Header string X\-Restli\-Protocol\-Version, @http:Payload json body)
-            returns http:Created|http:Unauthorized|http:BadRequest|http:TooManyRequests|http:InternalServerError|http:BadGateway|http:GatewayTimeout {
+            returns http:Created|http:Unauthorized|http:Forbidden|http:BadRequest|http:TooManyRequests|http:InternalServerError|http:BadGateway|http:GatewayTimeout {
         if Authorization == "Bearer expired" {
             return <http:Unauthorized>{body: {status: 401, serviceErrorCode: 65601, message: "Invalid token"}};
+        }
+        http:Forbidden? refused = forbiddenFor(Authorization);
+        if refused is http:Forbidden {
+            return refused;
         }
         if Authorization == "Bearer busy" {
             return <http:TooManyRequests>{};
@@ -118,6 +122,31 @@ service / on stubListener {
         }
         return <http:Created>{headers: {"x-restli-id": "urn:li:share:7000000000000000001"}};
     }
+}
+
+// 403 bodies in the shape the LinkedIn docs give (`status`, `serviceErrorCode`, `code`, `message`). Not captured
+// from a live call.
+isolated function forbiddenFor(string authorization) returns http:Forbidden? {
+    match authorization {
+        "Bearer noscope" => {
+            return {body: {status: 403, serviceErrorCode: 100, code: "ACCESS_DENIED",
+                message: "Not enough permissions to access: partnerApiPostsExternal.CREATE.20261001"}};
+        }
+        "Bearer noscope-old" => {
+            return {body: {status: 403, serviceErrorCode: 100,
+                message: "Not enough permissions to access: partnerApiPostsExternal.CREATE.20261001"}};
+        }
+        "Bearer reshare-off" => {
+            return {body: {status: 403, serviceErrorCode: 100, message: "Resharing is disabled by the author"}};
+        }
+        "Bearer other-code" => {
+            return {body: {status: 403, code: "NO_PERMISSION_ON_ENTITY", message: "Viewer may not have permission"}};
+        }
+        "Bearer no-body" => {
+            return {};
+        }
+    }
+    return ();
 }
 
 function adapter() returns LinkedInAdapter|error => new ({
@@ -369,4 +398,25 @@ function revokeSendsTheClientCredentialsAndTheToken() returns error? {
 @test:Config
 function revokeRefusedByLinkedInIsAProviderError() returns error? {
     test:assertEquals(providerCode((check adapter()).revokeToken("refuse-me")), REJECTED);
+}
+
+@test:Config
+function onlyAMemberAccessDenied403IsForbidden() returns error? {
+    LinkedInAdapter linkedIn = check adapter();
+    ShareCommand command = {authorUrn: "urn:li:person:782bbtaQ", kind: types:REPOST, targetUrn: "urn:li:share:6999"};
+    map<ProviderErrorCode> expected = {
+        "noscope": FORBIDDEN,
+        "noscope-old": FORBIDDEN,
+        "reshare-off": REJECTED,
+        "other-code": REJECTED,
+        "no-body": REJECTED
+    };
+    foreach [string, ProviderErrorCode] [token, code] in expected.entries() {
+        types:PostUrn|ProviderError result = linkedIn.publishShare(token, command);
+        test:assertEquals(providerCode(result), code, token);
+        if result is ProviderError {
+            test:assertEquals(result.detail().httpStatus, 403, token);
+            test:assertFalse(result.detail().retryable, token);
+        }
+    }
 }
