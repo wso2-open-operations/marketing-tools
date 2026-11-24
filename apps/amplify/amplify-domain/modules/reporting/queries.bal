@@ -20,8 +20,27 @@
 
 import amplify_domain.store;
 
+import ballerina/sql;
 import ballerina/time;
 import ballerinax/postgresql;
+
+# Which posts the dashboards count: the retention window and whether archived posts count.
+public type PostScope record {|
+    # Posts that opened more than this many months ago are left out of every board
+    int retentionMonths = 24;
+    # Whether archived posts (and the reposts recorded against them) count in the summary numbers
+    boolean includeArchived = false;
+|};
+
+# The engagement row `e` belongs to a post the scope counts. An engagement without a post still counts.
+#
+# + scope - Which posts count
+# + return - A condition on `e.campaign_id`
+isolated function engagementInScope(PostScope scope) returns sql:ParameterizedQuery => `
+    NOT EXISTS (SELECT 1 FROM campaign sc
+                WHERE sc.id = e.campaign_id
+                  AND (sc.opens_at < now() - make_interval(months => CAST(${scope.retentionMonths} AS int))
+                       OR (NOT CAST(${scope.includeArchived} AS boolean) AND sc.archived_at IS NOT NULL)))`;
 
 # Campaigns live now.
 public type LiveCounts record {|
@@ -47,6 +66,8 @@ public type CampaignRow record {|
     boolean isPriority;
     # SCHEDULED, OPEN, CLOSED or ARCHIVED
     string status;
+    # Archived (deleted from the Posts page); the dashboards still list it
+    boolean archived;
     # Opens
     time:Utc opensAt;
     # Closes
@@ -125,41 +146,54 @@ public type CardCounts record {|
     int retrying;
 |};
 
-# Open campaigns, counted.
+# Open campaigns, counted. With `includeArchived`, an archived post inside its window counts as open too.
 #
 # + db - Client
+# + scope - Which posts count
 # + return - Counts, or an error
-public isolated function liveCounts(postgresql:Client db) returns LiveCounts|error {
+public isolated function liveCounts(postgresql:Client db, PostScope scope = {}) returns LiveCounts|error {
     return db->queryRow(`
         SELECT count(*)::int AS live,
                count(*) FILTER (WHERE is_priority)::int AS "livePriority",
                count(*) FILTER (WHERE closes_at <= now() + interval '7 days')::int AS "closingWithin7Days"
-        FROM campaign_v WHERE status = 'OPEN'`);
+        FROM campaign_v
+        WHERE opens_at >= now() - make_interval(months => CAST(${scope.retentionMonths} AS int))
+          AND (status = 'OPEN'
+               OR (CAST(${scope.includeArchived} AS boolean) AND archived_at IS NOT NULL
+                   AND opens_at <= now() AND now() < closes_at))`);
 }
 
-# Active engagements in a time range.
+# Active engagements in a time range, on posts the scope counts.
 #
 # + db - Client
 # + from - Start, inclusive
 # + to - End, exclusive
+# + scope - Which posts count
 # + return - Count, or an error
-public isolated function repostsBetween(postgresql:Client db, time:Utc 'from, time:Utc to) returns int|error {
+public isolated function repostsBetween(postgresql:Client db, time:Utc 'from, time:Utc to, PostScope scope = {})
+        returns int|error {
     string a = time:utcToString('from);
     string b = time:utcToString(to);
-    return db->queryRow(`
-        SELECT count(*)::int FROM sharing_engagement_v
-        WHERE status = 'ACTIVE' AND occurred_at >= CAST(${a} AS timestamptz) AND occurred_at < CAST(${b} AS timestamptz)`);
+    return db->queryRow(sql:queryConcat(`
+        SELECT count(*)::int FROM sharing_engagement_v e
+        WHERE e.status = 'ACTIVE' AND e.occurred_at >= CAST(${a} AS timestamptz) AND e.occurred_at < CAST(${b} AS timestamptz)
+          AND `, engagementInScope(scope)));
 }
 
-# Campaigns that are open or opened in the last `days`, with their repost counts (not archived).
+# Campaigns that are open or opened in the last `days`, with their repost counts. Archived posts that had opened
+# are listed too (`archived` says so; an archived post inside its window counts as open for the look-back); posts
+# that opened before the retention window are not.
 #
 # + db - Client
 # + days - Look-back
 # + limit - Most rows
 # + now - Current time
+# + retentionMonths - Posts that opened more than this many months ago are left out
 # + return - Campaigns, priority first then newest, or an error
-public isolated function campaignRows(postgresql:Client db, int days, int 'limit, time:Utc now) returns CampaignRow[]|error {
+public isolated function campaignRows(postgresql:Client db, int days, int 'limit, time:Utc now, int retentionMonths = 24)
+        returns CampaignRow[]|error {
     string since = time:utcToString(time:utcAddSeconds(now, -86400d * <decimal>days));
+    string at = time:utcToString(now);
     stream<record {|
         string id;
         string title;
@@ -167,21 +201,25 @@ public isolated function campaignRows(postgresql:Client db, int days, int 'limit
         string category_label;
         boolean is_priority;
         string status;
+        boolean archived;
         time:Utc opens_at;
         time:Utc closes_at;
         int reposts;
         int with_commentary;
     |}, error?> rows = db->query(`
         SELECT c.id::text AS id, c.title, c.category_code, COALESCE(cat.label, c.category_code) AS category_label,
-               c.is_priority, c.status, c.opens_at, c.closes_at, COALESCE(e.n, 0)::int AS reposts, COALESCE(e.c, 0)::int AS with_commentary
+               c.is_priority, c.status, c.archived_at IS NOT NULL AS archived, c.opens_at, c.closes_at,
+               COALESCE(e.n, 0)::int AS reposts, COALESCE(e.c, 0)::int AS with_commentary
         FROM campaign_v c
         LEFT JOIN campaign_category cat ON cat.code = c.category_code
         LEFT JOIN (SELECT campaign_id, count(*) AS n,
                           count(*) FILTER (WHERE action IN ('REPOST_COMMENTARY', 'SHARE_COMMENTARY')) AS c
                    FROM sharing_engagement_v WHERE status = 'ACTIVE'
                    GROUP BY campaign_id) e ON e.campaign_id = c.id
-        WHERE c.archived_at IS NULL AND c.status IN ('OPEN', 'CLOSED')
-          AND (c.status = 'OPEN' OR c.opens_at >= CAST(${since} AS timestamptz))
+        WHERE c.opens_at >= CAST(${at} AS timestamptz) - make_interval(months => CAST(${retentionMonths} AS int))
+          AND (c.status IN ('OPEN', 'CLOSED') OR (c.archived_at IS NOT NULL AND c.opens_at <= CAST(${at} AS timestamptz)))
+          AND (c.status = 'OPEN' OR c.opens_at >= CAST(${since} AS timestamptz)
+               OR (c.archived_at IS NOT NULL AND CAST(${at} AS timestamptz) < c.closes_at))
         ORDER BY c.is_priority DESC, c.opens_at DESC, c.id
         LIMIT ${'limit}`);
     return from var r in rows
@@ -192,6 +230,7 @@ public isolated function campaignRows(postgresql:Client db, int days, int 'limit
             categoryLabel: r.category_label,
             isPriority: r.is_priority,
             status: r.status,
+            archived: r.archived,
             opensAt: r.opens_at,
             closesAt: r.closes_at,
             reposts: r.reposts,
@@ -233,12 +272,14 @@ public isolated function deliveryOf(postgresql:Client db, string[] campaignIds) 
     return result;
 }
 
-# Cards for campaigns that opened in a window: sent, still queued (and retrying), or failed for good.
+# Cards for campaigns that opened in a window: sent, still queued (and retrying), or failed for good. Archived
+# posts count only with `includeArchived`.
 #
 # + db - Client
 # + since - Window start
+# + scope - Which posts count
 # + return - Counts, or an error
-public isolated function cardCounts(postgresql:Client db, time:Utc since) returns CardCounts|error {
+public isolated function cardCounts(postgresql:Client db, time:Utc since, PostScope scope = {}) returns CardCounts|error {
     string s = time:utcToString(since);
     return db->queryRow(`
         SELECT count(*)::int AS total,
@@ -249,7 +290,9 @@ public isolated function cardCounts(postgresql:Client db, time:Utc since) return
         FROM campaign_v c
         LEFT JOIN announcement_v a ON a.campaign_id = c.id
         LEFT JOIN messaging_outbox o ON o.id = a.outbox_id
-        WHERE c.archived_at IS NULL AND c.opens_at <= now() AND c.opens_at >= CAST(${s} AS timestamptz)`);
+        WHERE (CAST(${scope.includeArchived} AS boolean) OR c.archived_at IS NULL)
+          AND c.opens_at <= now() AND c.opens_at >= CAST(${s} AS timestamptz)
+          AND c.opens_at >= now() - make_interval(months => CAST(${scope.retentionMonths} AS int))`);
 }
 
 # A campaign's reposts by day since it opened (day 1 = the first 24 hours), days 1 to `days`.
@@ -278,12 +321,14 @@ public isolated function repostsByDay(postgresql:Client db, string campaignId, i
     return counts;
 }
 
-# Reposts by category since a time.
+# Reposts by category since a time, on posts the scope counts.
 #
 # + db - Client
 # + since - Start
+# + scope - Which posts count
 # + return - Categories with reposts, most first, or an error
-public isolated function repostsByCategory(postgresql:Client db, time:Utc since) returns CategoryCount[]|error {
+public isolated function repostsByCategory(postgresql:Client db, time:Utc since, PostScope scope = {})
+        returns CategoryCount[]|error {
     string s = time:utcToString(since);
     stream<record {|string code; string label; int n; int commented;|}, error?> rows = db->query(`
         SELECT c.category_code AS code, COALESCE(cat.label, c.category_code) AS label, count(*)::int AS n,
@@ -292,6 +337,8 @@ public isolated function repostsByCategory(postgresql:Client db, time:Utc since)
         JOIN campaign c ON c.id = e.campaign_id
         LEFT JOIN campaign_category cat ON cat.code = c.category_code
         WHERE e.status = 'ACTIVE' AND e.occurred_at >= CAST(${s} AS timestamptz)
+          AND c.opens_at >= now() - make_interval(months => CAST(${scope.retentionMonths} AS int))
+          AND (CAST(${scope.includeArchived} AS boolean) OR c.archived_at IS NULL)
         GROUP BY c.category_code, cat.label
         ORDER BY n DESC, label`);
     return from var r in rows
@@ -312,20 +359,22 @@ public isolated function participationCounts(postgresql:Client db) returns Parti
                 WHERE status = 'ACTIVE' AND occurred_at >= now() - interval '30 days')::int AS "active30Days"`);
 }
 
-# Reposts per calendar month (UTC) for the last `months` months, zero-filled, oldest first.
+# Reposts per calendar month (UTC) for the last `months` months, on posts the scope counts, zero-filled, oldest first.
 #
 # + db - Client
 # + months - Number of months
+# + scope - Which posts count
 # + return - One row per month, or an error
-public isolated function monthlyReposts(postgresql:Client db, int months) returns MonthCount[]|error {
-    stream<record {|string month_start; int n;|}, error?> rows = db->query(`
+public isolated function monthlyReposts(postgresql:Client db, int months, PostScope scope = {}) returns MonthCount[]|error {
+    stream<record {|string month_start; int n;|}, error?> rows = db->query(sql:queryConcat(`
         SELECT to_char(m.month_start, 'YYYY-MM-DD') AS month_start, count(e.id)::int AS n
         FROM generate_series(date_trunc('month', now() AT TIME ZONE 'UTC') - make_interval(months => CAST(${months - 1} AS int)),
                              date_trunc('month', now() AT TIME ZONE 'UTC'), interval '1 month') AS m(month_start)
         LEFT JOIN sharing_engagement_v e
                ON e.status = 'ACTIVE'
               AND date_trunc('month', e.occurred_at AT TIME ZONE 'UTC') = m.month_start
-        GROUP BY m.month_start ORDER BY m.month_start`);
+              AND `, engagementInScope(scope), `
+        GROUP BY m.month_start ORDER BY m.month_start`));
     return from var r in rows
         select {monthStart: r.month_start, reposts: r.n};
 }
@@ -370,19 +419,22 @@ public isolated function pointsAwarded(postgresql:Client db) returns PointsAward
         WHERE created_at >= date_trunc('year', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'`);
 }
 
-# Active reposts with the employee's own commentary in a time range.
+# Active reposts with the employee's own commentary in a time range, on posts the scope counts.
 #
 # + db - Client
 # + from - Start, inclusive
 # + to - End, exclusive
+# + scope - Which posts count
 # + return - Count, or an error
-public isolated function commentaryRepostsBetween(postgresql:Client db, time:Utc 'from, time:Utc to) returns int|error {
+public isolated function commentaryRepostsBetween(postgresql:Client db, time:Utc 'from, time:Utc to, PostScope scope = {})
+        returns int|error {
     string a = time:utcToString('from);
     string b = time:utcToString(to);
-    return db->queryRow(`
-        SELECT count(*)::int FROM sharing_engagement_v
-        WHERE status = 'ACTIVE' AND action IN ('REPOST_COMMENTARY', 'SHARE_COMMENTARY')
-          AND occurred_at >= CAST(${a} AS timestamptz) AND occurred_at < CAST(${b} AS timestamptz)`);
+    return db->queryRow(sql:queryConcat(`
+        SELECT count(*)::int FROM sharing_engagement_v e
+        WHERE e.status = 'ACTIVE' AND e.action IN ('REPOST_COMMENTARY', 'SHARE_COMMENTARY')
+          AND e.occurred_at >= CAST(${a} AS timestamptz) AND e.occurred_at < CAST(${b} AS timestamptz)
+          AND `, engagementInScope(scope)));
 }
 
 # A campaign's card as Marketing posted it: the text and picture the popup shows.
@@ -474,13 +526,17 @@ public type ExportRow record {|
 |};
 
 # The raw rows behind every board for a date range, oldest first: engagements, share attempts, points ledger
-# rows, campaigns opened and connections made. `from` is inclusive, `to` exclusive, both UTC.
+# rows, campaigns opened and connections made. `from` is inclusive, `to` exclusive, both UTC. Archived posts are
+# in (their status says ARCHIVED). Engagements, share attempts and campaigns of posts that opened before the
+# retention window are left out; points ledger rows stay, so the export still adds up to the standings.
 #
 # + db - Client
 # + from - First moment
 # + to - First moment not included
+# + retentionMonths - Posts that opened more than this many months ago are left out
 # + return - Rows, or an error
-public isolated function exportRows(postgresql:Client db, time:Utc 'from, time:Utc to) returns ExportRow[]|error {
+public isolated function exportRows(postgresql:Client db, time:Utc 'from, time:Utc to, int retentionMonths = 24)
+        returns ExportRow[]|error {
     string a = time:utcToString('from);
     string b = time:utcToString(to);
     stream<ExportRow, error?> rows = db->query(`
@@ -497,6 +553,7 @@ public isolated function exportRows(postgresql:Client db, time:Utc 'from, time:U
             LEFT JOIN campaign_category cat ON cat.code = c.category_code
             LEFT JOIN identity_employee p ON p.employee_id = e.employee_id
             WHERE e.occurred_at >= CAST(${a} AS timestamptz) AND e.occurred_at < CAST(${b} AS timestamptz)
+              AND (c.id IS NULL OR c.opens_at >= now() - make_interval(months => CAST(${retentionMonths} AS int)))
           UNION ALL
             SELECT 'SHARE_REQUEST', to_char(s.requested_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
                    s.campaign_id::text, c.title, COALESCE(cat.label, c.category_code), c.is_priority,
@@ -506,6 +563,7 @@ public isolated function exportRows(postgresql:Client db, time:Utc 'from, time:U
             LEFT JOIN campaign_category cat ON cat.code = c.category_code
             LEFT JOIN identity_employee p ON p.employee_id = s.employee_id
             WHERE s.requested_at >= CAST(${a} AS timestamptz) AND s.requested_at < CAST(${b} AS timestamptz)
+              AND (c.id IS NULL OR c.opens_at >= now() - make_interval(months => CAST(${retentionMonths} AS int)))
           UNION ALL
             SELECT 'POINTS', to_char(l.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
                    l.campaign_id::text, c.title, COALESCE(cat.label, c.category_code), c.is_priority,
@@ -525,6 +583,7 @@ public isolated function exportRows(postgresql:Client db, time:Utc 'from, time:U
             LEFT JOIN campaign_category cat ON cat.code = c.category_code
             LEFT JOIN announcement_v a ON a.campaign_id = c.id
             WHERE c.opens_at >= CAST(${a} AS timestamptz) AND c.opens_at < CAST(${b} AS timestamptz)
+              AND c.opens_at >= now() - make_interval(months => CAST(${retentionMonths} AS int))
           UNION ALL
             SELECT 'CONNECTION', to_char(m.connected_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
                    NULL, NULL, NULL, NULL, m.employee_id, p.display_name, p.email::text, NULL, m.status, NULL,
@@ -552,6 +611,10 @@ public type PersonPost record {|
     string categoryLabel;
     # Priority flag
     boolean isPriority;
+    # SCHEDULED, OPEN, CLOSED or ARCHIVED
+    string status;
+    # Archived (deleted from the Posts page); still listed here
+    boolean archived;
     # Opens
     time:Utc opensAt;
     # Closes
@@ -593,33 +656,39 @@ public isolated function personIdentity(postgresql:Client db, string employeeId)
     return found.length() > 0 ? found[0] : ();
 }
 
-# The posts a person has an active repost of, newest first.
+# The posts a person has an active repost of, newest first: archived posts included, posts that opened before
+# the retention window left out.
 #
 # + db - Client
 # + employeeId - Employee id
+# + retentionMonths - Posts that opened more than this many months ago are left out
 # + return - One row per campaign, or an error
-public isolated function personPosts(postgresql:Client db, string employeeId) returns PersonPost[]|error {
+public isolated function personPosts(postgresql:Client db, string employeeId, int retentionMonths = 24)
+        returns PersonPost[]|error {
     stream<record {|string id; string title; string category_code; string category_label; boolean is_priority;
-            time:Utc opens_at; time:Utc closes_at; int plain; int commented; int points;|}, error?> rows = db->query(`
+            string status; boolean archived; time:Utc opens_at; time:Utc closes_at; int plain; int commented;
+            int points;|}, error?> rows = db->query(`
         SELECT c.id::text AS id, c.title, c.category_code, COALESCE(cat.label, c.category_code) AS category_label,
-               c.is_priority, c.opens_at, c.closes_at,
+               c.is_priority, c.status, c.archived_at IS NOT NULL AS archived, c.opens_at, c.closes_at,
                count(*) FILTER (WHERE e.action NOT IN ('REPOST_COMMENTARY', 'SHARE_COMMENTARY'))::int AS plain,
                count(*) FILTER (WHERE e.action IN ('REPOST_COMMENTARY', 'SHARE_COMMENTARY'))::int AS commented,
                COALESCE(max(pts.points), 0)::int AS points
         FROM sharing_engagement_v e
-        JOIN campaign c ON c.id = e.campaign_id
+        JOIN campaign_v c ON c.id = e.campaign_id
         LEFT JOIN campaign_category cat ON cat.code = c.category_code
         LEFT JOIN (SELECT campaign_id, sum(points) AS points FROM scoring_points_ledger
                    WHERE employee_id = ${employeeId} AND campaign_id IS NOT NULL GROUP BY campaign_id) pts
                ON pts.campaign_id = c.id
         WHERE e.status = 'ACTIVE' AND e.employee_id = ${employeeId}
-        GROUP BY c.id, c.title, c.category_code, cat.label, c.is_priority, c.opens_at, c.closes_at
+          AND c.opens_at >= now() - make_interval(months => CAST(${retentionMonths} AS int))
+        GROUP BY c.id, c.title, c.category_code, cat.label, c.is_priority, c.status, c.archived_at, c.opens_at, c.closes_at
         ORDER BY c.opens_at DESC, c.id
         LIMIT 200`);
     return from var r in rows
         select {
             campaignId: r.id, title: r.title, categoryCode: r.category_code, categoryLabel: r.category_label,
-            isPriority: r.is_priority, opensAt: r.opens_at, closesAt: r.closes_at, reposts: r.plain,
+            isPriority: r.is_priority, status: r.status, archived: r.archived, opensAt: r.opens_at,
+            closesAt: r.closes_at, reposts: r.plain,
             repostsWithCommentary: r.commented, points: r.points
         };
 }

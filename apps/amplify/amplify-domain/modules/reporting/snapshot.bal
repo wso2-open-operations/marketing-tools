@@ -62,8 +62,10 @@ public type Snapshot record {|
     PointsAwarded points;
     # People with points
     int peopleWithPoints;
-    # Open campaigns and campaigns opened in the dashboard window (default 90 days), priority first then
-    # newest, at most `dashboardCampaignLimit`
+    # Which posts the summary numbers count (the lists always carry archived posts inside the retention window)
+    PostScope scope;
+    # Open campaigns and campaigns opened in the dashboard window (default 90 days), archived ones included,
+    # priority first then newest, at most `dashboardCampaignLimit`
     CampaignRow[] campaigns;
     # Announcement delivery by campaign id
     map<Delivery> delivery;
@@ -77,13 +79,15 @@ public type Snapshot record {|
 #
 # + db - Client
 # + now - Current time
+# + scope - Which posts the summary numbers count
 # + return - The snapshot, or an error
-public isolated function loadSnapshot(postgresql:Client db, time:Utc now) returns Snapshot|error {
+public isolated function loadSnapshot(postgresql:Client db, time:Utc now, PostScope scope = {}) returns Snapshot|error {
     final readonly & time:Utc at = now.cloneReadOnly();
-    return (check store:inTransactionValue(() => snapshotTx(db, at))).ensureType();
+    final readonly & PostScope counted = scope.cloneReadOnly();
+    return (check store:inTransactionValue(() => snapshotTx(db, at, counted))).ensureType();
 }
 
-isolated function snapshotTx(postgresql:Client db, time:Utc now) returns Snapshot|error {
+isolated function snapshotTx(postgresql:Client db, time:Utc now, PostScope scope) returns Snapshot|error {
     Snapshot? result = ();
     string month = time:utcToString(now).substring(0, 7);
     time:Utc monthStart = check time:utcFromString(month + "-01T00:00:00Z");
@@ -92,24 +96,26 @@ isolated function snapshotTx(postgresql:Client db, time:Utc now) returns Snapsho
     transaction {
         // First statement of the transaction: every query below sees one committed state.
         _ = check db->execute(`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY`);
-        CampaignRow[] campaigns = check campaignRows(db, dashboardCampaignWindowDays, dashboardCampaignLimit, now);
+        CampaignRow[] campaigns = check campaignRows(db, dashboardCampaignWindowDays, dashboardCampaignLimit, now,
+                scope.retentionMonths);
         string[] ids = from CampaignRow p in campaigns
             select p.campaignId;
         result = {
             asOf: now,
-            live: check liveCounts(db),
-            repostsThisMonth: check repostsBetween(db, monthStart, soon),
-            repostsThisMonthWithCommentary: check commentaryRepostsBetween(db, monthStart, soon),
-            repostsPrevMonth: check repostsBetween(db, prevMonthStart, monthStart),
-            monthly: check monthlyReposts(db, dashboardMonthlyMonths),
+            live: check liveCounts(db, scope),
+            repostsThisMonth: check repostsBetween(db, monthStart, soon, scope),
+            repostsThisMonthWithCommentary: check commentaryRepostsBetween(db, monthStart, soon, scope),
+            repostsPrevMonth: check repostsBetween(db, prevMonthStart, monthStart, scope),
+            monthly: check monthlyReposts(db, dashboardMonthlyMonths, scope),
             connections: check connectionBreakdown(db),
             participation: check participationCounts(db),
             points: check pointsAwarded(db),
             peopleWithPoints: (check recognition:recognitionTotals(db, month + "-01", now)).employeesWithPoints,
+            scope,
             campaigns,
             delivery: check deliveryOf(db, ids),
             shares: check sharing:shareHealth(db, monthStart),
-            cards: check cardCounts(db, time:utcAddSeconds(now, -<decimal>dashboardCardsWindowDays * 86400d))
+            cards: check cardCounts(db, time:utcAddSeconds(now, -<decimal>dashboardCardsWindowDays * 86400d), scope)
         };
         check commit;
     }

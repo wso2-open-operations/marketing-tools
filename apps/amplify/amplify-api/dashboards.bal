@@ -43,6 +43,11 @@ configurable int scorecardTargetActive30d = 100;
 # Reposts this calendar month (default 600).
 configurable int scorecardTargetRepostsPerMonth = 600;
 
+// ---- Retention window: configuration, never the database -------------------------------------------
+
+# Posts that opened more than this many months ago are left out of every board (default 24).
+configurable int dashboardRetentionMonths = 24;
+
 # The scorecard lines in force.
 type Targets record {|
     # Employees connected, % of headcount
@@ -65,6 +70,16 @@ type Targets record {|
 # + dflt - Default
 # + return - The value to use
 isolated function orDefault(int v, int dflt) returns int => v > 0 ? v : dflt;
+
+# Which posts the boards count: the retention window from configuration (zero and negative values fall back to
+# 24 months) and whether archived posts count in the summary numbers.
+#
+# + includeArchived - Whether archived posts count in the summary numbers
+# + return - The scope
+isolated function postScope(boolean includeArchived) returns reporting:PostScope => {
+    retentionMonths: orDefault(dashboardRetentionMonths, 24),
+    includeArchived
+};
 
 # The targets from configuration (zero and negative values fall back to the defaults; the expired ceiling may be 0).
 #
@@ -117,12 +132,34 @@ isolated function dashboardCampaignJson(reporting:CampaignRow p, map<reporting:D
     categoryLabel: p.categoryLabel,
     isPriority: p.isPriority,
     status: p.status,
+    archived: p.archived,
     opensAt: ts(p.opensAt),
     closesAt: ts(p.closesAt),
     reposts: p.reposts,
     repostsWithCommentary: p.repostsWithCommentary,
     announcement: announcementOf(delivery, p.campaignId)
 };
+
+# Whether a listed post is live for the summary numbers: open now, or, when the scope counts archived posts, an
+# archived post inside its window.
+#
+# + s - Snapshot
+# + p - Post
+# + return - Live
+isolated function liveFor(Snapshot s, reporting:CampaignRow p) returns boolean {
+    if !p.archived {
+        return p.status == "OPEN";
+    }
+    return s.scope.includeArchived && time:utcDiffSeconds(s.asOf, p.opensAt) >= 0d
+        && time:utcDiffSeconds(p.closesAt, s.asOf) > 0d;
+}
+
+# Whether a listed post counts in the summary numbers (archived posts only when the scope says so).
+#
+# + s - Snapshot
+# + p - Post
+# + return - Counted
+isolated function countedIn(Snapshot s, reporting:CampaignRow p) returns boolean => !p.archived || s.scope.includeArchived;
 
 # Operations board.
 #
@@ -135,6 +172,8 @@ isolated function operationsBoard(Snapshot s, int? headcount) returns json {
     reporting:CampaignRow[] campaigns = s.campaigns.length() > 20 ? s.campaigns.slice(0, 20) : s.campaigns;
     return {
         asOf: ts(s.asOf),
+        includeArchived: s.scope.includeArchived,
+        retentionMonths: s.scope.retentionMonths,
         headcount,
         kpis: {
             campaignsLive: s.live.live,
@@ -177,6 +216,7 @@ isolated function campaignsWithin(Snapshot s, int days) returns reporting:Campai
     time:Utc since = time:utcAddSeconds(s.asOf, -86400d * <decimal>days);
     return from reporting:CampaignRow p in s.campaigns
         where p.status == "OPEN" || time:utcDiffSeconds(p.opensAt, since) >= 0d
+            || (p.archived && time:utcDiffSeconds(p.closesAt, s.asOf) > 0d)
         order by p.reposts descending, p.title ascending
         limit 50
         select p;
@@ -205,6 +245,8 @@ isolated function campaignsBoard(Snapshot s, int days, reporting:CategoryCount[]
             categoryCode: p.categoryCode,
             categoryLabel: p.categoryLabel,
             isPriority: p.isPriority,
+            status: p.status,
+            archived: p.archived,
             opensAt: ts(p.opensAt),
             closesAt: ts(p.closesAt),
             reposts: p.reposts,
@@ -230,6 +272,8 @@ isolated function campaignsBoard(Snapshot s, int days, reporting:CategoryCount[]
     }
     return {
         asOf: ts(s.asOf),
+        includeArchived: s.scope.includeArchived,
+        retentionMonths: s.scope.retentionMonths,
         windowDays: days,
         peopleConnected: connected,
         campaigns: from reporting:CampaignRow p in campaigns
@@ -267,7 +311,7 @@ isolated function reach(Snapshot s, int thresholdPct, boolean priorityOnly) retu
     int live = 0;
     int reached = 0;
     foreach reporting:CampaignRow p in s.campaigns {
-        if p.status != "OPEN" || (priorityOnly && !p.isPriority) {
+        if !liveFor(s, p) || (priorityOnly && !p.isPriority) {
             continue;
         }
         live += 1;
@@ -288,13 +332,15 @@ isolated function glanceBoard(Snapshot s, int? headcount, Targets targets) retur
     var [reached, live] = reach(s, targets.targetPriorityReachPct, false);
     reporting:CampaignRow? best = ();
     foreach reporting:CampaignRow p in s.campaigns {
-        if p.reposts > 0 && (best is () || p.reposts > best.reposts) {
+        if countedIn(s, p) && p.reposts > 0 && (best is () || p.reposts > best.reposts) {
             best = p;
         }
     }
     string month = time:utcToString(s.asOf).substring(0, 7);
     return {
         asOf: ts(s.asOf),
+        includeArchived: s.scope.includeArchived,
+        retentionMonths: s.scope.retentionMonths,
         month,
         reposts: {thisMonth: s.repostsThisMonth, previousMonth: s.repostsPrevMonth},
         monthly: from reporting:MonthCount m in s.monthly
@@ -337,6 +383,8 @@ isolated function scorecard(Snapshot s, int? headcount, Targets t) returns json 
         : string `${cards.retrying} retrying, ${cards.failed} failed after retries`;
     return {
         asOf: ts(s.asOf),
+        includeArchived: s.scope.includeArchived,
+        retentionMonths: s.scope.retentionMonths,
         measures: [
             headcount is int
                 ? measure("connected", "Employees connected", "PERCENT", pct(connected, headcount), connected, headcount,
@@ -371,22 +419,23 @@ isolated function boardResponse(json body) returns http:Response|error {
     return res;
 }
 
-isolated function dashboardOperations(string? correlationId) returns http:Response|ProblemResponse|error {
-    Snapshot|error s = snapshot();
+isolated function dashboardOperations(string? correlationId, boolean includeArchived = false)
+        returns http:Response|ProblemResponse|error {
+    Snapshot|error s = snapshot(includeArchived);
     if s is error {
         return failure(s, correlationId, "Operations board");
     }
     return boardResponse(operationsBoard(s, headcountOrNil(correlationId)));
 }
 
-isolated function dashboardCampaigns(string? correlationId, int days, string? campaignId)
+isolated function dashboardCampaigns(string? correlationId, int days, string? campaignId, boolean includeArchived = false)
         returns http:Response|ProblemResponse|error {
     if days < 1 || days > 90 {
         return badRequest("days must be 1-90", correlationId);
     }
     do {
         check maxLen(campaignId, 64, "campaignId");
-        Snapshot s = check snapshot();
+        Snapshot s = check snapshot(includeArchived);
         reporting:CampaignRow[] campaigns = campaignsWithin(s, days);
         reporting:CampaignRow? pick = ();
         if campaignId is string && campaignId.trim().length() > 0 {
@@ -406,7 +455,8 @@ isolated function dashboardCampaigns(string? correlationId, int days, string? ca
             var [card, people] = check campaignPeople(pick.campaignId);
             selected = [pick, check campaignByDay(pick.campaignId), card, people];
         }
-        reporting:CategoryCount[] categories = check categoryCounts(time:utcAddSeconds(s.asOf, -86400d * <decimal>days));
+        reporting:CategoryCount[] categories = check categoryCounts(time:utcAddSeconds(s.asOf, -86400d * <decimal>days),
+                s.scope);
         return boardResponse(campaignsBoard(s, days, categories, selected));
     } on fail error e {
         return failure(e, correlationId, "Campaign performance board");
@@ -421,18 +471,20 @@ isolated function dashboardParticipation(string? correlationId) returns http:Res
     return boardResponse(participationBoard(s, headcountOrNil(correlationId)));
 }
 
-isolated function dashboardGlance(string? correlationId) returns http:Response|ProblemResponse|error {
+isolated function dashboardGlance(string? correlationId, boolean includeArchived = false)
+        returns http:Response|ProblemResponse|error {
     do {
-        Snapshot s = check snapshot();
+        Snapshot s = check snapshot(includeArchived);
         return boardResponse(glanceBoard(s, headcountOrNil(correlationId), scorecardTargets()));
     } on fail error e {
         return failure(e, correlationId, "At a glance board");
     }
 }
 
-isolated function dashboardScorecard(string? correlationId) returns http:Response|ProblemResponse|error {
+isolated function dashboardScorecard(string? correlationId, boolean includeArchived = false)
+        returns http:Response|ProblemResponse|error {
     do {
-        Snapshot s = check snapshot();
+        Snapshot s = check snapshot(includeArchived);
         return boardResponse(scorecard(s, headcountOrNil(correlationId), scorecardTargets()));
     } on fail error e {
         return failure(e, correlationId, "Scorecard");
@@ -563,6 +615,8 @@ isolated function personBoard(reporting:PersonIdentity who, reporting:PersonPost
                 categoryCode: p.categoryCode,
                 categoryLabel: p.categoryLabel,
                 isPriority: p.isPriority,
+                status: p.status,
+                archived: p.archived,
                 opensAt: ts(p.opensAt),
                 closesAt: ts(p.closesAt),
                 reposts: p.reposts,

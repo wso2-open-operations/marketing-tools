@@ -224,6 +224,12 @@ configurations:
           displayName: "Scorecard: reposts this calendar month (default 600) (leave empty for the default)"
           type: string
           required: false
+    - name: BAL_CONFIG_VAR_DASHBOARDRETENTIONMONTHS
+      valueFrom:
+        configForm:
+          displayName: "Dashboards: leave out posts that opened more than this many months ago (default 24) (leave empty for the default)"
+          type: string
+          required: false
     - name: BAL_CONFIG_VAR_HRENTITYBASEURL
       valueFrom:
         configForm:

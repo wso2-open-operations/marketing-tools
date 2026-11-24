@@ -607,18 +607,21 @@ service http:InterceptableService / on apiListener {
     # Operations board.
     #
     # + ctx - Request context
+    # + includeArchived - Count archived posts in the summary numbers (the post list always shows them)
     # + return - The board, or problem details
-    resource function get dashboards/operations(http:RequestContext ctx)
-            returns http:Response|ProblemResponse|error => dashboardOperations(cid(ctx));
+    resource function get dashboards/operations(http:RequestContext ctx, boolean includeArchived = false)
+            returns http:Response|ProblemResponse|error => dashboardOperations(cid(ctx), includeArchived);
 
     # Campaign performance board.
     #
     # + ctx - Request context
     # + days - Look-back, 1-90 (default 30)
     # + campaignId - The campaign to detail (default: the one with the most reposts)
+    # + includeArchived - Count archived posts in reposts by category (the post list always shows them)
     # + return - The board, or problem details
-    resource function get dashboards/campaigns(http:RequestContext ctx, int days = 30, string? campaignId = ())
-            returns http:Response|ProblemResponse|error => dashboardCampaigns(cid(ctx), days, campaignId);
+    resource function get dashboards/campaigns(http:RequestContext ctx, int days = 30, string? campaignId = (),
+            boolean includeArchived = false) returns http:Response|ProblemResponse|error =>
+        dashboardCampaigns(cid(ctx), days, campaignId, includeArchived);
 
     # The raw rows behind every board for a date range, as a CSV download.
     #
@@ -647,16 +650,18 @@ service http:InterceptableService / on apiListener {
     # At a glance.
     #
     # + ctx - Request context
+    # + includeArchived - Count archived posts in the summary numbers
     # + return - The board, or problem details
-    resource function get dashboards/glance(http:RequestContext ctx)
-            returns http:Response|ProblemResponse|error => dashboardGlance(cid(ctx));
+    resource function get dashboards/glance(http:RequestContext ctx, boolean includeArchived = false)
+            returns http:Response|ProblemResponse|error => dashboardGlance(cid(ctx), includeArchived);
 
     # Scorecard.
     #
     # + ctx - Request context
+    # + includeArchived - Count archived posts in the measures
     # + return - The board, or problem details
-    resource function get dashboards/scorecard(http:RequestContext ctx)
-            returns http:Response|ProblemResponse|error => dashboardScorecard(cid(ctx));
+    resource function get dashboards/scorecard(http:RequestContext ctx, boolean includeArchived = false)
+            returns http:Response|ProblemResponse|error => dashboardScorecard(cid(ctx), includeArchived);
 
     # Own points, rank and monthly history.
     #

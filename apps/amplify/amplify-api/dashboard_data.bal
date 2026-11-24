@@ -30,39 +30,42 @@ type Snapshot reporting:Snapshot;
 # How long a snapshot is reused, seconds.
 const decimal SNAPSHOT_SECONDS = 60;
 
-isolated [Snapshot & readonly, decimal]? snapshotCache = ();
+# Cached snapshots, one per scope ("archived" counts archived posts, "current" leaves them out).
+isolated map<[Snapshot & readonly, decimal]> snapshotCache = {};
 
-# The snapshot: cached for 60 seconds, so a refresh storm costs one set of queries.
+# The snapshot: cached for 60 seconds per scope, so a refresh storm costs one set of queries.
 #
+# + includeArchived - Whether archived posts count in the summary numbers
 # + return - The snapshot, or an error
-isolated function snapshot() returns Snapshot & readonly|error {
+isolated function snapshot(boolean includeArchived = false) returns Snapshot & readonly|error {
+    string key = includeArchived ? "archived" : "current";
     decimal mono = time:monotonicNow();
     lock {
-        [Snapshot & readonly, decimal]? hit = snapshotCache;
+        [Snapshot & readonly, decimal]? hit = snapshotCache[key];
         if hit is [Snapshot & readonly, decimal] && mono - hit[1] < SNAPSHOT_SECONDS {
             return hit[0];
         }
     }
-    Snapshot & readonly fresh = (check loadSnapshot(time:utcNow())).cloneReadOnly();
+    Snapshot & readonly fresh = (check loadSnapshot(time:utcNow(), postScope(includeArchived))).cloneReadOnly();
     lock {
-        snapshotCache = [fresh, mono];
+        snapshotCache[key] = [fresh, mono];
     }
     return fresh;
 }
 
-# Drops the cached snapshot, so the next board read sees an admin's change (retry, send) at once.
+# Drops the cached snapshots, so the next board read sees an admin's change (retry, send) at once.
 isolated function dropSnapshot() {
     lock {
-        snapshotCache = ();
+        snapshotCache = {};
     }
 }
 
-# Number of cached snapshots (0 or 1), a test seam.
+# Number of cached snapshots (0 to 2, one per scope), a test seam.
 #
-# + return - 1 when a snapshot is cached
+# + return - Snapshots cached
 isolated function snapshotCacheSize() returns int {
     lock {
-        return snapshotCache is () ? 0 : 1;
+        return snapshotCache.length();
     }
 }
 
@@ -71,17 +74,20 @@ isolated function snapshotCacheSize() returns int {
 # `transaction`, and ADR-032 keeps a transaction out of a `retry` (a retried block races the one gate).
 #
 # + now - Current time
+# + scope - Which posts the summary numbers count
 # + return - The snapshot, or an error
-isolated function loadSnapshot(time:Utc now) returns Snapshot|error => reporting:loadSnapshot(check db(), now);
+isolated function loadSnapshot(time:Utc now, reporting:PostScope scope) returns Snapshot|error =>
+    reporting:loadSnapshot(check db(), now, scope);
 
 # Reposts by category since a time (a per-request read, not in the snapshot: `days` varies).
 #
 # + since - Window start
+# + scope - Which posts count
 # + return - Categories, or an error
-isolated function categoryCounts(time:Utc since) returns reporting:CategoryCount[]|error {
+isolated function categoryCounts(time:Utc since, reporting:PostScope scope) returns reporting:CategoryCount[]|error {
     retry<resilience:TransientDbRetry> (dbReadRetries) {
         postgresql:Client pg = check db();
-        return reporting:repostsByCategory(pg, since);
+        return reporting:repostsByCategory(pg, since, scope);
     }
 }
 
@@ -116,7 +122,7 @@ isolated function campaignPeople(string campaignId) returns [reporting:CampaignC
 isolated function exportRows(time:Utc 'from, time:Utc to) returns reporting:ExportRow[]|error {
     retry<resilience:TransientDbRetry> (dbReadRetries) {
         postgresql:Client pg = check db();
-        return reporting:exportRows(pg, 'from, to);
+        return reporting:exportRows(pg, 'from, to, postScope(false).retentionMonths);
     }
 }
 
@@ -131,6 +137,7 @@ isolated function personPosts(string employeeId) returns [reporting:PersonIdenti
         if who is () {
             return ();
         }
-        return [who, check reporting:personPosts(pg, employeeId), check reporting:personPointsThisMonth(pg, employeeId)];
+        return [who, check reporting:personPosts(pg, employeeId, postScope(false).retentionMonths),
+            check reporting:personPointsThisMonth(pg, employeeId)];
     }
 }
