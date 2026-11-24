@@ -106,13 +106,21 @@ isolated function route(HandlerContext ctx) returns Outcome|error {
         events:ENGAGEMENT_RECORDED => {
             return handleEngagementRecorded(ctx, check ctx.row.payload.cloneWithType());
         }
+        events:CONNECTION_REVOKED => {
+            events:ConnectionRevoked event = check ctx.row.payload.cloneWithType();
+            return failSharesForLostConnection(ctx, event.employeeId);
+        }
+        events:CONNECTION_REMOVED => {
+            events:ConnectionRemoved event = check ctx.row.payload.cloneWithType();
+            return failSharesForLostConnection(ctx, event.employeeId);
+        }
         events:EXTERNAL_SHARE_APPROVED|events:EXTERNAL_SHARE_AMPLIFIED => {
             // amplify-api already wrote the award in the decision's transaction (ADR-024 item 1). Scoring
             // again here would only hit `ON CONFLICT DO NOTHING`, so the row is acknowledged as is.
             return done("scored by amplify-api in the decision transaction (ADR-024)");
         }
     }
-    // Every other event (CampaignAnnounced, ConnectionReady/Revoked/Removed, RepostFailed, Points*,
+    // Every other event (CampaignAnnounced, ConnectionReady, RepostFailed, Points*,
     // ExternalShareSubmitted/Rejected) has no phase 1 subscriber.
     return done("no phase 1 subscriber");
 }
@@ -296,6 +304,7 @@ isolated function handleRepostRequested(HandlerContext ctx, events:RepostRequest
         // generic default.
         targetTitle: c is () ? () : c.title,
         commentary: share.commentary,
+        mentions: check resolveMentions(ctx, share.commentary),
         correlationId: ctx.correlationId
     });
     if posted is linkedin:ProviderError {
@@ -355,8 +364,11 @@ isolated function handleLinkedInFailure(HandlerContext ctx, sharing:ShareRequest
     // The call returned an error, so it did not post: clear the in-flight marker before the row is retried or
     // failed (a retry must not read it as "may already have posted").
     sharing:ShareRequest cleared = check clearInFlight(ctx, share);
-    if d.code == linkedin:UNAUTHORIZED {
-        // Token expired or revoked: the connection needs a reconnect (B9) and this share fails with it.
+    if d.code == linkedin:UNAUTHORIZED || d.code == linkedin:FORBIDDEN {
+        // 401: token expired or revoked by the member at LinkedIn. 403 `ACCESS_DENIED`: the token lacks the scope
+        // (a member post needs only `w_member_social`), so the grant is no longer good either. The connection is
+        // revoked and its token row deleted, so `GET /me` asks for a re-link (B9); this share fails with it, and
+        // `ConnectionRevoked` fails the employee's other queued shares.
         connection:ConnectionChange|types:DomainError change = connection:revoke(conn, ctx.now);
         if change is connection:ConnectionChange {
             check ctx.store.saveConnection(change, conn.version);
@@ -375,6 +387,76 @@ isolated function handleLinkedInFailure(HandlerContext ctx, sharing:ShareRequest
     int? serviceCode = d.serviceErrorCode;
     return failShare(ctx, cleared, types:PROVIDER_REJECTED, serviceCode is int ? serviceCode.toString() : d.code, note);
 }
+
+# Resolves the mention tokens in a share's commentary to what Amplify holds: linked colleagues (member URN, and
+# the LinkedIn name when known) and the configured company page. A token whose ref doesn't resolve (not linked,
+# removed, unknown org) is left out, so the adapter writes it as plain text. The ref is all that is used from the
+# token: names and URNs never come from the commentary.
+#
+# + ctx - Context
+# + commentary - Commentary with mention tokens
+# + return - Targets by ref, or a store error
+isolated function resolveMentions(HandlerContext ctx, string? commentary) returns map<linkedin:MentionTarget>|error {
+    map<linkedin:MentionTarget> targets = {};
+    if commentary is () {
+        return targets;
+    }
+    types:EmployeeId[] people = [];
+    foreach types:MentionToken token in types:mentionTokens(commentary) {
+        [string, string]? parts = types:splitMentionRef(token.ref);
+        if parts is () {
+            continue;
+        }
+        var [kind, key] = parts;
+        if kind == types:MENTION_ORG {
+            linkedin:MentionTarget? org = ctx.config.orgMentions[token.ref];
+            if org is linkedin:MentionTarget {
+                targets[token.ref] = org;
+            }
+        } else if people.indexOf(key) is () {
+            people.push(key);
+        }
+    }
+    if people.length() == 0 {
+        return targets;
+    }
+    foreach connection:MentionableMember member in check ctx.store.mentionable(people) {
+        string? name = connection:mentionName(member);
+        if name is string {
+            targets[types:MENTION_PERSON + ":" + member.employeeId] = {name, urn: member.memberUrn};
+        }
+    }
+    return targets;
+}
+
+# `ConnectionRevoked` / `ConnectionRemoved`: the employee's queued shares can't be posted any more, so they fail
+# with `NEEDS_RECONNECT` and the UI asks for a re-link. A share carrying the in-flight marker may already be on
+# LinkedIn; it is left for the publish path's manual review instead.
+#
+# + ctx - Context
+# + employeeId - Employee whose connection was lost
+# + return - Outcome, or a store error (the outbox retries)
+isolated function failSharesForLostConnection(HandlerContext ctx, types:EmployeeId employeeId) returns Outcome|error {
+    int failedCount = 0;
+    foreach sharing:ShareRequest share in check ctx.store.queuedShares(employeeId) {
+        if share.lastErrorCode == PUBLISH_IN_FLIGHT {
+            continue;
+        }
+        sharing:ShareRequest? failedShare = sharing:failForLostConnection(share, ctx.now);
+        if failedShare is sharing:ShareRequest {
+            error? saved = ctx.store.updateShare(failedShare, share.version, [sharing:repostFailedEvent(failedShare)]);
+            if saved is error && !isVersionConflict(saved) {
+                return saved;
+            }
+            // A version conflict means the publish path moved the row meanwhile; that path settles it.
+            failedCount += saved is () ? 1 : 0;
+        }
+    }
+    return done(string `connection lost: ${failedCount} queued share(s) failed NEEDS_RECONNECT`);
+}
+
+isolated function isVersionConflict(error err) returns boolean =>
+    err is types:DomainError && err.detail().code == types:ERR_VERSION_CONFLICT;
 
 # Clears the in-flight marker after LinkedIn answered with an error (so it did not post), so a retry or a
 # failure can write the share row again.

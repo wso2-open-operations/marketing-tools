@@ -20,3 +20,5 @@ const string COMPONENT = "amplify-jobs";
 # `share_request.last_error_code` marker written just before the LinkedIn call. A row read back with it is
 # never posted again automatically: the previous attempt may already have posted.
 const string PUBLISH_IN_FLIGHT = "PUBLISH_IN_FLIGHT";
+# Mention ref of the company page (`linkedinOrgUrn`); amplify-api suggests the same ref.
+const string ORG_MENTION_REF = "org:wso2";

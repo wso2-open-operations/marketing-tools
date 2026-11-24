@@ -19,6 +19,8 @@
 import amplify_common.crypto;
 import amplify_common.events;
 import amplify_common.types;
+import amplify_domain.connection;
+import amplify_domain.sharing;
 
 import ballerina/lang.runtime;
 import ballerina/test;
@@ -208,23 +210,92 @@ function repostPublishesOnceRecordsEngagementAndScoresOnce() returns error? {
 
 @test:Config
 function linkedIn401RevokesConnectionAndFailsShare() returns error? {
+    check rejectedTokenForcesRelink("401", "emp-401");
+}
+
+@test:Config
+function linkedIn403RevokesConnectionAndFailsShare() returns error? {
+    check rejectedTokenForcesRelink("403", "emp-403");
+}
+
+# LinkedIn refuses the token: the connection is revoked, its token row deleted, this share and the employee's
+# other queued shares fail NEEDS_RECONNECT (through ConnectionRevoked), and nothing is retried.
+function rejectedTokenForcesRelink(string mode, string emp) returns error? {
     World w = harness();
     time:Utc now = time:utcNow();
     string cid = types:newUuidV7();
+    string otherCid = types:newUuidV7();
     w.mem.putCampaign(openCampaign(cid, now));
-    var share = queuedShare(cid, "emp-401", now);
+    w.mem.putCampaign(openCampaign(otherCid, now));
+    var share = queuedShare(cid, emp, now);
     w.mem.putShare(share);
-    check connectedEmployee(w.mem, w.cipher, "emp-401", now);
-    w.linkedIn.setMode("401");
-    int id = w.queue.enqueue(events:REPOST_REQUESTED, repostRequested(share.id, cid, "emp-401"));
+    // A second share of the same employee, queued but not yet picked up (its RepostRequested row is later).
+    w.mem.putShare(queuedShare(otherCid, emp, now));
+    check connectedEmployee(w.mem, w.cipher, emp, now);
+    var before = check w.mem.connection(emp);
+    string tokenId = before is () ? "" : (<connection:TokenRef>before.currentToken).tokenId;
+    w.linkedIn.setMode(mode);
+    int id = w.queue.enqueue(events:REPOST_REQUESTED, repostRequested(share.id, cid, emp));
     _ = check run(w);
-    test:assertEquals(w.queue.statusOf(id)[0], "DONE");
-    var conn = check w.mem.connection("emp-401");
-    test:assertTrue(conn !is () && conn.revokedAt !is ());
-    var failedShare = check w.mem.share(cid, "emp-401");
-    test:assertTrue(failedShare !is () && failedShare.failureReason == types:NEEDS_RECONNECT);
-    test:assertEquals(w.queue.countByType(events:CONNECTION_REVOKED), 1);
-    test:assertEquals(w.queue.countByType(events:REPOST_FAILED), 1);
+    w.queue.makeAllDue();
+    _ = check run(w);
+    test:assertEquals(w.queue.statusOf(id)[0], "DONE", mode);
+    var conn = check w.mem.connection(emp);
+    test:assertTrue(conn !is () && conn.revokedAt !is () && conn.currentToken is (), mode + ": revoked, no token");
+    test:assertTrue(conn !is () && connection:connectionStatus(conn, now) == connection:NEEDS_RECONNECT, mode);
+    test:assertFalse(w.mem.hasToken(tokenId), mode + ": the stored token row is deleted");
+    var failedShare = check w.mem.share(cid, emp);
+    test:assertTrue(failedShare !is () && failedShare.failureReason == types:NEEDS_RECONNECT, mode);
+    var otherShare = check w.mem.share(otherCid, emp);
+    test:assertTrue(otherShare !is () && otherShare.failureReason == types:NEEDS_RECONNECT,
+            mode + ": the other queued share fails through ConnectionRevoked");
+    test:assertEquals(w.queue.countByType(events:CONNECTION_REVOKED), 1, mode);
+    test:assertEquals(w.queue.countByType(events:REPOST_FAILED), 2, mode);
+    test:assertEquals(w.linkedIn.postCount(), 0, mode);
+}
+
+@test:Config
+function connectionRemovedFailsQueuedSharesButNotAnInFlightOne() returns error? {
+    World w = harness();
+    time:Utc now = time:utcNow();
+    string queuedCid = types:newUuidV7();
+    string inFlightCid = types:newUuidV7();
+    w.mem.putShare(queuedShare(queuedCid, "emp-rm", now));
+    sharing:ShareRequest inFlight = queuedShare(inFlightCid, "emp-rm", now);
+    inFlight.lastErrorCode = PUBLISH_IN_FLIGHT;
+    w.mem.putShare(inFlight);
+    _ = w.queue.enqueue(events:CONNECTION_REMOVED, {employeeId: "emp-rm", provider: "linkedin",
+        memberUrn: "urn:li:person:emp-rm", removedAt: time:utcToString(now)});
+    _ = check run(w);
+    var queued = check w.mem.share(queuedCid, "emp-rm");
+    test:assertTrue(queued !is () && queued.failureReason == types:NEEDS_RECONNECT);
+    var stillInFlight = check w.mem.share(inFlightCid, "emp-rm");
+    test:assertTrue(stillInFlight !is () && stillInFlight.failedAt is (), "left for the manual-review path");
+}
+
+@test:Config
+function mentionsResolveFromWhatAmplifyHolds() returns error? {
+    World w = harness();
+    RunConfig cfg = {...TEST_CONFIG};
+    cfg.orgMentions = {"org:wso2": {name: "WSO2", urn: "urn:li:organization:1477"}};
+    w.deps.config = cfg;
+    time:Utc now = time:utcNow();
+    string cid = types:newUuidV7();
+    w.mem.putCampaign(openCampaign(cid, now));
+    sharing:ShareRequest share = queuedShare(cid, "emp-m", now);
+    share.commentary = "Thanks @[Jay](amplify:person:jane@wso2.com), @[Old](amplify:person:gone@wso2.com) "
+        + "and @[WSO2](amplify:org:wso2) @[X](amplify:org:other)";
+    w.mem.putShare(share);
+    check connectedEmployee(w.mem, w.cipher, "emp-m", now);
+    w.mem.putMentionable({employeeId: "jane@wso2.com", memberUrn: "urn:li:person:jane1", displayName: "Jane S",
+        memberName: "Jane Smith"});
+    _ = w.queue.enqueue(events:REPOST_REQUESTED, repostRequested(share.id, cid, "emp-m"));
+    _ = check run(w);
+    test:assertEquals(w.linkedIn.postCount(), 1);
+    test:assertEquals(w.linkedIn.lastMentionTargets(), {
+        "person:jane@wso2.com": {name: "Jane Smith", urn: "urn:li:person:jane1"},
+        "org:wso2": {name: "WSO2", urn: "urn:li:organization:1477"}
+    }, "the LinkedIn name and URN Amplify holds; unknown refs left out");
 }
 
 @test:Config

@@ -55,6 +55,7 @@ public final Rule[] & readonly ACTIVITY_MATRIX = [
     // C1 Sharing
     {method: "POST", path: "/campaigns/{id}/shares", requires: EMPLOYEE, capability: "shares.create", useCase: "Own; campaign OPEN; connection ACTIVE/EXPIRING; one per campaign (retry reuses row, ADR-015); sharing.enabled"},
     {method: "GET", path: "/me/shares", requires: EMPLOYEE, capability: "shares.read_own"},
+    {method: "GET", path: "/mentions", requires: EMPLOYEE, capability: "mentions.read", useCase: "Linked colleagues (not removed, never the caller) and the company page; names from the directory, never an id"},
     // S3 External Sharing
     {method: "POST", path: "/external-shares", requires: EMPLOYEE, capability: "external_shares.submit", useCase: "Own; (evidence_url, action) unique (ADR-017); host allow-list"},
     {method: "GET", path: "/me/external-shares", requires: EMPLOYEE, capability: "external_shares.read_own"},

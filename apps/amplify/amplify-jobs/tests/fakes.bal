@@ -221,6 +221,7 @@ isolated class MemStore {
     private final map<sharing:Engagement> engagements = {};
     private final map<connection:LinkedInConnection> connections = {};
     private final map<connection:StoredToken> tokens = {};
+    private final map<connection:MentionableMember> mentionables = {};
     private final map<types:LedgerEntry> ledger = {};
     private scoring:PointRule[] rules = [];
     private RunSettings settingsValue = {};
@@ -356,6 +357,37 @@ isolated class MemStore {
         }
     }
 
+    isolated function queuedShares(types:EmployeeId employeeId) returns sharing:ShareRequest[]|error {
+        lock {
+            sharing:ShareRequest[] found = from sharing:ShareRequest r in self.shares
+                where r.employeeId == employeeId && r.publishedAt is () && r.failedAt is ()
+                select r;
+            return found.clone();
+        }
+    }
+
+    isolated function putMentionable(connection:MentionableMember member) {
+        lock {
+            self.mentionables[member.employeeId] = member.clone();
+        }
+    }
+
+    isolated function mentionable(types:EmployeeId[] employeeIds) returns connection:MentionableMember[]|error {
+        readonly & types:EmployeeId[] ids = employeeIds.cloneReadOnly();
+        lock {
+            connection:MentionableMember[] found = from connection:MentionableMember m in self.mentionables
+                where ids.indexOf(m.employeeId) !is ()
+                select m;
+            return found.clone();
+        }
+    }
+
+    isolated function hasToken(string tokenId) returns boolean {
+        lock {
+            return self.tokens.hasKey(tokenId);
+        }
+    }
+
     isolated function recordPublish(sharing:PublishResult result, int expectedVersion) returns error? {
         sharing:Engagement & readonly e = result.engagement.cloneReadOnly();
         sharing:ShareRequest & readonly published = result.request.cloneReadOnly();
@@ -471,8 +503,12 @@ isolated class MemStore {
 
     isolated function saveConnection(connection:ConnectionChange change, int expectedVersion) returns error? {
         connection:LinkedInConnection & readonly c = change.connection.cloneReadOnly();
+        connection:TokenRef? & readonly old = change.tokenToDelete.cloneReadOnly();
         lock {
             self.connections[c.employeeId] = c;
+            if old is connection:TokenRef {
+                _ = self.tokens.removeIfHasKey(old.tokenId);
+            }
         }
         self.queue.enqueueEvents(change.outbox, ());
     }
@@ -520,6 +556,7 @@ isolated class FakeLinkedIn {
     private string? lastCommentary = ();
     private string? lastCorrelationId = ();
     private string? lastTitle = ();
+    private map<linkedin:MentionTarget> lastMentions = {};
 
     isolated function setMode(string mode) {
         lock {
@@ -536,6 +573,12 @@ isolated class FakeLinkedIn {
     isolated function last() returns [string?, string?, string?] {
         lock {
             return [self.lastBearer, self.lastCommentary, self.lastCorrelationId];
+        }
+    }
+
+    isolated function lastMentionTargets() returns map<linkedin:MentionTarget> {
+        lock {
+            return self.lastMentions.clone();
         }
     }
 
@@ -565,9 +608,13 @@ isolated class FakeLinkedIn {
             self.lastCommentary = command.commentary;
             self.lastCorrelationId = command.correlationId;
             self.lastTitle = command.targetTitle;
+            self.lastMentions = command.mentions.clone();
             match self.mode {
                 "401" => {
                     return providerError(linkedin:UNAUTHORIZED, 401, false);
+                }
+                "403" => {
+                    return providerError(linkedin:FORBIDDEN, 403, false);
                 }
                 "429" => {
                     return providerError(linkedin:RATE_LIMITED, 429, true);

@@ -256,7 +256,9 @@ isolated function completeConnect(auth:Principal p, string? correlationId, Conne
             memberUrn: profile.memberUrn,
             scopes: grant.scopes,
             token: connection:tokenRef(token),
-            expiresInSeconds: grant.expiresInSeconds
+            expiresInSeconds: grant.expiresInSeconds,
+            // The text a mention of this member must carry for LinkedIn to link it.
+            memberName: profile.name
         }, now, token);
         // The consent record is best effort: the link itself is already stored, so a failure here must not
         // strand the person on an error page after LinkedIn.

@@ -105,15 +105,20 @@ public type ShareCommand record {|
     # Article title for `SHARE` / `SHARE_COMMENTARY`, for example the campaign title. LinkedIn requires a
     # title on article content and doesn't scrape the link; `DEFAULT_ARTICLE_TITLE` when blank
     string? targetTitle = ();
-    # Employee's own words, plain text. Escaped to LinkedIn little text format here.
+    # Employee's own words with Amplify mention tokens. Rendered to LinkedIn little text here
+    # (`toLittleText`): everything escaped except `#tags` and the mentions in `mentions`
     string? commentary = ();
+    # Resolved mention tokens by ref (`person:<employeeId>`, `org:<key>`). A token missing here is posted as
+    # plain text
+    map<MentionTarget> mentions = {};
     # Correlation id, sent as `X-Correlation-ID` (never part of the post)
     string? correlationId = ();
 |};
 
 # Unauthorized: token expired or revoked. Maps to `NEEDS_RECONNECT`.
 public const UNAUTHORIZED = "UNAUTHORIZED";
-# Forbidden: missing scope or not allowed.
+# Forbidden: LinkedIn's `ACCESS_DENIED`, the token lacks a scope it needs (Posts API error table). On a
+# member's own post that means the grant is no longer good, so it maps to `NEEDS_RECONNECT` like 401.
 public const FORBIDDEN = "FORBIDDEN";
 # Rate limited (429).
 public const RATE_LIMITED = "RATE_LIMITED";

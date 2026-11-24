@@ -191,7 +191,8 @@ function publishRepostSendsHeadersAndReadsRestliId() returns error? {
         authorUrn: "urn:li:person:782bbtaQ",
         kind: types:REPOST_COMMENTARY,
         targetUrn: "urn:li:share:6999",
-        commentary: "Proud of the #ChoreLabs team @ work"
+        commentary: "Proud of the #ChoreLabs team @ work with @[Jane](amplify:person:jane@wso2.com)",
+        mentions: {"person:jane@wso2.com": {name: "Jane Smith", urn: "urn:li:person:abc123"}}
     });
     test:assertEquals(urn, "urn:li:share:7000000000000000001");
     json sent;
@@ -200,7 +201,7 @@ function publishRepostSendsHeadersAndReadsRestliId() returns error? {
     }
     test:assertEquals(sent, {
         author: "urn:li:person:782bbtaQ",
-        commentary: "Proud of the \\#ChoreLabs team \\@ work",
+        commentary: "Proud of the {hashtag|\\#|ChoreLabs} team \\@ work with @[Jane Smith](urn:li:person:abc123)",
         visibility: "PUBLIC",
         distribution: {feedDistribution: "MAIN_FEED", targetEntities: [], thirdPartyDistributionChannels: []},
         lifecycleState: "PUBLISHED",

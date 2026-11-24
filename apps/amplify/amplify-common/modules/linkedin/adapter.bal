@@ -193,7 +193,7 @@ public isolated class LinkedInAdapter {
 public isolated function buildPostPayload(ShareCommand command) returns json {
     map<json> body = {
         author: command.authorUrn,
-        commentary: escapeLittleText(command.commentary ?: ""),
+        commentary: toLittleText(command.commentary ?: "", command.mentions),
         visibility: "PUBLIC",
         distribution: {feedDistribution: "MAIN_FEED", targetEntities: [], thirdPartyDistributionChannels: []},
         lifecycleState: "PUBLISHED",
@@ -211,8 +211,9 @@ public isolated function buildPostPayload(ShareCommand command) returns json {
     return body;
 }
 
-# Escapes text for LinkedIn's little text format, so an employee's `@`, `#` or brackets are shown as
-# typed instead of being read as mentions, hashtags or templates.
+# Escapes every reserved character of LinkedIn's little text format, so `@`, `#` or brackets are shown as
+# typed instead of being read as mentions, hashtags or templates. `toLittleText` uses it for everything but
+# `#tags` and resolved mentions.
 #
 # + text - Plain text
 # + return - Escaped text

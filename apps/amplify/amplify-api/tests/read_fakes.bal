@@ -373,6 +373,19 @@ isolated function mockSharesOf(types:EmployeeId employeeId) returns sharing:Shar
     return [];
 }
 
+@test:Mock {functionName: "mentionableSearch"}
+isolated function mockMentionableSearch(string query, types:EmployeeId callerId)
+        returns connection:MentionableMember[]|error {
+    check dbGate();
+    connection:MentionableMember[] all = [
+        {employeeId: "jane@wso2.com", memberUrn: "urn:li:person:jane1", displayName: "Jane Smith", memberName: "Jane Smith"},
+        {employeeId: "joe@wso2.com", memberUrn: "urn:li:person:joe1", displayName: "Joe Bloggs", memberName: ()}
+    ];
+    return from connection:MentionableMember m in all
+        where m.employeeId != callerId && m.displayName.toLowerAscii().includes(query.toLowerAscii())
+        select m;
+}
+
 @test:Mock {functionName: "claimsOf"}
 isolated function mockClaimsOf(types:EmployeeId employeeId) returns external_sharing:ExternalShare[]|error {
     check dbGate();

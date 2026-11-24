@@ -393,6 +393,14 @@ service http:InterceptableService / on apiListener {
             : {items: from var r in rows select shareViewDto(r).toJson()});
     }
 
+    # Who the caller can `@` mention in a repost's thoughts.
+    #
+    # + ctx - Request context
+    # + q - Text typed after `@` (1-50 characters)
+    # + return - Suggestions, or problem details
+    resource function get mentions(http:RequestContext ctx, string? q = ()) returns http:Response|ProblemResponse|error =>
+        okJson(mentionSuggestions(check principalOf(ctx), cid(ctx), q));
+
     // ---- S3 External Sharing -----------------------------------------------------------------------
 
     # Claims an external share.

@@ -54,6 +54,8 @@ type RunConfig record {|
     string noveraButtonUrl;
     string? cardAvatarUrl = ();
     string? defaultImageUrl = ();
+    # Organizations that can be mentioned, by mention ref (`org:<key>`)
+    map<linkedin:MentionTarget> orgMentions = {};
 |};
 
 # App settings a run reads once (`config_app_setting`).
@@ -95,6 +97,8 @@ type Store isolated object {
     isolated function saveAnnouncement(announcements:Announcement announcement, events:OutboxEvent[] outbox)
         returns error?;
     isolated function share(string campaignId, types:EmployeeId employeeId) returns sharing:ShareRequest|error?;
+    isolated function queuedShares(types:EmployeeId employeeId) returns sharing:ShareRequest[]|error;
+    isolated function mentionable(types:EmployeeId[] employeeIds) returns connection:MentionableMember[]|error;
     isolated function recordPublish(sharing:PublishResult result, int expectedVersion) returns error?;
     # Settles a publish `recordPublish` refused with an engagement unique violation (domain review H-5).
     # True when settled on the existing engagement, false when none matches.
@@ -196,6 +200,12 @@ isolated class PgStore {
 
     isolated function share(string campaignId, types:EmployeeId employeeId) returns sharing:ShareRequest|error? =>
         (new sharing:PgShareRepository(self.db, self.actor)).findByCampaignAndEmployee(campaignId, employeeId);
+
+    isolated function queuedShares(types:EmployeeId employeeId) returns sharing:ShareRequest[]|error =>
+        (new sharing:PgShareRepository(self.db, self.actor)).queuedByEmployee(employeeId);
+
+    isolated function mentionable(types:EmployeeId[] employeeIds) returns connection:MentionableMember[]|error =>
+        connection:mentionableByIds(self.db, employeeIds);
 
     isolated function recordPublish(sharing:PublishResult result, int expectedVersion) returns error? =>
         (new sharing:PgShareRepository(self.db, self.actor)).recordPublish(result, expectedVersion);

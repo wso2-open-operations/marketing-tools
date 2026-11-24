@@ -104,7 +104,13 @@ Limits
 
 
 ### Community Management API
-> 2026-10-14: Application under review by LinkedIn
+> 2026-11-24: Approved by LinkedIn at the **Development tier** (applied 2026-10-14).
+>
+> What Amplify uses from it, and what it doesn't:
+> - **Mentions and hashtags in the repost text** need only `w_member_social`, which Amplify already asks for, so existing connections keep working with no new scope. The commentary uses the [little text format](https://learn.microsoft.com/linkedin/marketing/community-management/shares/little-text-format): `@[Name](urn:li:person:…)` / `@[Name](urn:li:organization:…)` for a mention, `{hashtag|\#|tag}` for a hashtag, and every other reserved character (`| { } @ [ ] ( ) < > # \ * _ ~`) escaped with a backslash.
+> - A member mention links only when the text matches one of the member's names (case sensitive; first, last or full name), an organization mention only on the full name. Otherwise LinkedIn shows plain text, no error ([Posts API, mentions](https://learn.microsoft.com/linkedin/marketing/community-management/shares/posts-api#mentions-and-hashtags-using-posts-commentary)). So Amplify keeps each member's name from OIDC userinfo and writes that.
+> - **peopleTypeahead stays out of reach**: restricted to select developers, it needs `r_organization_followers` and an admin role on the page, and only finds that page's followers. Organization lookup by vanity name needs `rw_organization_admin`. The `@` typeahead therefore offers colleagues who linked LinkedIn in Amplify (Amplify holds their member URN) and the WSO2 page from config.
+> - Development tier caps: 500 calls per app and 100 per member in 24 hours, no BATCH_GET, no webhooks, and the move to Standard is due within 12 months ([Increasing access](https://learn.microsoft.com/linkedin/marketing/increasing-access)).
 
 <details>
 <summary>Click to expand</summary>

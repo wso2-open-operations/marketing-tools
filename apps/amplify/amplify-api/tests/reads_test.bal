@@ -401,6 +401,19 @@ function testListValidationAndShapes() returns error? {
     http:Response shares = check send("GET", "/me/shares", (), emp);
     check assertShape(shares, "ShareList");
 
+    http:Response mentions = check send("GET", "/mentions?q=j", (), emp);
+    test:assertEquals(mentions.statusCode, 200);
+    check assertShape(mentions, "MentionList");
+    json mentionBody = check mentions.getJsonPayload();
+    test:assertEquals(mentionBody, {items: [
+        {ref: "person:jane@wso2.com", kind: "PERSON", displayName: "Jane Smith"},
+        {ref: "person:joe@wso2.com", kind: "PERSON", displayName: "Joe Bloggs"}
+    ]}, "linked colleagues by directory name; the ref, never an id, as the name");
+    json orgBody = check (check send("GET", "/mentions?q=wso", (), emp)).getJsonPayload();
+    test:assertEquals(orgBody, {items: [{ref: "org:wso2", kind: "ORGANIZATION", displayName: "WSO2"}]});
+    test:assertEquals((check send("GET", "/mentions", (), emp)).statusCode, 400, "q is required");
+    test:assertEquals((check send("GET", "/mentions?q=" + string:'join("", ...from int i in 0 ... 50 select "x"), (), emp)).statusCode, 400);
+
     string admin = check rvToken("adm-list", groups = [ADMIN_GROUP]);
     http:Response settings = check send("GET", "/admin/settings", (), admin);
     test:assertEquals(settings.statusCode, 200);
