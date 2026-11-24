@@ -620,7 +620,7 @@ erDiagram
 | One WSO2 call | Query | Cost |
 | --- | --- | --- |
 | Leaderboard (top N + me) | `WHERE period_key = $1 AND rank <= $top_n` on index `(period_key, rank)` + PK lookup `(period_key, employee_id)` | two index lookups |
-| My Team (B15) | `WHERE period_key = $1 AND email = ANY($team_emails)` + `dense_rank()` over that set, on index `(period_key, email)` | one index scan per team (tens of rows) |
+| My Team (B15) | `WHERE period_key = $1 AND email = ANY($team_emails)` + `row_number()` over that set (points, then who reached them first), on index `(period_key, email)` | one index scan per team (tens of rows) |
 | My position | PK lookup | one index lookup |
 | Team page (paged, search, sort) | index `(period_key, rank)`; `pg_trgm` GIN on `display_name` for search | index scan + `LIMIT` |
 | My monthly history | PK range on `(employee_id, month)` | one range scan |

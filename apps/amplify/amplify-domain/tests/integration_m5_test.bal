@@ -170,18 +170,20 @@ function testM5AdjustReverseUpdatesStanding() returns error? {    postgresql:Cli
             recognition:SORT_NAME, 0, 10);
     test:assertFalse(search.items.some(i => i.standing.employeeId == emp),
             "search doesn't surface the reversed row either");
-    // Whole company (no roster, no search): ranks come from the stored company rank (M11 fast path) and
-    // match the window-function result of a filtered page.
+    // Whole company (no roster, no search): rows page off the stored company rank (M11 fast path) and each
+    // gets its position, 1, 2, 3..., with no ties.
     recognition:TeamPage company = check recognition:teamPage(db, recognition:PERIOD_ALL, (), (),
             recognition:SORT_RANK, 0, 1000);
     int standings = check db->queryRow(`SELECT count(*)::int FROM recognition_standing
                                         WHERE period_key = 'ALL' AND total_points > 0`);
     test:assertEquals(company.total, standings, "the whole-company total counts people with points");
     int lastRank = 0;
-    foreach recognition:TeamEntry e in company.items {
-        test:assertEquals(e.teamRank, e.standing.rank);
-        test:assertTrue(e.teamRank >= lastRank, "ordered by rank");
-        lastRank = e.teamRank;
+    foreach int i in 0 ..< company.items.length() {
+        recognition:TeamEntry e = company.items[i];
+        test:assertEquals(e.teamRank, i + 1);
+        int companyRank = e.standing.rank;
+        test:assertTrue(companyRank >= lastRank, "ordered by company rank");
+        lastRank = companyRank;
     }
     recognition:TeamPage byPoints = check recognition:teamPage(db, recognition:PERIOD_ALL, (), (),
             recognition:SORT_POINTS, 0, 5);
