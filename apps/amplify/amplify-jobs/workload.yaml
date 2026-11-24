@@ -38,6 +38,8 @@ configurations:
       value: ""
     - name: BAL_CONFIG_VAR_LINKEDINAUTHBASEURL
       value: ""
+    - name: BAL_CONFIG_VAR_LINKEDINMAXPOSTSPERDAY
+      value: "480"
     - name: BAL_CONFIG_VAR_INTERNALAPIKEY
       valueFrom:
         secretRef:

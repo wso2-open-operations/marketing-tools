@@ -67,7 +67,7 @@ After each build, confirm the endpoint Choreo shows matches the descriptor (name
 4. **D4** Security headers at the proxy too if supported (`nosniff`, CSP `upgrade-insecure-requests`, HSTS).
 5. **D5 WAF / egress.** If the org uses egress control, allow-list only `api.linkedin.com`, `www.linkedin.com`, the Novera gateway host and the people-app connection's gateway host for this project. Attach the org WAF policy to the proxy if one exists.
 6. **D6 Ingress rate limiting.** Put a rate limit on the proxy in front of amplify-api that slows an abusive caller without touching normal use. The limit itself is still to be chosen.
-7. **D7 Egress rate limiting to LinkedIn.** On the developer tier we are on for now, LinkedIn allows 500 reposts in a 24-hour window. amplify-jobs caps a run at 50 and a day at 480 (`linkedinMaxPostsPerRun`, `linkedinMaxPostsPerDay`), just under that limit. `linkedinMaxPostsPerDay` is not in the Jobs descriptor yet, so it cannot be lowered from the config form: add it (and to `workload.yaml`) before relying on it, or expect LinkedIn to answer 429 past 500.
+7. **D7 Egress rate limiting to LinkedIn.** On the developer tier we are on for now, LinkedIn allows 500 reposts in a 24-hour window. amplify-jobs caps a run at 50 and a day at 480 (`linkedinMaxPostsPerRun`, `linkedinMaxPostsPerDay`), just under that limit. `linkedinMaxPostsPerDay` is in the Jobs config form (`BAL_CONFIG_VAR_LINKEDINMAXPOSTSPERDAY`, optional; empty keeps 480) and in `workload.yaml`: lower it there if LinkedIn's limit for the app changes. Past 500 in a day, expect LinkedIn to answer 429.
 
 ## E. Versioning and promotion
 
