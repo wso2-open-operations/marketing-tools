@@ -307,15 +307,9 @@ isolated function mockRosterPageOf(string period, recognition:RosterMember[] mem
         order by e.totalPoints descending, e.displayName ascending, e.email ascending
         select e;
     int active = ordered.filter(e => e.totalPoints > 0).length();
-    // Dense rank over points, like the SQL's window.
-    int rank = 0;
-    int last = int:MAX_VALUE;
-    foreach recognition:RosterEntry e in ordered {
-        if e.totalPoints != last {
-            rank += 1;
-            last = e.totalPoints;
-        }
-        e.teamRank = rank;
+    // Positions 1, 2, 3... with no ties, like the SQL's row_number (the fakes carry no activity time).
+    foreach int i in 0 ..< ordered.length() {
+        ordered[i].teamRank = i + 1;
     }
     recognition:RosterEntry[] matching = from var e in ordered
         where q is () || e.displayName.includes(q)

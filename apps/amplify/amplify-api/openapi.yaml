@@ -1576,7 +1576,7 @@ components:
                   displayName: {type: string, description: "The people directory's name, else the standing's, else the email"}
                   email: {type: string}
                   points: {type: integer}
-                  teamRank: {type: integer, description: "Dense rank within the team; every zero-point member shares the last rank"}
+                  teamRank: {type: integer, description: "Position within the team: 1, 2, 3... with no ties. Equal points go to whoever reached them first, then name, then email; zero-point members come last"}
                   companyRank: {type: integer, nullable: true, description: "Null without a standing row"}
                   houseName: {type: string, nullable: true, description: "The member's house from the people directory"}
                   isMe: {type: boolean}
@@ -1635,7 +1635,7 @@ components:
               email: {type: string}
               points: {type: integer}
               rank: {type: integer, nullable: true, description: "Company rank; null without a standing row"}
-              teamRank: {type: integer, description: "Dense rank within the list; every zero-point person shares the last rank. Ties order by name, then email"}
+              teamRank: {type: integer, description: "Position within the list: 1, 2, 3... with no ties, whatever the sort. Equal points go to whoever reached them first, then name, then email; zero-point people come last"}
               previousRank: {type: integer, nullable: true}
               lastActivityAt: {type: string, format: date-time, nullable: true}
               houseName: {type: string, nullable: true, description: "The person's house from the people directory; null when they have none or the directory is unavailable"}
@@ -1674,7 +1674,7 @@ components:
               email: {type: string}
               points: {type: integer}
               rank: {type: integer, description: "Company rank"}
-              scopeRank: {type: integer, description: "Rank within the scope (equals rank on the company view)"}
+              scopeRank: {type: integer, description: "Position within the scope: 1, 2, 3... with no ties. Equal points go to whoever reached them first, then name, then employee id. rank keeps the dense company rank"}
               previousRank: {type: integer, nullable: true}
               lastActivityAt: {type: string, format: date-time, nullable: true}
     LeaderboardGroups:

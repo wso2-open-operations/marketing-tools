@@ -74,19 +74,21 @@ SELECT total_points, rank, previous_rank, points_to_next_rank, points_to_top_n, 
 FROM recognition.standing
 WHERE period_key = $period AND employee_id = $viewer;
 
--- My Team: rank within the viewer's directory sub-team
+-- My Team: position within the viewer's directory sub-team, 1, 2, 3... with no ties
+-- (same tie-break as the top three: who reached the points first, then name)
 SELECT employee_id, display_name, email, total_points, rank AS company_rank,
-       dense_rank() OVER (ORDER BY total_points DESC) AS team_rank
+       row_number() OVER (ORDER BY total_points DESC, last_activity_at NULLS LAST,
+                                   display_name, employee_id) AS team_rank
 FROM recognition.standing
 WHERE period_key = $period AND email = ANY($team_emails::citext[])
-ORDER BY team_rank, display_name;
+ORDER BY team_rank;
 
 -- Team page (paged, searchable). Employees: add AND email = ANY($team_emails)
 SELECT employee_id, display_name, email, total_points, rank, previous_rank, last_activity_at
 FROM recognition.standing
 WHERE period_key = $period
   AND ($q IS NULL OR display_name % $q OR display_name ILIKE $q || '%')
-ORDER BY rank, display_name
+ORDER BY rank, last_activity_at NULLS LAST, display_name, employee_id  -- team_rank = offset + row
 LIMIT $size OFFSET $offset;
 ```
 
@@ -149,6 +151,7 @@ Employee and up. `?period=ALL` (default). ETag `<period>:<standing_version>:<vie
 ## Tests
 
 - Ties at rank N return every tied row; `pointsToTopN` is 0 for them.
+- My Team, the Team page and the people boards number their rows 1, 2, 3... with no ties: equal points go to whoever reached them first, and page two carries on from page one.
 - A plain employee gets 403 from `/team`, and can't read a non-team member through `/team/{id}/history`.
 - Directory down with nothing cached → `teamStatus: UNAVAILABLE`, rest of the response 200; an expired index is still served while a refresh fails.
 - One directory call serves every viewer until the index expires.
