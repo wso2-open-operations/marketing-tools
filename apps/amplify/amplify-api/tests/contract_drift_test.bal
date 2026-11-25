@@ -145,6 +145,7 @@ function testDomainEnumsMatchTheSpec() returns error? {
         [["PointAction"], [types:REPOST, types:REPOST_COMMENTARY, types:SHARE, types:SHARE_COMMENTARY, types:OWN_POST,
             types:OWN_POST_AMPLIFIED, types:REACTION, types:COMMENT, types:CHALLENGE_ENTRY, types:CHALLENGE_WINNER]],
         [["Share", "status"], [sharing:QUEUED, sharing:PUBLISHED, sharing:FAILED]],
+        [["NativeIntent", "nativeStatus"], [sharing:LOOKING, sharing:DETECTED, sharing:NOT_FOUND]],
         [["Share", "failureReason"], [types:NEEDS_RECONNECT, types:PROVIDER_REJECTED, types:RETRIES_EXHAUSTED]],
         [["ExternalShare", "status"], [external_sharing:PENDING, external_sharing:APPROVED, external_sharing:REJECTED,
             external_sharing:AMPLIFIED]],

@@ -55,6 +55,8 @@ public final Rule[] & readonly ACTIVITY_MATRIX = [
     // C1 Sharing
     {method: "POST", path: "/campaigns/{id}/shares", requires: EMPLOYEE, capability: "shares.create", useCase: "Own; campaign OPEN; connection ACTIVE/EXPIRING; one per campaign (retry reuses row, ADR-015); sharing.enabled"},
     {method: "GET", path: "/me/shares", requires: EMPLOYEE, capability: "shares.read_own"},
+    {method: "POST", path: "/campaigns/{id}/native-intent", requires: EMPLOYEE, capability: "shares.native", useCase: "Own; campaign OPEN, else 404; a later click restarts the 24 h look unless detected"},
+    {method: "GET", path: "/me/native-intents", requires: EMPLOYEE, capability: "shares.native", useCase: "Own; nativeStatus LOOKING (under 24 h) / DETECTED / NOT_FOUND"},
     // S3 External Sharing
     {method: "POST", path: "/external-shares", requires: EMPLOYEE, capability: "external_shares.submit", useCase: "Own; (evidence_url, action) unique (ADR-017); host allow-list"},
     {method: "GET", path: "/me/external-shares", requires: EMPLOYEE, capability: "external_shares.read_own"},
@@ -96,6 +98,10 @@ public final Rule[] & readonly ACTIVITY_MATRIX = [
     {method: "PUT", path: "/admin/settings", requires: CAN_ADMIN, capability: "admin.settings", useCase: "Optimistic lock; every editable key, the PO settings included"},
     {method: "GET", path: "/po/settings", requires: CAN_POINT_RULES, capability: "po.settings", useCase: "Coins rate and schedule, own-post daily limit"},
     {method: "PUT", path: "/po/settings", requires: CAN_POINT_RULES, capability: "po.settings", useCase: "Only PO_SETTINGS keys; optimistic lock; audited"},
+    {method: "GET", path: "/admin/linkedin-page", requires: CAN_ADMIN, capability: "admin.linkedin_page", useCase: "Configured page (wso2OrganizationUrn); calls today vs engagement.daily_call_budget"},
+    {method: "POST", path: "/admin/linkedin-page/connect/start", requires: CAN_ADMIN, capability: "admin.linkedin_page", useCase: "Issues a COMMUNITY_MANAGEMENT state; page scopes only"},
+    {method: "POST", path: "/admin/linkedin-page/connect/complete", requires: CAN_ADMIN, capability: "admin.linkedin_page", useCase: "State is the caller's page state; LinkedIn ADMINISTRATOR of the page, else 403 NOT_PAGE_ADMIN; tokens sealed as ORG; audited"},
+    {method: "DELETE", path: "/admin/linkedin-page", requires: CAN_ADMIN, capability: "admin.linkedin_page", useCase: "Revokes at LinkedIn, deletes the tokens, marks revoked; audited"},
     {method: "POST", path: "/admin/scheduler/sync", requires: CAN_ADMIN, capability: "admin.settings", useCase: "Pushes the schedule settings to the scheduler (ADR-026)"}
 ];
 

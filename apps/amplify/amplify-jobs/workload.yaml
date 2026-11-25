@@ -89,5 +89,12 @@ configurations:
       value: ""
     - name: BAL_CONFIG_VAR_AMPLIFYONNOVERA
       value: "true"
+    - name: BAL_CONFIG_VAR_LINKEDINPAGECLIENTID
+      value: ""
+    - name: BAL_CONFIG_VAR_LINKEDINPAGECLIENTSECRET
+      valueFrom:
+        secretRef:
+          name: amplify-jobs-secrets
+          key: BAL_CONFIG_VAR_LINKEDINPAGECLIENTSECRET
     - name: BAL_CONFIG_VAR_SHAREPUBLISHGAPMINUTES
       value: "10"

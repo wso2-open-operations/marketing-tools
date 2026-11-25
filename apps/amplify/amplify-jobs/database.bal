@@ -178,6 +178,27 @@ isolated function maintenanceDb() returns postgresql:Client|error {
     }
 }
 
+isolated postgresql:Client? engagementClient = ();
+
+# Dedicated single-connection client for the engagement sync: its session lock and its work on one connection, never
+# retired, apart from the run's pool (a long sync never takes a connection a run needs).
+#
+# + return - The client, or an error when not configured
+isolated function engagementDb() returns postgresql:Client|error {
+    lock {
+        postgresql:Client? existing = engagementClient;
+        if existing is postgresql:Client {
+            return existing;
+        }
+        if dbHost == "" {
+            return error("Database is not configured");
+        }
+        postgresql:Client created = check store:newClient(dbConfig(maxOpenConnections = 1, maxConnectionLifeTime = 0));
+        engagementClient = created;
+        return created;
+    }
+}
+
 # Connection settings from the configurables (the pool, the run-lock and the maintenance clients).
 #
 # + maxOpenConnections - Pool size

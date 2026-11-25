@@ -236,7 +236,8 @@ isolated function completeConnect(auth:Principal p, string? correlationId, Conne
         time:Utc now = time:utcNow();
         // Single use: consume deletes the state whether or not the rest succeeds.
         connection:OAuthState? state = check (check oauthStateRepository()).consume(body.state, p.employeeId, now);
-        if state is () {
+        // A page-connection state (Amplify Admin) never completes a member connect.
+        if state is () || state.providerApi != types:SHARE_ON_LINKEDIN {
             return conflicted(OAUTH_STATE_INVALID, "This sign-in link expired or was already used; start again",
                     correlationId);
         }

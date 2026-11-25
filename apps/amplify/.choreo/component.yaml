@@ -257,6 +257,25 @@ configurations:
         configForm:
           displayName: LinkedIn redirect URI (One WSO2 callback)
           type: string
+    # Community Management app (the company page connection, Amplify Admin). Empty client id = page connection off.
+    - name: BAL_CONFIG_VAR_LINKEDINPAGECLIENTID
+      valueFrom:
+        configForm:
+          displayName: LinkedIn Community Management client id (company page connection)
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_LINKEDINPAGECLIENTSECRET
+      valueFrom:
+        configForm:
+          displayName: LinkedIn Community Management client secret
+          type: secret
+          required: false
+    - name: BAL_CONFIG_VAR_LINKEDINPAGEREDIRECTURI
+      valueFrom:
+        configForm:
+          displayName: LinkedIn page connection redirect URI (One WSO2 admin callback)
+          type: string
+          required: false
     - name: BAL_CONFIG_VAR_LINKEDINAPIBASEURL
       valueFrom:
         configForm:

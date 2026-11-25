@@ -43,7 +43,7 @@ All are `configurable` in `main.bal`. In Choreo they arrive as `BAL_CONFIG_VAR_*
 | Path | What |
 | --- | --- |
 | `main.bal` | The runner: script listing, version table, checksums, out-of-order check, dry run, TLS check, server version check |
-| `migrations/` | Forward-only schema scripts, `V001` to `V024` (`V017` and `V023` are unused here; V023 is reserved by an open PR). See `migrations/README.md` |
+| `migrations/` | Forward-only schema scripts, `V001` to `V025` (`V017` and `V023` are unused here; V023 is reserved by an open PR). See `migrations/README.md` |
 | `seed/` | Idempotent seed data, `S001` to `S010`. See `seed/README.md` |
 | `checks/` | One-off read-only checks, not run by the runner. See below |
 | `tests/` | Unit tests and the `integration` group. See below |
@@ -887,6 +887,7 @@ history. The scripts as they stand carry neither.
 | `V021__immutable_ledger_and_audit.sql` | |
 | `V022__announcement_attempted_at.sql` | nullable `announcement.attempted_at timestamptz`, the Novera attempt marker (ADR-047). Jobs saves it before the call; a row already attempted is never sent again automatically |
 | `V024__external_share_note.sql` | nullable `external_sharing_external_share.note` (1 to 500 characters), the employee's note for the reviewer; recreates `external_sharing_external_share_v` so it carries the column; `identity_erase_employee` also clears it (`claimNotes` in its result) |
+| `V025__engagement_sync.sql` | `connection_org_connection` (the company page's token pointers, tokens in `connection_provider_token` as ORG), `sharing_sync_cursor`, `sharing_api_usage`, `sharing_native_intent`; `sharing_engagement.action` also allows `REACTION` and `COMMENT`. Erasure unchanged (no personal data in the new tables) |
 
 
 There are no grants to change since ADR-043. The review proposals about `REVOKE` on app roles (jobs-db review D4/D5, H3) no longer apply; V021 covers the ledger and the audit log, and `REVOKE TEMPORARY ON DATABASE <db> FROM PUBLIC` is a DBA decision.

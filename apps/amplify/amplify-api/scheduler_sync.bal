@@ -14,9 +14,9 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// SchedulerSync (ADR-026): the database settings are the source of truth; the scheduler holds a copy as two
-// jobs with stable ids. After a settings commit, at startup and on `POST /admin/scheduler/sync`, amplify-api
-// reads the settings and upserts both jobs. The scheduler being down never fails a settings save: the
+// SchedulerSync (ADR-026): the database settings are the source of truth; the scheduler holds a copy as three
+// jobs with stable ids (run, partition maintenance, engagement sync). After a settings commit, at startup and on
+// `POST /admin/scheduler/sync`, amplify-api reads the settings and upserts them. The scheduler being down never fails a settings save: the
 // answer says `PENDING` and the next reconcile converges.
 
 import amplify_api.auth;
@@ -44,6 +44,8 @@ configurable string schedulerCollection = "amplify";
 configurable int runDeadlineSeconds = 300;
 # Deadline for `POST /maintenance/partitions`, seconds.
 configurable int maintenanceDeadlineSeconds = 180;
+# Deadline for `POST /engagement/sync`, seconds.
+configurable int engagementDeadlineSeconds = 240;
 # Shortest `@every` interval an admin may set for `run.schedule`, seconds.
 configurable int minRunIntervalSeconds = 60;
 # Startup reconcile attempts (the scheduler or the database may start after amplify-api).
@@ -140,6 +142,19 @@ isolated function desiredJobs(Settings s) returns scheduler:JobSpec[] {
             retryCount: 2,
             retryIntervalSeconds: 60,
             deadlineSeconds: maintenanceDeadlineSeconds,
+            headers: schedulerKeyHeaders()
+        },
+        {
+            id: JOB_ENGAGEMENT_SYNC,
+            name: "Amplify engagement sync",
+            schedule: s.engagementSchedule,
+            // Off until an admin turns the sync on; amplify-jobs checks the setting again.
+            enabled: s.engagementSyncEnabled,
+            uri: base + "/engagement/sync",
+            // 202 SKIPPED (a sync in progress) is a success; a failed sync is picked up by the next tick.
+            retryCount: 0,
+            retryIntervalSeconds: 60,
+            deadlineSeconds: engagementDeadlineSeconds,
             headers: schedulerKeyHeaders()
         }
     ];

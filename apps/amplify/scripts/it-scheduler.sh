@@ -16,7 +16,7 @@
 # under the License.
 #
 # Scheduler integration test (ADR-026): starts postgres:17.11 + the pinned akorn/scheduler image (as UID 10014,
-# read-only) on a throwaway network, runs the amplify-api `scheduler-it` group (reconcile creates both jobs,
+# read-only) on a throwaway network, runs the amplify-api `scheduler-it` group (reconcile creates the jobs,
 # an admin interval change updates the job, the scheduler fires POST /runs at a stub amplify-jobs on the
 # host: `amplify-jobs` resolves to the host gateway, port 9598 as in tests/Config.toml), then removes
 # everything. Needs Docker, openssl and bal.

@@ -14,7 +14,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Egress from amplify-jobs (declared Choreo connections only): LinkedIn REST API and Novera (its token endpoint
+// Egress from amplify-jobs (declared Choreo connections only): LinkedIn REST API (shares, and the Community Management
+// reads of the engagement sync) and Novera (its token endpoint
 // and `POST /internal/notifications`). Each has its own pool, breaker and timeout (M9 bulkheads); neither retries
 // at the HTTP level, the outbox does (ADR-025).
 
@@ -22,6 +23,7 @@ import amplify_common.crypto;
 import amplify_common.linkedin;
 
 final linkedin:LinkedInAdapter? linkedInAdapter = check newLinkedInAdapter();
+final linkedin:CommunityAdapter? communityAdapter = check newCommunityAdapter();
 final NoveraClient? noveraClient = check newNoveraClient();
 final crypto:TokenCipher? tokenCipher = check newTokenCipher();
 
@@ -35,6 +37,26 @@ isolated function newLinkedInAdapter() returns linkedin:LinkedInAdapter?|error {
         clientId: linkedinClientId,
         clientSecret: "",
         redirectUri: "",
+        apiVersion: linkedinApiVersion,
+        timeoutSeconds: linkedinTimeoutSeconds,
+        apiResilience: linkedinApiResilience
+    });
+}
+
+# The Community Management client for the engagement sync (page token reads and the refresh grant). Its own pools
+# and breakers, apart from the share adapter's.
+#
+# + return - The adapter, `()` when no client id is configured, or an error
+isolated function newCommunityAdapter() returns linkedin:CommunityAdapter?|error {
+    string clientId = linkedinPageClientId.trim() != "" ? linkedinPageClientId.trim() : linkedinClientId;
+    if clientId == "" {
+        return ();
+    }
+    return check new linkedin:CommunityAdapter({
+        apiBaseUrl: linkedinApiBaseUrl,
+        authBaseUrl: linkedinAuthBaseUrl,
+        clientId,
+        clientSecret: linkedinPageClientSecret,
         apiVersion: linkedinApiVersion,
         timeoutSeconds: linkedinTimeoutSeconds,
         apiResilience: linkedinApiResilience
@@ -80,6 +102,7 @@ isolated function breakerStates() returns map<string> {
     return {
         database: dbBreaker.state(),
         linkedinApi: li is () ? "NOT_CONFIGURED" : li.breakers()["api"] ?: "CLOSED",
+        linkedinCommunity: communityBreaker(),
         novera: novera is () ? "NOT_CONFIGURED" : novera.breaker()
     };
 }

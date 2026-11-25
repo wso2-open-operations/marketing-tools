@@ -19,6 +19,8 @@
 #   register campaign -> scheduler fires amplify-run -> jobs POST /runs -> chat-stub got the card
 #   -> connect LinkedIn via mock OAuth (scripted redirect) -> share -> run -> points -> leaderboard
 #   -> dashboards (real HTTP, real database): role gating, the repost just made shows on every board
+#   -> connect the company page via mock OAuth -> inject a reaction, comment and reshare on the mock
+#   -> engagement sync on -> jobs POST /engagement/sync + POST /runs -> REACTION, COMMENT, REPOST in history -> sync off
 # Needs: curl, jq, docker compose. Exits non-zero on the first failed step.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -85,6 +87,24 @@ wait_for() {
   fail "timed out after ${secs}s waiting for: $what"
 }
 internal_get() { "${COMPOSE[@]}" exec -T "$1" wget -qO- "$2"; }
+# internal_jobs_post <path>: POST to amplify-jobs from inside amplify-api, with its internal key (never printed here)
+internal_jobs_post() {
+  "${COMPOSE[@]}" exec -T amplify-api sh -c \
+    'wget -qO- --header "X-Amplify-Internal-Key: $BAL_CONFIG_VAR_INTERNALAPIKEY" --header "X-Correlation-ID: '"e2e-${RUN_ID}"'" --post-data "" "http://amplify-jobs:9091$0"' "$1"
+}
+# mock_engagement <json>: inject an engagement into mock LinkedIn through its admin endpoint (key from local/.env)
+mock_engagement() {
+  local key
+  key=$(sed -n 's/^MOCK_ADMIN_KEY=//p' local/.env | tail -1)
+  "${COMPOSE[@]}" exec -T amplify-api wget -qO- --header "X-Amplify-Internal-Key: $key" \
+    --header 'Content-Type: application/json' --post-data "$1" http://mock-linkedin:9090/mock/engagement
+}
+# set_setting <jwt> <key> <json value>: PUT /admin/settings at the current version
+set_setting() {
+  local v
+  v=$(call "$1" GET /admin/settings | jq -r --arg k "$2" '.settings[] | select(.key == $k) | .version')
+  call "$1" PUT /admin/settings "{\"changes\":[{\"key\":\"$2\",\"value\":$3,\"version\":$v}]}" >/dev/null
+}
 
 step "health"
 curl -fsS "$API/ready" | jq -e '.status == "UP"' >/dev/null || fail "amplify-api not ready"
@@ -171,6 +191,47 @@ call "$EMP_JWT" GET "/leaderboard/groups?by=TEAM&sort=participation&dir=desc" | 
   || fail "group leaderboard failed"
 call "$EMP_JWT" GET /headcount | jq -e '.total >= 1' >/dev/null || fail "headcount failed"
 echo "ok: dashboards, group boards and headcount answer from the real database"
+
+step "connect the company page via mock OAuth (Community Management)"
+page_start=$(call "$ADMIN_JWT" POST /admin/linkedin-page/connect/start)
+PAGE_AUTH_URL=$(jq -r '.authorizationUrl' <<<"$page_start")
+[[ "$PAGE_AUTH_URL" == http://localhost:19091/* ]] || fail "page authorization URL is not browser-reachable: $PAGE_AUTH_URL"
+[[ "$PAGE_AUTH_URL" == *rw_organization_admin* && "$PAGE_AUTH_URL" != *w_member_social* ]] || fail "page scopes wrong: $PAGE_AUTH_URL"
+page_redirect=$(curl -sS -o /dev/null -w '%{redirect_url}' "$PAGE_AUTH_URL")
+PAGE_CODE=$(sed -n 's/.*[?&]code=\([^&]*\).*/\1/p' <<<"$page_redirect")
+PAGE_STATE=$(sed -n 's/.*[?&]state=\([^&]*\).*/\1/p' <<<"$page_redirect")
+[[ -n "$PAGE_CODE" && -n "$PAGE_STATE" ]] || fail "mock OAuth did not redirect the page flow with code+state: $page_redirect"
+PAGE_REDIRECT_URI=$(sed -n 's/^LINKEDIN_PAGE_REDIRECT_URI=//p' local/.env | tail -1)
+PAGE_REDIRECT_URI=${PAGE_REDIRECT_URI:-http://localhost:3000/amplify/admin/linkedin-page/callback}
+call "$ADMIN_JWT" POST /admin/linkedin-page/connect/complete \
+  "{\"code\":\"$PAGE_CODE\",\"state\":\"$PAGE_STATE\",\"redirectUri\":\"$PAGE_REDIRECT_URI\"}" \
+  | jq -e '.connected == true' >/dev/null || fail "page not connected"
+echo "ok: company page connected"
+
+step "inject a reaction, a comment and a reshare by the e2e member on the mock"
+MEMBER_URN=$("${COMPOSE[@]}" exec -T postgres sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -U postgres -d amplify -At -c "
+  SELECT member_urn FROM connection_member_connection WHERE employee_id = '"'$EMP_SUB'"'"' | tr -d '[:space:]')
+[[ "$MEMBER_URN" == urn:li:person:* ]] || fail "no member URN for $EMP_SUB"
+POST_URN="urn:li:share:${RUN_ID}"
+for kind in REACTION COMMENT RESHARE; do
+  mock_engagement "{\"kind\":\"$kind\",\"targetUrn\":\"$POST_URN\",\"actorUrn\":\"$MEMBER_URN\",\"commentary\":\"e2e words\"}" >/dev/null \
+    || fail "mock did not take the $kind"
+done
+echo "ok: three engagements injected"
+
+step "engagement sync on -> jobs POST /engagement/sync -> POST /runs"
+set_setting "$ADMIN_JWT" engagement.sync_enabled true
+sync=$(internal_jobs_post /engagement/sync) || fail "POST /engagement/sync failed"
+echo "$sync" | jq -c .
+echo "$sync" | jq -e '.status == "DONE" and .sync.reactions >= 1 and .sync.comments >= 1' >/dev/null \
+  || fail "the sync did not record the reaction and the comment"
+internal_jobs_post /runs >/dev/null || fail "POST /runs failed"
+history_has() { call "$EMP_JWT" GET "/team/$EMP_SUB/history?size=100" | jq -e --arg c "$CAMPAIGN_ID" '
+  [.. | objects | select(.campaignId? == $c and .points? != null) | .action] as $a
+  | ($a | index("REACTION")) and ($a | index("COMMENT")) and (($a | index("REPOST")) or ($a | index("REPOST_COMMENTARY")))'; }
+wait_for 60 "history has REACTION, COMMENT and REPOST rows with points" history_has
+set_setting "$ADMIN_JWT" engagement.sync_enabled false
+echo "ok: engagement sync turned back off"
 
 step "restore run.schedule -> @every 5m"
 version=$(call "$ADMIN_JWT" GET /admin/settings | jq -r '.settings[] | select(.key == "run.schedule") | .version')

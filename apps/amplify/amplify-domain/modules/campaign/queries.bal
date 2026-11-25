@@ -237,3 +237,34 @@ public isolated function titlesOf(postgresql:Client db, string[] ids) returns ma
         };
     return titles;
 }
+
+# An open campaign as the engagement sync sees it.
+public type OpenCampaign record {|
+    # Campaign id
+    string id;
+    # The page post (`resource_urn`)
+    string resourceUrn;
+    # Window start
+    time:Utc opensAt;
+    # Window end
+    time:Utc closesAt;
+|};
+
+# The page's campaigns that are open now (not archived, inside their window), for the Community Management
+# engagement sync. Reads only `campaign`.
+#
+# + db - Client
+# + ownerUrn - The page (`campaign.owner_urn`)
+# + now - Current time
+# + return - Open campaigns, oldest window first, or an error
+public isolated function openCampaignsOf(postgresql:Client db, string ownerUrn, time:Utc now)
+        returns OpenCampaign[]|error {
+    stream<record {|string id; string resource_urn; time:Utc opens_at; time:Utc closes_at;|}, error?> rows = db->query(`
+        SELECT id::text AS id, resource_urn, opens_at, closes_at
+        FROM campaign
+        WHERE owner_urn = ${ownerUrn} AND provider = 'linkedin' AND archived_at IS NULL
+          AND opens_at <= CAST(${store:ts(now)} AS timestamptz) AND closes_at > CAST(${store:ts(now)} AS timestamptz)
+        ORDER BY opens_at, id`);
+    return from var r in rows
+        select {id: r.id, resourceUrn: r.resource_urn, opensAt: r.opens_at, closesAt: r.closes_at};
+}

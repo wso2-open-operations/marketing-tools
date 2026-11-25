@@ -63,6 +63,12 @@ type Settings record {|
     string coinSchedule = "MONTHLY";
     # `coin.wallets_enabled`: send Coins to wallets; off until the WSO2 Coins API exists (points keep counting)
     boolean coinWalletsEnabled = false;
+    # `engagement.sync_enabled`: the scheduler's engagement sync job fires (and amplify-jobs syncs) only when true
+    boolean engagementSyncEnabled = false;
+    # `engagement.schedule`: when the scheduler calls amplify-jobs `POST /engagement/sync`
+    string engagementSchedule = "0 */2 * * *";
+    # `engagement.daily_call_budget`: Community Management calls per UTC day
+    int engagementDailyBudget = 450;
 |};
 
 # One editable key: its kind and allowed range.
@@ -97,7 +103,10 @@ final readonly & map<SettingRule> EDITABLE_SETTINGS = {
     [SETTING_COIN_BLOCK_POINTS]: {kind: "int", min: 1, max: 100000},
     [SETTING_COIN_BLOCK_COINS]: {kind: "int", min: 1, max: 100000},
     [SETTING_COIN_SCHEDULE]: {kind: "enum", values: ["MONTHLY", "WEEKLY", "DAILY"]},
-    [SETTING_COIN_WALLETS_ENABLED]: {kind: "boolean"}
+    [SETTING_COIN_WALLETS_ENABLED]: {kind: "boolean"},
+    [SETTING_ENGAGEMENT_SYNC_ENABLED]: {kind: "boolean"},
+    [SETTING_ENGAGEMENT_SCHEDULE]: {kind: "schedule", min: 900},
+    [SETTING_ENGAGEMENT_DAILY_BUDGET]: {kind: "int", min: 0, max: 100000}
 };
 
 # The business numbers the PO team changes on Amplify Admin (`GET/PUT /po/settings`). Switches and schedules stay
@@ -106,7 +115,8 @@ final readonly & string[] PO_SETTINGS = [SETTING_COIN_BLOCK_POINTS, SETTING_COIN
     SETTING_EXTERNAL_SHARE_DAILY_LIMIT];
 
 # Keys whose change is pushed to the scheduler.
-final readonly & string[] SCHEDULE_SETTINGS = [SETTING_RUN_SCHEDULE, SETTING_RUN_ENABLED, SETTING_MAINTENANCE_SCHEDULE];
+final readonly & string[] SCHEDULE_SETTINGS = [SETTING_RUN_SCHEDULE, SETTING_RUN_ENABLED, SETTING_MAINTENANCE_SCHEDULE,
+    SETTING_ENGAGEMENT_SYNC_ENABLED, SETTING_ENGAGEMENT_SCHEDULE];
 
 # Whether a key is listed: every editable key, plus the read-only ones the admin screen shows. Seeded keys nobody
 # reads yet (an old `coin.*` placeholder, for example) stay out.
@@ -238,6 +248,15 @@ isolated function settingsOf(store:Setting[] rows) returns Settings {
             }
             SETTING_MAINTENANCE_SCHEDULE => {
                 s.maintenanceSchedule = v is string && scheduler:checkSchedule(v) is () ? v : s.maintenanceSchedule;
+            }
+            SETTING_ENGAGEMENT_SYNC_ENABLED => {
+                s.engagementSyncEnabled = v == true;
+            }
+            SETTING_ENGAGEMENT_SCHEDULE => {
+                s.engagementSchedule = v is string && scheduler:checkSchedule(v) is () ? v : s.engagementSchedule;
+            }
+            SETTING_ENGAGEMENT_DAILY_BUDGET => {
+                s.engagementDailyBudget = v is int && v >= 0 ? v : s.engagementDailyBudget;
             }
         }
     }

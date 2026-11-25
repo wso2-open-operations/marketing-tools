@@ -393,6 +393,28 @@ service http:InterceptableService / on apiListener {
             : {items: from var r in rows select shareViewDto(r).toJson()});
     }
 
+    # Records that the caller opened an open campaign post to reshare it on LinkedIn itself (native repost).
+    #
+    # + ctx - Request context
+    # + req - Request
+    # + id - Campaign id
+    # + return - The intent with its `nativeStatus`, or problem details
+    resource function post campaigns/[string id]/native\-intent(http:RequestContext ctx, http:Request req)
+            returns http:Response|error {
+        final auth:Principal & readonly p = (check principalOf(ctx)).cloneReadOnly();
+        final string? c = cid(ctx);
+        final string idFinal = id;
+        return idempotent(ctx, req, p, "/campaigns/" + id + "/native-intent", (),
+                isolated function() returns http:StatusCodeResponse => recordNativeIntent(p, c, idFinal));
+    }
+
+    # The caller's native repost intents: `LOOKING` (under 24 h), `DETECTED` or `NOT_FOUND`.
+    #
+    # + ctx - Request context
+    # + return - Intents, or problem details
+    resource function get me/native\-intents(http:RequestContext ctx) returns http:Response|ProblemResponse|error =>
+        okJson(nativeIntentsOf(check principalOf(ctx), cid(ctx)));
+
     // ---- S3 External Sharing -----------------------------------------------------------------------
 
     # Claims an external share.
@@ -794,6 +816,49 @@ service http:InterceptableService / on apiListener {
     resource function put po/settings(http:RequestContext ctx, @http:Payload SettingChangesBody body)
             returns http:Response|ProblemResponse|error =>
         okJson(changeSettings(check principalOf(ctx), cid(ctx), body, PO_SETTINGS));
+
+    # The company page connection: who connected it, its expiry and today's Community Management calls.
+    #
+    # + ctx - Request context
+    # + return - The status, or problem details
+    resource function get admin/linkedin\-page(http:RequestContext ctx) returns http:Response|ProblemResponse|error =>
+        okJson(pageStatus(cid(ctx)));
+
+    # Starts the company page OAuth flow (Community Management app, page scopes only).
+    #
+    # + ctx - Request context
+    # + req - Request
+    # + return - Authorization URL and state, or problem details
+    resource function post admin/linkedin\-page/connect/'start(http:RequestContext ctx, http:Request req)
+            returns http:Response|error {
+        final auth:Principal & readonly p = (check principalOf(ctx)).cloneReadOnly();
+        final string? c = cid(ctx);
+        return idempotent(ctx, req, p, "/admin/linkedin-page/connect/start", (),
+                isolated function() returns http:StatusCodeResponse => startPageConnect(p, c));
+    }
+
+    # Completes the company page OAuth flow: the admin must be an approved administrator of the page.
+    #
+    # + ctx - Request context
+    # + req - Request
+    # + body - Code, state and the callback page
+    # + return - The page status, 403 `NOT_PAGE_ADMIN`, or problem details
+    resource function post admin/linkedin\-page/connect/complete(http:RequestContext ctx, http:Request req,
+            @http:Payload ConnectCompleteBody body) returns http:Response|error {
+        final auth:Principal & readonly p = (check principalOf(ctx)).cloneReadOnly();
+        final string? c = cid(ctx);
+        final readonly & ConnectCompleteBody b = body.cloneReadOnly();
+        // The code is a one-time secret: fingerprint the state only.
+        return idempotent(ctx, req, p, "/admin/linkedin-page/connect/complete", {state: b.state},
+                isolated function() returns http:StatusCodeResponse => completePageConnect(p, c, b));
+    }
+
+    # Disconnects the company page: revokes the token at LinkedIn and deletes it.
+    #
+    # + ctx - Request context
+    # + return - 204, or problem details
+    resource function delete admin/linkedin\-page(http:RequestContext ctx) returns http:NoContent|ProblemResponse|error =>
+        disconnectPage(check principalOf(ctx), cid(ctx));
 
     # Converges the scheduler jobs to the schedule settings (ADR-026).
     #

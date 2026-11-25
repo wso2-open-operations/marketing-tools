@@ -21,9 +21,9 @@
 // operations Amplify has. Every call except the two probes must carry a key (ADR-039, amended 2026-11-01):
 //
 // - `internalApiKey` opens every route. amplify-api uses it for its own triggers ("Save & Share Now").
-// - `schedulerApiKey` opens only `POST /runs` and `POST /maintenance/partitions`. It is the key the scheduler
-//   holds (a static header on each registered job, and so also in the scheduler's own database), so a leak
-//   of it cannot reach the rebuild or the leaver sweep.
+// - `schedulerApiKey` opens only `POST /runs`, `POST /maintenance/partitions` and `POST /engagement/sync`. It is
+//   the key the scheduler holds (a static header on each registered job, and so also in the scheduler's own
+//   database), so a leak of it cannot reach the rebuild or the leaver sweep.
 
 import amplify_common.crypto;
 
@@ -38,7 +38,8 @@ const string INTERNAL_KEY_HEADER = "X-Amplify-Internal-Key";
 configurable string internalApiKey = ?;
 
 # Secret the scheduler's jobs carry (a Choreo secret; locally `AMPLIFY_SCHEDULER_API_KEY`). Opens only
-# `POST /runs` and `POST /maintenance/partitions`. Required, and must differ from `internalApiKey`.
+# `POST /runs`, `POST /maintenance/partitions` and `POST /engagement/sync`. Required, and must differ from
+# `internalApiKey`.
 configurable string schedulerApiKey = ?;
 
 # What a presented key is allowed to do.
@@ -101,17 +102,18 @@ isolated function decideAccess(string presented, string internal, string schedul
     return DENIED;
 }
 
-# The only two calls the scheduler key opens.
+# The only calls the scheduler key opens.
 #
 # + method - HTTP method
 # + path - Request path segments
-# + return - True for `POST /runs` and `POST /maintenance/partitions`
+# + return - True for `POST /runs`, `POST /maintenance/partitions` and `POST /engagement/sync`
 isolated function schedulerMayCall(string method, string[] path) returns boolean {
     if method != http:POST {
         return false;
     }
     return (path.length() == 1 && path[0] == "runs")
-        || (path.length() == 2 && path[0] == "maintenance" && path[1] == "partitions");
+        || (path.length() == 2 && path[0] == "maintenance" && path[1] == "partitions")
+        || (path.length() == 2 && path[0] == "engagement" && path[1] == "sync");
 }
 
 # Whether a presented key is the configured one. Both sides are trimmed: amplify-api and the scheduler send the

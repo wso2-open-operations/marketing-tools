@@ -188,6 +188,17 @@ isolated function tokenRepository() returns connection:TokenRepository|error =>
 isolated function oauthStateRepository() returns connection:OAuthStateRepository|error =>
     new connection:PgOAuthStateRepository(check db());
 
+isolated function orgConnectionRepository(store:Actor actor) returns connection:OrgConnectionRepository|error =>
+    new connection:PgOrgConnectionRepository(check db(), actor);
+
+isolated function nativeIntentRepository() returns sharing:NativeIntentRepository|error =>
+    new sharing:PgNativeIntentRepository(check db());
+
+# Community Management calls made today, UTC (a seam the tests replace).
+#
+# + return - Calls, or an error
+isolated function apiCallsToday() returns int|error => sharing:apiCallsOn(check db(), time:utcNow());
+
 isolated function campaignRepository(store:Actor actor) returns campaign:CampaignRepository|error =>
     new campaign:PgCampaignRepository(check db(), actor);
 

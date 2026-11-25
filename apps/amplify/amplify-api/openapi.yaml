@@ -359,6 +359,46 @@ paths:
         "401": {$ref: "#/components/responses/Problem"}
         "503": {$ref: "#/components/responses/Problem"}
 
+  /campaigns/{id}/native-intent:
+    post:
+      tags: [C1 Sharing]
+      operationId: recordNativeIntent
+      x-access: EMPLOYEE
+      description: >-
+        Records that the caller opened an open campaign to reshare it on LinkedIn itself. The engagement sync marks it
+        `DETECTED` when it sees the reshare; a later click restarts the 24-hour look unless it was already detected.
+        404 for a campaign that isn't open.
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+        - {$ref: "#/components/parameters/CampaignId"}
+      responses:
+        "200":
+          description: Recorded
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/NativeIntent"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /me/native-intents:
+    get:
+      tags: [C1 Sharing]
+      operationId: listMyNativeIntents
+      x-access: EMPLOYEE
+      description: The caller's native reposts, newest first, each with `nativeStatus` (`LOOKING` under 24 hours, `DETECTED`, `NOT_FOUND` after 24 hours).
+      parameters: [{$ref: "#/components/parameters/CorrelationId"}]
+      responses:
+        "200":
+          description: Intents
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/NativeIntentList"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+
   /external-shares:
     post:
       tags: [S3 External Sharing]
@@ -1102,12 +1142,86 @@ paths:
         "409": {$ref: "#/components/responses/Problem"}
         "422": {$ref: "#/components/responses/Problem"}
         "503": {$ref: "#/components/responses/Problem"}
+  /admin/linkedin-page:
+    get:
+      tags: [S5 Admin]
+      operationId: getLinkedInPage
+      x-access: CAN_ADMIN
+      description: The company page connection (Community Management) for the configured page, and today's calls against `engagement.daily_call_budget`.
+      parameters: [{$ref: "#/components/parameters/CorrelationId"}]
+      responses:
+        "200":
+          description: Page connection
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LinkedInPage"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+    delete:
+      tags: [S5 Admin]
+      operationId: disconnectLinkedInPage
+      x-access: CAN_ADMIN
+      description: Revokes the page token at LinkedIn, deletes the token rows and marks the connection revoked (audited). 503 when LinkedIn couldn't confirm; the connection is kept.
+      parameters: [{$ref: "#/components/parameters/CorrelationId"}]
+      responses:
+        "204": {description: Disconnected (or never connected)}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /admin/linkedin-page/connect/start:
+    post:
+      tags: [S5 Admin]
+      operationId: startLinkedInPageConnect
+      x-access: CAN_ADMIN
+      description: Starts the page OAuth flow with the Community Management app and the page scopes only (`r_organization_social_feed rw_organization_admin`). Issues a single-use state valid for 10 minutes.
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      responses:
+        "200":
+          description: Redirect the browser to `authorizationUrl`
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ConnectAuthorization"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /admin/linkedin-page/connect/complete:
+    post:
+      tags: [S5 Admin]
+      operationId: completeLinkedInPageConnect
+      x-access: CAN_ADMIN
+      description: >-
+        Completes the page flow. The state must be the caller's page state, unused and unexpired; `redirectUri` the
+        configured page callback. Exchanges the code and checks the admin is an approved ADMINISTRATOR of the page
+        (403 `NOT_PAGE_ADMIN` otherwise), then seals the tokens as ORG and upserts the connection (audited).
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ConnectComplete"}
+      responses:
+        "200":
+          description: Connected
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LinkedInPage"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
   /admin/scheduler/sync:
     post:
       tags: [S5 Admin]
       operationId: syncScheduler
       x-access: CAN_ADMIN
-      description: Converges the scheduler's jobs (`amplify-run`, `amplify-maintenance-partitions`) to the schedule settings (ADR-026). Safe to repeat. 503 `SCHEDULER_UNAVAILABLE` when the scheduler can't be reached.
+      description: Converges the scheduler's jobs (`amplify-run`, `amplify-maintenance-partitions`, `amplify-engagement-sync`) to the schedule settings (ADR-026). Safe to repeat. 503 `SCHEDULER_UNAVAILABLE` when the scheduler can't be reached.
       parameters:
         - {$ref: "#/components/parameters/CorrelationId"}
         - {$ref: "#/components/parameters/IdempotencyKey"}
@@ -1198,7 +1312,8 @@ components:
             ALREADY_REVERSED, CANNOT_REVERSE_REVERSAL, INVALID_LEDGER_REFERENCE, TEAM_SCOPE,
             ANNOUNCEMENT_NOT_FAILED, UNKNOWN_SETTING, INVALID_SETTING, SCHEDULER_UNAVAILABLE, INVALID_EMPLOYEE_ID,
             INVALID_EMAIL, INVALID_MEMBER_URN, INVALID_POST_URN, INVALID_UUID, SHARE_NOT_QUEUED, PAID_NOT_ALLOWED,
-            ALREADY_ANNOUNCED, ANNOUNCEMENT_NOT_QUEUED, COMMENTARY_NOT_OWN_WORDS, DAILY_LIMIT_REACHED, NOTE_TOO_LONG]
+            ALREADY_ANNOUNCED, ANNOUNCEMENT_NOT_QUEUED, COMMENTARY_NOT_OWN_WORDS, DAILY_LIMIT_REACHED, NOTE_TOO_LONG,
+            NOT_PAGE_ADMIN]
         detail: {type: string, nullable: true}
         correlationId: {type: string, nullable: true}
     HealthStatus:
@@ -1432,6 +1547,29 @@ components:
       required: [items]
       properties:
         items: {type: array, items: {$ref: "#/components/schemas/Share"}}
+    NativeIntent:
+      type: object
+      required: [campaignId, openedAt, detectedAt, nativeStatus]
+      properties:
+        campaignId: {type: string, format: uuid}
+        openedAt: {type: string, format: date-time}
+        detectedAt: {type: string, format: date-time, nullable: true}
+        nativeStatus: {type: string, enum: [LOOKING, DETECTED, NOT_FOUND]}
+    NativeIntentList:
+      type: object
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/NativeIntent"}}
+    LinkedInPage:
+      type: object
+      required: [connected, connectedByName, connectedAt, accessExpiresAt, callsToday, dailyBudget]
+      properties:
+        connected: {type: boolean}
+        connectedByName: {type: string, nullable: true}
+        connectedAt: {type: string, format: date-time, nullable: true}
+        accessExpiresAt: {type: string, format: date-time, nullable: true}
+        callsToday: {type: integer, minimum: 0}
+        dailyBudget: {type: integer, minimum: 0}
 
     ExternalShareClaim:
       type: object

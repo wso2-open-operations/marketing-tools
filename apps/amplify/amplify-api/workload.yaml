@@ -115,6 +115,15 @@ configurations:
           key: BAL_CONFIG_VAR_LINKEDINCLIENTSECRET
     - name: BAL_CONFIG_VAR_LINKEDINREDIRECTURI
       value: ""
+    - name: BAL_CONFIG_VAR_LINKEDINPAGECLIENTID
+      value: ""
+    - name: BAL_CONFIG_VAR_LINKEDINPAGECLIENTSECRET
+      valueFrom:
+        secretRef:
+          name: amplify-api-secrets
+          key: BAL_CONFIG_VAR_LINKEDINPAGECLIENTSECRET
+    - name: BAL_CONFIG_VAR_LINKEDINPAGEREDIRECTURI
+      value: ""
     - name: BAL_CONFIG_VAR_LINKEDINAPIBASEURL
       value: ""
     - name: BAL_CONFIG_VAR_LINKEDINAUTHBASEURL

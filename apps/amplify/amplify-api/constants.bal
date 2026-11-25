@@ -91,6 +91,8 @@ const string OAUTH_REDIRECT_MISMATCH = "OAUTH_REDIRECT_MISMATCH";
 const string METHOD_NOT_ALLOWED = "METHOD_NOT_ALLOWED";
 # Outside the caller's team scope (leaderboards.md).
 const string TEAM_SCOPE = "TEAM_SCOPE";
+# The admin who connected the company page is not an approved administrator of it on LinkedIn.
+const string NOT_PAGE_ADMIN = "NOT_PAGE_ADMIN";
 # Setting key not editable.
 const string UNKNOWN_SETTING = "UNKNOWN_SETTING";
 # Setting value out of range.
@@ -127,5 +129,10 @@ const string SETTING_MAINTENANCE_SCHEDULE = "maintenance.schedule";
 # Scheduler job ids (stable: the upsert key).
 const string JOB_RUN = "amplify-run";
 const string JOB_MAINTENANCE = "amplify-maintenance-partitions";
+const string JOB_ENGAGEMENT_SYNC = "amplify-engagement-sync";
+// ---- Community Management engagement sync (V025, S013) ---------------------------------------------
+const string SETTING_ENGAGEMENT_SYNC_ENABLED = "engagement.sync_enabled";
+const string SETTING_ENGAGEMENT_SCHEDULE = "engagement.schedule";
+const string SETTING_ENGAGEMENT_DAILY_BUDGET = "engagement.daily_call_budget";
 # Scheduler unreachable on an explicit sync.
 const string SCHEDULER_UNAVAILABLE = "SCHEDULER_UNAVAILABLE";
