@@ -142,6 +142,23 @@ public isolated function removeAccessToken(string value) returns boolean {
     }
 }
 
+# Forgets every token a member holds for any app, like a member removing the app under "Permitted
+# services" in their LinkedIn settings. Later calls with those tokens answer 401.
+#
+# + memberSub - Member `sub`
+# + return - Number of tokens removed
+public isolated function revokeMemberTokens(string memberSub) returns int {
+    lock {
+        string[] values = from AccessToken existing in accessTokens
+            where existing.memberSub == memberSub
+            select existing.value;
+        foreach string value in values {
+            _ = accessTokens.remove(value);
+        }
+        return values.length();
+    }
+}
+
 # Adds one to a request counter and returns the new count.
 #
 # + key - Counter key, for example the member and UTC day

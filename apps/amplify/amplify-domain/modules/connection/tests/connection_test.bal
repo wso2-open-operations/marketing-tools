@@ -39,12 +39,17 @@ isolated class InMemoryConnections {
 
     public isolated function findByMember(types:Provider provider, types:MemberUrn memberUrn) returns LinkedInConnection|error? {
         lock {
+            // Like the SQL: the live holder first, else any removed row.
+            LinkedInConnection? removed = ();
             foreach LinkedInConnection c in self.rows {
                 if c.memberUrn == memberUrn {
-                    return c.clone();
+                    if c.removedAt is () {
+                        return c.clone();
+                    }
+                    removed = c.clone();
                 }
             }
-            return ();
+            return removed.clone();
         }
     }
 
@@ -119,8 +124,12 @@ function statusLifecycleFromTimestamps() returns error? {
 @test:Config
 function revokedAndRemovedStatuses() returns error? {
     LinkedInConnection c = (check connect((), command(), T0)).connection;
-    LinkedInConnection revoked = (check revoke(c, types:addDays(T0, 1))).connection;
+    ConnectionChange revokeChange = check revoke(c, types:addDays(T0, 1));
+    LinkedInConnection revoked = revokeChange.connection;
     test:assertEquals(connectionStatus(revoked, types:addDays(T0, 1)), NEEDS_RECONNECT);
+    test:assertEquals(revoked.currentToken, (), "a rejected token is dropped");
+    test:assertEquals(revokeChange.tokenToDelete, {tokenId: "t1", issuedOn: "2026-10-16"}, "and its row deleted");
+    test:assertEquals(revokeChange.outbox.map(e => e.eventType), [events:CONNECTION_REVOKED]);
     LinkedInConnection removed = (check remove(c, types:addDays(T0, 1))).connection;
     test:assertEquals(connectionStatus(removed, types:addDays(T0, 1)), REMOVED, "removed wins");
     test:assertEquals(removed.currentToken, (), "points at no token after removal");
@@ -136,7 +145,7 @@ function reconnectClearsRevocationAndReplacesToken() returns error? {
     test:assertEquals(again.connection.revokedAt, ());
     test:assertEquals(again.connection.connectedAt, types:addDays(T0, 2));
     test:assertEquals(again.connection.currentToken, {tokenId: "t2", issuedOn: "2026-10-16"});
-    test:assertEquals(again.tokenToDelete, {tokenId: "t1", issuedOn: "2026-10-16"}, "old token deleted right away");
+    test:assertEquals(again.tokenToDelete, (), "the revoke already deleted the old token");
     test:assertEquals(connectionStatus(again.connection, types:addDays(T0, 2)), ACTIVE);
     test:assertEquals(again.connection.version, revoked.version + 1);
 }
@@ -178,6 +187,33 @@ function oneEmployeePerMemberAndOneConnectionPerEmployee() returns error? {
     LinkedInConnection again = check completeConnection(repo, command(tokenId = "t2"), types:addDays(T0, 1));
     test:assertEquals(again.version, 2, "same row reused: one connection per employee");
     test:assertEquals(repo.deletedTokens(), [{tokenId: "t1", issuedOn: "2026-10-16"}]);
+}
+
+@test:Config
+function removedConnectionDoesNotBlockLinkingTheMemberAgain() returns error? {
+    InMemoryConnections repo = new;
+    _ = check completeConnection(repo, command(), T0);
+    _ = check removeConnection(repo, "emp-1", types:addDays(T0, 1));
+    // Another employee row (an alias, a re-created account) can now link the same member.
+    LinkedInConnection other = check completeConnection(repo, command(employeeId = "emp-2", tokenId = "t2"),
+            types:addDays(T0, 2));
+    test:assertEquals(other.employeeId, "emp-2");
+    // And the removed employee is the one now blocked while emp-2 holds it.
+    test:assertEquals(code(completeConnection(repo, command(tokenId = "t3"), types:addDays(T0, 3))),
+            types:ERR_MEMBER_ALREADY_LINKED);
+}
+
+@test:Config
+function reconnectKeepsOrUpdatesTheMemberName() returns error? {
+    ConnectCommand first = command();
+    first.memberName = "Jane Smith";
+    LinkedInConnection c = (check connect((), first, T0)).connection;
+    test:assertEquals(c.memberName, "Jane Smith");
+    LinkedInConnection kept = (check connect(c, command(tokenId = "t2"), T0)).connection;
+    test:assertEquals(kept.memberName, "Jane Smith", "userinfo without a name keeps the last one");
+    ConnectCommand renamed = command(tokenId = "t3");
+    renamed.memberName = "Jane Doe";
+    test:assertEquals((check connect(kept, renamed, T0)).connection.memberName, "Jane Doe");
 }
 
 @test:Config

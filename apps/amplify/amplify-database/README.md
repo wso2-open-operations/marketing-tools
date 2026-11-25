@@ -43,7 +43,7 @@ All are `configurable` in `main.bal`. In Choreo they arrive as `BAL_CONFIG_VAR_*
 | Path | What |
 | --- | --- |
 | `main.bal` | The runner: script listing, version table, checksums, out-of-order check, dry run, TLS check, server version check |
-| `migrations/` | Forward-only schema scripts, `V001` to `V022` (`V017` is unused). See `migrations/README.md` |
+| `migrations/` | Forward-only schema scripts, `V001` to `V024` (`V017` and `V023` are unused here). See `migrations/README.md` |
 | `seed/` | Idempotent seed data, `S001` to `S010`. See `seed/README.md` |
 | `checks/` | One-off read-only checks, not run by the runner. See below |
 | `tests/` | Unit tests and the `integration` group. See below |

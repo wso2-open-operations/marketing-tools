@@ -55,7 +55,13 @@ configurable resilience:HttpResilience linkedinApiResilience = {};
 # LinkedIn posts per run (app quota protection).
 configurable int linkedinMaxPostsPerRun = 50;
 # LinkedIn posts per UTC day across runs, counted from published shares (app daily limit budget).
-configurable int linkedinMaxPostsPerDay = 1000;
+configurable int linkedinMaxPostsPerDay = 480;
+# Company page that can be mentioned as `@[...](amplify:org:wso2)`; empty = no organization mentions. Same value
+# as amplify-api's `wso2OrganizationUrn`.
+configurable string linkedinOrgUrn = "urn:li:organization:1477";
+# The page's full LinkedIn name. LinkedIn links an organization mention only when the text matches the full
+# name exactly (case sensitive), so this must be the page name as LinkedIn shows it.
+configurable string linkedinOrgName = "WSO2";
 
 // ---- Novera (Google Chat assistant): the one announcement channel (M6a) -----------------------------
 

@@ -237,7 +237,17 @@ isolated function validCommentary(types:ShareKind kind, string? raw) returns str
         if commentary is () {
             return types:domainError(types:ERR_COMMENTARY_REQUIRED, "Add your thoughts, or choose a plain repost");
         }
-        if commentary.length() > COMMENTARY_MAX_LENGTH {
+        // Counted the way the UI counts it: UTF-16 units of what LinkedIn shows, a mention as its label.
+        if types:commentaryLength(commentary) > COMMENTARY_MAX_LENGTH {
+            return types:domainError(types:ERR_COMMENTARY_TOO_LONG,
+                    string `Your thoughts must be at most ${COMMENTARY_MAX_LENGTH} characters`);
+        }
+        if types:mentionTokens(commentary).length() > types:MENTION_MAX_COUNT {
+            return types:domainError(types:ERR_TOO_MANY_MENTIONS,
+                    string `Mention at most ${types:MENTION_MAX_COUNT} people or pages`);
+        }
+        if commentary.length() > COMMENTARY_STORED_MAX_LENGTH {
+            // Only reachable with long labels in many tokens; the column holds 8000.
             return types:domainError(types:ERR_COMMENTARY_TOO_LONG,
                     string `Your thoughts must be at most ${COMMENTARY_MAX_LENGTH} characters`);
         }

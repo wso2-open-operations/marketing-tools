@@ -40,6 +40,7 @@ type ConnectionRow record {|
     time:Utc? removed_at;
     time:Utc? last_reminded_at;
     int version;
+    string? member_name;
 |};
 
 type TokenRow record {|
@@ -74,7 +75,7 @@ public isolated class PgConnectionRepository {
         ConnectionRow|error row = self.db->queryRow(`
             SELECT employee_id, provider, member_urn, provider_api, array_to_json(scopes)::text AS scopes,
                    current_token_id::text AS current_token_id, current_token_issued_on::text AS current_token_issued_on,
-                   access_expires_at, connected_at, revoked_at, removed_at, last_reminded_at, version
+                   access_expires_at, connected_at, revoked_at, removed_at, last_reminded_at, version, member_name
             FROM connection_member_connection WHERE employee_id = ${employeeId} AND provider = ${provider}`);
         return toConnection(row);
     }
@@ -83,8 +84,11 @@ public isolated class PgConnectionRepository {
         ConnectionRow|error row = self.db->queryRow(`
             SELECT employee_id, provider, member_urn, provider_api, array_to_json(scopes)::text AS scopes,
                    current_token_id::text AS current_token_id, current_token_issued_on::text AS current_token_issued_on,
-                   access_expires_at, connected_at, revoked_at, removed_at, last_reminded_at, version
-            FROM connection_member_connection WHERE provider = ${provider} AND member_urn = ${memberUrn}`);
+                   access_expires_at, connected_at, revoked_at, removed_at, last_reminded_at, version, member_name
+            FROM connection_member_connection WHERE provider = ${provider} AND member_urn = ${memberUrn}
+            -- Removed rows keep their member URN; the live holder (at most one, unique index) comes first.
+            ORDER BY removed_at IS NULL DESC, connected_at DESC
+            LIMIT 1`);
         return toConnection(row);
     }
 
@@ -120,10 +124,11 @@ public isolated class PgConnectionRepository {
                 _ = check self.db->execute(`
                     INSERT INTO connection_member_connection (employee_id, provider, member_urn, provider_api, scopes,
                         current_token_id, current_token_issued_on, access_expires_at, connected_at, revoked_at,
-                        removed_at, last_reminded_at, version)
+                        removed_at, last_reminded_at, version, member_name)
                     VALUES (${c.employeeId}, ${c.provider}, ${c.memberUrn}, ${c.providerApi}, CAST(${scopes} AS text[]),
                         CAST(${tokenId} AS uuid), CAST(${issuedOn} AS date), CAST(${store:ts(c.accessExpiresAt)} AS timestamptz), CAST(${store:ts(c.connectedAt)} AS timestamptz),
-                        CAST(${store:ts(c.revokedAt)} AS timestamptz), CAST(${store:ts(c.removedAt)} AS timestamptz), CAST(${store:ts(c.lastRemindedAt)} AS timestamptz), ${c.version})`);
+                        CAST(${store:ts(c.revokedAt)} AS timestamptz), CAST(${store:ts(c.removedAt)} AS timestamptz), CAST(${store:ts(c.lastRemindedAt)} AS timestamptz), ${c.version},
+                        ${c.memberName})`);
             } else {
                 // Read and lock the row in the same statement that changes it (`RETURNING old.*` needs PostgreSQL 18).
                 record {|string member_urn; int version; boolean revoked; boolean removed;|}|error old = self.db->queryRow(`
@@ -138,7 +143,8 @@ public isolated class PgConnectionRepository {
                         current_token_id = CAST(${tokenId} AS uuid), current_token_issued_on = CAST(${issuedOn} AS date),
                         access_expires_at = CAST(${store:ts(c.accessExpiresAt)} AS timestamptz), connected_at = CAST(${store:ts(c.connectedAt)} AS timestamptz),
                         revoked_at = CAST(${store:ts(c.revokedAt)} AS timestamptz), removed_at = CAST(${store:ts(c.removedAt)} AS timestamptz),
-                        last_reminded_at = CAST(${store:ts(c.lastRemindedAt)} AS timestamptz), version = ${c.version}
+                        last_reminded_at = CAST(${store:ts(c.lastRemindedAt)} AS timestamptz), version = ${c.version},
+                        member_name = ${c.memberName}
                     FROM prev
                     WHERE connection_member_connection.employee_id = prev.employee_id
                       AND connection_member_connection.provider = prev.provider
@@ -292,6 +298,7 @@ isolated function toConnection(ConnectionRow|error row) returns LinkedInConnecti
         revokedAt: row.revoked_at,
         removedAt: row.removed_at,
         lastRemindedAt: row.last_reminded_at,
-        version: row.version
+        version: row.version,
+        memberName: row.member_name
     };
 }

@@ -26,8 +26,10 @@ public enum ShareStatus {
     FAILED
 }
 
-# Longest commentary accepted (LinkedIn's post text limit).
+# Longest commentary accepted, as `types:commentaryLength` counts it (LinkedIn's post text limit).
 public const int COMMENTARY_MAX_LENGTH = 3000;
+# Longest commentary stored, mention tokens included (`sharing_share_request.commentary` check).
+public const int COMMENTARY_STORED_MAX_LENGTH = 8000;
 
 # Share request aggregate (`sharing_share_request`): the command "Amplify, share this for me".
 # Unique per `(campaignId, employeeId)` in phase 1 (B3); a retry after `FAILED` reuses the row (C2, ADR-015).

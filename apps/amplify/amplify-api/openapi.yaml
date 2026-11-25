@@ -359,6 +359,29 @@ paths:
         "401": {$ref: "#/components/responses/Problem"}
         "503": {$ref: "#/components/responses/Problem"}
 
+  /mentions:
+    get:
+      tags: [C1 Sharing]
+      operationId: listMentionSuggestions
+      x-access: EMPLOYEE
+      description: >-
+        Who the caller can `@` mention in a repost's thoughts: colleagues who linked LinkedIn in Amplify (not removed,
+        never the caller) and the company page, at most 10. Put the choice in the commentary as
+        `@[<displayName>](amplify:<ref>)`; amplify-jobs resolves the ref again before posting, so a ref that is not a
+        linked colleague or the company page is posted as plain text.
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {name: q, in: query, required: true, description: Text typed after `@`, schema: {type: string, minLength: 1, maxLength: 50}}
+      responses:
+        "200":
+          description: Suggestions, best match first
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MentionList"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+
   /external-shares:
     post:
       tags: [S3 External Sharing]
@@ -1121,7 +1144,7 @@ components:
             CAMPAIGN_ALREADY_REGISTERED, NOT_WSO2_RESOURCE, INVALID_CAMPAIGN, INVALID_WINDOW, CAMPAIGN_ARCHIVED,
             POST_HAS_ACTIVITY, CAMPAIGN_CLOSED, OAUTH_STATE_INVALID, OAUTH_REDIRECT_MISMATCH, MISSING_SCOPE, MEMBER_ALREADY_LINKED, CONNECTION_REMOVED,
             LINKEDIN_NOT_CONNECTED, NEEDS_RECONNECT, DUPLICATE_ACTION, COMMENTARY_REQUIRED, COMMENTARY_NOT_ALLOWED,
-            COMMENTARY_TOO_LONG, FEATURE_DISABLED, CERTIFICATION_REQUIRED, EVIDENCE_ALREADY_CLAIMED,
+            COMMENTARY_TOO_LONG, TOO_MANY_MENTIONS, FEATURE_DISABLED, CERTIFICATION_REQUIRED, EVIDENCE_ALREADY_CLAIMED,
             INVALID_EVIDENCE_URL, EVIDENCE_URL_NOT_HTTPS, EVIDENCE_URL_TOO_LONG, EVIDENCE_URL_CREDENTIALS,
             EVIDENCE_URL_IP_HOST, NOT_PENDING, SELF_REVIEW, REASON_REQUIRED, NOT_APPROVED, ALREADY_AMPLIFIED,
             RULE_NOT_FOUND, RULE_VERSION_EXISTS, RULE_BACKDATED, INVALID_POINTS, TOP_UP_NOT_POSITIVE,
@@ -1342,7 +1365,15 @@ components:
       required: [kind]
       properties:
         kind: {$ref: "#/components/schemas/ShareKind"}
-        commentary: {type: string, maxLength: 3000, description: "Required for `*_COMMENTARY`, refused otherwise"}
+        commentary:
+          type: string
+          maxLength: 8000
+          description: >-
+            Required for `*_COMMENTARY`, refused otherwise. LinkedIn-ready text (the UI converts its markdown to Unicode
+            bold/italic before sending). `#tag` becomes a LinkedIn hashtag; `@[<label>](amplify:person:<employeeId>)` or
+            `@[<label>](amplify:org:wso2)` is a mention (at most 20, else `TOO_MANY_MENTIONS`); every other reserved
+            character is escaped. At most 3000 by the shown length: UTF-16 code units, a mention counted as its label
+            (`COMMENTARY_TOO_LONG`).
     Share:
       type: object
       required: [id, campaignId, kind, status, attempts, requestedAt]
@@ -1351,7 +1382,14 @@ components:
         campaignId: {type: string, format: uuid}
         kind: {$ref: "#/components/schemas/ShareKind"}
         status: {type: string, enum: [QUEUED, PUBLISHED, FAILED]}
-        failureReason: {type: string, nullable: true, enum: [NEEDS_RECONNECT, PROVIDER_REJECTED, RETRIES_EXHAUSTED, null]}
+        failureReason:
+          type: string
+          nullable: true
+          enum: [NEEDS_RECONNECT, PROVIDER_REJECTED, RETRIES_EXHAUSTED, null]
+          description: >-
+            Set when `FAILED`. `NEEDS_RECONNECT`: LinkedIn refused the token (401, or 403 `ACCESS_DENIED`) or the
+            connection was lost; the token is deleted and `GET /me` reports `linkedin.status` `NEEDS_RECONNECT`, so link
+            LinkedIn again.
         attempts: {type: integer}
         requestedAt: {type: string, format: date-time}
         publishedAt: {type: string, format: date-time, nullable: true}
@@ -1362,6 +1400,18 @@ components:
       required: [items]
       properties:
         items: {type: array, items: {$ref: "#/components/schemas/Share"}}
+    Mention:
+      type: object
+      required: [ref, kind, displayName]
+      properties:
+        ref: {type: string, description: "`person:<employeeId>` or `org:wso2`"}
+        kind: {type: string, enum: [PERSON, ORGANIZATION]}
+        displayName: {type: string, description: Directory name (or the page name); never an id}
+    MentionList:
+      type: object
+      required: [items]
+      properties:
+        items: {type: array, maxItems: 10, items: {$ref: "#/components/schemas/Mention"}}
 
     ExternalShareClaim:
       type: object

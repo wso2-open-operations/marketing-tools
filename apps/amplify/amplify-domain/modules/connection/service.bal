@@ -95,7 +95,8 @@ public isolated function connect(LinkedInConnection? existing, ConnectCommand co
         revokedAt: (),
         removedAt: (),
         lastRemindedAt: (),
-        version: existing is () ? 1 : existing.version + 1
+        version: existing is () ? 1 : existing.version + 1,
+        memberName: types:trimToNil(command.memberName) ?: (existing is () ? () : existing.memberName)
     };
     TokenRef? old = existing is () ? () : existing.currentToken;
     return {
@@ -105,8 +106,10 @@ public isolated function connect(LinkedInConnection? existing, ConnectCommand co
     };
 }
 
-# Marks a connection revoked (LinkedIn 401, or consent withdrawn). Unpublished shares then fail with
-# `NEEDS_RECONNECT` through `ConnectionRevoked`.
+# Marks a connection revoked (LinkedIn answered 401, or 403 `ACCESS_DENIED`, on the member's own post; or
+# consent withdrawn). The token no longer works, so its row is deleted with the change and the pointer is
+# dropped: the connection reads `NEEDS_RECONNECT` until the employee links again. Unpublished shares then
+# fail with `NEEDS_RECONNECT` through `ConnectionRevoked`.
 #
 # + connection - Connection
 # + now - Current time
@@ -117,8 +120,10 @@ public isolated function revoke(LinkedInConnection connection, time:Utc now) ret
     }
     LinkedInConnection revoked = connection.clone();
     revoked.revokedAt = now;
+    revoked.currentToken = ();
     revoked.version = connection.version + 1;
-    return {connection: revoked, tokenToDelete: (), outbox: [connectionRevokedEvent(revoked, now)]};
+    return {connection: revoked, tokenToDelete: connection.currentToken,
+        outbox: [connectionRevokedEvent(revoked, now)]};
 }
 
 # Removes the connection (Remove Connection): sets `removedAt`, drops the token pointer and returns the
@@ -157,7 +162,8 @@ public isolated function completeConnection(ConnectionRepository repo, ConnectCo
         return error("The sealed token doesn't match the connect command");
     }
     LinkedInConnection? holder = check repo.findByMember(types:LINKEDIN, memberUrn);
-    if holder is LinkedInConnection && holder.employeeId != employeeId {
+    // A removed connection gave the member up (Remove Connection, or a leaver): it doesn't block a new link.
+    if holder is LinkedInConnection && holder.employeeId != employeeId && holder.removedAt is () {
         return types:domainError(types:ERR_MEMBER_ALREADY_LINKED,
                 "This LinkedIn account is already connected to another employee");
     }

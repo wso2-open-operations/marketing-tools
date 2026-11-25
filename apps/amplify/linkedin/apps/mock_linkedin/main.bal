@@ -52,6 +52,23 @@ final http:Service mockAdminService = service object {
         return store:listPosts();
     }
 
+    # Revokes every token of one member, as when the member removes the app in their LinkedIn settings.
+    # Used to test the re-link flow: the next post with that member's token answers 401.
+    #
+    # + req - Request, carrying the internal key
+    # + sub - Member `sub` (the part after `urn:li:person:`)
+    # + return - The number of tokens removed, or 401 without the key
+    isolated resource function post members/[string sub]/revoke(http:Request req)
+            returns record {|int revoked;|}|http:Unauthorized {
+        http:Unauthorized? denied = requireAdminKey(req);
+        if denied is http:Unauthorized {
+            return denied;
+        }
+        int revoked = store:revokeMemberTokens(sub);
+        log:printInfo("Member tokens revoked", revoked = revoked);
+        return {revoked};
+    }
+
     # Clears tokens, codes, posts, uploads and rate counters.
     #
     # + req - Request, carrying the internal key

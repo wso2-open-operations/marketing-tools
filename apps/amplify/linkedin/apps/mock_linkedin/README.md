@@ -111,6 +111,7 @@ listener also serves:
 
 - `GET /mock/posts` lists every post the mock holds.
 - `POST /mock/reset` clears tokens, codes, posts, uploads and rate counters.
+- `POST /mock/members/{sub}/revoke` forgets every token of one member, as when the member removes the app in their LinkedIn settings; the next `POST /rest/posts` with it answers 401 (re-link flow).
 
 Every call must carry the key in `X-Amplify-Internal-Key`, the same header amplify-jobs uses for its own
 endpoints; a missing or wrong key gets a `401`. With the flag on but no usable key, the endpoints are not

@@ -68,6 +68,30 @@ public isolated class PgShareRepository {
         return toShare(row);
     }
 
+    # The employee's queued requests (neither published nor failed), oldest first. Used when the connection
+    # is lost, to fail them with `NEEDS_RECONNECT` (`failForLostConnection`).
+    #
+    # + employeeId - Employee
+    # + return - Queued requests, or an error
+    public isolated function queuedByEmployee(types:EmployeeId employeeId) returns ShareRequest[]|error {
+        stream<ShareRow, error?> rows = self.db->query(`
+            SELECT id::text AS id, campaign_id::text AS campaign_id, employee_id, provider, provider_api,
+                   target_resource_urn, kind, commentary, requested_at, published_at, failed_at, failure_reason,
+                   attempts, last_error_code, engagement_id::text AS engagement_id, version
+            FROM sharing_share_request
+            WHERE employee_id = ${employeeId} AND published_at IS NULL AND failed_at IS NULL
+            ORDER BY requested_at, id`);
+        ShareRow[] found = check from ShareRow r in rows select r;
+        ShareRequest[] requests = [];
+        foreach ShareRow r in found {
+            ShareRequest? request = check toShare(r);
+            if request is ShareRequest {
+                requests.push(request);
+            }
+        }
+        return requests;
+    }
+
     public isolated function insert(ShareRequest request, events:OutboxEvent[] outbox) returns error? {
         final readonly & ShareRequest r = request.cloneReadOnly();
         final readonly & events:OutboxEvent[] queued = outbox.cloneReadOnly();
