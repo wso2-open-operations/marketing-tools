@@ -179,6 +179,8 @@ function authorizationUrlCarriesClientStateAndScopes() returns error? {
     test:assertTrue(authUrl.includes("state=st-1"));
     test:assertTrue(authUrl.includes("redirect_uri=https%3A%2F%2Fone.wso2.com%2Fcb"));
     test:assertTrue(authUrl.includes("scope=openid%20profile%20w_member_social"));
+    // Google, Apple and passkey sign-in on LinkedIn's page on every device, not only desktop and Android.
+    test:assertTrue(authUrl.includes("enable_extended_login=true"));
 }
 
 @test:Config
@@ -220,7 +222,7 @@ function publishRepostSendsHeadersAndReadsRestliId() returns error? {
         authorUrn: "urn:li:person:782bbtaQ",
         kind: types:REPOST_COMMENTARY,
         targetUrn: "urn:li:share:6999",
-        commentary: "Proud of the #ChoreLabs team @ work with @[Jane](amplify:person:jane@wso2.com)",
+        commentary: "Proud of the #ChoreoLabs team @ work with @[Jane](amplify:person:jane@wso2.com)",
         mentions: {"person:jane@wso2.com": {name: "Jane Smith", urn: "urn:li:person:abc123"}}
     });
     test:assertEquals(urn, "urn:li:share:7000000000000000001");
@@ -230,7 +232,7 @@ function publishRepostSendsHeadersAndReadsRestliId() returns error? {
     }
     test:assertEquals(sent, {
         author: "urn:li:person:782bbtaQ",
-        commentary: "Proud of the {hashtag|\\#|ChoreLabs} team \\@ work with @[Jane Smith](urn:li:person:abc123)",
+        commentary: "Proud of the {hashtag|\\#|ChoreoLabs} team \\@ work with @[Jane Smith](urn:li:person:abc123)",
         visibility: "PUBLIC",
         distribution: {feedDistribution: "MAIN_FEED", targetEntities: [], thirdPartyDistributionChannels: []},
         lifecycleState: "PUBLISHED",
@@ -364,9 +366,9 @@ function authorizationUrlUsesBrowserBaseAndOptionalNonce() returns error? {
 @test:Config
 function shareArticleAlwaysCarriesATitle() returns error? {
     json body = buildPostPayload({authorUrn: "urn:li:person:a", kind: types:SHARE_COMMENTARY,
-        targetUrn: "urn:li:share:1", targetUrl: "https://choreolabs.com/blog/x", targetTitle: "  Chore Labs is a Leader  ",
+        targetUrn: "urn:li:share:1", targetUrl: "https://choreolabs.com/blog/x", targetTitle: "  Choreo Labs is a Leader  ",
         commentary: "Nice"});
-    test:assertEquals(check body.content, {article: {'source: "https://choreolabs.com/blog/x", title: "Chore Labs is a Leader"}});
+    test:assertEquals(check body.content, {article: {'source: "https://choreolabs.com/blog/x", title: "Choreo Labs is a Leader"}});
     string long = "";
     foreach int i in 0 ..< 450 {
         long += "t";

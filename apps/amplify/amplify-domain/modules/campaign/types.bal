@@ -39,7 +39,7 @@ public const int DEFAULT_WINDOW_DAYS = 30;
 # Where a campaign's post link may point: LinkedIn only. Dev and demo environments add the mock's origin.
 public final string[] & readonly DEFAULT_POST_LINK_ORIGINS = ["https://www.linkedin.com", "https://linkedin.com"];
 
-# Campaign aggregate (`campaign` + `campaign_tag`): one Chore Labs company-page resource to amplify.
+# Campaign aggregate (`campaign` + `campaign_tag`): one Choreo Labs company-page resource to amplify.
 public type Campaign record {|
     # UUIDv7
     string id;
@@ -49,7 +49,7 @@ public type Campaign record {|
     types:PostUrn resourceUrn;
     # Derived from the URN
     types:ResourceType resourceType;
-    # Organization that owns the resource; must be the Chore Labs page
+    # Organization that owns the resource; must be the Choreo Labs page
     types:OrganizationUrn ownerUrn;
     # Public URL of the resource
     string? resourceUrl;
@@ -134,7 +134,7 @@ public type CampaignPatch record {|
 
 # Settings the campaign rules depend on.
 public type CampaignPolicy record {|
-    # The Chore Labs company page URN; campaigns must point at its resources
+    # The Choreo Labs company page URN; campaigns must point at its resources
     types:OrganizationUrn wso2OrganizationUrn;
     # `campaign.default_window_days`
     int defaultWindowDays = DEFAULT_WINDOW_DAYS;

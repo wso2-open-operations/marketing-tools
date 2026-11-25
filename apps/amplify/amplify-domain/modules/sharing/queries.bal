@@ -126,3 +126,14 @@ public isolated function shareHealth(postgresql:Client db, time:Utc since) retur
         };
     return {queued: totals.queued, published: totals.published, failed: totals.failed, failedByReason};
 }
+
+# When the employee's latest share was published (amplify-jobs paces each employee's posts on it).
+#
+# + db - Client
+# + employeeId - Employee
+# + return - The latest `published_at`, `()` if none was published, or an error
+public isolated function lastPublishedAt(postgresql:Client db, types:EmployeeId employeeId) returns time:Utc|error? {
+    record {|time:Utc? at;|} row = check db->queryRow(`
+        SELECT max(published_at) AS at FROM sharing_share_request WHERE employee_id = ${employeeId}`);
+    return row.at;
+}

@@ -31,6 +31,10 @@ public const int COMMENTARY_MAX_LENGTH = 3000;
 # Longest commentary stored, mention tokens included (`sharing_share_request.commentary` check).
 public const int COMMENTARY_STORED_MAX_LENGTH = 8000;
 
+# Words of the employee's own a `*_COMMENTARY` share needs when the caller doesn't say: 0, no check. A word of
+# their own is a distinct word of two or more letters or digits that isn't in the campaign title or summary.
+public const int COMMENTARY_MIN_OWN_WORDS_OFF = 0;
+
 # Share request aggregate (`sharing_share_request`): the command "Amplify, share this for me".
 # Unique per `(campaignId, employeeId)` in phase 1 (B3); a retry after `FAILED` reuses the row (C2, ADR-015).
 public type ShareRequest record {|
@@ -111,6 +115,10 @@ public type CampaignSnapshot record {|
     types:PostUrn resourceUrn;
     # True while the campaign is `OPEN`
     boolean open;
+    # Campaign title, for the own-words check on thoughts
+    string title = "";
+    # Campaign summary, for the own-words check on thoughts
+    string? summary = ();
 |};
 
 # What sharing needs to know about the employee's connection (from S2).

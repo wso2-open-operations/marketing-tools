@@ -50,7 +50,7 @@ public isolated function externalShareStatus(ExternalShare claim) returns Extern
 public isolated function newExternalShare(ExternalShareClaim claim, string id, time:Utc now)
         returns ExternalShare|types:DomainError {
     if !claim.certified {
-        return types:domainError(types:ERR_CERTIFICATION_REQUIRED, "Please confirm this is related to Chore Labs");
+        return types:domainError(types:ERR_CERTIFICATION_REQUIRED, "Please confirm this is related to Choreo Labs");
     }
     types:EvidenceUrl evidence = check types:parseEvidenceUrl(claim.evidenceUrl);
     return {
@@ -110,7 +110,7 @@ public isolated function reject(ExternalShare claim, types:EmployeeId poId, stri
     return rejected;
 }
 
-# Marks an approved claim as amplified by Chore Labs or a senior leader (C4). Only once, only after approval,
+# Marks an approved claim as amplified by Choreo Labs or a senior leader (C4). Only once, only after approval,
 # and never by the claimant: marking pays the top-up, so a PO can't mark their own claim (same rule as
 # the decision, threat model 5.6).
 #

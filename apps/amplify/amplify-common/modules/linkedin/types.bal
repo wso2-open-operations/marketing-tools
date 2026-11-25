@@ -30,7 +30,7 @@ public final string[] & readonly REQUIRED_SCOPES = ["openid", "profile", "w_memb
 # Scope that lets Amplify post for the member.
 public const string SCOPE_W_MEMBER_SOCIAL = "w_member_social";
 # Article title used when a `SHARE` command has none (Posts API article `title` is required).
-public const string DEFAULT_ARTICLE_TITLE = "Chore Labs on LinkedIn";
+public const string DEFAULT_ARTICLE_TITLE = "Choreo Labs on LinkedIn";
 # Longest article title sent; the Posts API wants fewer than 400 characters.
 public const int ARTICLE_TITLE_MAX_LENGTH = 399;
 

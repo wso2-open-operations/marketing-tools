@@ -87,7 +87,7 @@ public const REPOST_COMMENTARY = "REPOST_COMMENTARY";
 public const SHARE_COMMENTARY = "SHARE_COMMENTARY";
 # Employee's own post, claimed through External Sharing.
 public const OWN_POST = "OWN_POST";
-# Own post amplified by Chore Labs or a senior leader (T4 top-up, C4).
+# Own post amplified by Choreo Labs or a senior leader (T4 top-up, C4).
 public const OWN_POST_AMPLIFIED = "OWN_POST_AMPLIFIED";
 
 # A like on an Amplify post on LinkedIn (phase 4, Community Management).

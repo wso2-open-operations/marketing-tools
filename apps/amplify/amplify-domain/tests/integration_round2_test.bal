@@ -307,6 +307,24 @@ function testOutboxBacklogCountsWhatIsWaiting() returns error? {
     check db.close();
 }
 
+// A share held back by pacing waits by design: it counts as pending but its age doesn't make the backlog alert.
+@test:Config {groups: ["integration"], enable: itEnabled}
+function testPacedRowsDoNotAgeTheBacklog() returns error? {
+    postgresql:Client db = check jobs();
+    store:OutboxBacklog before = check store:outboxBacklog(db);
+    string tag = "paced-" + uniq();
+    string note = store:PACED_NOTE_PREFIX + "this employee's previous post went out less than the gap ago";
+    _ = check db->execute(`INSERT INTO messaging_outbox (aggregate_type, aggregate_id, event_type, payload,
+            idempotency_key, status, created_at, next_attempt_at, last_error)
+        VALUES ('t', ${tag}, 'T', '{}'::jsonb, ${"it:" + tag}, 'PENDING', now() - interval '30 days',
+            now() + interval '1 day', ${note})`);
+    store:OutboxBacklog after = check store:outboxBacklog(db);
+    test:assertEquals(after.pending - before.pending, 1, "still counted as pending");
+    int oldest = after.oldestPendingSeconds ?: -1;
+    test:assertTrue(oldest < 30 * 86400 - 5, string `oldest pending is ${oldest}s; the paced row must not count`);
+    check db.close();
+}
+
 // Leavers (security review): not in the directory AND away from Amplify for the grace period; erasing one is audited
 // and takes the person off the candidate list.
 @test:Config {groups: ["integration"], enable: itEnabled}

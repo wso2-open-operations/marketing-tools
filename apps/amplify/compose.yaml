@@ -101,10 +101,12 @@ services:
       # The mock issues no ID token, so this only makes sense against real LinkedIn.
       BAL_CONFIG_VAR_LINKEDINIDTOKENVALIDATION: ${LINKEDIN_ID_TOKEN_VALIDATION:-false}
       BAL_CONFIG_VAR_LINKEDINNONCEMODE: ${LINKEDIN_NONCE_MODE:-OFF}
-      # The company page posts must belong to. Default = Chore Labs' page; local/.env can point at a test page.
+      # The company page posts must belong to. Default = Choreo Labs' page; local/.env can point at a test page.
       BAL_CONFIG_VAR_WSO2ORGANIZATIONURN: ${WSO2_ORGANIZATION_URN:-urn:li:organization:1477}
       # Privacy notice link in the LinkedIn consent dialog, sent to the UI in GET /me.
       BAL_CONFIG_VAR_PRIVACYNOTICEURL: ${PRIVACY_NOTICE_URL:-https://choreolabs.com/privacy-policy}
+      # Words of their own a share with thoughts needs (not copied from the post); 0 turns the check off.
+      BAL_CONFIG_VAR_COMMENTARYMINOWNWORDS: ${COMMENTARY_MIN_OWN_WORDS:-5}
       # Team rosters (D13) = people-stub's HR Entity GraphQL route by default: copy local/people-stub/directory.json.example to directory.json (gitignored) and edit it.
       BAL_CONFIG_VAR_HRENTITYBASEURL: ${HR_ENTITY_URL:-http://people-stub:9096/graphql}
       # Post links: LinkedIn, plus the mock's browser-facing origin for local demos.
@@ -174,13 +176,16 @@ services:
       BAL_CONFIG_VAR_TOKENKEYS: ${TOKEN_ENCRYPTION_KEY_ID:?}:${TOKEN_ENCRYPTION_KEY:?}
       BAL_CONFIG_VAR_TOKENCURRENTKEYID: ${TOKEN_ENCRYPTION_KEY_ID:?}
       BAL_CONFIG_VAR_AMPLIFYONNOVERA: ${AMPLIFY_ON_NOVERA:-true}
+      # Pacing between one employee's LinkedIn posts, minutes. Off locally so `make e2e` publishes at once; set it to
+      # try pacing (Choreo default 10).
+      BAL_CONFIG_VAR_SHAREPUBLISHGAPMINUTES: ${SHARE_PUBLISH_GAP_MINUTES:-0}
       # Novera (Google Chat assistant), the one announcement channel (ADR-047): the Choreo gateway URL of its
       # POST /internal/notifications and the client-credentials application subscribed to it. Empty settings =
       # announcements defer. Local try-out: run local/novera-mock (node server.mjs, :3003) and see docs/HowToTestLocally/TestNovera.md.
-      BAL_CONFIG_VAR_NOVERAICONURL: ${NOVERA_ICON_URL:-https://one.wso2.com/amplify/amplify-logo-dark.png}
-      BAL_CONFIG_VAR_NOVERADEFAULTIMAGEURL: ${NOVERA_DEFAULT_IMAGE_URL:-https://choreolabs.com/themes/wso2theme/images/choreo/brand/choreo-labs-icon-white.png}
+      BAL_CONFIG_VAR_NOVERAICONURL: ${NOVERA_ICON_URL:-}
+      BAL_CONFIG_VAR_NOVERADEFAULTIMAGEURL: ${NOVERA_DEFAULT_IMAGE_URL:-https://one.choreolabs.com/amplify/amplify-logo-dark.png}
       # The card button's link: a URL template whose {campaignId} is replaced with the post's id. Empty = announcements wait.
-      BAL_CONFIG_VAR_NOVERABUTTONURL: ${NOVERA_BUTTON_URL:-https://one.wso2.com/amplify/celebrate?share={campaignId}}
+      BAL_CONFIG_VAR_NOVERABUTTONURL: ${NOVERA_BUTTON_URL:-https://one.choreolabs.com/amplify/celebrate?share={campaignId}}
       BAL_CONFIG_VAR_NOVERANOTIFYURL: ${NOVERA_NOTIFY_URL:-}
       BAL_CONFIG_VAR_NOVERATOKENURL: ${NOVERA_TOKEN_URL:-}
       BAL_CONFIG_VAR_NOVERACLIENTID: ${NOVERA_CLIENT_ID:-}

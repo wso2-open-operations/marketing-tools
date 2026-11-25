@@ -190,9 +190,9 @@ function approveRejectAndSelfReview() returns error? {
     test:assertEquals(code(reject(approved, "po-1", "dup", T0)), types:ERR_NOT_PENDING);
 
     test:assertEquals(code(reject(s, "po-1", "  ", T0)), types:ERR_REASON_REQUIRED);
-    ExternalShare rejected = check reject(s, "po-1", " Not about Chore Labs ", T0);
+    ExternalShare rejected = check reject(s, "po-1", " Not about Choreo Labs ", T0);
     test:assertEquals(externalShareStatus(rejected), REJECTED);
-    test:assertEquals(rejected.decisionReason, "Not about Chore Labs");
+    test:assertEquals(rejected.decisionReason, "Not about Choreo Labs");
 }
 
 @test:Config
