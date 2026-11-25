@@ -93,6 +93,8 @@ type ExternalShareBody record {|
     string? activityId = ();
     boolean certified;
     string? campaignId = ();
+    # Optional note for the reviewer, at most 500 characters
+    string? note = ();
 |};
 
 # Reason body (reject, reverse).
@@ -180,6 +182,8 @@ type ExternalShareDto record {|
     string? amplifiedAt;
     string createdAt;
     int version;
+    # The employee's note for the reviewer
+    string? note;
 |};
 
 type LedgerEntryDto record {|
@@ -281,7 +285,8 @@ isolated function externalShareDto(external_sharing:ExternalShare c) returns Ext
     decisionReason: c.decisionReason,
     amplifiedAt: tsOpt(c.amplifiedAt),
     createdAt: ts(c.createdAt),
-    version: c.version
+    version: c.version,
+    note: c.note
 };
 
 isolated function ledgerDto(types:LedgerEntry e) returns LedgerEntryDto => {

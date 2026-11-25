@@ -200,6 +200,56 @@ function testSelfReviewIsForbidden() returns error? {
     test:assertEquals(check codeIn(self), "SELF_REVIEW");
 }
 
+@test:Config {groups: ["writes"]}
+function testOwnPostNoteAndDailyLimit() returns error? {
+    string token = check employee("note-poster");
+    http:Response first = check send("POST", "/external-shares",
+            {evidenceUrl: "https://dev.to/note-poster/one", certified: true, note: "  About our agent platform  "}, token);
+    test:assertEquals(first.statusCode, 201);
+    json claim = check first.getJsonPayload();
+    test:assertEquals(check claim.note, "About our agent platform", "trimmed and returned");
+    check assertShape(first, "ExternalShare");
+
+    string long = "";
+    foreach int i in 0 ..< 501 {
+        long += "x";
+    }
+    http:Response tooLong = check send("POST", "/external-shares",
+            {evidenceUrl: "https://dev.to/note-poster/long", certified: true, note: long}, token);
+    test:assertEquals(tooLong.statusCode, 400);
+    test:assertEquals(check codeIn(tooLong), "VALIDATION_FAILED");
+
+    // The default daily limit is 3: two more go in, the fourth today is refused with 429.
+    foreach string slug in ["two", "three"] {
+        http:Response ok = check send("POST", "/external-shares",
+                {evidenceUrl: "https://dev.to/note-poster/" + slug, certified: true}, token);
+        test:assertEquals(ok.statusCode, 201, slug);
+    }
+    http:Response fourth = check send("POST", "/external-shares",
+            {evidenceUrl: "https://dev.to/note-poster/four", certified: true}, token);
+    test:assertEquals(fourth.statusCode, 429);
+    test:assertEquals(check codeIn(fourth), "DAILY_LIMIT_REACHED");
+    test:assertEquals(fourth.getContentType(), "application/problem+json", "a problem body, like every other error");
+}
+
+@test:Config {groups: ["writes"]}
+function testPeopleSearchIsForThePoTeam() returns error? {
+    http:Response refused = check send("GET", "/po/people?q=avery", (), check employee("curious-employee"));
+    test:assertEquals(refused.statusCode, 403, "employees can't search people");
+    string token = check po();
+    http:Response short = check send("GET", "/po/people?q=a", (), token);
+    test:assertEquals(short.statusCode, 400);
+    test:assertEquals(check codeIn(short), "VALIDATION_FAILED");
+    http:Response badLimit = check send("GET", "/po/people?q=avery&limit=50", (), token);
+    test:assertEquals(badLimit.statusCode, 400);
+    http:Response found = check send("GET", "/po/people?q=AVERY", (), token);
+    test:assertEquals(found.statusCode, 200);
+    check assertShape(found, "PersonMatchList");
+    json[] items = <json[]>(check (check found.getJsonPayload()).items);
+    test:assertEquals(items.length(), 1);
+    test:assertEquals(check items[0].employeeId, "emp-avery");
+}
+
 // ---- Announcements -----------------------------------------------------------------------------------
 
 @test:Config {groups: ["writes"]}
