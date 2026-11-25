@@ -136,9 +136,9 @@ public isolated function teamPage(postgresql:Client db, string periodKey, string
         string prefix = re `[%_\\]`.replaceAll(q, isolated function(regexp:Groups g) returns string => "\\" + g[0].substring()) + "%";
         cond = sql:queryConcat(cond, ` AND (s.display_name % ${q} OR s.display_name ILIKE ${prefix})`);
     }
-    // Unfiltered and in rank order (the whole company, PO view): the stored company rank orders the rows the
-    // same way as points (dense rank over the same rows), so skip both window functions, page straight off
-    // `standing_rank_idx` and count the position from the page offset. M11 load test: /team p95 ~100 ms ->
+    // Unfiltered and in rank order (the whole company, PO view): the stored company rank is already the position
+    // (1, 2, 3... with no ties, the same order as the window below), so skip both window functions, page straight
+    // off `standing_rank_idx` and count the position from the page offset. M11 load test: /team p95 ~100 ms ->
     // see docs/testing/load-test-2026-10.md.
     boolean whole = teamEmails is () && q is () && sort == SORT_RANK;
     sql:ParameterizedQuery orderBy = sort == SORT_NAME ? ` ORDER BY s.display_name, s.employee_id`

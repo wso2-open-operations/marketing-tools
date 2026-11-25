@@ -13,7 +13,7 @@ File: `modules/recognition/types.bal`.
 
 File: `modules/recognition/service.bal`. Pure ranking:
 
-- `rankStandings(periodKey, totals, previousRanks)`: dense rank by points (ties share a rank), then name.
+- `rankStandings(periodKey, totals, previousRanks)`: places 1, 2, 3... by points, then who reached them first, then name (no ties).
 - `topN(standings, n)` and `teamStandings(periodKey, standings, teamEmails)`: company top N and My Team (the viewer's team ranked within itself).
 
 ## Reads and rebuild

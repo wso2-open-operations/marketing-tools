@@ -35,11 +35,13 @@ function totalAt(string id, string name, int points, string at) returns Employee
 }
 
 @test:Config
-function denseRankSharesTies() {
+function placesRunOneTwoThreeWithNoTies() {
     Standing[] s = rankStandings(PERIOD_ALL, totals(), {"e4": 2});
-    test:assertEquals(s.map(r => r.rank), [1, 2, 2, 3, 4]);
+    test:assertEquals(s.map(r => r.rank), [1, 2, 3, 4, 5], "no shared places");
+    test:assertEquals(s.map(r => r.employeeId), ["e1", "e2", "e3", "e4", "e5"], "tied points: no time, so by name");
     test:assertEquals(s[3].previousRank, 2, "movement arrow source");
-    test:assertEquals(topN(s).length(), 4, "ties can return more than N rows");
+    test:assertEquals(topN(s).length(), 3, "exactly N rows, whatever the ties");
+    test:assertEquals(topN(s).map(r => r.employeeId), ["e1", "e2", "e3"]);
 }
 
 @test:Config
@@ -50,14 +52,24 @@ function tiedPointsOrderByWhoReachedThemFirst() {
     EmployeeTotal ahead = totalAt("e9", "Zed", 60, "2026-11-10T10:00:00Z");
     Standing[] s = rankStandings(PERIOD_ALL, [unknown, late, ahead, early]);
     test:assertEquals(s.map(r => r.employeeId), ["e9", "e2", "e1", "e0"], "points, then earliest time, no time last");
-    test:assertEquals(s.map(r => r.rank), [1, 2, 2, 2], "the rank is still shared");
+    test:assertEquals(s.map(r => r.rank), [1, 2, 3, 4], "every place is its own");
 }
 
 @test:Config
-function gapsToNextRankAndTopN() {
+function sameTimeSamePointsOrderByNameThenId() {
+    EmployeeTotal zed = totalAt("e1", "Zed", 50, "2026-11-10T08:00:00Z");
+    EmployeeTotal abe = totalAt("e2", "Abe", 50, "2026-11-10T08:00:00Z");
+    EmployeeTotal abeToo = totalAt("e0", "Abe", 50, "2026-11-10T08:00:00Z");
+    Standing[] s = rankStandings(PERIOD_ALL, [zed, abe, abeToo]);
+    test:assertEquals(s.map(r => r.employeeId), ["e0", "e2", "e1"], "name, then employee id");
+}
+
+@test:Config
+function gapsToNextPlaceAndTopN() {
     Standing[] s = rankStandings(PERIOD_ALL, totals());
-    test:assertEquals(s.map(r => r.pointsToNextRank), [0, 20, 20, 20, 20]);
-    test:assertEquals(s.map(r => r.pointsToTopN), [0, 0, 0, 0, 21], "lowest in top 3 has 60: 60 - 40 + 1");
+    test:assertEquals(s.map(r => r.pointsToNextRank), [0, 21, 1, 21, 21],
+            "points of the person one place ahead, minus your own, plus one");
+    test:assertEquals(s.map(r => r.pointsToTopN), [0, 0, 0, 21, 41], "third place has 80: 80 - 60 + 1");
 }
 
 @test:Config

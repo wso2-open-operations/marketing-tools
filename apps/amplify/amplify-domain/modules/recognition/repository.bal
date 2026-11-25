@@ -36,7 +36,7 @@ type StandingRow record {|
     time:Utc? last_activity_at;
 |};
 
-# Company top N (B15): everyone whose dense rank is within `topN` (ties may give more than N rows).
+# Company top N (B15): the first `topN` places. Places never tie, so this is at most `topN` rows.
 #
 # + db - Client
 # + periodKey - Period, `ALL` in phase 1

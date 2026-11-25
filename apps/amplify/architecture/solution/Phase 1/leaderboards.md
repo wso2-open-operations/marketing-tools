@@ -10,7 +10,7 @@ Data: [phase1-data-model › recognition](phase1-data-model.md#recognition--s4-r
 
 | View | Who sees it | What it shows | Where in the UI |
 | --- | --- | --- | --- |
-| **Company top N** | Every employee | The top `leaderboard.top_n` people (default **3**) by points: rank, name, points, movement arrow. Ties share a rank (`dense_rank`), so the list can hold more than N rows | Leaderboard page, the podium |
+| **Company top N** | Every employee | The top `leaderboard.top_n` people (default **3**) by points: rank, name, points, movement arrow. Ranks are positions (`row_number`): 1, 2, 3... with no ties, so the list holds exactly N rows (fewer when fewer people have points) | Leaderboard page, the podium |
 | **Personal** | The viewer only | Own rank, points, `points_to_next_rank`, `points_to_top_n`, movement, last activity. Merges into the podium when the viewer is in the top N | Leaderboard page, "your card" |
 | **My Team** | Every member of that team | Everyone in the viewer's team, ranked within the team: team rank, name, points. Headcount and "active" count on top | Leaderboard page, below your card; Team page for employees |
 
@@ -63,7 +63,7 @@ Setting `team.visibility` (`TEAM` default, or `COMPANY`) lets PO widen the Team 
 All against `recognition.standing` (PK `(period_key, employee_id)`, indexes `(period_key, rank)` and `(period_key, email)`), read through `amplify_api`'s `select` grant.
 
 ```sql
--- Company top N (ties can return more than N rows)
+-- Company top N (exactly N rows: ranks never tie)
 SELECT employee_id, display_name, email, total_points, rank, previous_rank, last_activity_at
 FROM recognition.standing
 WHERE period_key = $period AND rank <= $top_n
@@ -92,7 +92,7 @@ ORDER BY rank, last_activity_at NULLS LAST, display_name, employee_id  -- team_r
 LIMIT $size OFFSET $offset;
 ```
 
-`points_to_top_n` = points of the lowest-ranked person inside the top N, minus the viewer's points, plus 1 (0 if the viewer is already in). It's precomputed by the re-rank step, so changing `leaderboard.top_n` triggers `POST /maintenance/rebuild-recognition`.
+`points_to_top_n` = points of the person at place N, minus the viewer's points, plus 1 (0 if the viewer is already in). `points_to_next_rank` = points of the person one place ahead, minus the viewer's, plus 1 (0 in first place). It's precomputed by the re-rank step, so changing `leaderboard.top_n` triggers `POST /maintenance/rebuild-recognition`.
 
 Team members with no standing row have no points yet. They count toward `headcount` but not `activeCount`, and phase 1 doesn't list them: `myTeam.entries` holds only people with points, and the API never returns the rest of the roster's emails.
 
@@ -105,7 +105,7 @@ Employee and up. `?period=ALL` (default). ETag `<period>:<standing_version>:<vie
   "period": "ALL",                       // ALL | YYYY-MM | YYYY-Qn
   "topN": 3,                             // leaderboard.top_n
   "generatedAt": "2026-10-30T09:12:00Z",
-  "company": [                           // rank <= topN, ties included
+  "company": [                           // rank <= topN: exactly topN rows
     { "employeeId": "a1b2…", "displayName": "Jane Doe", "email": "jane@example.com",
       "points": 120, "rank": 1, "previousRank": 2 }
   ],
@@ -150,7 +150,7 @@ Employee and up. `?period=ALL` (default). ETag `<period>:<standing_version>:<vie
 
 ## Tests
 
-- Ties at rank N return every tied row; `pointsToTopN` is 0 for them.
+- Equal points never share a company rank: the earlier one (last activity) is ahead, then name, then employee id. The top N is exactly N rows, and the stored rank, the Team page's company rank and its position column agree.
 - My Team, the Team page and the people boards number their rows 1, 2, 3... with no ties: equal points go to whoever reached them first, and page two carries on from page one.
 - A plain employee gets 403 from `/team`, and can't read a non-team member through `/team/{id}/history`.
 - Directory down with nothing cached → `teamStatus: UNAVAILABLE`, rest of the response 200; an expired index is still served while a refresh fails.

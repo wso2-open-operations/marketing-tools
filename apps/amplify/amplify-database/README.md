@@ -43,7 +43,7 @@ All are `configurable` in `main.bal`. In Choreo they arrive as `BAL_CONFIG_VAR_*
 | Path | What |
 | --- | --- |
 | `main.bal` | The runner: script listing, version table, checksums, out-of-order check, dry run, TLS check, server version check |
-| `migrations/` | Forward-only schema scripts, `V001` to `V024` (`V017` and `V023` are unused here). See `migrations/README.md` |
+| `migrations/` | Forward-only schema scripts, `V001` to `V025` (`V017` and `V023` are unused here). See `migrations/README.md` |
 | `seed/` | Idempotent seed data, `S001` to `S010`. See `seed/README.md` |
 | `checks/` | One-off read-only checks, not run by the runner. See below |
 | `tests/` | Unit tests and the `integration` group. See below |
@@ -671,7 +671,7 @@ erDiagram
         citext email "for One WSO2 photo lookup"
         int total_points
         int actions_count
-        int rank "dense_rank, precomputed"
+        int rank "row_number position, precomputed"
         int previous_rank "movement arrow"
         int points_to_next_rank
         int points_to_top_n "gap to rank leaderboard.top_n (default 3)"
@@ -714,13 +714,13 @@ erDiagram
 | One WSO2 call | Query | Cost |
 | --- | --- | --- |
 | Leaderboard (top N + me) | `WHERE period_key = $1 AND rank <= $top_n` on index `(period_key, rank)` + PK lookup `(period_key, employee_id)` | two index lookups |
-| My Team (B15) | `WHERE period_key = $1 AND email = ANY($team_emails)` + `dense_rank()` over that set, on index `(period_key, email)` | one index scan per team (tens of rows) |
+| My Team (B15) | `WHERE period_key = $1 AND email = ANY($team_emails)` + `row_number()` over that set, on index `(period_key, email)` | one index scan per team (tens of rows) |
 | My position | PK lookup | one index lookup |
 | Team page (paged, search, sort) | index `(period_key, rank)`; `pg_trgm` GIN on `display_name` for search | index scan + `LIMIT` |
 | My monthly history | PK range on `(employee_id, month)` | one range scan |
 
 - Full queries and response shapes: [leaderboards.md](../architecture/solution/Phase%201/leaderboards.md).
-- **Re-ranking:** after inserting ledger rows, the score pass upserts the affected employees' totals, then re-ranks the period with one `UPDATE … FROM (SELECT dense_rank() …)`. At ~830 employees that's milliseconds. It then bumps `standing_version`. Built in M3 as SQL functions (V010): `recognition.apply_ledger_entry(reference, top_n)` (called by the ledger repository in the insert's transaction), `recognition.rerank(period, top_n)` and `recognition.rebuild(top_n)`.
+- **Re-ranking:** after inserting ledger rows, the score pass upserts the affected employees' totals, then re-ranks the period with one `UPDATE … FROM (SELECT row_number() …)` ordered by points, earliest last activity, name, employee id (V025: places never tie). At ~830 employees that's milliseconds. It then bumps `standing_version`. Built in M3 as SQL functions (V010): `recognition.apply_ledger_entry(reference, top_n)` (called by the ledger repository in the insert's transaction), `recognition.rerank(period, top_n)` and `recognition.rebuild(top_n)`.
 - **Recognition locks (V012, deep review 2026-10-17).** Two transaction-scoped advisory locks guard every recognition write, always in this order: (1) the app-level key **4242101**, taken by `store:lockRecognition` (`store:RECOGNITION_LOCK_KEY`), then (2) the SQL-level key **1634561133**, taken first thing inside `apply_ledger_entry`, `rerank` and `rebuild` (`store:RECOGNITION_SQL_LOCK_KEY`). The SQL lock stops two concurrent appends from re-ranking off their own snapshots (two people at rank 1) or deadlocking on row-lock order. The reverse order can deadlock, so `lockRecognition` must come before any of those functions in the same transaction. Both sites document it (the functions through V013's `COMMENT ON FUNCTION`); domain unit `testRecognitionLocksAreTakenInOrder` scans every call site and the DB IT checks that no SQL function takes 4242101. `lockRecognition` waits at most 2 s, because it runs inside the process-wide transaction gate ([ADR-032](../architecture/decisions/ADR-032-transaction-gate-ballerina-2201-13.md)). Every holder also sets a transaction-local 5 s `idle_in_transaction_session_timeout`.
 - **Caching:** `amplify-api` returns `ETag: <period>:<version>` and `Cache-Control: private, max-age=30`, and keeps an in-process cache keyed by version. One WSO2 sends `If-None-Match` and gets **304** when nothing changed. TanStack Query uses `staleTime: 60s`, prefetching when the Amplify menu opens.
 - **Target:** p95 under 50 ms at the API for leaderboard, position and Team pages (load test in M11).
@@ -885,6 +885,7 @@ history. The scripts as they stand carry neither.
 | `V020__employee_alias.sql` | `identity_employee_alias`: a re-created Asgardeo account maps to the first employee id (ADR-041); `amplify_api` SELECT, INSERT, `amplify_jobs` and `amplify_readonly` SELECT |
 | `V021__immutable_ledger_and_audit.sql` | |
 | `V022__announcement_attempted_at.sql` | nullable `announcement.attempted_at timestamptz`, the Novera attempt marker (ADR-047). Jobs saves it before the call; a row already attempted is never sent again automatically |
+| `V025__company_rank_positions.sql` | `recognition_rerank` numbers people 1, 2, 3... with no ties (`row_number` over points, earliest last activity, name, employee id) instead of a dense rank. `points_to_next_rank` and `points_to_top_n` become the points to pass the person ahead / at place N, plus 1. Re-ranks the stored rows once; a row whose place changes gets no movement arrow |
 
 
 There are no grants to change since ADR-043. The review proposals about `REVOKE` on app roles (jobs-db review D4/D5, H3) no longer apply; V021 covers the ledger and the audit log, and `REVOKE TEMPORARY ON DATABASE <db> FROM PUBLIC` is a DBA decision.

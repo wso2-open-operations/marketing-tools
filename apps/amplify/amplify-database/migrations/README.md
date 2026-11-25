@@ -1,6 +1,6 @@
 # Migrations
 
-Forward-only, versioned: `V001__schema_and_extensions.sql` … `V024__linkedin_mentions_relink.sql`. Lowercase snake_case
+Forward-only, versioned: `V001__schema_and_extensions.sql` … `V025__company_rank_positions.sql`. Lowercase snake_case
 after `__`. The runner is `../main.bal`; see `../README.md` for settings and how a run works. Never edit an applied script (the runner compares checksums and stops); add a new version. One exception, once: V001-V020 and S001-S010 were rewritten for ADR-043 on 2026-11-02 and the dev database reinstalled.
 
 ## Scripts
@@ -30,6 +30,7 @@ after `__`. The runner is `../main.bal`; see `../README.md` for settings and how
 | V021 | `scoring_points_ledger_guard` and `audit_log_guard` triggers: the ledger changes only its settlement columns and is never deleted; the audit log is never changed or deleted (ADR-043 compensating control) |
 | V022 | `announcement.attempted_at` (nullable `timestamptz`): saved before jobs calls Novera, so an attempt that may have reached Novera is never sent again automatically; the admin retry clears it (ADR-047) |
 | V024 | LinkedIn mentions and re-link: the member URN unique key covers only rows that are not removed (a removed connection no longer blocks linking the member again); `connection_member_connection.member_name` (LinkedIn userinfo name, the text of a mention); `sharing_share_request.commentary` limit 8000 to fit mention tokens (the API checks the shown length, 3000). V023 is left for the Novera seen-stats branch |
+| V025 | `recognition_rerank` numbers people 1, 2, 3... with no ties (`row_number`: points, earliest last activity, name, employee id) instead of a dense rank; `points_to_next_rank` and `points_to_top_n` count to pass the person ahead (plus 1). Re-ranks the stored rows once; rows whose place changes get no movement arrow |
 
 ## Rules
 

@@ -577,7 +577,7 @@ erDiagram
         citext email "for One WSO2 photo lookup"
         int total_points
         int actions_count
-        int rank "dense_rank, precomputed"
+        int rank "row_number position, precomputed"
         int previous_rank "movement arrow"
         int points_to_next_rank
         int points_to_top_n "gap to rank leaderboard.top_n (default 3)"
@@ -626,7 +626,7 @@ erDiagram
 | My monthly history | PK range on `(employee_id, month)` | one range scan |
 
 - Full queries and response shapes: [leaderboards.md](leaderboards.md).
-- **Re-ranking:** after inserting ledger rows, the score pass upserts the affected employees' totals, then re-ranks the period with one `UPDATE … FROM (SELECT dense_rank() …)`. At ~830 employees that's milliseconds. It then bumps `standing_version`. Built in M3 as SQL functions (V010): `recognition.apply_ledger_entry(reference, top_n)` (called by the ledger repository in the insert's transaction), `recognition.rerank(period, top_n)` and `recognition.rebuild(top_n)`.
+- **Re-ranking:** after inserting ledger rows, the score pass upserts the affected employees' totals, then re-ranks the period with one `UPDATE … FROM (SELECT row_number() …)` ordered by points, earliest last activity, name, employee id (V025: places never tie). At ~830 employees that's milliseconds. It then bumps `standing_version`. Built in M3 as SQL functions (V010): `recognition.apply_ledger_entry(reference, top_n)` (called by the ledger repository in the insert's transaction), `recognition.rerank(period, top_n)` and `recognition.rebuild(top_n)`.
 - **Recognition locks (V012, deep review 2026-10-17).** Two transaction-scoped advisory locks guard every recognition write, always in this order: (1) the app-level key **4242101**, taken by `store:lockRecognition` (`store:RECOGNITION_LOCK_KEY`), then (2) the SQL-level key **1634561133**, taken first thing inside `apply_ledger_entry`, `rerank` and `rebuild` (`store:RECOGNITION_SQL_LOCK_KEY`). The SQL lock stops two concurrent appends from re-ranking off their own snapshots (two people at rank 1) or deadlocking on row-lock order. The reverse order can deadlock, so `lockRecognition` must come before any of those functions in the same transaction. Both sites document it (the functions through V013's `COMMENT ON FUNCTION`); domain unit `testRecognitionLocksAreTakenInOrder` scans every call site and the DB IT checks that no SQL function takes 4242101. `lockRecognition` waits at most 2 s, because it runs inside the process-wide transaction gate ([ADR-032](../../decisions/ADR-032-transaction-gate-ballerina-2201-13.md)). Every holder also sets a transaction-local 5 s `idle_in_transaction_session_timeout`.
 - **Caching:** `amplify-api` returns `ETag: <period>:<version>` and `Cache-Control: private, max-age=30`, and keeps an in-process cache keyed by version. One WSO2 sends `If-None-Match` and gets **304** when nothing changed. TanStack Query uses `staleTime: 60s`, prefetching when the Amplify menu opens.
 - **Target:** p95 under 50 ms at the API for leaderboard, position and Team pages (load test in M11).

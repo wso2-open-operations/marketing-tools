@@ -1634,7 +1634,7 @@ components:
               displayName: {type: string, description: "The people directory's name, else the standing's, else the email"}
               email: {type: string}
               points: {type: integer}
-              rank: {type: integer, nullable: true, description: "Company rank; null without a standing row"}
+              rank: {type: integer, nullable: true, description: "Company rank: a position, 1, 2, 3... with no ties. Equal points go to whoever reached them first, then name, then employee id; null without a standing row"}
               teamRank: {type: integer, description: "Position within the list: 1, 2, 3... with no ties, whatever the sort. Equal points go to whoever reached them first, then name, then email; zero-point people come last"}
               previousRank: {type: integer, nullable: true}
               lastActivityAt: {type: string, format: date-time, nullable: true}
@@ -1673,8 +1673,8 @@ components:
               displayName: {type: string}
               email: {type: string}
               points: {type: integer}
-              rank: {type: integer, description: "Company rank"}
-              scopeRank: {type: integer, description: "Position within the scope: 1, 2, 3... with no ties. Equal points go to whoever reached them first, then name, then employee id. rank keeps the dense company rank"}
+              rank: {type: integer, description: "Company rank: a position, 1, 2, 3... with no ties"}
+              scopeRank: {type: integer, description: "Position within the scope: 1, 2, 3... with no ties. Equal points go to whoever reached them first, then name, then employee id. On the company view it equals rank"}
               previousRank: {type: integer, nullable: true}
               lastActivityAt: {type: string, format: date-time, nullable: true}
     LeaderboardGroups:
