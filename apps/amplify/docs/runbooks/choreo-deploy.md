@@ -133,7 +133,7 @@ Same names in two components (`DBHOST`, `DBPORT`, `DBNAME`, `DBUSER`, `DBPASSWOR
 | `CANPODASHBOARDGROUPS` | cfg | O | | Asgardeo groups for the PO dashboard, comma separated. Empty = the default `amplify_po` |
 | `CANPOINTRULESGROUPS` | cfg | O | | Asgardeo groups for point rules, comma separated. Empty = the default `amplify_po` |
 | `CANREPORTSGROUPS` | cfg | O | | Asgardeo groups for SLT reports, comma separated. Empty = the default `amplify_slt,amplify_po` |
-| `CANREVIEWSHARESGROUPS` | cfg | O | | Asgardeo groups for external-share review, comma separated. Empty = the default `amplify_po` |
+| `CANREVIEWSHARESGROUPS` | cfg | O | | Asgardeo groups for own-post review (the marketing team), comma separated. Empty = the default `amplify_marketing` |
 | `LINKEDINNONCEMODE` | cfg | O | `OFF` | `OFF`, `SEND` (checked when LinkedIn echoes the nonce) or `REQUIRE`. Only with ID-token validation on. Empty = `OFF` |
 | `INTERNALAPIKEY` | secret | R | | Ops-generated, at least 32 characters, the same value as Jobs (C2) |
 | `SCHEDULERAPIKEY` | secret | R | | Ops-generated, at least 32 characters, different from the internal key, the same value as Jobs (C2) |
