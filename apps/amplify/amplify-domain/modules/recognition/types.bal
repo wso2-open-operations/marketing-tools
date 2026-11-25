@@ -52,13 +52,13 @@ public type Standing record {|
     string email;
     # Points
     int totalPoints;
-    # Dense rank: ties share a rank
+    # Place: 1, 2, 3... with no ties (points, then who reached them first, then name)
     int rank;
     # Rank before this re-rank (movement arrow)
     int? previousRank;
-    # Points to reach the next better rank (0 at rank 1)
+    # Points to pass the person one place ahead (0 at rank 1)
     int pointsToNextRank;
-    # Points to enter the top N (0 when already in, leaderboards.md)
+    # Points to pass the person at place N and enter the top N (0 when already in, leaderboards.md)
     int pointsToTopN;
     # Last activity
     time:Utc? lastActivityAt;

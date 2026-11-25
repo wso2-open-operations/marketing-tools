@@ -19,12 +19,12 @@
 
 import ballerina/time;
 
-# Ranks totals the way `recognition_standing` stores them: SQL dense rank by points (ties share a rank,
-# so the top N may hold more than N people). Within a tie the order is who reached the points first (the
-# earliest `lastActivityAt`; no timestamp sorts last), then name and id for a stable order. The Celebrate
-# podium takes its first three rows in this order.
-# `pointsToTopN` = points of the lowest-ranked person inside the top N − own points + 1, or 0 when already
-# in (leaderboards.md). `pointsToNextRank` = points of the next better rank − own points.
+# Ranks totals the way `recognition_standing` stores them: SQL row_number by points, so places run 1, 2, 3...
+# with no ties. Equal points go to whoever reached them first (the earliest `lastActivityAt`; no timestamp
+# sorts last), then name and id for a stable order. The Celebrate podium takes its first three rows.
+# `pointsToTopN` = points of the person at place N − own points + 1, or 0 when already in (leaderboards.md).
+# `pointsToNextRank` = points of the person one place ahead − own points + 1 (a tie goes to whoever got there
+# first), 0 in first place.
 #
 # + periodKey - Period
 # + totals - Totals for the period
@@ -37,17 +37,11 @@ public isolated function rankStandings(string periodKey, EmployeeTotal[] totals,
         order by t.totalPoints descending, reachedKey(t.lastActivityAt) ascending, t.displayName ascending,
             t.employeeId ascending
         select t;
-    int[] rankPoints = [];
-    foreach EmployeeTotal t in sorted {
-        if rankPoints.length() == 0 || rankPoints[rankPoints.length() - 1] != t.totalPoints {
-            rankPoints.push(t.totalPoints);
-        }
-    }
-    int lastTopIndex = (topN < rankPoints.length() ? topN : rankPoints.length()) - 1;
-    int topNFloor = lastTopIndex >= 0 ? rankPoints[lastTopIndex] : 0;
+    int topNFloor = sorted.length() == 0 ? 0 : sorted[(topN < sorted.length() ? topN : sorted.length()) - 1].totalPoints;
     Standing[] standings = [];
-    foreach EmployeeTotal t in sorted {
-        int rank = <int>rankPoints.indexOf(t.totalPoints) + 1;
+    foreach int index in 0 ..< sorted.length() {
+        EmployeeTotal t = sorted[index];
+        int rank = index + 1;
         standings.push({
             periodKey,
             employeeId: t.employeeId,
@@ -56,7 +50,7 @@ public isolated function rankStandings(string periodKey, EmployeeTotal[] totals,
             totalPoints: t.totalPoints,
             rank,
             previousRank: previousRanks[t.employeeId],
-            pointsToNextRank: rank == 1 ? 0 : rankPoints[rank - 2] - t.totalPoints,
+            pointsToNextRank: index == 0 ? 0 : sorted[index - 1].totalPoints - t.totalPoints + 1,
             pointsToTopN: rank <= topN ? 0 : topNFloor - t.totalPoints + 1,
             lastActivityAt: t.lastActivityAt
         });
@@ -70,17 +64,17 @@ public isolated function rankStandings(string periodKey, EmployeeTotal[] totals,
 # + return - Key, smaller is earlier
 isolated function reachedKey(time:Utc? at) returns decimal => at is () ? 99999999999999d : <decimal>at[0] + at[1];
 
-# Company top N (B15): everyone whose dense rank is within `topN`.
+# Company top N (B15): the first `topN` places.
 #
 # + standings - Ranked standings
 # + topN - `leaderboard.top_n`
-# + return - Top rows; may be more than `topN` on ties
+# + return - Top rows, at most `topN` (places never tie)
 public isolated function topN(Standing[] standings, int topN = DEFAULT_TOP_N) returns Standing[] =>
     from Standing s in standings
     where s.rank <= topN
     select s;
 
-# My Team (B15): the viewer's team ranked within itself (dense rank over that set).
+# My Team (B15): the viewer's team ranked within itself (places 1, 2, 3... over that set).
 #
 # + periodKey - Period
 # + standings - Company standings
