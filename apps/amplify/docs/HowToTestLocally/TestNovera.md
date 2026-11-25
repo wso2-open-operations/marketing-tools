@@ -179,22 +179,24 @@ Code: BechtelCanDoIt/marketing-tools PR #12 (`feat/amplify_on_novera`). It needs
 
 `apps/amplify/local/novera-mock/server.mjs` stands in for the gateway. It answers `POST /token` and `POST /internal/notifications`, logs each notification's JSON, and replies 202. Nothing reaches Google Chat.
 
+It runs in the stack: `make up` starts it as the `novera-mock` service, and amplify-jobs posts to it whenever the `NOVERA_*` values in `local/.env` are empty (the default). `make e2e` checks that the campaign it registers reaches the mock. Watch it, or read the last card:
+
+```bash
+cd apps/amplify
+scripts/compose.sh logs -f novera-mock
+scripts/compose.sh exec novera-mock wget -qO- 127.0.0.1:3003/card
+```
+
+To also check each body against a local Novera's schema (400 = rejected, 503 = accepted, no Google key), run the mock on the host instead and point amplify-jobs at it in `local/.env` (the stack runs in Docker, so the host is `host.docker.internal`), then recreate the jobs container:
+
 ```bash
 cd apps/amplify/local/novera-mock
-# optional: also check each body against a local Novera's schema (400 = rejected, 503 = accepted, no Google key)
 CHECK_URL=http://localhost:3002/internal/notifications node server.mjs      # :3003
 ```
 
-The mock is off by default: nothing uses it until you start it and set these in `local/.env`. `local/.env.example` carries them as a commented-out block; copy them in **instead of** the `NOVERA_*` lines (the stack runs in Docker, so the host is `host.docker.internal`). Then recreate the jobs container:
-
 ```
-AMPLIFY_ON_NOVERA=true
-AMPLIFY_ON_WEBHOOK=false
 NOVERA_NOTIFY_URL=http://host.docker.internal:3003/internal/notifications
 NOVERA_TOKEN_URL=http://host.docker.internal:3003/token
-NOVERA_CLIENT_ID=mock
-NOVERA_CLIENT_SECRET=mock
-NOVERA_ALLOW_INSECURE_HTTP=true        # local only, default false, never set in Choreo; amplify-jobs otherwise insists on https
 ```
 
 ```bash
@@ -202,7 +204,7 @@ cd apps/amplify
 scripts/compose.sh up -d --build amplify-jobs        # not `make down`: that deletes local data
 ```
 
-Register a campaign (New Post in One WSO2, or `POST /campaigns`, see `TestAmplify.md`). When the scheduler fires the run, the mock logs the notification. Amplify's Novera path is `handleCampaignRegistered` in `amplify-jobs/handlers.bal`, the client is `amplify-jobs/novera.bal`, and the notification is built by `buildNoveraNotification` in `amplify-domain/modules/announcements/service.bal`.
+Register a campaign (New Post in Choreo Labs, or `POST /campaigns`, see `TestAmplify.md`). When the scheduler fires the run, the mock logs the notification. Amplify's Novera path is `handleCampaignRegistered` in `amplify-jobs/handlers.bal`, the client is `amplify-jobs/novera.bal`, and the notification is built by `buildNoveraNotification` in `amplify-domain/modules/announcements/service.bal`.
 
 What Amplify sends:
 

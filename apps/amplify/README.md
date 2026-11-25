@@ -51,9 +51,9 @@ Needs Docker (Compose v2), `openssl`, `curl`, `jq`. From this folder:
 
 ```sh
 make up      # first run writes local/.env (random local-only secrets) and the dev JWT keys, builds, starts, waits for health
-make e2e     # scripts/e2e-local.sh: campaign -> scheduler Run -> Chat card -> mock OAuth -> share -> points -> leaderboard
+make e2e     # scripts/e2e-local.sh: campaign -> scheduler Run -> Novera card -> mock OAuth -> share -> points -> leaderboard
 make seed    # rerun Amplify DB Migrate (migrations + seeds; idempotent)
-make logs    # follow all logs; `docker compose --env-file local/.env logs -f chat-stub` for cards
+make logs    # follow all logs; `scripts/compose.sh logs -f novera-mock` for announcement cards
 make check   # descriptor drift check (Choreo component.yaml vs workload.yaml vs Dockerfile vs compose) + log hygiene (scripts/check-logs-pii.sh)
 ```
 
@@ -74,7 +74,7 @@ make down    # stop and REMOVE volumes
 | amplify-api | `127.0.0.1:9090` | Published directly (no gateway). Call it with a dev JWT: `curl -H "x-jwt-assertion: $(local/dev-jwt/mint-dev-jwt.sh token emp-1 ada@example.com amplify_po)" localhost:9090/me` (ADR-023, `environment=local` only) |
 | mock-linkedin | `127.0.0.1:19091` (www/OAuth only) | The browser follows the authorization redirect here; api port 9090 stays internal. One mock member signs in every time |
 | people-stub | `127.0.0.1:19092` | people directory stub (HR Entity `POST /graphql` for team rosters; `GET /employees/basic-info` for One WSO2 photos/names). `make env` (and so `make up`) creates `local/people-stub/directory.json` from the example the first time (the real file is gitignored, so it never gets committed); edit it to add yourself. ThunderID users are keyed `<sub>@example.com` (the dev proxy's fallback when the token has no email) |
-| postgres, amplify-db-migrate, amplify-jobs, scheduler, scheduler-db, chat-stub | none | Compose network only. Scheduler UI: `docker compose --env-file local/.env exec amplify-api wget -qO- http://scheduler:8080/jobs` |
+| postgres, amplify-db-migrate, amplify-jobs, scheduler, scheduler-db, novera-mock, chat-stub | none | Compose network only. Scheduler UI: `docker compose --env-file local/.env exec amplify-api wget -qO- http://scheduler:8080/jobs`. Last announcement card: `scripts/compose.sh exec novera-mock wget -qO- 127.0.0.1:3003/card` |
 | apim (`make up PROFILE=apim`) | `127.0.0.1:9443`, `8243` | Optional WSO2 API Manager 4.7.0. **Pending the non-prod Asgardeo org** (key manager); steps in `compose.yaml`. Until then the default profile is the supported one |
 
 To point a local One WSO2 at it, use `http://localhost:9090` with a dev JWT forwarded as `x-jwt-assertion`, and `LINKEDIN_REDIRECT_URI` (default `http://localhost:3000/amplify/connect/callback`) as its callback page.
