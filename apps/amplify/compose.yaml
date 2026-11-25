@@ -176,6 +176,11 @@ services:
       # Pacing between one employee's LinkedIn posts, minutes. Off locally so `make e2e` publishes at once; set it to
       # try pacing (Choreo default 10).
       BAL_CONFIG_VAR_SHAREPUBLISHGAPMINUTES: ${SHARE_PUBLISH_GAP_MINUTES:-0}
+      # Spread of each campaign's posts after it opens, minutes. Off locally for the same reason (Choreo default 120).
+      BAL_CONFIG_VAR_SHARESPREADMINUTES: ${SHARE_SPREAD_MINUTES:-0}
+      # App ceilings on LinkedIn posts (Choreo defaults 450 a day, 60 an hour).
+      BAL_CONFIG_VAR_LINKEDINMAXPOSTSPERDAY: ${LINKEDIN_MAX_POSTS_PER_DAY:-450}
+      BAL_CONFIG_VAR_LINKEDINMAXPOSTSPERHOUR: ${LINKEDIN_MAX_POSTS_PER_HOUR:-60}
       # Novera (Google Chat assistant), the one announcement channel (ADR-047): the Choreo gateway URL of its
       # POST /internal/notifications and the client-credentials application subscribed to it. Empty settings =
       # announcements defer. Local try-out: run local/novera-mock (node server.mjs, :3003) and see docs/HowToTestLocally/TestNovera.md.

@@ -268,6 +268,41 @@ function paceDelayKeepsTheGapAndAddsJitter() {
 }
 
 @test:Config
+function spreadDelayPicksOnePointInTheWindowPerShare() {
+    time:Utc opened = [1790000000, 0];
+    test:assertEquals(spreadDelaySeconds((), opened, 7200, "s1"), 0d, "no open time");
+    test:assertEquals(spreadDelaySeconds(opened, opened, 0, "s1"), 0d, "0 turns the spread off");
+    test:assertEquals(spreadDelaySeconds(opened, time:utcAddSeconds(opened, 7201), 7200, "s1"), 0d,
+            "after the window every point has passed");
+    map<boolean> seen = {};
+    foreach int i in 0 ..< 20 {
+        string seed = string `share-${i}`;
+        decimal delay = spreadDelaySeconds(opened, opened, 7200, seed);
+        test:assertTrue(delay >= 0d && delay <= 7200d, delay.toString());
+        test:assertEquals(spreadDelaySeconds(opened, opened, 7200, seed), delay, "the same share keeps its point");
+        decimal later = spreadDelaySeconds(opened, time:utcAddSeconds(opened, 600), 7200, seed);
+        test:assertEquals(later, delay > 600d ? delay - 600d : 0d, "the wait counts down to the same point");
+        seen[delay.toString()] = true;
+    }
+    test:assertTrue(seen.length() > 5, "shares get different points");
+}
+
+@test:Config
+function postBudgetTakesTheTightestCeiling() {
+    RunConfig cfg = {...TEST_CONFIG};
+    cfg.linkedinMaxPostsPerRun = 50;
+    cfg.linkedinMaxPostsPerDay = 450;
+    cfg.linkedinMaxPostsPerHour = 60;
+    test:assertEquals(postBudget(cfg, 0, 0), 50, "the run ceiling");
+    test:assertEquals(postBudget(cfg, 430, 0), 20, "what is left of the day");
+    test:assertEquals(postBudget(cfg, 100, 55), 5, "what is left of the hour");
+    test:assertEquals(postBudget(cfg, 460, 0), 0, "over the day: never negative");
+    test:assertEquals(postBudget(cfg, 100, 70), 0, "over the hour: never negative");
+    cfg.linkedinMaxPostsPerHour = 0;
+    test:assertEquals(postBudget(cfg, 100, 500), 50, "an hourly cap of 0 is off");
+}
+
+@test:Config
 function linkedIn401RevokesConnectionAndFailsShare() returns error? {
     World w = harness();
     time:Utc now = time:utcNow();

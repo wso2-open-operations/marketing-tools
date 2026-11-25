@@ -81,6 +81,8 @@ isolated class StopDbAfterFirstRow {
 
     isolated function publishedToday(time:Utc now) returns int|error => self.inner.publishedToday(now);
 
+    isolated function publishedSince(time:Utc since) returns int|error => self.inner.publishedSince(since);
+
     isolated function forRow(string correlationId, int topN) returns Store => self.inner.forRow(correlationId, topN);
 }
 

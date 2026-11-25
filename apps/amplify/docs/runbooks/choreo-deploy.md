@@ -67,7 +67,7 @@ After each build, confirm the endpoint Choreo shows matches the descriptor (name
 4. **D4** Security headers at the proxy too if supported (`nosniff`, CSP `upgrade-insecure-requests`, HSTS).
 5. **D5 WAF / egress.** If the org uses egress control, allow-list only `api.linkedin.com`, `www.linkedin.com`, `chat.googleapis.com` and the people-app connection's gateway host for this project. Attach the org WAF policy to the proxy if one exists.
 6. **D6 Ingress rate limiting.** Put a rate limit on the proxy in front of amplify-api that slows an abusive caller without touching normal use. The limit itself is still to be chosen.
-7. **D7 Egress rate limiting to LinkedIn.** On the developer tier we are on for now, LinkedIn allows 500 reposts in a 24-hour window. amplify-jobs caps a run at 50 and a day at 1000 (`linkedinMaxPostsPerRun`, `linkedinMaxPostsPerDay`), so its own day cap sits above that limit. `linkedinMaxPostsPerDay` is not in the Jobs descriptor yet, so it cannot be lowered from the config form: add it (and to `workload.yaml`) before relying on it, or expect LinkedIn to answer 429 past 500.
+7. **D7 Egress rate limiting to LinkedIn.** On the developer tier we are on for now, LinkedIn allows 500 reposts in a 24-hour window. amplify-jobs caps a run at 50, any rolling hour at 60 and a UTC day at 450 (`linkedinMaxPostsPerRun`, `LINKEDINMAXPOSTSPERHOUR`, `LINKEDINMAXPOSTSPERDAY`), and spreads each campaign's posts over the 120 minutes after it opens (`SHARESPREADMINUTES`), so the app never posts in a burst or past LinkedIn's limit. The hour, day and spread are in the Jobs config form: set them to the values the PO and Marketing agree in the posting-decisions doc. An hourly cap or spread of 0 turns it off.
 
 ## E. Versioning and promotion
 

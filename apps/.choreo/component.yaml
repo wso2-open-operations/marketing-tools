@@ -184,3 +184,24 @@ configurations:
           displayName: Minutes between one employee's LinkedIn posts (default 10, 0 = off)
           type: number
           required: false
+    # Spread: each campaign's reposts wait for a point inside this many minutes after it opens (default 120; 0 = off).
+    - name: BAL_CONFIG_VAR_SHARESPREADMINUTES
+      valueFrom:
+        configForm:
+          displayName: Minutes each campaign's LinkedIn posts are spread over after it opens (default 120, 0 = off)
+          type: number
+          required: false
+    # App ceilings on LinkedIn posts, counted from published shares. Keep the day under LinkedIn's app limit
+    # (500 a day on the development tier).
+    - name: BAL_CONFIG_VAR_LINKEDINMAXPOSTSPERDAY
+      valueFrom:
+        configForm:
+          displayName: Most LinkedIn posts per UTC day (default 450)
+          type: number
+          required: false
+    - name: BAL_CONFIG_VAR_LINKEDINMAXPOSTSPERHOUR
+      valueFrom:
+        configForm:
+          displayName: Most LinkedIn posts in any hour (default 60, 0 = off)
+          type: number
+          required: false

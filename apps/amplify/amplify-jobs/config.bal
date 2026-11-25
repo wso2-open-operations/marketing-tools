@@ -54,13 +54,21 @@ configurable decimal linkedinTimeoutSeconds = 10;
 configurable resilience:HttpResilience linkedinApiResilience = {};
 # LinkedIn posts per run (app quota protection).
 configurable int linkedinMaxPostsPerRun = 50;
-# LinkedIn posts per UTC day across runs, counted from published shares (app daily limit budget).
-configurable int linkedinMaxPostsPerDay = 1000;
+# LinkedIn posts per UTC day across runs, counted from published shares. Kept under LinkedIn's app limit (500 a
+# day on the development tier), so LinkedIn never has to refuse one with a 429.
+configurable int linkedinMaxPostsPerDay = 450;
+# LinkedIn posts in any rolling hour across runs, counted from published shares, so a day's posts spread over the
+# day instead of going out in one burst. 0 turns the hourly cap off.
+configurable int linkedinMaxPostsPerHour = 60;
 # Least time between two LinkedIn posts for the same employee, minutes (pacing.bal). Sharing many posts at once
 # still queues them all; they go out one at a time. 0 turns pacing off.
 configurable int sharePublishGapMinutes = 10;
 # Most extra wait added to a paced post, minutes, so an employee's posts don't land at exact intervals.
 configurable int sharePublishJitterMinutes = 5;
+# Spread of each campaign's reposts, minutes (pacing.bal): a share waits for a point picked for it inside this
+# window after the campaign opens, so the burst of shares right after an announcement reaches LinkedIn as a
+# trickle. A share requested after its point goes at once. 0 turns the spread off.
+configurable int shareSpreadMinutes = 120;
 
 // ---- Novera (Google Chat assistant): the one announcement channel (M6a) -----------------------------
 

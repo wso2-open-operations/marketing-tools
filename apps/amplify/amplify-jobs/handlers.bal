@@ -259,6 +259,13 @@ isolated function handleRepostRequested(HandlerContext ctx, events:RepostRequest
         // post. Posting again could duplicate it, so fail the row for an operator to reconcile by hand.
         return failed("a previous publish attempt may already have posted; manual review required");
     }
+    campaign:Campaign? c = check ctx.store.campaign(event.campaignId);
+    // Spread (pacing.bal): each share waits for its own point in the campaign's spread window, so a burst of shares
+    // right after an announcement reaches LinkedIn as a trickle. Waiting doesn't use up an attempt.
+    decimal spreadDelay = spreadDelaySeconds(c is () ? () : c.opensAt, ctx.now, ctx.config.spreadSeconds, share.id);
+    if spreadDelay > 0d {
+        return deferFor(spreadDelay, store:PACED_NOTE_PREFIX + "waiting for this share's turn in the campaign's spread");
+    }
     // Pacing (pacing.bal): one post per employee per gap. Runs never overlap and handle rows one by one, so the
     // post an earlier row of this run made is already committed here. Waiting doesn't use up an attempt.
     decimal paceDelay = paceDelaySeconds(check ctx.store.lastPublishedAt(event.employeeId), ctx.now,
@@ -276,7 +283,6 @@ isolated function handleRepostRequested(HandlerContext ctx, events:RepostRequest
     if token is () {
         return failShare(ctx, share, types:NEEDS_RECONNECT, (), "token row gone");
     }
-    campaign:Campaign? c = check ctx.store.campaign(event.campaignId);
 
     // Plaintext lives only in this frame, only for the call. Never logged.
     string|error bearer = connection:openToken(cipher, token);

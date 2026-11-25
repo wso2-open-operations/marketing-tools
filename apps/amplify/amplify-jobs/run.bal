@@ -129,8 +129,9 @@ isolated function execute(Deps deps, string? correlationId) returns RunReport|er
     RunSettings settings = check deps.runStore.settings();
     report.connections = check deps.runStore.connectionSweep();
     int publishedToday = check deps.runStore.publishedToday(startedAt);
-    int dailyLeft = cfg.linkedinMaxPostsPerDay - publishedToday;
-    LinkedInBudget budget = new (dailyLeft < cfg.linkedinMaxPostsPerRun ? dailyLeft : cfg.linkedinMaxPostsPerRun);
+    int publishedLastHour = cfg.linkedinMaxPostsPerHour > 0
+        ? check deps.runStore.publishedSince(time:utcAddSeconds(startedAt, -3600)) : 0;
+    LinkedInBudget budget = new (postBudget(cfg, publishedToday, publishedLastHour));
 
     while report.claimed < cfg.maxRows && time:monotonicNow() - started < <decimal>cfg.maxSeconds {
         int room = cfg.maxRows - report.claimed;
