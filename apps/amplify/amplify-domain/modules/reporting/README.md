@@ -8,7 +8,8 @@ This module has no `types.bal`, no repository port, no service and no events. It
 
 File: `modules/reporting/snapshot.bal`.
 
-- `loadSnapshot(db, now)` returns a `Snapshot` read in one `REPEATABLE READ`, read-only transaction (through `store:inTransactionValue`), so every number shares one committed state.
+- `loadSnapshot(db, now, scope)` returns a `Snapshot` read in one `REPEATABLE READ`, read-only transaction (through `store:inTransactionValue`), so every number shares one committed state.
+- `PostScope` says which posts count: `retentionMonths` (default 24; posts whose `opens_at` is older are left out of every board, list and count) and `includeArchived` (default false; whether archived posts and the reposts recorded against them count in the live counts, repost counts, monthly trend, card counts and reposts by category). The post lists (`campaignRows`, `personPosts`) always carry archived posts inside the retention window, with `archived` set.
 - Contents: live counts, campaign rows, delivery by campaign, share health (`sharing:ShareHealth`), card counts, participation, points awarded, monthly reposts.
 
 ## Queries

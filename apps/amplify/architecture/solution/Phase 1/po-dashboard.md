@@ -39,6 +39,12 @@ Built as `GET /dashboards/{operations,campaigns,participation,glance,scorecard}`
 | Active employees, last 30 days | `recognition.standing.last_activity_at` | `scorecardTargetActive30d` (100) |
 | Reposts this month | `sharing.engagement` `occurred_at`, `REPOST` / `REPOST_COMMENTARY`, since the 1st (UTC) | `scorecardTargetRepostsPerMonth` (600) |
 
+### Archived posts and the retention window
+
+- **Retention window.** Every board leaves out posts whose `campaign.opens_at` (the date the post went live) is more than `dashboardRetentionMonths` ago (default 24; zero or negative uses the default). That covers the post lists, the person popup, the counts and the repost totals (a repost on an older post drops out with its post). The raw-data export applies it to engagement, share-attempt and campaign rows; points ledger rows stay so the export still adds up to the standings.
+- **Lists.** The post lists (Operations, Post Performance, the post and person popups) always show archived posts inside the window, flagged `archived: true` (status `ARCHIVED`), and the UI marks them with an Archived pill.
+- **Counts.** By default the summary numbers leave archived posts out: posts live, priority and closing soon, reposts this month and last month (and with comments), the monthly trend, cards delivered, priority reach, best post and reposts by category. `?includeArchived=true` on `/dashboards/{operations,campaigns,glance,scorecard}` counts them, and an archived post still inside its window counts as live. Participation, points, connections and share health aren't post counts and don't change. The snapshot is cached per setting.
+
 Status is On track when the measure meets its target, Watch when it doesn't. The seeded values are starting lines, not agreed targets. Chat delivery has no reminder or manual retry here: failed cards retry through the outbox with backoff (ADR-025), and only a card that used all 8 attempts needs the admin retry (ADR-024).
 
 ## Performance and caching

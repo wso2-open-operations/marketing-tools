@@ -112,6 +112,7 @@ Same names in two components (`DBHOST`, `DBPORT`, `DBNAME`, `DBUSER`, `DBPASSWOR
 | `SCORECARDTARGETPRIORITYREACHPCT` | cfg | O | `25` | Leave empty (default 25) |
 | `SCORECARDTARGETACTIVE30D` | cfg | O | `100` | Leave empty (default 100) |
 | `SCORECARDTARGETREPOSTSPERMONTH` | cfg | O | `600` | Leave empty (default 600) |
+| `DASHBOARDRETENTIONMONTHS` | cfg | O | `24` | Leave empty (default 24) |
 | `HRENTITYBASEURL` | cfg | O | | TBD, the HR Entity GraphQL URL (C7) |
 | `HRENTITYTOKENURL` | cfg | O | | TBD (C7) |
 | `HRENTITYCLIENTID` | cfg | O | | TBD (C7) |

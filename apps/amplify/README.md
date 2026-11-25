@@ -101,6 +101,7 @@ Every setting is a Ballerina `configurable`, set through `BAL_CONFIG_VAR_<NAME>`
 | `ROSTERCACHESECONDS` | ✓ | | | | unset (default 86400 = 24 hours). TTL of the directory results (teams, names, houses): how long a team move or new hire takes to show without a restart. Only a successful read is kept; a failed refresh keeps serving the last result and asks again on the next call |
 | `HEADCOUNTCACHESECONDS` | ✓ | | | | unset (default 86400 = 24 hours). How long the employee count ("of N") reuses one directory read |
 | `SCORECARDTARGETCONNECTEDPCT`, `SCORECARDMAXEXPIREDPCT`, `SCORECARDTARGETSHARESUCCESSPCT`, `SCORECARDTARGETPRIORITYREACHPCT`, `SCORECARDTARGETACTIVE30D`, `SCORECARDTARGETREPOSTSPERMONTH` | ✓ | | | | unset (defaults 25, 5, 98, 25, 100, 600). The scorecard lines; local `.env` names are `SCORECARD_TARGET_CONNECTED_PCT` etc. |
+| `DASHBOARDRETENTIONMONTHS` | ✓ | | | | unset (default 24). The dashboards leave out posts whose `opens_at` is more than this many months ago; zero or negative uses the default. Local `.env` name `DASHBOARD_RETENTION_MONTHS` |
 | `HRENTITYTOKENURL`, `HRENTITYCLIENTID`, `HRENTITYCLIENTSECRET` | ✓ | ✓ | | ✓ (secret) | unset. OAuth2 client credentials for the HR Entity service; same shape as leave-app's `oauthConfig` |
 | `HRENTITYPAGESIZE`, `HRENTITYSTATUSES` | ✓ | ✓ | | | unset (defaults 1000, `["Active","Marked leaver"]`) |
 | `LINKEDINCLIENTID` | ✓ | ✓ | | | `amplify-local` (mock) |

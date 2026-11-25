@@ -275,3 +275,111 @@ function testSnapshotReadsEverythingInOneRepeatableReadTransaction() returns err
     check apiDb.close();
     check jobsDb.close();
 }
+
+@test:Config {groups: ["integration"], enable: itEnabled}
+function testArchivedPostsStayListedAndCountOnlyWhenAsked() returns error? {
+    postgresql:Client apiDb = check api();
+    postgresql:Client jobsDb = check jobs();
+    string po = check newEmployee(apiDb, "rptarcpo");
+    string emp = check newEmployee(apiDb, "rptarc");
+    time:Utc t0 = time:utcNow();
+    time:Utc windowStart = time:utcAddSeconds(t0, -120);
+    time:Utc windowEnd = time:utcAddSeconds(t0, 3600);
+    reporting:PostScope counted = {includeArchived: true};
+
+    campaign:Campaign c = check registerCampaign(apiDb, po);
+    sharing:CampaignSnapshot snap = {id: c.id, provider: c.provider, resourceUrn: c.resourceUrn, open: true};
+    sharing:ConnectionSnapshot conn = {memberUrn: "urn:li:person:" + uniq(), usable: true};
+    sharing:ShareRequest req = check sharing:requestShare(new sharing:PgShareRepository(apiDb, {actorId: emp}), snap,
+            conn, {employeeId: emp, kind: types:REPOST_COMMENTARY, commentary: "Archived later"}, time:utcNow());
+    sharing:PublishResult published = check sharing:markPublished(req, "urn:li:share:" + uniq(), conn.memberUrn,
+            types:newUuidV7(), time:utcNow());
+    check (new sharing:PgShareRepository(jobsDb)).recordPublish(published, req.version);
+
+    int liveBefore = (check reporting:liveCounts(apiDb)).live;
+    int liveAllBefore = (check reporting:liveCounts(apiDb, counted)).live;
+    int repostsBefore = check reporting:repostsBetween(apiDb, windowStart, windowEnd);
+    int repostsAllBefore = check reporting:repostsBetween(apiDb, windowStart, windowEnd, counted);
+    int commentBefore = check reporting:commentaryRepostsBetween(apiDb, windowStart, windowEnd);
+    int cardsBefore = (check reporting:cardCounts(apiDb, windowStart)).total;
+
+    _ = check campaign:archiveCampaign(new campaign:PgCampaignRepository(apiDb, poActor(po)), c.id, time:utcNow());
+
+    // Counts leave the archived post (and its repost) out by default and keep it when asked.
+    test:assertEquals((check reporting:liveCounts(apiDb)).live, liveBefore - 1, "archived is not live by default");
+    test:assertEquals((check reporting:liveCounts(apiDb, counted)).live, liveAllBefore, "inside its window it counts when asked");
+    test:assertEquals(check reporting:repostsBetween(apiDb, windowStart, windowEnd), repostsBefore - 1);
+    test:assertEquals(check reporting:repostsBetween(apiDb, windowStart, windowEnd, counted), repostsAllBefore);
+    test:assertEquals(check reporting:commentaryRepostsBetween(apiDb, windowStart, windowEnd), commentBefore - 1);
+    test:assertEquals((check reporting:cardCounts(apiDb, windowStart)).total, cardsBefore - 1);
+    test:assertEquals((check reporting:cardCounts(apiDb, windowStart, counted)).total, cardsBefore);
+
+    // The lists always show it, flagged.
+    reporting:CampaignRow[] rows = from reporting:CampaignRow p in check reporting:campaignRows(apiDb, 30, 500, time:utcNow())
+        where p.campaignId == c.id
+        select p;
+    test:assertEquals(rows.length(), 1, "the archived post is still listed");
+    test:assertEquals(rows[0].status, "ARCHIVED");
+    test:assertTrue(rows[0].archived);
+    test:assertEquals(rows[0].reposts, 1);
+    reporting:PersonPost[] mine = check reporting:personPosts(apiDb, emp);
+    test:assertEquals(mine.length(), 1);
+    test:assertTrue(mine[0].archived);
+    test:assertEquals(mine[0].status, "ARCHIVED");
+    check apiDb.close();
+    check jobsDb.close();
+}
+
+@test:Config {groups: ["integration"], enable: itEnabled}
+function testPostsOlderThanTheRetentionWindowAreLeftOut() returns error? {
+    postgresql:Client apiDb = check api();
+    postgresql:Client jobsDb = check jobs();
+    string po = check newEmployee(apiDb, "rptoldpo");
+    string emp = check newEmployee(apiDb, "rptold");
+    campaign:Campaign c = check registerCampaign(apiDb, po);
+    sharing:CampaignSnapshot snap = {id: c.id, provider: c.provider, resourceUrn: c.resourceUrn, open: true};
+    sharing:ConnectionSnapshot conn = {memberUrn: "urn:li:person:" + uniq(), usable: true};
+    sharing:ShareRequest req = check sharing:requestShare(new sharing:PgShareRepository(apiDb, {actorId: emp}), snap,
+            conn, {employeeId: emp, kind: types:REPOST}, time:utcNow());
+    sharing:PublishResult published = check sharing:markPublished(req, "urn:li:share:" + uniq(), conn.memberUrn,
+            types:newUuidV7(), time:utcNow());
+    check (new sharing:PgShareRepository(jobsDb)).recordPublish(published, req.version);
+    time:Utc now = time:utcNow();
+    time:Utc windowStart = time:utcAddSeconds(now, -3600);
+    time:Utc windowEnd = time:utcAddSeconds(now, 3600);
+
+    // A post that opened a minute ago is inside a 24-month window; a zero-month window (a test-only value: the
+    // api never passes one) leaves out everything that opened before now.
+    reporting:PostScope none = {retentionMonths: 0, includeArchived: true};
+    int reposts = check reporting:repostsBetween(apiDb, windowStart, windowEnd, {includeArchived: true});
+    test:assertTrue(reposts >= 1);
+    test:assertEquals(check reporting:repostsBetween(apiDb, windowStart, windowEnd, none),
+            reposts - (check repostsOnPostsOpenedBefore(apiDb, windowStart, windowEnd)));
+    reporting:CampaignRow[] inWindow = from reporting:CampaignRow p in check reporting:campaignRows(apiDb, 30, 500, now)
+        where p.campaignId == c.id
+        select p;
+    test:assertEquals(inWindow.length(), 1);
+    reporting:CampaignRow[] outside = from reporting:CampaignRow p in check reporting:campaignRows(apiDb, 30, 500, now, 0)
+        where p.campaignId == c.id
+        select p;
+    test:assertEquals(outside.length(), 0, "a post older than the window is not listed");
+    test:assertEquals((check reporting:personPosts(apiDb, emp, 0)).length(), 0);
+    test:assertEquals((check reporting:personPosts(apiDb, emp)).length(), 1);
+    check apiDb.close();
+    check jobsDb.close();
+}
+
+# Active engagements in a time range on posts that opened before now (what a zero-month window leaves out).
+#
+# + db - Client
+# + 'from - Start, inclusive
+# + to - End, exclusive
+# + return - Count, or an error
+function repostsOnPostsOpenedBefore(postgresql:Client db, time:Utc 'from, time:Utc to) returns int|error {
+    string a = time:utcToString('from);
+    string b = time:utcToString(to);
+    return db->queryRow(`
+        SELECT count(*)::int FROM sharing_engagement_v e JOIN campaign c ON c.id = e.campaign_id
+        WHERE e.status = 'ACTIVE' AND e.occurred_at >= CAST(${a} AS timestamptz) AND e.occurred_at < CAST(${b} AS timestamptz)
+          AND c.opens_at < now()`);
+}

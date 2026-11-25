@@ -280,3 +280,87 @@ function testPersonBoardCountsOnePersonsPosts() returns error? {
     test:assertEquals((check send("GET", "/dashboards/people/nobody", (), token)).statusCode, 404);
     test:assertEquals((check send("GET", "/dashboards/people/e1", (), check rvToken("dash-plain"))).statusCode, 403);
 }
+
+// ---- Archived posts and the retention window ------------------------------------------------------------
+
+# The fixed snapshot plus an archived priority post, still inside its window, with the most reposts.
+#
+# + return - Snapshot
+function snapshotWithArchived() returns Snapshot {
+    Snapshot s = fixedSnapshot();
+    s.campaigns.push(dashPost("p-gone", "Pulled post", "PRODUCT", true, "ARCHIVED", 2, 500, 7));
+    return s;
+}
+
+@test:Config {groups: ["dashboards"]}
+function testRetentionWindowIsConfigurationWithADefault() {
+    test:assertEquals(postScope(false), {retentionMonths: 24, includeArchived: false}, "unset configuration = 24 months");
+    test:assertEquals(postScope(true), {retentionMonths: 24, includeArchived: true});
+}
+
+@test:Config {groups: ["dashboards"]}
+function testArchivedPostsAreListedButNotCountedByDefault() returns error? {
+    setSnapshot(snapshotWithArchived());
+    setDirectory("ok");
+    string token = check boardToken(PO_GROUP);
+
+    json ops = check (check send("GET", "/dashboards/operations", (), token)).getJsonPayload();
+    test:assertEquals(check ops.includeArchived, false);
+    test:assertEquals(check ops.retentionMonths, 24);
+    json[] gone = from json p in <json[]>check ops.campaigns
+        where check p.campaignId == "p-gone"
+        select p;
+    test:assertEquals(gone.length(), 1, "the post list shows the archived post");
+    test:assertEquals(check gone[0].archived, true);
+    test:assertEquals(check gone[0].status, "ARCHIVED");
+
+    json glance = check (check send("GET", "/dashboards/glance", (), token)).getJsonPayload();
+    test:assertEquals(check glance.bestCampaign.campaignId, "p-ancient", "an archived post is never the best one by default");
+    test:assertEquals(check glance.campaignsReachingTarget.live, 2, "an archived post is not live by default");
+
+    json campaigns = check (check send("GET", "/dashboards/campaigns?campaignId=p-gone", (), token)).getJsonPayload();
+    test:assertEquals(check campaigns.selected.archived, true, "an archived post opens in the popup");
+    setSnapshot();
+}
+
+@test:Config {groups: ["dashboards"]}
+function testIncludeArchivedCountsArchivedPosts() returns error? {
+    setSnapshot(snapshotWithArchived());
+    setDirectory("ok");
+    string token = check boardToken(PO_GROUP);
+    json glance = check (check send("GET", "/dashboards/glance?includeArchived=true", (), token)).getJsonPayload();
+    test:assertEquals(check glance.includeArchived, true);
+    test:assertEquals(check glance.bestCampaign.campaignId, "p-gone");
+    test:assertEquals(check glance.campaignsReachingTarget.live, 3, "an archived post inside its window counts as live");
+
+    json card = check (check send("GET", "/dashboards/scorecard?includeArchived=true", (), token)).getJsonPayload();
+    test:assertEquals(check card.includeArchived, true);
+    json reach = check measureOf(card, "priorityReach");
+    test:assertEquals(check reach.denominator, 2, "the archived priority post counts");
+    setSnapshot();
+}
+
+@test:Config {groups: ["dashboards"]}
+function testSnapshotIsCachedPerScope() returns error? {
+    setSnapshot();
+    setDirectory("ok");
+    string token = check boardToken(PO_GROUP);
+    _ = takeSnapshotLoads();
+    _ = check send("GET", "/dashboards/operations", (), token);
+    _ = check send("GET", "/dashboards/glance?includeArchived=true", (), token);
+    _ = check send("GET", "/dashboards/scorecard?includeArchived=false", (), token);
+    _ = check send("GET", "/dashboards/campaigns?includeArchived=true", (), token);
+    test:assertEquals(takeSnapshotLoads(), 2, "one snapshot per scope");
+    test:assertEquals(snapshotCacheSize(), 2);
+    dropSnapshot();
+    test:assertEquals(snapshotCacheSize(), 0, "a change drops both");
+}
+
+@test:Config {groups: ["dashboards"]}
+function testPersonBoardFlagsArchivedPosts() returns error? {
+    json body = check (check send("GET", "/dashboards/people/e1", (), check boardToken(PO_GROUP))).getJsonPayload();
+    json[] posts = <json[]>check body.campaigns;
+    test:assertEquals(check posts[0].archived, false);
+    test:assertEquals(check posts[1].archived, true);
+    test:assertEquals(check posts[1].status, "ARCHIVED");
+}

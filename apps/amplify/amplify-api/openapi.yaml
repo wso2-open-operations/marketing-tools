@@ -791,6 +791,7 @@ paths:
       description: "Operations board: what is live, who is sharing, whether anything is stuck. Read-only, computed from Amplify's own tables, cached 60 s. Not for plain employees (403)."
       parameters:
         - {$ref: "#/components/parameters/CorrelationId"}
+        - {$ref: "#/components/parameters/IncludeArchived"}
       responses:
         "200":
           description: OK
@@ -812,6 +813,7 @@ paths:
         - {$ref: "#/components/parameters/CorrelationId"}
         - {name: days, in: query, description: "Look-back for campaigns and categories", schema: {type: integer, minimum: 1, maximum: 90, default: 30}}
         - {name: campaignId, in: query, schema: {type: string, maxLength: 64}}
+        - {$ref: "#/components/parameters/IncludeArchived"}
       responses:
         "200":
           description: OK
@@ -848,7 +850,7 @@ paths:
       tags: [S6 Dashboards]
       operationId: getDashboardPerson
       x-access: CAN_DASHBOARD
-      description: "One person's Post Performance for the person popup: every post they have an active repost of (plain, and with their own comment) and the category split. Team and BU come from the people directory in the UI. Cached 60 s."
+      description: "One person's Post Performance for the person popup: every post they have an active repost of (plain, and with their own comment, archived posts included and flagged, posts older than the retention window left out) and the category split. Team and BU come from the people directory in the UI. Cached 60 s."
       parameters:
         - {$ref: "#/components/parameters/CorrelationId"}
         - {name: employeeId, in: path, required: true, schema: {type: string, maxLength: 255}}
@@ -890,6 +892,7 @@ paths:
       description: "At a glance: the numbers for the leadership check-in. People, teams and the best campaign's rank come from /leaderboard and /leaderboard/groups. Cached 60 s."
       parameters:
         - {$ref: "#/components/parameters/CorrelationId"}
+        - {$ref: "#/components/parameters/IncludeArchived"}
       responses:
         "200":
           description: OK
@@ -909,6 +912,7 @@ paths:
       description: "Scorecard: seven measures against their targets (`scorecard*` configuration, ADR-036). Cached 60 s."
       parameters:
         - {$ref: "#/components/parameters/CorrelationId"}
+        - {$ref: "#/components/parameters/IncludeArchived"}
       responses:
         "200":
           description: OK
@@ -1059,6 +1063,12 @@ components:
       in: header
       required: false
       schema: {type: string, pattern: "^[A-Za-z0-9._-]{1,64}$"}
+    IncludeArchived:
+      name: includeArchived
+      in: query
+      required: false
+      description: "Count archived posts (and the reposts recorded against them) in the summary numbers. The post lists always show archived posts, flagged `archived`. Posts that opened before the retention window (dashboardRetentionMonths, default 24) are never shown or counted."
+      schema: {type: boolean, default: false}
     IdempotencyKey:
       name: Idempotency-Key
       in: header
@@ -1695,6 +1705,7 @@ components:
         categoryLabel: {type: string}
         isPriority: {type: boolean}
         status: {type: string, enum: [SCHEDULED, OPEN, CLOSED, ARCHIVED]}
+        archived: {type: boolean, description: "The post was archived (deleted from the Posts page); the boards still list it"}
         opensAt: {type: string, format: date-time}
         closesAt: {type: string, format: date-time}
         reposts: {type: integer, description: "Active engagements recorded against the campaign"}
@@ -1705,6 +1716,8 @@ components:
       required: [asOf, kpis, campaigns, shareHealth, connections]
       properties:
         asOf: {type: string, format: date-time}
+        includeArchived: {type: boolean, description: "Whether archived posts count in the summary numbers (echoes the query parameter)"}
+        retentionMonths: {type: integer, description: "Posts that opened more than this many months ago are left out"}
         headcount: {type: integer, nullable: true, description: "Employee count from /headcount; null when the people directory never loaded"}
         kpis:
           type: object
@@ -1768,6 +1781,8 @@ components:
               categoryCode: {type: string}
               categoryLabel: {type: string}
               isPriority: {type: boolean}
+              status: {type: string, enum: [SCHEDULED, OPEN, CLOSED, ARCHIVED]}
+              archived: {type: boolean, description: "The post was archived; still listed"}
               opensAt: {type: string, format: date-time}
               closesAt: {type: string, format: date-time}
               reposts: {type: integer}
@@ -1789,6 +1804,8 @@ components:
       required: [asOf, windowDays, campaigns, byCategory]
       properties:
         asOf: {type: string, format: date-time}
+        includeArchived: {type: boolean, description: "Whether archived posts count in the summary numbers (echoes the query parameter)"}
+        retentionMonths: {type: integer, description: "Posts that opened more than this many months ago are left out"}
         windowDays: {type: integer}
         peopleConnected: {type: integer}
         campaigns: {type: array, items: {$ref: "#/components/schemas/DashboardCampaignRow"}}
@@ -1813,6 +1830,8 @@ components:
             categoryCode: {type: string}
             categoryLabel: {type: string}
             isPriority: {type: boolean}
+            status: {type: string, enum: [SCHEDULED, OPEN, CLOSED, ARCHIVED]}
+            archived: {type: boolean}
             opensAt: {type: string, format: date-time}
             closesAt: {type: string, format: date-time}
             reposts: {type: integer}
@@ -1858,6 +1877,8 @@ components:
       required: [asOf, month, reposts, monthly, participants, campaignsLive, campaignsReachingTarget, shareSuccess]
       properties:
         asOf: {type: string, format: date-time}
+        includeArchived: {type: boolean, description: "Whether archived posts count in the summary numbers (echoes the query parameter)"}
+        retentionMonths: {type: integer, description: "Posts that opened more than this many months ago are left out"}
         month: {type: string}
         reposts:
           type: object
@@ -1905,6 +1926,8 @@ components:
       required: [asOf, measures]
       properties:
         asOf: {type: string, format: date-time}
+        includeArchived: {type: boolean, description: "Whether archived posts count in the summary numbers (echoes the query parameter)"}
+        retentionMonths: {type: integer, description: "Posts that opened more than this many months ago are left out"}
         measures:
           type: array
           items:

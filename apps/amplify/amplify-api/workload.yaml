@@ -62,6 +62,8 @@ configurations:
       value: "86400"
     - name: BAL_CONFIG_VAR_HEADCOUNTCACHESECONDS
       value: "86400"
+    - name: BAL_CONFIG_VAR_DASHBOARDRETENTIONMONTHS
+      value: "24"
     # Access (modules/auth/access.bal): Asgardeo groups per capability, comma separated.
     - name: BAL_CONFIG_VAR_CANCAMPAIGNGROUPS
       value: "amplify_po,amplify_marketing"
