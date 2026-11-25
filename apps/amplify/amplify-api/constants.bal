@@ -112,6 +112,12 @@ const string SETTING_SHARING_ENABLED = "sharing.enabled";
 const string SETTING_ANNOUNCEMENTS_ENABLED = "announcements.enabled";
 # Own posts one employee may submit per UTC day; 0 = no limit
 const string SETTING_EXTERNAL_SHARE_DAILY_LIMIT = "external_share.daily_limit";
+# Coins (phase 2): points per block and Coins per block (only whole blocks convert), how often points convert,
+# and whether Coins are sent to wallets (off until the WSO2 Coins API exists)
+const string SETTING_COIN_BLOCK_POINTS = "coin.block_points";
+const string SETTING_COIN_BLOCK_COINS = "coin.block_coins";
+const string SETTING_COIN_SCHEDULE = "coin.schedule";
+const string SETTING_COIN_WALLETS_ENABLED = "coin.wallets_enabled";
 
 // ---- M6b: schedule settings pushed to the scheduler (ADR-026) -------------------------------------
 

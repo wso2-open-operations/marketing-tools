@@ -67,6 +67,7 @@ public final Rule[] & readonly ACTIVITY_MATRIX = [
     {method: "POST", path: "/po/point-rules", requires: CAN_POINT_RULES, capability: "point_rules.manage", useCase: "New version; past awards keep their value"},
     {method: "POST", path: "/po/points/adjustments", requires: CAN_ADJUST_POINTS, capability: "points.adjust", useCase: "Reason required; recognition in the same transaction (B12)"},
     {method: "POST", path: "/po/points/{reference}/reverse", requires: CAN_ADJUST_POINTS, capability: "points.adjust", useCase: "Reason required; not already reversed"},
+    {method: "GET", path: "/point-values", requires: EMPLOYEE, capability: "point_values.read", useCase: "Current points per action (screens show what each activity earns)"},
     {method: "GET", path: "/po/people", requires: CAN_ADJUST_POINTS, capability: "points.adjust", useCase: "Find a person by name or email for Points & corrections; erased people left out"},
     // S4 Recognition
     {method: "GET", path: "/leaderboard", requires: EMPLOYEE, capability: "leaderboard.read", useCase: "Top N, personal, My Team (ADR-014)"},
@@ -92,7 +93,9 @@ public final Rule[] & readonly ACTIVITY_MATRIX = [
     {method: "POST", path: "/admin/announcements/{id}/retry", requires: CAN_ADMIN, capability: "admin.announcements", useCase: "Only while FAILED; announcements.enabled"},
     {method: "POST", path: "/admin/announcements/{id}/send", requires: CAN_ADMIN, capability: "admin.announcements", useCase: "Only for a post with no announcement; announcements.enabled"},
     {method: "GET", path: "/admin/settings", requires: CAN_ADMIN, capability: "admin.settings"},
-    {method: "PUT", path: "/admin/settings", requires: CAN_ADMIN, capability: "admin.settings", useCase: "Optimistic lock; Coin settings hidden"},
+    {method: "PUT", path: "/admin/settings", requires: CAN_ADMIN, capability: "admin.settings", useCase: "Optimistic lock; every editable key, the PO settings included"},
+    {method: "GET", path: "/po/settings", requires: CAN_POINT_RULES, capability: "po.settings", useCase: "Coins rate and schedule, own-post daily limit"},
+    {method: "PUT", path: "/po/settings", requires: CAN_POINT_RULES, capability: "po.settings", useCase: "Only PO_SETTINGS keys; optimistic lock; audited"},
     {method: "POST", path: "/admin/scheduler/sync", requires: CAN_ADMIN, capability: "admin.settings", useCase: "Pushes the schedule settings to the scheduler (ADR-026)"}
 ];
 

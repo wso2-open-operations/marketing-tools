@@ -250,6 +250,27 @@ function testPeopleSearchIsForThePoTeam() returns error? {
     test:assertEquals(check items[0].employeeId, "emp-avery");
 }
 
+@test:Config {groups: ["writes"], dependsOn: [testSettingsVersionConflictIs409]}
+function testPoSettingsAreTheBusinessNumbersOnly() returns error? {
+    string token = check po();
+    http:Response listed = check send("GET", "/po/settings", (), token);
+    test:assertEquals(listed.statusCode, 200);
+    json[] rows = <json[]>(check (check listed.getJsonPayload()).settings);
+    foreach json r in rows {
+        string key = (check r.key).toString();
+        test:assertTrue(PO_SETTINGS.indexOf(key) !is (), "only PO keys are listed, got " + key);
+    }
+    http:Response refused = check send("PUT", "/po/settings",
+            {changes: [{key: "sharing.enabled", value: false, version: 1}]}, token);
+    test:assertEquals(refused.statusCode, 403, "switches are an admin's");
+    test:assertEquals(check codeIn(refused), "ROLE_NOT_PERMITTED");
+    http:Response bad = check send("PUT", "/po/settings",
+            {changes: [{key: "coin.schedule", value: "HOURLY", version: 1}]}, token);
+    test:assertEquals(bad.statusCode, 422, "values are checked like the admin's");
+    http:Response employeeTry = check send("GET", "/po/settings", (), check employee("not-a-po"));
+    test:assertEquals(employeeTry.statusCode, 403);
+}
+
 // ---- Announcements -----------------------------------------------------------------------------------
 
 @test:Config {groups: ["writes"]}

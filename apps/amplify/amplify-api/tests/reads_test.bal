@@ -579,3 +579,77 @@ function testHistoryHidesPoReasonAndIdFromTeammates() returns error? {
     test:assertEquals(forPo["actorId"], "po-0001");
     test:assertEquals(forPo["reason"], "Duplicate claim, HR looking at conduct");
 }
+
+@test:Config {groups: ["reads"]}
+function testOwnHistoryShowsTheReasonAndWhereItStands() returns error? {
+    // A plain employee reading their own history: the PO's reason is theirs to read, the PO's id is not.
+    http:Response own = check send("GET", "/team/history-self/history", (), check employee("history-self"));
+    test:assertEquals(own.statusCode, 200);
+    check assertShape(own, "PointsHistory");
+    json body = check own.getJsonPayload();
+    test:assertEquals(check body.totalPoints, 10, "all-time points come from the server, not the page");
+    json first = (<json[]>(check body.items))[0];
+    map<json> row = <map<json>>first;
+    test:assertEquals(row["reason"], "Welcome bonus");
+    test:assertFalse(row.hasKey("actorId"), "the PO's id stays internal");
+    test:assertEquals(row["settlement"], "ACTION_REQUIRED");
+    test:assertEquals(row["reversedBy"], ());
+}
+
+@test:Config {groups: ["reads"]}
+function testMyPointsCarriesTheCoinsBlock() returns error? {
+    http:Response res = check send("GET", "/me/points", (), check employee("coins-reader"));
+    test:assertEquals(res.statusCode, 200);
+    check assertShape(res, "MyPoints");
+    json coins = check (check res.getJsonPayload()).coins;
+    test:assertEquals(check coins.walletsEnabled, false, "wallets stay off until the Coins API exists");
+    test:assertEquals(check coins.blockPoints, 100);
+    test:assertEquals(check coins.blockCoins, 10);
+    test:assertEquals(check coins.schedule, "MONTHLY");
+    test:assertEquals(check coins.coinsReceived, 0);
+}
+
+@test:Config {groups: ["reads"]}
+function testPointValuesAreForEveryEmployee() returns error? {
+    http:Response res = check send("GET", "/point-values", (), check employee("values-reader"));
+    test:assertEquals(res.statusCode, 200);
+    json values = check (check res.getJsonPayload()).values;
+    test:assertTrue(values is map<json> && values.length() > 0, values.toString());
+}
+
+@test:Config
+function testReviewItemsAndHistoryRowsCarryWhatTheScreensShow() {
+    map<json> named = <map<json>>withClaimant({id: "c1"},
+        {employeeId: "e1", displayName: "Avery Perera", email: "avery@wso2.com"});
+    test:assertEquals(named["employeeName"], "Avery Perera");
+    test:assertEquals(named["employeeEmail"], "avery@wso2.com");
+    map<json> unknown = <map<json>>withClaimant({id: "c2"}, ());
+    test:assertEquals(unknown["employeeName"], (), "an unknown claimant is null, never a guess");
+
+    types:LedgerEntry paid = {
+        reference: "R1", employeeId: "e1", campaignId: "camp-1", sourceType: types:ENGAGEMENT, action: types:REPOST,
+        points: 2, reason: (), reversesReference: (), actorId: "system", createdAt: [1760000000, 0], status: types:PAID,
+        sourceId: (), ruleId: (), correlationId: (), statusChangedAt: (), paidAt: [1760000100, 0], coinReference: "C-1"
+    };
+    map<json> row = <map<json>>historyItem({reference: "R1"}, paid, {"R1": "REV-1"}, {"camp-1": "Big launch"});
+    test:assertEquals(row["campaignTitle"], "Big launch");
+    test:assertEquals(row["reversedBy"], "REV-1");
+    test:assertEquals(row["settlement"], "PAID");
+    types:LedgerEntry held = paid.clone();
+    held.reference = "R2";
+    held.campaignId = ();
+    held.status = types:HELD;
+    map<json> heldRow = <map<json>>historyItem({reference: "R2"}, held, {}, {});
+    test:assertEquals(heldRow["settlement"], "HELD");
+    test:assertEquals(heldRow["campaignTitle"], ());
+    test:assertEquals(campaignIdsOf([paid, paid, held]), ["camp-1"], "each campaign once");
+}
+
+@test:Config
+function testCoinsProgressIsTheRestOfTheBlock() {
+    Settings s = {coinBlockPoints: 100, coinBlockCoins: 10};
+    json coins = coinsOf(s, {total: 1240, held: 1240, paid: 0, actionRequired: 0});
+    test:assertEquals((<map<json>>coins)["pointsTowardNext"], 40, "1,240 points: 12 blocks and 40 toward the next");
+    json negative = coinsOf(s, {total: -5, held: -5, paid: 0, actionRequired: 0});
+    test:assertEquals((<map<json>>negative)["pointsTowardNext"], 0, "a reversal can't make progress negative");
+}

@@ -369,3 +369,49 @@ isolated function releaseIdempotency(types:EmployeeId employeeId, string key) re
 # + return - Matches, or an error
 isolated function searchPeople(string text, int 'limit) returns identity:EmployeeMatch[]|error =>
     identity:searchEmployees(check db(), text, 'limit);
+
+# One employee's points summary (a seam the tests replace).
+#
+# + employeeId - Employee
+# + return - The summary, or an error
+isolated function pointsSummary(types:EmployeeId employeeId) returns scoring:PointsSummary|error {
+    retry<resilience:TransientDbRetry> (dbReadRetries) {
+        return check scoring:pointsSummaryOf(check db(), employeeId);
+    }
+}
+
+# Which of these ledger rows were reversed (a seam the tests replace).
+#
+# + references - Ledger references
+# + return - Reversed reference -> reversal reference, or an error
+isolated function reversalsAmong(types:LedgerReference[] references) returns map<string>|error {
+    retry<resilience:TransientDbRetry> (dbReadRetries) {
+        return check scoring:reversalsOf(check db(), references);
+    }
+}
+
+# Campaign titles by id (a seam the tests replace).
+#
+# + ids - Campaign ids
+# + return - Id -> title, or an error
+isolated function campaignTitles(string[] ids) returns map<string>|error {
+    retry<resilience:TransientDbRetry> (dbReadRetries) {
+        return check campaign:titlesOf(check db(), ids);
+    }
+}
+
+# Employees by id, for the review queue (a seam the tests replace).
+#
+# + ids - Employee ids
+# + return - Id -> match, or an error
+isolated function employeesIn(types:EmployeeId[] ids) returns map<identity:EmployeeMatch>|error {
+    retry<resilience:TransientDbRetry> (dbReadRetries) {
+        return check identity:employeesByIds(check db(), ids);
+    }
+}
+
+# Every point rule version, for `GET /point-values`.
+#
+# + return - Rules, or an error
+isolated function pointRulesNow() returns scoring:PointRule[]|error =>
+    (check pointRuleRepository(store:SYSTEM)).all();

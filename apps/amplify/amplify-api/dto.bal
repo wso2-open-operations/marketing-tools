@@ -319,6 +319,17 @@ isolated function ledgerDtoForTeammate(types:LedgerEntry e) returns json {
     return row;
 }
 
+# A ledger row for the person it belongs to: the PO's id stays internal, but the reason a PO gave is theirs to
+# read ("When points are removed, the reason is shown on the row", screens 4 and 6).
+#
+# + e - Ledger row
+# + return - The row as JSON without `actorId`
+isolated function ledgerDtoForSelf(types:LedgerEntry e) returns json {
+    map<json> row = <map<json>>ledgerDto(e).toJson();
+    _ = row.remove("actorId");
+    return row;
+}
+
 isolated function pointRuleDto(scoring:PointRule r, scoring:PointRule[] all, time:Utc now) returns PointRuleDto {
     scoring:PointRule|types:DomainError current = scoring:ruleInForce(all, r.action, now);
     return {

@@ -18,6 +18,7 @@
 
 import amplify_common.types;
 
+import ballerina/sql;
 import ballerinax/postgresql;
 
 # Shortest search text `searchEmployees` accepts.
@@ -72,4 +73,25 @@ isolated function likeEscape(string text) returns string {
         escaped += c;
     }
     return escaped;
+}
+
+# Names and work emails of these employees (the PO review queue shows who sent each claim). Erased employees come
+# back with their placeholder name and email, as stored.
+#
+# + db - Client
+# + ids - Employee ids
+# + return - Id -> match, or an error
+public isolated function employeesByIds(postgresql:Client db, types:EmployeeId[] ids) returns map<EmployeeMatch>|error {
+    map<EmployeeMatch> found = {};
+    if ids.length() == 0 {
+        return found;
+    }
+    stream<EmployeeMatch, error?> rows = db->query(sql:queryConcat(`
+        SELECT employee_id AS "employeeId", display_name AS "displayName", email::text AS email
+        FROM identity_employee WHERE employee_id IN (`, sql:arrayFlattenQuery(ids), `)`));
+    check from EmployeeMatch m in rows
+        do {
+            found[m.employeeId] = m;
+        };
+    return found;
 }

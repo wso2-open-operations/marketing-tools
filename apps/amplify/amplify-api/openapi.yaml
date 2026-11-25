@@ -593,6 +593,25 @@ paths:
         "422": {$ref: "#/components/responses/Problem"}
         "503": {$ref: "#/components/responses/Problem"}
 
+  /point-values:
+    get:
+      tags: [C2 Scoring]
+      operationId: getPointValues
+      x-access: EMPLOYEE
+      description: What each activity earns today, the point rule in force per action (screens show the value on each action, and the PO review buttons their award).
+      parameters: [{$ref: "#/components/parameters/CorrelationId"}]
+      responses:
+        "200":
+          description: Points per action
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [values]
+                properties:
+                  values: {type: object, additionalProperties: {type: integer}, description: "Action (REPOST, REPOST_COMMENTARY, REACTION, COMMENT, OWN_POST, OWN_POST_AMPLIFIED, ...) -> points"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
   /po/people:
     get:
       tags: [C2 Scoring]
@@ -1012,7 +1031,7 @@ paths:
       parameters: [{$ref: "#/components/parameters/CorrelationId"}]
       responses:
         "200":
-          description: Settings (Coin settings hidden in phase 1)
+          description: Settings, every editable key (the Coins settings included)
           content:
             application/json:
               schema: {$ref: "#/components/schemas/SettingList"}
@@ -1033,6 +1052,46 @@ paths:
       responses:
         "200":
           description: Settings after the change
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SettingList"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "413": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /po/settings:
+    get:
+      tags: [S5 Admin]
+      operationId: listPoSettings
+      x-access: CAN_POINT_RULES
+      description: The business settings the PO team changes on Amplify Admin, `coin.block_points`, `coin.block_coins`, `coin.schedule` and `external_share.daily_limit`.
+      parameters: [{$ref: "#/components/parameters/CorrelationId"}]
+      responses:
+        "200":
+          description: The PO settings
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SettingList"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+    put:
+      tags: [S5 Admin]
+      operationId: changePoSettings
+      x-access: CAN_POINT_RULES
+      description: Changes the PO settings, each guarded by its `version`. Any other key is refused with 403 `ROLE_NOT_PERMITTED` (switches, limits and schedules are an admin's, through `PUT /admin/settings`).
+      parameters: [{$ref: "#/components/parameters/CorrelationId"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SettingChanges"}
+      responses:
+        "200":
+          description: The PO settings after the change
           content:
             application/json:
               schema: {$ref: "#/components/schemas/SettingList"}
@@ -1407,6 +1466,8 @@ components:
         createdAt: {type: string, format: date-time}
         version: {type: integer}
         note: {type: string, nullable: true, description: "The employee's note for the reviewer"}
+        employeeName: {type: string, nullable: true, description: "Who sent it, on `GET /po/external-shares` items only"}
+        employeeEmail: {type: string, nullable: true, description: "Their work email, on `GET /po/external-shares` items only"}
     PersonMatchList:
       type: object
       required: [items]
@@ -1484,11 +1545,14 @@ components:
         sourceType: {type: string, enum: [ENGAGEMENT, EXTERNAL_SHARE, ADJUSTMENT, REVERSAL]}
         action: {type: string, nullable: true}
         points: {type: integer}
-        reason: {type: string, nullable: true, description: "A PO's free text. Callers who are not a PO get the fixed label 'Adjusted by the PO team' on adjustment and reversal rows, and null on the others"}
+        reason: {type: string, nullable: true, description: "A PO's free text. The person the row belongs to sees it too; other callers who are not a PO get the fixed label 'Adjusted by the PO team' on adjustment and reversal rows, and null on the others"}
         reversesReference: {type: string, nullable: true}
         actorId: {type: string, description: "The PO's employee id. Omitted for callers who are not a PO"}
         createdAt: {type: string, format: date-time}
         status: {type: string, nullable: true, enum: [HELD, PAID, null]}
+        campaignTitle: {type: string, nullable: true, description: "History rows only: the post the points were earned on"}
+        reversedBy: {type: string, nullable: true, description: "History rows only: the reference of the row that reversed this one"}
+        settlement: {type: string, enum: [HELD, PAID, ACTION_REQUIRED], description: "History rows only: HELD counts toward the next Coins, PAID became Coins, ACTION_REQUIRED waits for the PO team"}
 
     LeaderboardTop:
       type: object
@@ -1571,10 +1635,22 @@ components:
         lastActivityAt: {type: string, format: date-time, nullable: true}
     MyPoints:
       type: object
-      required: [period, standing, monthly]
+      required: [period, standing, monthly, coins]
       properties:
         period: {type: string}
         standing: {$ref: "#/components/schemas/PersonalStanding"}
+        coins:
+          type: object
+          description: Coins for points. Points convert automatically, only in whole blocks; the rest carries over.
+          required: [walletsEnabled, blockPoints, blockCoins, schedule, heldPoints, pointsTowardNext, coinsReceived]
+          properties:
+            walletsEnabled: {type: boolean, description: "Coins are sent to wallets (false until the WSO2 Coins API exists; points keep counting)"}
+            blockPoints: {type: integer}
+            blockCoins: {type: integer}
+            schedule: {type: string, enum: [MONTHLY, WEEKLY, DAILY]}
+            heldPoints: {type: integer, description: "Points not yet paid out"}
+            pointsTowardNext: {type: integer, description: "Progress to the next block"}
+            coinsReceived: {type: integer}
         monthly:
           type: array
           items:
@@ -1964,6 +2040,8 @@ components:
         page: {type: integer}
         size: {type: integer}
         total: {type: integer}
+        totalPoints: {type: integer, description: "All-time points of this person (every row, not just this page)"}
+        heldPoints: {type: integer, description: "Their points not yet paid out as Coins"}
         items: {type: array, items: {$ref: "#/components/schemas/LedgerEntry"}}
 
     PoDashboard:

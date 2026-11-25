@@ -257,7 +257,9 @@ isolated function myPoints(auth:Principal p, string? correlationId, string perio
         Settings settings = check loadSettings();
         recognition:Standing? mine = check standingOf(p.employeeId, period);
         recognition:MonthPoints[] monthly = check monthlyPoints(p.employeeId);
-        return {period, standing: personal(p.employeeId, mine, settings.topN).toJson(), monthly: monthly.toJson()};
+        scoring:PointsSummary summary = check pointsSummary(p.employeeId);
+        return {period, standing: personal(p.employeeId, mine, settings.topN).toJson(), monthly: monthly.toJson(),
+            coins: coinsOf(settings, summary)};
     } on fail error e {
         return failure(e, correlationId, "My points");
     }
@@ -385,8 +387,15 @@ isolated function history(auth:Principal p, string? correlationId, string employ
         }
         scoring:LedgerPage result = check ledgerHistory(target, page, size);
         boolean adjuster = can(p, auth:CAN_ADJUST_POINTS);
-        return {employeeId: target, page, size, total: result.total,
-            items: from types:LedgerEntry e in result.items select adjuster ? ledgerDto(e).toJson() : ledgerDtoForTeammate(e)};
+        boolean own = target == p.employeeId;
+        scoring:PointsSummary summary = check pointsSummary(target);
+        map<string> reversals = check reversalsAmong(from types:LedgerEntry e in result.items select e.reference);
+        map<string> titles = check campaignTitles(campaignIdsOf(result.items));
+        json[] items = from types:LedgerEntry e in result.items
+            select historyItem(adjuster ? ledgerDto(e).toJson() : own ? ledgerDtoForSelf(e) : ledgerDtoForTeammate(e),
+                    e, reversals, titles);
+        return {employeeId: target, page, size, total: result.total, totalPoints: summary.total,
+            heldPoints: summary.held, items};
     } on fail error e {
         return failure(e, correlationId, "Points history");
     }
@@ -530,16 +539,17 @@ isolated function dashboardTx(postgresql:Client pg, string month, int slaHours, 
 
 // ---- S5 Admin ------------------------------------------------------------------------------------------
 
-isolated function settingsBody() returns json|error {
+isolated function settingsBody(readonly & string[]? only = ()) returns json|error {
     store:Setting[] rows = check settingRows();
     return {
         settings: from store:Setting s in rows
-            where isVisibleSetting(s.key)
+            where isVisibleSetting(s.key) && (only is () || only.indexOf(s.key) !is ())
             select {key: s.key, value: s.value, version: s.version, updatedBy: s.updatedBy, updatedAt: ts(s.updatedAt)}
     };
 }
 
-isolated function changeSettings(auth:Principal p, string? correlationId, SettingChangesBody body) returns json|ProblemResponse {
+isolated function changeSettings(auth:Principal p, string? correlationId, SettingChangesBody body,
+        readonly & string[]? allowedKeys = ()) returns json|ProblemResponse {
     do {
         if body.changes.length() == 0 || body.changes.length() > 20 {
             return badRequest("Send 1-20 changes", correlationId);
@@ -547,6 +557,10 @@ isolated function changeSettings(auth:Principal p, string? correlationId, Settin
         store:SettingChange[] changes = [];
         boolean topNChanged = false;
         foreach SettingChangeBody c in body.changes {
+            if allowedKeys is string[] && allowedKeys.indexOf(c.key) is () {
+                // The PO team's endpoint: switches, limits and schedules are changed by an admin.
+                return forbidden(ROLE_NOT_PERMITTED, correlationId, string `${c.key} is changed by an admin`);
+            }
             [string, string]? problemOf = checkSettingChange(c.key, c.value);
             if problemOf is [string, string] {
                 return unprocessable(problemOf[0], problemOf[1], correlationId);
@@ -559,7 +573,7 @@ isolated function changeSettings(auth:Principal p, string? correlationId, Settin
             // points_to_top_n is precomputed: a new top N needs a rebuild (leaderboards.md).
             _ = triggerJobs("/maintenance/rebuild-recognition", correlationId);
         }
-        json saved = check settingsBody();
+        json saved = check settingsBody(allowedKeys);
         if touchesSchedule(from store:SettingChange c in changes select c.key) {
             // After the commit: the database is the source of truth; a scheduler outage leaves PENDING (ADR-026).
             SchedulerSyncResult synced = syncScheduler((), correlationId);
@@ -615,7 +629,9 @@ isolated function reviewList(string? correlationId, string status, int page, int
             filter = s;
         }
         external_sharing:ExternalSharePage result = check claimsForReview(filter, page, size);
-        return {items: from var c in result.items select externalShareDto(c).toJson(), page, size, total: result.total};
+        map<identity:EmployeeMatch> people = check employeesIn(from var c in result.items select c.employeeId);
+        json[] items = from var c in result.items select withClaimant(externalShareDto(c).toJson(), people[c.employeeId]);
+        return {items, page, size, total: result.total};
     } on fail error e {
         return failure(e, correlationId, "Review list");
     }
@@ -640,5 +656,95 @@ isolated function peopleSearch(string? correlationId, string q, int 'limit) retu
         return {items: found.toJson()};
     } on fail error e {
         return failure(e, correlationId, "Search people");
+    }
+}
+
+# Distinct campaign ids of a page of ledger rows.
+#
+# + rows - Ledger rows
+# + return - Campaign ids, each once
+isolated function campaignIdsOf(types:LedgerEntry[] rows) returns string[] {
+    string[] ids = [];
+    foreach types:LedgerEntry e in rows {
+        string? id = e.campaignId;
+        if id is string && ids.indexOf(id) is () {
+            ids.push(id);
+        }
+    }
+    return ids;
+}
+
+# A history row with what the screens show next to it: the post's title, whether a later row reversed it, and
+# where it stands for Coins (`HELD` counts toward the next conversion, `PAID` became Coins, `ACTION_REQUIRED`
+# waits for the PO team).
+#
+# + base - The row as the caller may see it
+# + e - Ledger row
+# + reversals - Reversed reference -> reversal reference
+# + titles - Campaign id -> title
+# + return - The row
+isolated function historyItem(json base, types:LedgerEntry e, map<string> reversals, map<string> titles) returns json {
+    map<json> row = <map<json>>base;
+    string? campaignId = e.campaignId;
+    row["campaignTitle"] = campaignId is string ? titles[campaignId] : ();
+    row["reversedBy"] = reversals[e.reference];
+    types:LedgerStatus? status = e.status;
+    row["settlement"] = status is () ? "ACTION_REQUIRED" : status == types:PAID ? "PAID" : "HELD";
+    return row;
+}
+
+# A review item with who sent it (name and work email), when they are known.
+#
+# + base - The claim as JSON
+# + person - The claimant, `()` if not found
+# + return - The item
+isolated function withClaimant(json base, identity:EmployeeMatch? person) returns json {
+    map<json> row = <map<json>>base;
+    row["employeeName"] = person is () ? () : person.displayName;
+    row["employeeEmail"] = person is () ? () : person.email;
+    return row;
+}
+
+# The Coins block of `GET /me/points`: the rate, the schedule, whether wallets are on, and progress to the next
+# Coins. Only whole blocks of not-yet-paid points convert. Coins received come from the conversion records,
+# which the Coin conversion adds; until then they are 0.
+#
+# + settings - Settings
+# + summary - The caller's points summary
+# + return - The block
+isolated function coinsOf(Settings settings, scoring:PointsSummary summary) returns json {
+    int held = summary.held < 0 ? 0 : summary.held;
+    return {
+        walletsEnabled: settings.coinWalletsEnabled,
+        blockPoints: settings.coinBlockPoints,
+        blockCoins: settings.coinBlockCoins,
+        schedule: settings.coinSchedule,
+        heldPoints: summary.held,
+        pointsTowardNext: held % settings.coinBlockPoints,
+        coinsReceived: 0
+    };
+}
+
+# Current point values per action (`GET /point-values`, every employee): what each activity earns today.
+#
+# + correlationId - Correlation id
+# + return - `{values: {ACTION: points}}`, or problem details
+isolated function pointValues(string? correlationId) returns json|ProblemResponse {
+    do {
+        scoring:PointRule[] rules = check pointRulesNow();
+        time:Utc now = time:utcNow();
+        map<json> values = {};
+        foreach scoring:PointRule r in rules {
+            if values.hasKey(r.action) {
+                continue;
+            }
+            scoring:PointRule|types:DomainError current = scoring:ruleInForce(rules, r.action, now);
+            if current is scoring:PointRule {
+                values[r.action] = current.points;
+            }
+        }
+        return {values};
+    } on fail error e {
+        return failure(e, correlationId, "Point values");
     }
 }
