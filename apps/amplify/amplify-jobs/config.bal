@@ -62,6 +62,11 @@ configurable string linkedinOrgUrn = "urn:li:organization:1477";
 # The page's full LinkedIn name. LinkedIn links an organization mention only when the text matches the full
 # name exactly (case sensitive), so this must be the page name as LinkedIn shows it.
 configurable string linkedinOrgName = "WSO2";
+# Least time between two LinkedIn posts for the same employee, minutes (pacing.bal). Sharing many posts at once
+# still queues them all; they go out one at a time. 0 turns pacing off.
+configurable int sharePublishGapMinutes = 10;
+# Most extra wait added to a paced post, minutes, so an employee's posts don't land at exact intervals.
+configurable int sharePublishJitterMinutes = 5;
 
 // ---- Novera (Google Chat assistant): the one announcement channel (M6a) -----------------------------
 
@@ -95,7 +100,7 @@ configurable string noveraIconUrl = "";
 # image.
 configurable string noveraDefaultImageUrl = "";
 # The Novera card button's link (`BAL_CONFIG_VAR_NOVERABUTTONURL`): a URL template in which every `{campaignId}` is
-# replaced with the post's id, e.g. `https://one.wso2.com/amplify/celebrate?share={campaignId}` (the Celebrate page
+# replaced with the post's id, e.g. `https://one.choreolabs.com/amplify/celebrate?share={campaignId}` (the Celebrate page
 # with that post's share dialog). Must be https (http only with `noveraAllowInsecureHttp`) and contain
 # `{campaignId}`; checked at start-up. Empty = Novera button not configured: announcements wait, a card never goes
 # out without its button.

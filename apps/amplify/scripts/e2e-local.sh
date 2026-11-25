@@ -34,7 +34,7 @@ esac
 NOVERA_MOCK="${NOVERA_MOCK:-http://localhost:3003}"
 curl -fsS -o /dev/null "$NOVERA_MOCK/card" 2>/dev/null || [ "$(curl -s -o /dev/null -w '%{http_code}' "$NOVERA_MOCK/card")" = 404 ] \
   || { echo "e2e needs local/novera-mock running at $NOVERA_MOCK (cd local/novera-mock && node server.mjs)" >&2; exit 1; }
-# Posts must belong to the page amplify-api is configured with (local/.env, default Chore Labs' page).
+# Posts must belong to the page amplify-api is configured with (local/.env, default Choreo Labs' page).
 ORG_URN=$(sed -n 's/^WSO2_ORGANIZATION_URN=//p' local/.env | tail -1)
 ORG_URN=${ORG_URN:-urn:li:organization:1477}
 MINT=local/dev-jwt/mint-dev-jwt.sh

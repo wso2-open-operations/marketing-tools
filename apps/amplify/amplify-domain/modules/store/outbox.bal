@@ -198,17 +198,24 @@ public type OutboxBacklog record {|
     int? oldestPendingSeconds;
 |};
 
+# Note that starts `last_error` on a row amplify-jobs holds back on purpose: a share waiting its turn because the
+# employee posted less than the pacing gap ago. Such a row is not stuck, so the backlog age leaves it out.
+public const string PACED_NOTE_PREFIX = "paced: ";
+
 # Counts what is waiting in the outbox. Deferred rows are pending with a later `next_attempt_at`, so the age is
-# measured from `created_at`: a row that has been waiting for hours is stuck, however often it is retried.
+# measured from `created_at`: a row that has been waiting for hours is stuck, however often it is retried. Rows
+# held back by pacing (`PACED_NOTE_PREFIX`) wait by design: they count as pending but not towards the age.
 #
 # + db - Client
 # + return - The backlog, or an error
 public isolated function outboxBacklog(postgresql:Client db) returns OutboxBacklog|error {
+    string pacedPattern = PACED_NOTE_PREFIX + "%";
     record {|int pending; int in_progress; int failed; int? oldest;|} row = check db->queryRow(`
         SELECT count(*) FILTER (WHERE status = 'PENDING')::int AS pending,
                count(*) FILTER (WHERE status = 'IN_PROGRESS')::int AS in_progress,
                count(*) FILTER (WHERE status = 'FAILED')::int AS failed,
-               (EXTRACT(EPOCH FROM (now() - min(created_at) FILTER (WHERE status = 'PENDING'))))::bigint::int AS oldest
+               (EXTRACT(EPOCH FROM (now() - min(created_at) FILTER (WHERE status = 'PENDING'
+                   AND (last_error IS NULL OR last_error NOT LIKE ${pacedPattern})))))::bigint::int AS oldest
         FROM messaging_outbox WHERE status <> 'DONE'`);
     return {pending: row.pending, inProgress: row.in_progress, failed: row.failed, oldestPendingSeconds: row.oldest};
 }

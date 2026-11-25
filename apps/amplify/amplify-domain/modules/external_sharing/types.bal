@@ -49,7 +49,7 @@ public type ExternalShare record {|
     types:ExternalAction action;
     # Evidence URL, normalized
     types:EvidenceUrl evidence;
-    # "I certify this is related to Chore Labs"
+    # "I certify this is related to Choreo Labs"
     time:Utc certifiedAt;
     # `()` while pending
     Decision? decision;

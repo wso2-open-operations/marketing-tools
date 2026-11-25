@@ -89,7 +89,7 @@ isolated class InMemoryCampaigns {
 function draft() returns CampaignDraft => {
     resourceUrn: "urn:li:share:7123",
     ownerUrn: WSO2_ORG,
-    title: "  Chore Labs named a Leader  ",
+    title: "  Choreo Labs named a Leader  ",
     categoryCode: "PRODUCT",
     tags: ["AI", "ai", " Integration ", ""],
     imageUrl: "https://media.wso2.com/a.png"
@@ -105,7 +105,7 @@ isolated function code(any|error result) returns string {
 @test:Config
 function newCampaignAppliesDefaultsAndNormalizes() returns error? {
     Campaign c = check newCampaign(draft(), POLICY, "id-1", "mkt-1", T0);
-    test:assertEquals(c.title, "Chore Labs named a Leader");
+    test:assertEquals(c.title, "Choreo Labs named a Leader");
     test:assertEquals(c.tags, ["ai", "integration"]);
     test:assertEquals(c.resourceType, types:SHARE);
     test:assertEquals(c.opensAt, T0, "opens now by default");
