@@ -227,11 +227,13 @@ isolated class MemStore {
     private final map<sharing:Engagement> engagements = {};
     private final map<connection:LinkedInConnection> connections = {};
     private final map<connection:StoredToken> tokens = {};
+    private final map<connection:MentionableMember> mentionables = {};
     private final map<types:LedgerEntry> ledger = {};
     private scoring:PointRule[] rules = [];
     private RunSettings settingsValue = {};
     private boolean duplicateNext = false;
     private boolean publishWriteFails = false;
+    private boolean mentionableFails = false;
     # `SENT`: the next save of a sent announcement fails; `ATTEMPT`: the next save of the attempt marker fails
     private string? announcementSaveFails = ();
     private int reseals = 0;
@@ -379,6 +381,48 @@ isolated class MemStore {
         }
     }
 
+    isolated function queuedShares(types:EmployeeId employeeId) returns sharing:ShareRequest[]|error {
+        lock {
+            sharing:ShareRequest[] found = from sharing:ShareRequest r in self.shares
+                where r.employeeId == employeeId && r.publishedAt is () && r.failedAt is ()
+                select r;
+            return found.clone();
+        }
+    }
+
+    isolated function putMentionable(connection:MentionableMember member) {
+        lock {
+            self.mentionables[member.employeeId] = member.clone();
+        }
+    }
+
+    # Test switch: make the next `mentionable` read fail like a database blip.
+    isolated function failNextMentionable() {
+        lock {
+            self.mentionableFails = true;
+        }
+    }
+
+    isolated function mentionable(types:EmployeeId[] employeeIds) returns connection:MentionableMember[]|error {
+        readonly & types:EmployeeId[] ids = employeeIds.cloneReadOnly();
+        lock {
+            if self.mentionableFails {
+                self.mentionableFails = false;
+                return error sql:DatabaseError("Connection reset", errorCode = 0, sqlState = "08006");
+            }
+            connection:MentionableMember[] found = from connection:MentionableMember m in self.mentionables
+                where ids.indexOf(m.employeeId) !is ()
+                select m;
+            return found.clone();
+        }
+    }
+
+    isolated function hasToken(string tokenId) returns boolean {
+        lock {
+            return self.tokens.hasKey(tokenId);
+        }
+    }
+
     isolated function recordPublish(sharing:PublishResult result, int expectedVersion) returns error? {
         sharing:Engagement & readonly e = result.engagement.cloneReadOnly();
         sharing:ShareRequest & readonly published = result.request.cloneReadOnly();
@@ -494,8 +538,12 @@ isolated class MemStore {
 
     isolated function saveConnection(connection:ConnectionChange change, int expectedVersion) returns error? {
         connection:LinkedInConnection & readonly c = change.connection.cloneReadOnly();
+        connection:TokenRef? & readonly old = change.tokenToDelete.cloneReadOnly();
         lock {
             self.connections[c.employeeId] = c;
+            if old is connection:TokenRef {
+                _ = self.tokens.removeIfHasKey(old.tokenId);
+            }
         }
         self.queue.enqueueEvents(change.outbox, ());
     }
@@ -543,6 +591,7 @@ isolated class FakeLinkedIn {
     private string? lastCommentary = ();
     private string? lastCorrelationId = ();
     private string? lastTitle = ();
+    private map<linkedin:MentionTarget> lastMentions = {};
 
     isolated function setMode(string mode) {
         lock {
@@ -559,6 +608,12 @@ isolated class FakeLinkedIn {
     isolated function last() returns [string?, string?, string?] {
         lock {
             return [self.lastBearer, self.lastCommentary, self.lastCorrelationId];
+        }
+    }
+
+    isolated function lastMentionTargets() returns map<linkedin:MentionTarget> {
+        lock {
+            return self.lastMentions.clone();
         }
     }
 
@@ -588,9 +643,19 @@ isolated class FakeLinkedIn {
             self.lastCommentary = command.commentary;
             self.lastCorrelationId = command.correlationId;
             self.lastTitle = command.targetTitle;
+            self.lastMentions = command.mentions.clone();
             match self.mode {
                 "401" => {
                     return providerError(linkedin:UNAUTHORIZED, 401, false);
+                }
+                "403" => {
+                    // The member's token lacks the permission (`ACCESS_DENIED`).
+                    return providerError(linkedin:FORBIDDEN, 403, false);
+                }
+                "403-other" => {
+                    // A 403 that isn't the member's access denied: the adapter's `REJECTED`.
+                    return error linkedin:ProviderError("LinkedIn failed", code = linkedin:REJECTED, httpStatus = 403,
+                        serviceErrorCode = 100, retryable = false);
                 }
                 "429" => {
                     return providerError(linkedin:RATE_LIMITED, 429, true);

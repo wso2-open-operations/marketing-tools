@@ -58,6 +58,8 @@ type RunConfig record {|
     string noveraButtonUrl;
     string? cardAvatarUrl = ();
     string? defaultImageUrl = ();
+    # Organizations that can be mentioned, by mention ref (`org:<key>`)
+    map<linkedin:MentionTarget> orgMentions = {};
 |};
 
 # App settings a run reads once (`config_app_setting`).
@@ -99,6 +101,8 @@ type Store isolated object {
     isolated function saveAnnouncement(announcements:Announcement announcement, events:OutboxEvent[] outbox)
         returns error?;
     isolated function share(string campaignId, types:EmployeeId employeeId) returns sharing:ShareRequest|error?;
+    isolated function queuedShares(types:EmployeeId employeeId) returns sharing:ShareRequest[]|error;
+    isolated function mentionable(types:EmployeeId[] employeeIds) returns connection:MentionableMember[]|error;
     # When the employee's latest share was published, `()` if none was (pacing).
     isolated function lastPublishedAt(types:EmployeeId employeeId) returns time:Utc|error?;
     isolated function recordPublish(sharing:PublishResult result, int expectedVersion) returns error?;
@@ -203,6 +207,11 @@ isolated class PgStore {
     isolated function share(string campaignId, types:EmployeeId employeeId) returns sharing:ShareRequest|error? =>
         (new sharing:PgShareRepository(self.db, self.actor)).findByCampaignAndEmployee(campaignId, employeeId);
 
+    isolated function queuedShares(types:EmployeeId employeeId) returns sharing:ShareRequest[]|error =>
+        (new sharing:PgShareRepository(self.db, self.actor)).queuedByEmployee(employeeId);
+
+    isolated function mentionable(types:EmployeeId[] employeeIds) returns connection:MentionableMember[]|error =>
+        connection:mentionableByIds(self.db, employeeIds);
     isolated function lastPublishedAt(types:EmployeeId employeeId) returns time:Utc|error? =>
         sharing:lastPublishedAt(self.db, employeeId);
 

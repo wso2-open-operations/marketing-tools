@@ -208,53 +208,60 @@ function testFailedDirectoryRefreshIsNotCached() returns error? {
 // ---- /team ------------------------------------------------------------------------------------------
 
 @test:Config {groups: ["reads"]}
-function testTeamPageVisibility() returns error? {
+function testTeamPageIsForDashboardRolesAndListsTheCompany() returns error? {
     clearSettings();
-    http:Response team = check send("GET", "/team", (), check rvToken("rv-b"));
-    test:assertEquals(team.statusCode, 200);
-    check assertShape(team, "TeamPage");
-    check assertStandardJson(team);
-    json body = check team.getJsonPayload();
-    test:assertEquals(check body.scope, "TEAM");
-    test:assertEquals(check body.teamStatus, "OK");
-    test:assertEquals(check body.summary.headcount, 3);
-    json[] entries = <json[]>check body.entries;
-    test:assertEquals(entries.map(e => e.email), ["rv-a@wso2.com", "rv-b@wso2.com", "rv+plus@wso2.com"],
-            "the whole team, zero points included, never the company");
-    test:assertEquals(check entries[2].employeeId, (), "a member with no standing row has no employee id");
-    test:assertEquals(check entries[2].points, 0);
-    test:assertEquals(check entries[2].rank, ());
-    test:assertEquals(check body.summary.activeCount, 2, "headcount 3, two with points");
-    test:assertEquals(check (<json[]>check body.entries)[0].actions.canAdjust, false);
+    // A plain employee, even one on the roster, is refused.
+    http:Response employee = check send("GET", "/team", (), check rvToken("rv-b"));
+    test:assertEquals(employee.statusCode, 403, "plain employees don't get the team board");
 
-    http:Response alone = check send("GET", "/team", (), check rvToken("lb-1"));
-    json aloneBody = check alone.getJsonPayload();
-    test:assertEquals(check aloneBody.teamStatus, "NO_TEAM");
-    test:assertEquals((from json e in <json[]>check aloneBody.entries select (check e.employeeId).toString()), ["lb-1"],
-            "no roster: the caller sees themselves");
+    // Every dashboard role sees everyone the directory lists, points or not.
+    foreach [string, string] role in [["po-team", PO_GROUP], ["slt-team", SLT_GROUP], ["ad-team", ADMIN_GROUP]] {
+        http:Response res = check send("GET", "/team", (), check rvToken(role[0], groups = [role[1]]));
+        test:assertEquals(res.statusCode, 200, role[1]);
+        check assertShape(res, "TeamPage");
+        check assertStandardJson(res);
+        json body = check res.getJsonPayload();
+        test:assertEquals(check body.scope, "COMPANY", role[1]);
+        test:assertEquals(check body.teamStatus, "OK", role[1]);
+        test:assertEquals(check body.total, 4, role[1] + ": everyone the directory lists, points or not");
+        test:assertEquals(check body.summary.headcount, 4, role[1]);
+        test:assertEquals(check body.summary.activeCount, 2, role[1] + ": rv-a and rv-b are the listed people with points");
+    }
 
     http:Response po = check send("GET", "/team", (), check rvToken("po-team", groups = [PO_GROUP]));
     json poBody = check po.getJsonPayload();
-    test:assertEquals(check poBody.scope, "COMPANY");
-    test:assertEquals(check poBody.total, 4, "everyone the directory lists, points or not");
-    test:assertEquals(check poBody.summary.headcount, 4);
-    test:assertEquals(check poBody.summary.activeCount, 2, "rv-a and rv-b are the listed people with points");
+    json[] entries = <json[]>check poBody.entries;
+    test:assertEquals(entries.filter(e => e.email == "rv+plus@wso2.com").length(), 1);
+    json plus = entries.filter(e => e.email == "rv+plus@wso2.com")[0];
+    test:assertEquals(check plus.employeeId, (), "a member with no standing row has no employee id");
+    test:assertEquals(check plus.points, 0);
+    test:assertEquals(check plus.rank, ());
+    test:assertEquals(check plus.houseName, (), "no house in the directory: null");
+    test:assertEquals(check entries[0].actions.canReverse, true, "PO can adjust");
+    json slt = check (check send("GET", "/team", (), check rvToken("slt-team", groups = [SLT_GROUP]))).getJsonPayload();
+    test:assertEquals(check (<json[]>check slt.entries)[0].actions.canAdjust, false, "SLT only reads");
+    // Marketing holds CAN_DASHBOARD but not CAN_PEOPLE_OPS.
+    http:Response marketing = check send("GET", "/team", (), check rvToken("mk-team", groups = [MARKETING_GROUP]));
+    test:assertEquals(marketing.statusCode, 403, "Marketing doesn't get the People Operations board");
 
-    // Directory down (nothing cached): the company view falls back to the people with points, flagged.
+    // A person in a house shows it; the rest have none.
+    setDirectory("house");
+    json housed = check (check send("GET", "/team", (), check rvToken("po-team", groups = [PO_GROUP]))).getJsonPayload();
+    json[] housedEntries = <json[]>check housed.entries;
+    test:assertEquals(check housedEntries.filter(e => e.email == "rv-a@wso2.com")[0].houseName, "Oak",
+            "the house comes from the directory");
+    test:assertEquals(check housedEntries.filter(e => e.email == "rv-b@wso2.com")[0].houseName, (), "no house: null");
+    setDirectory("ok");
+
+    // Directory down (nothing cached): the list falls back to the people with points, flagged.
     setDirectory("down");
     json degraded = check (check send("GET", "/team", (), check rvToken("po-team", groups = [PO_GROUP]))).getJsonPayload();
     test:assertEquals(check degraded.teamStatus, "UNAVAILABLE");
     test:assertEquals(check degraded.total, 6, "standings only");
     test:assertEquals(check degraded.summary.headcount, ());
     setDirectory("ok");
-    test:assertEquals(check (<json[]>check poBody.entries)[0].actions.canReverse, true);
 
-    setSetting("team.visibility", "COMPANY");
-    json wide = check (check send("GET", "/team", (), check rvToken("rv-b"))).getJsonPayload();
-    test:assertEquals(check wide.scope, "COMPANY", "team.visibility = COMPANY widens it for everyone");
-    clearSettings();
-
-    string token = check rvToken("rv-b");
+    string token = check rvToken("po-team", groups = [PO_GROUP]);
     foreach string query in ["sort=bogus", "size=101", "size=0", "page=-1", "page=10001", "period=ALLX",
             "q=" + "x".padEnd(101, "x")] {
         http:Response bad = check send("GET", "/team?" + query, (), token);
@@ -393,6 +400,19 @@ function testListValidationAndShapes() returns error? {
     check assertShape(mine, "ExternalShareList");
     http:Response shares = check send("GET", "/me/shares", (), emp);
     check assertShape(shares, "ShareList");
+
+    http:Response mentions = check send("GET", "/mentions?q=j", (), emp);
+    test:assertEquals(mentions.statusCode, 200);
+    check assertShape(mentions, "MentionList");
+    json mentionBody = check mentions.getJsonPayload();
+    test:assertEquals(mentionBody, {items: [
+        {ref: "person:jane@wso2.com", kind: "PERSON", displayName: "Jane Smith"},
+        {ref: "person:joe@wso2.com", kind: "PERSON", displayName: "Joe Bloggs"}
+    ]}, "linked colleagues by directory name; the ref, never an id, as the name");
+    json orgBody = check (check send("GET", "/mentions?q=wso", (), emp)).getJsonPayload();
+    test:assertEquals(orgBody, {items: [{ref: "org:wso2", kind: "ORGANIZATION", displayName: "WSO2"}]});
+    test:assertEquals((check send("GET", "/mentions", (), emp)).statusCode, 400, "q is required");
+    test:assertEquals((check send("GET", "/mentions?q=" + string:'join("", ...from int i in 0 ... 50 select "x"), (), emp)).statusCode, 400);
 
     string admin = check rvToken("adm-list", groups = [ADMIN_GROUP]);
     http:Response settings = check send("GET", "/admin/settings", (), admin);

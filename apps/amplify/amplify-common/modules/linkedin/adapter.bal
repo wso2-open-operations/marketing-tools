@@ -38,9 +38,12 @@ type UserInfoResponse record {
     string email?;
 };
 
-// LinkedIn's error body. Only the numeric code is read: the text can echo request values, so it is never logged.
+// LinkedIn's error body (`status`, `serviceErrorCode`, `code`, `message`; `code` only on newer responses). The
+// numeric and constant codes are read; the text is read only to tell a 403 apart and is never logged, since it can
+// echo request values.
 type ErrorBody record {
     int serviceErrorCode?;
+    string code?;
     string message?;
 };
 
@@ -198,7 +201,7 @@ public isolated class LinkedInAdapter {
 public isolated function buildPostPayload(ShareCommand command) returns json {
     map<json> body = {
         author: command.authorUrn,
-        commentary: escapeLittleText(command.commentary ?: ""),
+        commentary: toLittleText(command.commentary ?: "", command.mentions),
         visibility: "PUBLIC",
         distribution: {feedDistribution: "MAIN_FEED", targetEntities: [], thirdPartyDistributionChannels: []},
         lifecycleState: "PUBLISHED",
@@ -216,8 +219,9 @@ public isolated function buildPostPayload(ShareCommand command) returns json {
     return body;
 }
 
-# Escapes text for LinkedIn's little text format, so an employee's `@`, `#` or brackets are shown as
-# typed instead of being read as mentions, hashtags or templates.
+# Escapes every reserved character of LinkedIn's little text format, so `@`, `#` or brackets are shown as
+# typed instead of being read as mentions, hashtags or templates. `toLittleText` uses it for everything but
+# `#tags` and resolved mentions.
 #
 # + text - Plain text
 # + return - Escaped text
@@ -257,14 +261,16 @@ isolated function expectStatus(http:Response|http:ClientError response, string o
         return response;
     }
     int? serviceErrorCode = ();
+    boolean memberAccessDenied = false;
     json|http:ClientError body = response.getJsonPayload();
     if body is json {
         ErrorBody|error parsed = body.cloneWithType();
         if parsed is ErrorBody {
             serviceErrorCode = parsed.serviceErrorCode;
+            memberAccessDenied = isMemberAccessDenied(parsed);
         }
     }
-    [ProviderErrorCode, boolean] [code, retryable] = classify(status);
+    [ProviderErrorCode, boolean] [code, retryable] = classify(status, memberAccessDenied);
     log:printWarn(string `LinkedIn ${operation} refused`, httpStatus = status, serviceErrorCode = serviceErrorCode,
             retryable = retryable, correlationId = correlationId);
     return providerError(code, string `LinkedIn ${operation} failed with HTTP ${status}`, status, serviceErrorCode,
@@ -296,12 +302,18 @@ isolated function expectCreateStatus(http:Response|http:ClientError response, st
     return expectStatus(response, "create post", correlationId);
 }
 
-isolated function classify(int status) returns [ProviderErrorCode, boolean] {
+# Maps an HTTP status to a provider error category. A 403 is `FORBIDDEN` only when LinkedIn says the member's token
+# lacks the permission; any other 403 (a refusal about the target post, or the app itself) is `REJECTED`.
+#
+# + status - HTTP status
+# + memberAccessDenied - Whether the error body is LinkedIn's access-denied answer (`isMemberAccessDenied`)
+# + return - Category, and whether repeating the call is safe
+isolated function classify(int status, boolean memberAccessDenied = false) returns [ProviderErrorCode, boolean] {
     if status == http:STATUS_UNAUTHORIZED {
         return [UNAUTHORIZED, false];
     }
     if status == http:STATUS_FORBIDDEN {
-        return [FORBIDDEN, false];
+        return [memberAccessDenied ? FORBIDDEN : REJECTED, false];
     }
     if status == http:STATUS_TOO_MANY_REQUESTS {
         return [RATE_LIMITED, true];
@@ -310,6 +322,21 @@ isolated function classify(int status) returns [ProviderErrorCode, boolean] {
         return [UNAVAILABLE, true];
     }
     return [REJECTED, false];
+}
+
+# Whether a 403 body is LinkedIn's access-denied answer for the member's token: `code` `ACCESS_DENIED` (Posts API
+# error table), or, on the older body without `code`, the "Not enough permissions to access" message LinkedIn sends
+# when the token lacks a scope. Not verified against a live LinkedIn 403.
+#
+# + body - Parsed error body
+# + return - True when the token's grant is what was refused
+isolated function isMemberAccessDenied(ErrorBody body) returns boolean {
+    string? code = body.code;
+    if code is string {
+        return code == LINKEDIN_ACCESS_DENIED;
+    }
+    string? message = body.message;
+    return message is string && message.startsWith(LINKEDIN_NO_PERMISSION_MESSAGE);
 }
 
 isolated function readTokenBody(http:Response response) returns AccessTokenResponse|ProviderError {

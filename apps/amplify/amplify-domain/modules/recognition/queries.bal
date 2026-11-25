@@ -38,7 +38,8 @@ public enum TeamSort {
 public type TeamEntry record {|
     # Standing row
     Standing standing;
-    # Rank within the roster (dense); equals the company rank on the company-wide page
+    # Position within the roster: 1, 2, 3... with no ties. Equal points go to whoever reached them first
+    # (earliest last activity), then name, then employee id, the same tie-break as the company top three
     int teamRank;
 |};
 
@@ -135,19 +136,21 @@ public isolated function teamPage(postgresql:Client db, string periodKey, string
         string prefix = re `[%_\\]`.replaceAll(q, isolated function(regexp:Groups g) returns string => "\\" + g[0].substring()) + "%";
         cond = sql:queryConcat(cond, ` AND (s.display_name % ${q} OR s.display_name ILIKE ${prefix})`);
     }
-    // Unfiltered (the whole company, PO view): the team rank IS the stored company rank (same
-    // dense_rank over the same rows), so skip both window functions and page straight off
-    // `standing_rank_idx`. M11 load test: /team p95 ~100 ms -> see docs/testing/load-test-2026-10.md.
-    boolean whole = teamEmails is () && q is ();
+    // Unfiltered and in rank order (the whole company, PO view): the stored company rank is already the position
+    // (1, 2, 3... with no ties, the same order as the window below), so skip both window functions, page straight
+    // off `standing_rank_idx` and count the position from the page offset. M11 load test: /team p95 ~100 ms ->
+    // see docs/testing/load-test-2026-10.md.
+    boolean whole = teamEmails is () && q is () && sort == SORT_RANK;
     sql:ParameterizedQuery orderBy = sort == SORT_NAME ? ` ORDER BY s.display_name, s.employee_id`
         : sort == SORT_POINTS ? ` ORDER BY s.total_points DESC, s.display_name, s.employee_id`
-            : whole ? ` ORDER BY s.rank NULLS LAST, s.display_name, s.employee_id`
-                : ` ORDER BY team_rank, s.display_name, s.employee_id`;
+            : whole ? ` ORDER BY s.rank NULLS LAST, s.last_activity_at NULLS LAST, s.display_name, s.employee_id`
+                : ` ORDER BY team_rank`;
     sql:ParameterizedQuery ranking = whole
-        ? `COALESCE(s.rank, 0) AS team_rank,
+        ? `0 AS team_rank,
                (SELECT count(*) FROM recognition_standing c
                 WHERE c.period_key = ${periodKey} AND c.total_points > 0)::int AS total`
-        : `(dense_rank() OVER (ORDER BY s.total_points DESC))::int AS team_rank,
+        : `(row_number() OVER (ORDER BY s.total_points DESC, s.last_activity_at ASC NULLS LAST, s.display_name,
+                                         s.employee_id))::int AS team_rank,
                (count(*) OVER ())::int AS total`;
     stream<TeamRow, error?> rows = db->query(sql:queryConcat(`
         SELECT s.period_key, s.employee_id, s.display_name, s.email::text AS email, s.total_points, s.rank,
@@ -165,7 +168,7 @@ public isolated function teamPage(postgresql:Client db, string periodKey, string
                     points_to_next_rank: r.points_to_next_rank, points_to_top_n: r.points_to_top_n,
                     last_activity_at: r.last_activity_at
                 }),
-                teamRank: r.team_rank
+                teamRank: whole ? offset + items.length() + 1 : r.team_rank
             });
         };
     if items.length() == 0 && offset > 0 {
@@ -199,7 +202,8 @@ public type RosterEntry record {|
     int? previousRank;
     # Last ledger row time
     time:Utc? lastActivityAt;
-    # Rank within the roster (dense); every zero-point person shares the last rank
+    # Position within the roster: 1, 2, 3... with no ties. Equal points go to whoever reached them first
+    # (earliest last activity; zero-point people have none, so they come last), then name, then email
     int teamRank;
 |};
 
@@ -248,8 +252,9 @@ isolated function rosterColumns(RosterMember[] members) returns [string[], strin
 }
 
 # The full roster, from the people directory, joined to the standings: members nobody has recorded
-# points for appear with 0 points and no employee id, whether or not they ever signed in. Ties order by
-# name, then email, so the order is stable. A person has one standing row per period (the lateral picks the
+# points for appear with 0 points and no employee id, whether or not they ever signed in. Positions run
+# 1, 2, 3... with no ties: equal points go to whoever reached them first, then name, then email, so the order
+# is stable across pages. A person has one standing row per period (the lateral picks the
 # best one if a legacy duplicate email ever exists, so the roster never lists anyone twice). Used for My Team, the Team page and the company view.
 #
 # + db - Client
@@ -273,7 +278,7 @@ public isolated function rosterPage(postgresql:Client db, string periodKey, Rost
     }
     sql:ParameterizedQuery orderBy = sort == SORT_NAME ? ` ORDER BY display_name, email`
         : sort == SORT_POINTS ? ` ORDER BY total_points DESC, display_name, email`
-            : ` ORDER BY team_rank, display_name, email`;
+            : ` ORDER BY team_rank`;
     // Ranks and the active count run over the whole roster, before the search filters it.
     stream<RosterRow, error?> rows = db->query(sql:queryConcat(`
         WITH joined AS (
@@ -285,7 +290,8 @@ public isolated function rosterPage(postgresql:Client db, string periodKey, Rost
             LEFT JOIN LATERAL (SELECT * FROM recognition_standing x WHERE x.email = m.email AND x.period_key = ${periodKey}
                                ORDER BY x.total_points DESC, x.employee_id LIMIT 1) s ON true
         ), ranked AS (
-            SELECT j.*, (dense_rank() OVER (ORDER BY j.total_points DESC))::int AS team_rank,
+            SELECT j.*, (row_number() OVER (ORDER BY j.total_points DESC, j.last_activity_at ASC NULLS LAST,
+                                                 j.display_name, j.email))::int AS team_rank,
                    (count(*) FILTER (WHERE j.total_points > 0) OVER ())::int AS active
             FROM joined j
         )

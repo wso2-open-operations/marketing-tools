@@ -359,6 +359,29 @@ paths:
         "401": {$ref: "#/components/responses/Problem"}
         "503": {$ref: "#/components/responses/Problem"}
 
+  /mentions:
+    get:
+      tags: [C1 Sharing]
+      operationId: listMentionSuggestions
+      x-access: EMPLOYEE
+      description: >-
+        Who the caller can `@` mention in a repost's thoughts: colleagues who linked LinkedIn in Amplify (not removed,
+        never the caller) and the company page, at most 10. Put the choice in the commentary as
+        `@[<displayName>](amplify:<ref>)`; amplify-jobs resolves the ref again before posting, so a ref that is not a
+        linked colleague or the company page is posted as plain text.
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {name: q, in: query, required: true, description: Text typed after `@`, schema: {type: string, minLength: 1, maxLength: 50}}
+      responses:
+        "200":
+          description: Suggestions, best match first
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MentionList"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+
   /external-shares:
     post:
       tags: [S3 External Sharing]
@@ -723,8 +746,8 @@ paths:
     get:
       tags: [S4 Recognition]
       operationId: getTeamPage
-      x-access: EMPLOYEE
-      description: "Team page. Employees see their own team (roster from the people directory, server side); `CAN_ADJUST_POINTS` sees the company. `team.visibility = COMPANY` widens it for everyone (ADR-019). The list is the whole roster from the directory (names included), joined to the standings: a person nobody has recorded points for is an entry with `points` 0, `employeeId` null and `rank` null, whether or not they ever signed in. Directory results are reused for 24 hours (`rosterCacheSeconds`). With the directory down and nothing cached, the team view lists only the caller (`teamStatus` UNAVAILABLE) and the company view only people with points (`teamStatus` UNAVAILABLE, `headcount` null)."
+      x-access: CAN_PEOPLE_OPS
+      description: "Team board under People Operations (PO, Marketing, SLT and Admin by default; plain employees get 403). Lists the whole company roster from the people directory (names included), joined to the standings: a person nobody has recorded points for is an entry with `points` 0, `employeeId` null and `rank` null, whether or not they have ever signed in. When the directory is unavailable the list falls back to the people with points and `teamStatus` is `UNAVAILABLE`. Search, sort and page on the server."
       parameters:
         - {$ref: "#/components/parameters/CorrelationId"}
         - {$ref: "#/components/parameters/Period"}
@@ -791,6 +814,7 @@ paths:
       description: "Operations board: what is live, who is sharing, whether anything is stuck. Read-only, computed from Amplify's own tables, cached 60 s. Not for plain employees (403)."
       parameters:
         - {$ref: "#/components/parameters/CorrelationId"}
+        - {$ref: "#/components/parameters/IncludeArchived"}
       responses:
         "200":
           description: OK
@@ -812,6 +836,7 @@ paths:
         - {$ref: "#/components/parameters/CorrelationId"}
         - {name: days, in: query, description: "Look-back for campaigns and categories", schema: {type: integer, minimum: 1, maximum: 90, default: 30}}
         - {name: campaignId, in: query, schema: {type: string, maxLength: 64}}
+        - {$ref: "#/components/parameters/IncludeArchived"}
       responses:
         "200":
           description: OK
@@ -848,7 +873,7 @@ paths:
       tags: [S6 Dashboards]
       operationId: getDashboardPerson
       x-access: CAN_DASHBOARD
-      description: "One person's Post Performance for the person popup: every post they have an active repost of (plain, and with their own comment) and the category split. Team and BU come from the people directory in the UI. Cached 60 s."
+      description: "One person's Post Performance for the person popup: every post they have an active repost of (plain, and with their own comment, archived posts included and flagged, posts older than the retention window left out) and the category split. Team and BU come from the people directory in the UI. Cached 60 s."
       parameters:
         - {$ref: "#/components/parameters/CorrelationId"}
         - {name: employeeId, in: path, required: true, schema: {type: string, maxLength: 255}}
@@ -890,6 +915,7 @@ paths:
       description: "At a glance: the numbers for the leadership check-in. People, teams and the best campaign's rank come from /leaderboard and /leaderboard/groups. Cached 60 s."
       parameters:
         - {$ref: "#/components/parameters/CorrelationId"}
+        - {$ref: "#/components/parameters/IncludeArchived"}
       responses:
         "200":
           description: OK
@@ -909,6 +935,7 @@ paths:
       description: "Scorecard: seven measures against their targets (`scorecard*` configuration, ADR-036). Cached 60 s."
       parameters:
         - {$ref: "#/components/parameters/CorrelationId"}
+        - {$ref: "#/components/parameters/IncludeArchived"}
       responses:
         "200":
           description: OK
@@ -1059,6 +1086,12 @@ components:
       in: header
       required: false
       schema: {type: string, pattern: "^[A-Za-z0-9._-]{1,64}$"}
+    IncludeArchived:
+      name: includeArchived
+      in: query
+      required: false
+      description: "Count archived posts (and the reposts recorded against them) in the summary numbers. The post lists always show archived posts, flagged `archived`. Posts that opened before the retention window (dashboardRetentionMonths, default 24) are never shown or counted."
+      schema: {type: boolean, default: false}
     IdempotencyKey:
       name: Idempotency-Key
       in: header
@@ -1111,7 +1144,7 @@ components:
             CAMPAIGN_ALREADY_REGISTERED, NOT_WSO2_RESOURCE, INVALID_CAMPAIGN, INVALID_WINDOW, CAMPAIGN_ARCHIVED,
             POST_HAS_ACTIVITY, CAMPAIGN_CLOSED, OAUTH_STATE_INVALID, OAUTH_REDIRECT_MISMATCH, MISSING_SCOPE, MEMBER_ALREADY_LINKED, CONNECTION_REMOVED,
             LINKEDIN_NOT_CONNECTED, NEEDS_RECONNECT, DUPLICATE_ACTION, COMMENTARY_REQUIRED, COMMENTARY_NOT_ALLOWED,
-            COMMENTARY_TOO_LONG, FEATURE_DISABLED, CERTIFICATION_REQUIRED, EVIDENCE_ALREADY_CLAIMED,
+            COMMENTARY_TOO_LONG, TOO_MANY_MENTIONS, FEATURE_DISABLED, CERTIFICATION_REQUIRED, EVIDENCE_ALREADY_CLAIMED,
             INVALID_EVIDENCE_URL, EVIDENCE_URL_NOT_HTTPS, EVIDENCE_URL_TOO_LONG, EVIDENCE_URL_CREDENTIALS,
             EVIDENCE_URL_IP_HOST, NOT_PENDING, SELF_REVIEW, REASON_REQUIRED, NOT_APPROVED, ALREADY_AMPLIFIED,
             RULE_NOT_FOUND, RULE_VERSION_EXISTS, RULE_BACKDATED, INVALID_POINTS, TOP_UP_NOT_POSITIVE,
@@ -1169,7 +1202,7 @@ components:
         grants:
           description: Grants from those groups; `EMPLOYEE` always. The UI gates on these, never on group names
           type: array
-          items: {type: string, enum: [EMPLOYEE, CAN_CAMPAIGN, CAN_DASHBOARD, CAN_EXPORT, CAN_REVIEW_SHARES, CAN_POINT_RULES, CAN_ADJUST_POINTS, CAN_PO_DASHBOARD, CAN_REPORTS, CAN_ADMIN]}
+          items: {type: string, enum: [EMPLOYEE, CAN_CAMPAIGN, CAN_DASHBOARD, CAN_PEOPLE_OPS, CAN_EXPORT, CAN_REVIEW_SHARES, CAN_POINT_RULES, CAN_ADJUST_POINTS, CAN_PO_DASHBOARD, CAN_REPORTS, CAN_ADMIN]}
         capabilities: {type: array, items: {type: string}}
         linkedin:
           type: object
@@ -1332,7 +1365,15 @@ components:
       required: [kind]
       properties:
         kind: {$ref: "#/components/schemas/ShareKind"}
-        commentary: {type: string, maxLength: 3000, description: "Required for `*_COMMENTARY`, refused otherwise"}
+        commentary:
+          type: string
+          maxLength: 8000
+          description: >-
+            Required for `*_COMMENTARY`, refused otherwise. LinkedIn-ready text (the UI converts its markdown to Unicode
+            bold/italic before sending). `#tag` becomes a LinkedIn hashtag; `@[<label>](amplify:person:<employeeId>)` or
+            `@[<label>](amplify:org:wso2)` is a mention (at most 20, else `TOO_MANY_MENTIONS`); every other reserved
+            character is escaped. At most 3000 by the shown length: UTF-16 code units, a mention counted as its label
+            (`COMMENTARY_TOO_LONG`).
     Share:
       type: object
       required: [id, campaignId, kind, status, attempts, requestedAt]
@@ -1341,7 +1382,14 @@ components:
         campaignId: {type: string, format: uuid}
         kind: {$ref: "#/components/schemas/ShareKind"}
         status: {type: string, enum: [QUEUED, PUBLISHED, FAILED]}
-        failureReason: {type: string, nullable: true, enum: [NEEDS_RECONNECT, PROVIDER_REJECTED, RETRIES_EXHAUSTED, null]}
+        failureReason:
+          type: string
+          nullable: true
+          enum: [NEEDS_RECONNECT, PROVIDER_REJECTED, RETRIES_EXHAUSTED, null]
+          description: >-
+            Set when `FAILED`. `NEEDS_RECONNECT`: LinkedIn refused the token (401, or 403 `ACCESS_DENIED`) or the
+            connection was lost; the token is deleted and `GET /me` reports `linkedin.status` `NEEDS_RECONNECT`, so link
+            LinkedIn again.
         attempts: {type: integer}
         requestedAt: {type: string, format: date-time}
         publishedAt: {type: string, format: date-time, nullable: true}
@@ -1352,6 +1400,18 @@ components:
       required: [items]
       properties:
         items: {type: array, items: {$ref: "#/components/schemas/Share"}}
+    Mention:
+      type: object
+      required: [ref, kind, displayName]
+      properties:
+        ref: {type: string, description: "`person:<employeeId>` or `org:wso2`"}
+        kind: {type: string, enum: [PERSON, ORGANIZATION]}
+        displayName: {type: string, description: Directory name (or the page name); never an id}
+    MentionList:
+      type: object
+      required: [items]
+      properties:
+        items: {type: array, maxItems: 10, items: {$ref: "#/components/schemas/Mention"}}
 
     ExternalShareClaim:
       type: object
@@ -1516,7 +1576,7 @@ components:
                   displayName: {type: string, description: "The people directory's name, else the standing's, else the email"}
                   email: {type: string}
                   points: {type: integer}
-                  teamRank: {type: integer, description: "Dense rank within the team; every zero-point member shares the last rank"}
+                  teamRank: {type: integer, description: "Position within the team: 1, 2, 3... with no ties. Equal points go to whoever reached them first, then name, then email; zero-point members come last"}
                   companyRank: {type: integer, nullable: true, description: "Null without a standing row"}
                   houseName: {type: string, nullable: true, description: "The member's house from the people directory"}
                   isMe: {type: boolean}
@@ -1574,10 +1634,11 @@ components:
               displayName: {type: string, description: "The people directory's name, else the standing's, else the email"}
               email: {type: string}
               points: {type: integer}
-              rank: {type: integer, nullable: true, description: "Company rank; null without a standing row"}
-              teamRank: {type: integer, description: "Dense rank within the list; every zero-point person shares the last rank. Ties order by name, then email"}
+              rank: {type: integer, nullable: true, description: "Company rank: a position, 1, 2, 3... with no ties. Equal points go to whoever reached them first, then name, then employee id; null without a standing row"}
+              teamRank: {type: integer, description: "Position within the list: 1, 2, 3... with no ties, whatever the sort. Equal points go to whoever reached them first, then name, then email; zero-point people come last"}
               previousRank: {type: integer, nullable: true}
               lastActivityAt: {type: string, format: date-time, nullable: true}
+              houseName: {type: string, nullable: true, description: "The person's house from the people directory; null when they have none or the directory is unavailable"}
               actions:
                 type: object
                 required: [canAdjust, canReverse]
@@ -1612,8 +1673,8 @@ components:
               displayName: {type: string}
               email: {type: string}
               points: {type: integer}
-              rank: {type: integer, description: "Company rank"}
-              scopeRank: {type: integer, description: "Rank within the scope (equals rank on the company view)"}
+              rank: {type: integer, description: "Company rank: a position, 1, 2, 3... with no ties"}
+              scopeRank: {type: integer, description: "Position within the scope: 1, 2, 3... with no ties. Equal points go to whoever reached them first, then name, then employee id. On the company view it equals rank"}
               previousRank: {type: integer, nullable: true}
               lastActivityAt: {type: string, format: date-time, nullable: true}
     LeaderboardGroups:
@@ -1694,6 +1755,7 @@ components:
         categoryLabel: {type: string}
         isPriority: {type: boolean}
         status: {type: string, enum: [SCHEDULED, OPEN, CLOSED, ARCHIVED]}
+        archived: {type: boolean, description: "The post was archived (deleted from the Posts page); the boards still list it"}
         opensAt: {type: string, format: date-time}
         closesAt: {type: string, format: date-time}
         reposts: {type: integer, description: "Active engagements recorded against the campaign"}
@@ -1704,6 +1766,8 @@ components:
       required: [asOf, kpis, campaigns, shareHealth, connections]
       properties:
         asOf: {type: string, format: date-time}
+        includeArchived: {type: boolean, description: "Whether archived posts count in the summary numbers (echoes the query parameter)"}
+        retentionMonths: {type: integer, description: "Posts that opened more than this many months ago are left out"}
         headcount: {type: integer, nullable: true, description: "Employee count from /headcount; null when the people directory never loaded"}
         kpis:
           type: object
@@ -1767,6 +1831,8 @@ components:
               categoryCode: {type: string}
               categoryLabel: {type: string}
               isPriority: {type: boolean}
+              status: {type: string, enum: [SCHEDULED, OPEN, CLOSED, ARCHIVED]}
+              archived: {type: boolean, description: "The post was archived; still listed"}
               opensAt: {type: string, format: date-time}
               closesAt: {type: string, format: date-time}
               reposts: {type: integer}
@@ -1788,6 +1854,8 @@ components:
       required: [asOf, windowDays, campaigns, byCategory]
       properties:
         asOf: {type: string, format: date-time}
+        includeArchived: {type: boolean, description: "Whether archived posts count in the summary numbers (echoes the query parameter)"}
+        retentionMonths: {type: integer, description: "Posts that opened more than this many months ago are left out"}
         windowDays: {type: integer}
         peopleConnected: {type: integer}
         campaigns: {type: array, items: {$ref: "#/components/schemas/DashboardCampaignRow"}}
@@ -1812,6 +1880,8 @@ components:
             categoryCode: {type: string}
             categoryLabel: {type: string}
             isPriority: {type: boolean}
+            status: {type: string, enum: [SCHEDULED, OPEN, CLOSED, ARCHIVED]}
+            archived: {type: boolean}
             opensAt: {type: string, format: date-time}
             closesAt: {type: string, format: date-time}
             reposts: {type: integer}
@@ -1857,6 +1927,8 @@ components:
       required: [asOf, month, reposts, monthly, participants, campaignsLive, campaignsReachingTarget, shareSuccess]
       properties:
         asOf: {type: string, format: date-time}
+        includeArchived: {type: boolean, description: "Whether archived posts count in the summary numbers (echoes the query parameter)"}
+        retentionMonths: {type: integer, description: "Posts that opened more than this many months ago are left out"}
         month: {type: string}
         reposts:
           type: object
@@ -1904,6 +1976,8 @@ components:
       required: [asOf, measures]
       properties:
         asOf: {type: string, format: date-time}
+        includeArchived: {type: boolean, description: "Whether archived posts count in the summary numbers (echoes the query parameter)"}
+        retentionMonths: {type: integer, description: "Posts that opened more than this many months ago are left out"}
         measures:
           type: array
           items:

@@ -66,6 +66,9 @@ configurable decimal jwksBreakerResetSeconds = 30;
 configurable string canCampaignGroups = "amplify_po,amplify_marketing";
 # Groups that read the Dashboarding boards (ADR-036).
 configurable string canDashboardGroups = "amplify_po,amplify_marketing,amplify_slt,amplify_admin";
+# Groups that read the Team board under People Operations. Marketing is not included; add a People
+# Operations group here once one exists.
+configurable string canPeopleOpsGroups = "amplify_po,amplify_slt,amplify_admin";
 # Groups that download the dashboard CSV export (names and emails).
 configurable string canExportGroups = "amplify_po,amplify_marketing,amplify_slt,amplify_admin";
 # Groups that review external shares.
@@ -84,6 +87,7 @@ configurable string canAdminGroups = "amplify_admin";
 final auth:AccessGroups & readonly accessGroups = {
     canCampaign: auth:groupList(canCampaignGroups),
     canDashboard: auth:groupList(canDashboardGroups),
+    canPeopleOps: auth:groupList(canPeopleOpsGroups),
     canExport: auth:groupList(canExportGroups),
     canReviewShares: auth:groupList(canReviewSharesGroups),
     canPointRules: auth:groupList(canPointRulesGroups),

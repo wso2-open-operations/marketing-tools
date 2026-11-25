@@ -34,7 +34,9 @@ bal test
 ## OAuth 2.0 flow
 
 Same 3-legged authorization code flow as LinkedIn. There is no login or consent page: every
-authorization signs in as the configured `member` and approves straight away.
+authorization signs in as the configured `member` and approves straight away. Set `memberPerAuthorization = true`
+(`BAL_CONFIG_VAR_MEMBERPERAUTHORIZATION`) to sign in as a new made-up member each time instead, so many employees can
+each link their own LinkedIn account in one local stack.
 
 1. Send the browser to the authorization endpoint:
 
@@ -109,6 +111,7 @@ listener also serves:
 
 - `GET /mock/posts` lists every post the mock holds.
 - `POST /mock/reset` clears tokens, codes, posts, uploads and rate counters.
+- `POST /mock/members/{sub}/revoke` forgets every token of one member, as when the member removes the app in their LinkedIn settings; the next `POST /rest/posts` with it answers 401 (re-link flow).
 
 Every call must carry the key in `X-Amplify-Internal-Key`, the same header amplify-jobs uses for its own
 endpoints; a missing or wrong key gets a `401`. With the flag on but no usable key, the endpoints are not

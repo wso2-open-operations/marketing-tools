@@ -84,10 +84,11 @@ function testConcurrentLedgerAppendsNeitherDeadlockNorMisrank() returns error? {
     }
     io:println(string `R-13 runtime ConcurrentModificationException: ${runtimeRaces} of 48 appends`);
     test:assertEquals(failures, 0, "concurrent appends failed: " + firstError);
-    // Every stored rank equals the dense rank recomputed over the committed totals.
+    // Every stored rank equals the position recomputed over the committed totals.
     int misranked = check count(db, `
         SELECT count(*)::int FROM (
-            SELECT s.rank, dense_rank() OVER (ORDER BY s.total_points DESC)::int AS expected
+            SELECT s.rank, row_number() OVER (ORDER BY s.total_points DESC, s.last_activity_at ASC NULLS LAST,
+                                  s.display_name, s.employee_id)::int AS expected
             FROM recognition_standing s WHERE s.period_key = 'ALL') r
         WHERE r.rank IS DISTINCT FROM r.expected`);
     test:assertEquals(misranked, 0, "stored ranks match the committed totals");

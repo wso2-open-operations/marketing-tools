@@ -90,7 +90,6 @@ tier_unit() {
   for pkg in amplify-common amplify-domain amplify-api amplify-jobs amplify-database; do
     bal_test "unit $pkg" "$APPS/$pkg"
   done
-  bal_test "unit chat-stub" "$HERE/local/chat-stub"
   # directory.json is gitignored (real names); a fresh checkout needs the example copied in.
   [ -f "$HERE/local/people-stub/directory.json" ] || cp "$HERE/local/people-stub/directory.json.example" "$HERE/local/people-stub/directory.json"
   bal_test "unit people-stub" "$HERE/local/people-stub"

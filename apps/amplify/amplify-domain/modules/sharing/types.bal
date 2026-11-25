@@ -26,8 +26,10 @@ public enum ShareStatus {
     FAILED
 }
 
-# Longest commentary accepted (LinkedIn's post text limit).
+# Longest commentary accepted, as `types:commentaryLength` counts it (LinkedIn's post text limit).
 public const int COMMENTARY_MAX_LENGTH = 3000;
+# Longest commentary stored, mention tokens included (`sharing_share_request.commentary` check).
+public const int COMMENTARY_STORED_MAX_LENGTH = 8000;
 
 # Words of the employee's own a `*_COMMENTARY` share needs when the caller doesn't say: 0, no check. A word of
 # their own is a distinct word of two or more letters or digits that isn't in the campaign title or summary.

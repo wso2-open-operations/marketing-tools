@@ -190,6 +190,36 @@ function retryChecksTheNewThoughts() returns error? {
 }
 
 @test:Config
+function commentaryLengthCountsWhatLinkedInShows() returns error? {
+    // 1500 bold letters are 3000 UTF-16 units: at the limit, accepted. One more is over.
+    string bold = "";
+    foreach int i in 1 ... 1500 {
+        bold += "𝗕";
+    }
+    _ = check newShareRequest(OPEN_CAMPAIGN, ACTIVE_CONNECTION, withThoughts(bold), "s1", T0);
+    test:assertEquals(code(newShareRequest(OPEN_CAMPAIGN, ACTIVE_CONNECTION, withThoughts(bold + "x"), "s1", T0)),
+            types:ERR_COMMENTARY_TOO_LONG);
+    // A mention counts as its label, not as the token.
+    string text = "";
+    foreach int i in 1 ... 2990 {
+        text += "x";
+    }
+    _ = check newShareRequest(OPEN_CAMPAIGN, ACTIVE_CONNECTION,
+            withThoughts(text + "@[Jane](amplify:person:jane@wso2.com)"), "s1", T0);
+}
+
+@test:Config
+function atMostTwentyMentions() returns error? {
+    string twenty = "";
+    foreach int i in 1 ... types:MENTION_MAX_COUNT {
+        twenty += "@[A](amplify:person:a) ";
+    }
+    _ = check newShareRequest(OPEN_CAMPAIGN, ACTIVE_CONNECTION, withThoughts(twenty), "s1", T0);
+    test:assertEquals(code(newShareRequest(OPEN_CAMPAIGN, ACTIVE_CONNECTION,
+            withThoughts(twenty + "@[A](amplify:person:a)"), "s1", T0)), types:ERR_TOO_MANY_MENTIONS);
+}
+
+@test:Config
 function publishClearsCommentaryAndRecordsEngagement() returns error? {
     ShareRequest r = check newShareRequest(OPEN_CAMPAIGN, ACTIVE_CONNECTION, withThoughts(), "s1", T0);
     PublishResult result = check markPublished(r, "urn:li:share:7001", "urn:li:person:abc", "g1", T0);

@@ -6,11 +6,11 @@ Builds on: [phase1-domains.md](../../architecture/solution/Phase%201/phase1-doma
 
 ## MVP definition
 
-> **Phasing updated 2026-10-19** (Requirements / Phase Breakdown): phase 1 = register posts with category/priority, share new posts to the Club Chat space, link LinkedIn, record reposts, individual and team leaderboards. External shares (item 3), PO adjust/reverse and the PO dashboard (item 4) move to phase 3 (own posts, scoring rules, PO edits) and phase 2 (points/Coins history, reports). The backend for them is built; phase 1 ships no UI for them. Items below are kept as written for history.
+> **Phasing updated 2026-10-19** (Requirements / Phase Breakdown): phase 1 = register posts with category/priority, announce new posts through Novera, link LinkedIn, record reposts, individual and team leaderboards. External shares (item 3), PO adjust/reverse and the PO dashboard (item 4) move to phase 3 (own posts, scoring rules, PO edits) and phase 2 (points/Coins history, reports). The backend for them is built; phase 1 ships no UI for them. Items below are kept as written for history.
 
 Phase 1 is done when, in Choreo **prod**, for a pilot group:
 
-1. Marketing registers an official WSO2 LinkedIn post as a Campaign, and a card lands in the WSO2 Club Google Chat space.
+1. Marketing registers an official WSO2 LinkedIn post as a Campaign, and Novera sends a card to everyone who has added it.
 2. An employee connects LinkedIn once, then shares or reposts that Campaign from One WSO2. Amplify publishes it on their LinkedIn and awards points automatically.
 3. An employee submits an external share (their own post, blog or article about WSO2) from My Campaign. PO approves or rejects it, and approval awards points. Reposts made in the LinkedIn app aren't tracked in phase 1 (A3, future phase).
 4. Everyone sees three leaderboards: company top N (default 3), their personal standing, and My Team (B15). PO can adjust or reverse points with a reason, and every change is audited. PO has a phase 1 dashboard (B6); SLT reports are phase 2.
@@ -52,14 +52,14 @@ Out of phase 1 (do not build): the Novera agent/classifier/LLM gateway/AMP/Thund
  └──────┬──────────────────────────────────────┬────────────────────────────────────────┘
         │ egress (declared, circuit-broken)    │
         ▼                                      ▼
-  LinkedIn API + OAuth (prod)            Google Chat incoming webhook (Club space)
+  LinkedIn API + OAuth (prod)            Novera (Google Chat cards)
   mock-linkedin (dev / local)            test space (dev / local)
 ```
 
 Cell rules:
 - **Single ingress:** only the API proxy is exposed (Organization/Public). `amplify-api`, `amplify-jobs`, the scheduler and Postgres stay at Project visibility. The scheduler's API has no auth, so it is never published and only `amplify-api` calls it (ADR-026).
 - **Owned data:** only `amplify-api`, `amplify-jobs` and the migration task connect to the Amplify database. The scheduler has its own database and user.
-- **Declared egress:** LinkedIn and Google Chat are Choreo connections with per-environment URLs and secrets. Every outbound call goes through a circuit breaker.
+- **Declared egress:** LinkedIn and Novera are Choreo connections with per-environment URLs and secrets. Every outbound call goes through a circuit breaker.
 - **Bounded contexts as modules first.** Each context is a Ballerina module with its own Postgres schema, so any one can be lifted into its own component later without changing the cell's published API.
 - **Portable by default:** container + env vars + OpenAPI + cron string (in `config_app_setting`, pushed to the scheduler). Nothing Choreo-only in the code.
 
@@ -277,7 +277,7 @@ OpenAPI 3 first (`amplify-api/openapi.yaml`), reviewed before code, imported int
 - [x] `POST /runs`: start a run unless one is in progress (in-process lock + DB advisory lock so two replicas never overlap). Done: [run.bal](../../amplify-jobs/run.bal) (session advisory lock on a single-connection client, 202 `SKIPPED` when busy, synchronous run log; [ADR-025](../../architecture/decisions/ADR-025-jobs-run-delivery-and-resilience.md)).
 - [x] Run: claim up to N `messaging_outbox` rows `FOR UPDATE SKIP LOCKED`, set `locked_until`, process, mark `DONE` or retry with exponential backoff + jitter; `FAILED` after max attempts. Done: `store:claimOutbox` / `retryOutbox` / `failOutbox` / `releaseStaleLocks` in `amplify_domain`, equal-jitter backoff in [outcome.bal](../../amplify-jobs/outcome.bal); deferrals (kill switch, ceiling, not open yet) cost no attempt.
 - [x] Handlers (idempotent): [handlers.bal](../../amplify-jobs/handlers.bal), unit tests on in-memory ports + IT on postgres:18 with `mock_linkedin`.
-  - [x] `CampaignRegistered` → Google Chat (M6a) → set `announcement.sent_at`, emit `CampaignAnnounced` (B8). Jobs creates the `announcement` row; scheduled campaigns wait for `opens_at`; admin retry clears `failed_at`.
+  - [x] `CampaignRegistered` → Novera (M6a, M6c) → set `announcement.sent_at`, emit `CampaignAnnounced` (B8). Jobs creates the `announcement` row; scheduled campaigns wait for `opens_at`; admin retry clears `failed_at`.
   - [x] `RepostRequested` → load connection + token, check `published_at` is still null, call the LinkedIn adapter, set `published_at`, insert `sharing_engagement` (`activity_urn` = `x-restli-id`), null `commentary`, emit `EngagementRecorded`. 401 → set `connection.revoked_at` (derived `NEEDS_RECONNECT`), emit `ConnectionRevoked`, set `share_request.failed_at` with reason `NEEDS_RECONNECT` (B9, B14). 429/5xx/breaker open → retry later.
   - [x] `EngagementRecorded` / `ExternalShareApproved` / `ExternalShareAmplified` → score: rule effective at event time, ledger insert `ON CONFLICT (reference) DO NOTHING` (Amplified = top-up row, C4), emit `PointsAwarded`. Done for `EngagementRecorded`; approve/amplified are already scored by amplify-api in the decision transaction (ADR-024 item 1), so jobs acknowledges them without scoring (checked: no double award).
   - [x] Same transaction as the ledger insert: upsert `recognition_standing` totals, re-rank, bump `standing_version` (see M3).
@@ -303,14 +303,16 @@ OpenAPI 3 first (`amplify-api/openapi.yaml`), reviewed before code, imported int
 
 ## M6a · Google Chat announcements (incoming webhook)
 
-- [ ] Workspace admin: confirm "Allow users to add and use incoming webhooks" is on (Admin console › Apps › Google Workspace › Google Chat › Chat apps).
-- [ ] Create a **dev test space** and the **WSO2 Club** space webhook in **web** Chat (not mobile): space name ▾ › Apps & integrations › Add webhooks › name "Amplify" + avatar URL › Save › Copy link. Use a team/common account as owner, not a personal one. Steps: [runbook](../runbooks/google-chat-webhook.md) A–B.
-- [ ] Store the URL (`https://chat.googleapis.com/v1/spaces/SPACE/messages?key=…&token=…`) as a **Choreo secret** per environment. The `token` is the secret; never log the URL. Steps and keys: [runbook](../runbooks/google-chat-webhook.md) C–D. Code side done: `chatWebhookUrl` is only passed to the client, never logged or put in errors / `last_error` (tests `webhookErrorsNeverCarryTheUrl`, `webhook400FailsOnceWithoutRetryStorm`).
+> **Superseded 2026-11-03.** The Club space webhook path was removed (the `googlechat` module, the chat-stub and the webhook runbook are gone). Novera is the only announcement channel, see M6c. This section is kept as history, and its open items are dropped.
+
+- [x] ~~Workspace admin: confirm "Allow users to add and use incoming webhooks" is on (Admin console › Apps › Google Workspace › Google Chat › Chat apps).~~ Dropped: webhook removed.
+- [x] ~~Create a **dev test space** and the **WSO2 Club** space webhook in **web** Chat (not mobile): space name ▾ › Apps & integrations › Add webhooks › name "Amplify" + avatar URL › Save › Copy link. Use a team/common account as owner, not a personal one. Steps: runbook A–B.~~ Dropped: webhook removed.
+- [x] ~~Store the URL (`https://chat.googleapis.com/v1/spaces/SPACE/messages?key=…&token=…`) as a **Choreo secret** per environment. The `token` is the secret; never log the URL. Steps and keys: [runbook](../runbooks/google-chat-webhook.md) C–D. Code side done: `chatWebhookUrl` is only passed to the client, never logged or put in errors / `last_error` (tests `webhookErrorsNeverCarryTheUrl`, `webhook400FailsOnceWithoutRetryStorm`).~~ Dropped: webhook removed.
 - [x] Card builder (`googlechat` module), cardsV2: header (title required, Amplify avatar), image widget (campaign image, `altText`), `textParagraph` summary, `buttonList` with an **openLink** to the One WSO2 share page for the campaign (`/amplify/campaigns/{id}`). Webhooks are one-way: no click callbacks. Done: `buildCampaignCard` in [card.bal](../../amplify-common/modules/googlechat/card.bal) (header avatar `CIRCLE` from `chatCardAvatarUrl`), base URL `sharePageBaseUrl` in amplify-jobs config.
 - [x] Threading: `thread.threadKey = "campaign-{id}"` with `&messageReplyOption=REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD`; store the returned `name` / `thread.name`. Done: [client.bal](../../amplify-common/modules/googlechat/client.bal); `chat_message_name` + `chat_thread_name` (V011) set by `markSent`.
 - [x] Throttle to **1 request/second per space** (quota is shared by all webhooks in the space); 429 → backoff and retry via the outbox. Done: `WebhookChat` in [ports.bal](../../amplify-jobs/ports.bal) (`chatMinIntervalSeconds`), retries via the outbox (ADR-025).
 - [x] Image URLs must be public HTTPS. Done: `isPublicHttpsUrl` (no http, localhost, private/link-local IPs, single-label hosts); otherwise the image widget is left out and the card still goes out.
-- [ ] Re-host campaign images on a WSO2-owned public URL: LinkedIn CDN URLs (`media.licdn.com`, `e=` expiry) break on old cards (**later**, runbook H).
+- [ ] Re-host campaign images on a WSO2-owned public URL: LinkedIn CDN URLs (`media.licdn.com`, `e=` expiry) break on old cards (**later**; still open under M6c).
 - [x] Local: a tiny Chat stub (or the mock) that accepts the POST and logs the card; plus a "send to dev space" toggle for real-card checks. Done: [local/chat-stub](../../local/chat-stub/main.bal) (Ballerina, logs the card, scripted 400/429/5xx via `status-NNN` space or `PUT /stub/status/{code}`, `GET /stub/messages`), in `compose.yaml`; toggle = `GOOGLE_CHAT_WEBHOOK_URL` in `local/.env` (dev space webhook) overrides the stub.
 - [x] Runbook: rotate = delete the webhook, add a new one, update the secret. Done: [google-chat-webhook.md](../runbooks/google-chat-webhook.md) E (add new, update secret, verify, delete old; leaked URL: delete first).
 - [x] Unit test: card JSON snapshot; integration test: webhook 200, 400 (bad card), 429, 5xx. Done: `campaignCardSnapshot` + client 400/429/503/no-response in [googlechat_test.bal](../../amplify-common/modules/googlechat/tests/googlechat_test.bal); full Run against a scripted stub, no DB, in [webhook_test.bal](../../amplify-jobs/tests/webhook_test.bal) (200 stores names, 400 → FAILED with one call, 429 backoff, 5xx retry → FAILED after `maxAttempts`); M6 IT checks `chat_thread_name`.
@@ -403,10 +405,10 @@ In `projects/one-wso2/webapp`. The left rail supports **one level of sub-menus**
   - [ ] **LinkedIn Mock**: dev only, from `apps/amplify/linkedin/apps/mock_linkedin` (repo side done: Dockerfile, `.choreo/`, `workload.yaml`; runbook C6).
 - [ ] Component versioning: first version **v1.0.0 from `main`**; no extra deployment tracks unless needed. Build once, promote the same image dev → prod.
 - [ ] Choreo-managed PostgreSQL per environment (paid plan with backups), connected via Choreo database connections; separate users per component (M3).
-- [ ] Egress endpoints, set per environment as config or secrets (the descriptors declare no Choreo connections for these): LinkedIn API and OAuth base URLs (config); the Google Chat webhook (a secret; **in prod it points at the WSO2 Club group chat space**, in dev at a test space); the people-app directory (choreo-deploy C7). Dev → mock/non-prod app + test space; prod → real endpoints.
+- [ ] Egress endpoints, set per environment as config or secrets (the descriptors declare no Choreo connections for these): LinkedIn API and OAuth base URLs (config); the Novera gateway URL and token URL (config); the people-app directory (choreo-deploy C7). Dev → mock/non-prod app; prod → real endpoints.
 - [ ] Org egress control: allow-list only LinkedIn, `chat.googleapis.com` and the people-app gateway host for this project if the org uses it.
 - [ ] Config per environment: LinkedIn base URLs, API version `202610`, client ID, redirect URI, One WSO2 base URL, max attempts, breaker thresholds.
-- [ ] Secrets (Choreo secrets): LinkedIn client secret, token-encryption keys with `key_id`, Chat webhook URL, DB credentials. Nothing in Git; `.gitsecret` only for local.
+- [ ] Secrets (Choreo secrets): LinkedIn client secret, token-encryption keys with `key_id`, the Novera client id and secret, DB credentials. Nothing in Git; `.gitsecret` only for local.
 - [ ] Observability: Choreo logs + metrics, alerts on outbox `FAILED`, share failure rate, breaker open, 5xx rate, scheduler job failures (job history / `/health`), `schedulerSync: PENDING` / reconcile give-up log, partition-maintenance failures.
 - [ ] Cost check for the pilot (~830 employees).
 
@@ -469,7 +471,7 @@ Done in M10: WSO2 Amplify Application Deployment Security Checklist.docx (every 
 - [x] **Overview:** purpose, data (employee data, PII: name, email, LinkedIn person URN; confidential: LinkedIn access tokens), products (Choreo, Asgardeo, Ballerina, Postgres), integrations, availability target and MTTD (business hours, best effort for the pilot), architecture and threat model links, URLs (dev, prod, admin = same app, role-gated). Done in M10: WSO2 Amplify Application Deployment Security Checklist.docx §1.
 - [x] **Access:** users = all WSO2 employees (WSO2 IAM); admin = subset (`amplify_admin`). Non-prod environment exists, with no linkage to prod. Done in M10: WSO2 Amplify Application Deployment Security Checklist.docx §2.
 - [ ] Source in a **WSO2-managed GitHub org** (D12). **Open — needs owner.** **(2026-10-19):** ADR-033: the backend lives in marketing-tools (fork of `wso2-open-operations/marketing-tools`); met once `apps/amplify` merges upstream.
-- [ ] External integrations use **team/common accounts**, not personal ones: Google Chat webhooks, Choreo project ownership. LinkedIn developer apps are the exception (LinkedIn has no service accounts; named owner + second admin, checklist note 2026-10-19). **Open — needs owner.**
+- [ ] External integrations use **team/common accounts**, not personal ones: the Novera client application, Choreo project ownership. LinkedIn developer apps are the exception (LinkedIn has no service accounts; named owner + second admin, checklist note 2026-10-19). **Open — needs owner.**
 - [x] **Data security:**
   - [ ] Classify each store in the **WSO2 Data Inventory** (purpose, legal basis, retention, location, sharing). **Open — needs owner.**
   - [x] Non-prod has no real PII or prod credentials (mock LinkedIn, non-prod Asgardeo org with test users, non-prod LinkedIn app, test Chat space).
@@ -526,7 +528,7 @@ Done in M10: token-and-oauth-notes.md (each claim verified against code; gaps st
 
 - [x] Walk the `wso2-digital-sdlc` checklist; capture approvals per stage. Done in M12: [sdlc-checklist-walk.md](sdlc-checklist-walk.md) (9 stages; outputs/gate/status/owner; 6 findings, no High; security +1 is the gate that must clear before prod).
 - [x] Resilience targets: RPO/RTO, MTTD, health checks, backups, end-user messaging when down. Done in M12: [resilience-targets.md](../runbooks/resilience-targets.md) (health scopes checked against code: api `/ready` gates on DB + JWKS; backups/restore gaps flagged). Done in deep review (2026-10-17): jobs `GET /ready` gated on DB (`amplify-jobs/service.bal`), pool exhaustion fails readiness in both.
-- [x] Runbook: reprocess FAILED outbox rows, rotate encryption key, rotate LinkedIn secret, rotate Chat webhook, bump `LinkedIn-Version`, change the run schedule (admin setting; scheduler `PENDING` → `POST /admin/scheduler/sync`), scheduler image bump + job-history purge, restore DB, data-deletion request (**manual interim process**, C3), kill switches (`sharing.enabled`, `announcements.enabled`). Done in M12: [operations.md](../runbooks/operations.md) (10 numbered procedures with exact commands/paths).
+- [x] Runbook: reprocess FAILED outbox rows, rotate encryption key, rotate LinkedIn secret, rotate the Novera client secret, bump `LinkedIn-Version`, change the run schedule (admin setting; scheduler `PENDING` → `POST /admin/scheduler/sync`), scheduler image bump + job-history purge, restore DB, data-deletion request (**manual interim process**, C3), kill switches (`sharing.enabled`, `announcements.enabled`). Done in M12: [operations.md](../runbooks/operations.md) (10 numbered procedures with exact commands/paths).
 - [x] LinkedIn version watch: plan the bump before `202610` sunsets. Done in M12: [pilot-readiness.md](pilot-readiness.md) §1 (quarterly + 60-day rule; config-only bump).
 - [ ] Pilot group in Asgardeo + preview flag; pilot comms in the Club space; feedback channel. **Plan written** in pilot-readiness.md §2-§4; **console execution open** (Asgardeo group, One WSO2 preview flag — needs owner).
 - [ ] **User guide (go-live gate, added 2026-10-26).** Write the Phase 1 Amplify user guide and publish it before go-live (31 Oct). Needs an owner. Cover by audience, matching the roles and screens:

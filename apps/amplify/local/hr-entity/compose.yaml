@@ -1,0 +1,106 @@
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+# Local HR Entity + ThunderID for debugging Amplify. Standalone: own project, own network, nothing here touches the
+# main Amplify stack. See README.md for the lines to put in local/.env so amplify-api and amplify-jobs read from it.
+#   docker compose -f local/hr-entity/compose.yaml up -d --build --wait
+#   docker compose -f local/hr-entity/compose.yaml down -v     (fresh start)
+name: amplify-hr-entity
+
+services:
+  # The HR Entity's database, seeded with the 200 fake employees (seed.sql runs on the first start of an empty volume).
+  hr-entity-db:
+    image: postgres:17.11
+    environment:
+      POSTGRES_DB: hr_entity
+      POSTGRES_USER: hr_entity
+      POSTGRES_PASSWORD: ${HR_ENTITY_DB_PASSWORD:-hr-entity-local}
+    volumes:
+      - ./seed.sql:/docker-entrypoint-initdb.d/10-seed.sql:ro
+      - hr-entity-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hr_entity -d hr_entity"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  # The HR Entity GraphQL `employees` query Amplify reads (no auth). Host port 19097.
+  hr-entity:
+    build: ./mock
+    environment:
+      DATABASE_URL: postgres://hr_entity:${HR_ENTITY_DB_PASSWORD:-hr-entity-local}@hr-entity-db:5432/hr_entity
+      ALLOW_ORIGINS: http://localhost:3000
+    depends_on:
+      hr-entity-db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:19097:9096"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9096/health"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  # ---- ThunderID (the repo's own quick-start layout) + the Amplify cast ----------------------------------------
+  thunderid-db-init:
+    image: ghcr.io/thunder-id/thunderid:1.0.0@sha256:12b7348b6727b756b8155c5157804bc05ef5d0ffa5f42bc6307747bd18425a36
+    command: sh -c "cp -r /opt/thunderid/database/* /data/"
+    volumes:
+      - thunderid-db:/data
+    restart: "no"
+
+  # Runs once: creates the built-in resources, then everything in thunder/ (users, amplify_* groups, the sign-in
+  # client). The built-in admin user becomes admin@example.com with the shared password.
+  thunderid-setup:
+    image: ghcr.io/thunder-id/thunderid:1.0.0@sha256:12b7348b6727b756b8155c5157804bc05ef5d0ffa5f42bc6307747bd18425a36
+    command: ./setup.sh
+    environment:
+      ADMIN_USERNAME: admin@example.com
+      ADMIN_PASSWORD: ${DEFAULT_PASSWORD:-Password2026!}
+    volumes:
+      - thunderid-db:/opt/thunderid/database
+      - thunderid-certs:/opt/thunderid/config/certs
+      - thunderid-secrets:/opt/thunderid/config/secrets
+      - ./thunder/10-amplify.yaml:/opt/thunderid/bootstrap/10-amplify.yaml:ro
+    depends_on:
+      thunderid-db-init:
+        condition: service_completed_successfully
+    restart: "no"
+
+  # https://localhost:8090 (self-signed certificate: open it once in the browser and accept it).
+  thunderid:
+    image: ghcr.io/thunder-id/thunderid:1.0.0@sha256:12b7348b6727b756b8155c5157804bc05ef5d0ffa5f42bc6307747bd18425a36
+    depends_on:
+      thunderid-setup:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:8090:8090"
+    volumes:
+      - thunderid-db:/opt/thunderid/database
+      - thunderid-certs:/opt/thunderid/config/certs:ro
+      - thunderid-secrets:/opt/thunderid/config/secrets:ro
+      # Amplify branding on the sign-in page (the left panel is compiled into the gate bundle, so the file is
+      # replaced; the names match this pinned image, so re-copy them from the image when the pin moves).
+      - ./branding/SignInSlogan-Tolf_PI8.js:/opt/thunderid/apps/gate/assets/SignInSlogan-Tolf_PI8.js:ro
+      - ./branding/logo.svg:/opt/thunderid/apps/gate/assets/images/logo.svg:ro
+      - ./branding/logo-inverted.svg:/opt/thunderid/apps/gate/assets/images/logo-inverted.svg:ro
+      - ./branding/gate-config.js:/opt/thunderid/apps/gate/config.js:ro
+
+volumes:
+  hr-entity-db:
+  thunderid-db:
+  thunderid-certs:
+  thunderid-secrets:

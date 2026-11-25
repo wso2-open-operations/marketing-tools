@@ -264,6 +264,13 @@ isolated function sharesOf(types:EmployeeId employeeId) returns sharing:ShareVie
     }
 }
 
+isolated function mentionableSearch(string query, types:EmployeeId callerId)
+        returns connection:MentionableMember[]|error {
+    retry<resilience:TransientDbRetry> (dbReadRetries) {
+        return check connection:searchMentionable(check db(), query, callerId);
+    }
+}
+
 isolated function claimsOf(types:EmployeeId employeeId) returns external_sharing:ExternalShare[]|error {
     retry<resilience:TransientDbRetry> (dbReadRetries) {
         return check external_sharing:claimsOf(check db(), employeeId);

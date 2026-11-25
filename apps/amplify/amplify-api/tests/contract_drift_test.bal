@@ -153,7 +153,7 @@ function testDomainEnumsMatchTheSpec() returns error? {
             announcements:FAILED]],
         [["LedgerEntry", "sourceType"], [types:ENGAGEMENT, types:EXTERNAL_SHARE, types:ADJUSTMENT, types:REVERSAL]],
         [["LedgerEntry", "status"], [types:HELD, types:PAID]],
-        [["Me", "grants", "items"], [auth:EMPLOYEE, auth:CAN_CAMPAIGN, auth:CAN_DASHBOARD, auth:CAN_EXPORT,
+        [["Me", "grants", "items"], [auth:EMPLOYEE, auth:CAN_CAMPAIGN, auth:CAN_DASHBOARD, auth:CAN_PEOPLE_OPS, auth:CAN_EXPORT,
             auth:CAN_REVIEW_SHARES, auth:CAN_POINT_RULES, auth:CAN_ADJUST_POINTS, auth:CAN_PO_DASHBOARD, auth:CAN_REPORTS,
             auth:CAN_ADMIN]]
     ];
@@ -197,7 +197,7 @@ function domainCodes() returns string[] => [types:ERR_INVALID_EMPLOYEE_ID, types
     types:ERR_MISSING_SCOPE, types:ERR_MEMBER_ALREADY_LINKED, types:ERR_CONNECTION_REMOVED,
     types:ERR_CONNECTION_NEEDS_RECONNECT, types:ERR_SHARE_ALREADY_QUEUED, types:ERR_SHARE_ALREADY_PUBLISHED,
     types:ERR_SHARE_NOT_QUEUED, types:ERR_COMMENTARY_REQUIRED, types:ERR_COMMENTARY_NOT_ALLOWED,
-    types:ERR_COMMENTARY_TOO_LONG, types:ERR_CERTIFICATION_REQUIRED, types:ERR_EVIDENCE_ALREADY_CLAIMED,
+    types:ERR_COMMENTARY_TOO_LONG, types:ERR_TOO_MANY_MENTIONS, types:ERR_CERTIFICATION_REQUIRED, types:ERR_EVIDENCE_ALREADY_CLAIMED,
     types:ERR_NOT_PENDING, types:ERR_SELF_REVIEW, types:ERR_REASON_REQUIRED, types:ERR_NOT_APPROVED,
     types:ERR_ALREADY_AMPLIFIED, types:ERR_RULE_NOT_FOUND, types:ERR_RULE_VERSION_EXISTS, types:ERR_RULE_BACKDATED,
     types:ERR_INVALID_POINTS, types:ERR_TOP_UP_NOT_POSITIVE, types:ERR_ALREADY_REVERSED,

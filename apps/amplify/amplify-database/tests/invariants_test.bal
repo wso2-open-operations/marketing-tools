@@ -323,7 +323,8 @@ function testConcurrentLedgerAppendsKeepRanksConsistent() returns error? {
     postgresql:Client db = check adminClient(itDbName);
     int wrong = check db->queryRow(`
         SELECT count(*)::int FROM (
-            SELECT s.rank, dense_rank() OVER (ORDER BY s.total_points DESC)::int AS expected
+            SELECT s.rank, row_number() OVER (ORDER BY s.total_points DESC, s.last_activity_at ASC NULLS LAST,
+                                  s.display_name, s.employee_id)::int AS expected
             FROM recognition_standing s WHERE s.period_key = 'ALL') r
         WHERE r.rank IS DISTINCT FROM r.expected`);
     test:assertEquals(wrong, 0, "after two concurrent appends every rank matches the points");

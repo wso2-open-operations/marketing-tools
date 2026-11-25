@@ -408,6 +408,20 @@ function testAdminEndpointsRejectMissingAndWrongKey() returns error? {
 }
 
 @test:Config
+function testMemberRevokeMakesTheTokenAnswer401() returns error? {
+    string token = check accessToken("openid profile w_member_social");
+    http:Response me = check apiClient->get("/v2/userinfo", bearer(token));
+    test:assertEquals(me.statusCode, http:STATUS_OK);
+    string sub = check (check me.getJsonPayload()).sub;
+    http:Response revoked = check apiClient->post("/mock/members/" + sub + "/revoke", (), adminHeaders());
+    test:assertEquals(revoked.statusCode, http:STATUS_CREATED);
+    http:Response after = check createPost(token, uniqueText());
+    test:assertEquals(after.statusCode, http:STATUS_UNAUTHORIZED, "LinkedIn answers 401 once the member revoked the app");
+    http:Response noKey = check apiClient->post("/mock/members/" + sub + "/revoke", ());
+    test:assertEquals(noKey.statusCode, http:STATUS_UNAUTHORIZED, "admin key required");
+}
+
+@test:Config
 function testAdminEndpointsAcceptTheKey() returns error? {
     string token = check accessToken("w_member_social");
     http:Response created = check createPost(token, uniqueText());
@@ -521,3 +535,22 @@ function createPost(string token, string commentary) returns http:Response|error
 }
 
 function uniqueText() returns string => "Mock post " + uuid:createType4AsString();
+
+@test:Config
+function testMemberProfileIsTheConfiguredMemberForItsOwnId() {
+    MockMember profile = memberProfile(member.sub);
+    test:assertEquals(profile.email, member.email);
+    test:assertEquals(profile.givenName, member.givenName);
+}
+
+@test:Config
+function testMemberProfileForAnotherIdIsMadeUpAndUnique() {
+    string a = newMemberSub();
+    string b = newMemberSub();
+    test:assertNotEquals(a, b);
+    test:assertEquals(a.length(), 12);
+    MockMember profile = memberProfile(a);
+    test:assertEquals(profile.sub, a);
+    test:assertEquals(profile.email, a + "@example.com");
+    test:assertNotEquals(profile.email, member.email);
+}

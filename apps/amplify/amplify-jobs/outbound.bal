@@ -114,5 +114,7 @@ isolated function runConfig() returns RunConfig => {
     publishJitterSeconds: sharePublishJitterMinutes * 60,
     noveraButtonUrl: noveraButtonUrl.trim(),
     cardAvatarUrl: noveraIconUrl.trim() == "" ? () : noveraIconUrl.trim(),
-    defaultImageUrl: noveraDefaultImageUrl.trim() == "" ? () : noveraDefaultImageUrl.trim()
+    defaultImageUrl: noveraDefaultImageUrl.trim() == "" ? () : noveraDefaultImageUrl.trim(),
+    orgMentions: linkedinOrgUrn.trim() == "" || linkedinOrgName.trim() == "" ? {}
+        : {[ORG_MENTION_REF]: {name: linkedinOrgName.trim(), urn: linkedinOrgUrn.trim()}}
 };

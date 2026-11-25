@@ -38,6 +38,10 @@ const string HEADER_LINKEDIN_VERSION = "LinkedIn-Version";
 const string HEADER_RESTLI_PROTOCOL = "X-Restli-Protocol-Version";
 const string HEADER_RESTLI_ID = "x-restli-id";
 const string HEADER_AUTHORIZATION = "Authorization";
+// LinkedIn's `code` on a 403 when the token lacks the permission (Posts API error table).
+const string LINKEDIN_ACCESS_DENIED = "ACCESS_DENIED";
+// Start of LinkedIn's 403 message when the token lacks the permission, on bodies without `code`.
+const string LINKEDIN_NO_PERMISSION_MESSAGE = "Not enough permissions to access";
 
 # Endpoints and client credentials. Base URLs are configurable so the adapter runs against
 # `apps/amplify/linkedin/apps/mock_linkedin` locally (API port 9090, www port 9091).
@@ -105,19 +109,25 @@ public type ShareCommand record {|
     # Article title for `SHARE` / `SHARE_COMMENTARY`, for example the campaign title. LinkedIn requires a
     # title on article content and doesn't scrape the link; `DEFAULT_ARTICLE_TITLE` when blank
     string? targetTitle = ();
-    # Employee's own words, plain text. Escaped to LinkedIn little text format here.
+    # Employee's own words with Amplify mention tokens. Rendered to LinkedIn little text here
+    # (`toLittleText`): everything escaped except `#tags` and the mentions in `mentions`
     string? commentary = ();
+    # Resolved mention tokens by ref (`person:<employeeId>`, `org:<key>`). A token missing here is posted as
+    # plain text
+    map<MentionTarget> mentions = {};
     # Correlation id, sent as `X-Correlation-ID` (never part of the post)
     string? correlationId = ();
 |};
 
 # Unauthorized: token expired or revoked. Maps to `NEEDS_RECONNECT`.
 public const UNAUTHORIZED = "UNAUTHORIZED";
-# Forbidden: missing scope or not allowed.
+# Forbidden: LinkedIn's `ACCESS_DENIED`, the member's token lacks a scope it needs (Posts API error table). On a
+# member's own post that means the grant is no longer good, so it maps to `NEEDS_RECONNECT` like 401. Any other 403
+# is `REJECTED`.
 public const FORBIDDEN = "FORBIDDEN";
 # Rate limited (429).
 public const RATE_LIMITED = "RATE_LIMITED";
-# Request refused (400, 404, 409, 422).
+# Request refused (400, 404, 409, 422, and a 403 that is not the member's access denied).
 public const REJECTED = "REJECTED";
 # Nothing was sent, or LinkedIn refused to take it: connection refused, open breaker, 5xx other than 502/504.
 # A later retry is safe.

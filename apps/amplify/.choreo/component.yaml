@@ -128,6 +128,12 @@ configurations:
           displayName: Employee count cache TTL in seconds (default 86400 = 24 hours) (leave empty for the default)
           type: string
           required: false
+    - name: BAL_CONFIG_VAR_DASHBOARDRETENTIONMONTHS
+      valueFrom:
+        configForm:
+          displayName: Dashboard retention in months (default 24; posts that opened longer ago are left out of every board)
+          type: number
+          required: false
     - name: BAL_CONFIG_VAR_CANCAMPAIGNGROUPS
       valueFrom:
         configForm:
@@ -162,6 +168,12 @@ configurations:
       valueFrom:
         configForm:
           displayName: Asgardeo groups for adjust/reverse points (comma separated; default amplify_po; leave empty for the default)
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_CANPEOPLEOPSGROUPS
+      valueFrom:
+        configForm:
+          displayName: Asgardeo groups for the People Operations Team board (comma separated; default amplify_po,amplify_slt,amplify_admin; leave empty for the default)
           type: string
           required: false
     - name: BAL_CONFIG_VAR_CANPODASHBOARDGROUPS
@@ -216,6 +228,12 @@ configurations:
       valueFrom:
         configForm:
           displayName: "Scorecard: reposts this calendar month (default 600) (leave empty for the default)"
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_DASHBOARDRETENTIONMONTHS
+      valueFrom:
+        configForm:
+          displayName: "Dashboards: leave out posts that opened more than this many months ago (default 24) (leave empty for the default)"
           type: string
           required: false
     - name: BAL_CONFIG_VAR_HRENTITYBASEURL

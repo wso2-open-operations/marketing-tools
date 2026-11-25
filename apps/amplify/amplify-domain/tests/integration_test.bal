@@ -86,7 +86,10 @@ function registerCampaign(postgresql:Client db, string actor) returns campaign:C
         title: "Integration campaign",
         categoryCode: "PRODUCT",
         tags: ["Ballerina", "it"],
-        resourceUrl: "https://www.linkedin.com/feed/update/x"
+        resourceUrl: "https://www.linkedin.com/feed/update/x",
+        // Opened a minute ago: Postgres computes OPEN from its own clock, and a Docker VM clock even a
+        // second behind this process would otherwise show a campaign opened "now" as still SCHEDULED.
+        opensAt: time:utcAddSeconds(time:utcNow(), -60)
     }, {wso2OrganizationUrn: WSO2_ORG}, actor, true, time:utcNow());
 
 // ---- campaign ------------------------------------------------------------------------------------
@@ -346,12 +349,12 @@ function testLedgerAppendUpdatesRecognitionInOneTransaction() returns error? {
     test:assertEquals(sa.totalPoints, 5);
     test:assertEquals(sb.totalPoints, 2);
     test:assertTrue(sa.rank < sb.rank);
-    // The next better total on the shared board (other tests leave standings behind, so it isn't
-    // necessarily `a`'s).
-    int nextBetter = check count(jobsDb, `SELECT min(total_points)::int FROM recognition_standing
-                                          WHERE period_key = 'ALL' AND total_points > ${sb.totalPoints}`);
-    test:assertEquals(sb.pointsToNextRank, nextBetter - sb.totalPoints);
-    test:assertTrue(sb.pointsToNextRank <= sa.totalPoints - sb.totalPoints);
+    // The person one place ahead on the shared board (other tests leave standings behind, so it isn't
+    // necessarily `a`): one more point than they have gets `b` past them.
+    int ahead = check count(jobsDb, `SELECT total_points FROM recognition_standing
+                                     WHERE period_key = 'ALL' AND rank = ${sb.rank - 1}`);
+    test:assertEquals(sb.pointsToNextRank, ahead - sb.totalPoints + 1);
+    test:assertTrue(sb.pointsToNextRank <= sa.totalPoints - sb.totalPoints + 1);
     int reposters = check count(jobsDb, `SELECT reposters FROM recognition_campaign_participation
                                          WHERE campaign_id = CAST(${campaignId} AS uuid)`);
     test:assertEquals(reposters, 2);

@@ -23,7 +23,7 @@ File: `modules/auth/jwks.bal`. `JwksCache(JwksConfig)` holds the gateway keys be
 
 Files: `modules/auth/access.bal`, `modules/auth/matrix.bal`.
 
-- `Access` enum: `EMPLOYEE`, `CAN_CAMPAIGN`, `CAN_DASHBOARD`, `CAN_EXPORT`, `CAN_REVIEW_SHARES`, `CAN_POINT_RULES`, `CAN_ADJUST_POINTS`, `CAN_PO_DASHBOARD`, `CAN_REPORTS`, `CAN_ADMIN`. Capabilities, not role names, are what code checks.
+- `Access` enum: `EMPLOYEE`, `CAN_CAMPAIGN`, `CAN_DASHBOARD`, `CAN_PEOPLE_OPS`, `CAN_EXPORT`, `CAN_REVIEW_SHARES`, `CAN_POINT_RULES`, `CAN_ADJUST_POINTS`, `CAN_PO_DASHBOARD`, `CAN_REPORTS`, `CAN_ADMIN`. Capabilities, not role names, are what code checks.
 - `AccessGroups`: the Asgardeo groups granted each capability (`canCampaign`, `canDashboard`, and so on). Empty means nobody holds it.
 - `groupList`, `hasAny`, `grantsOf`, `configuredGroups`.
 - `ACTIVITY_MATRIX` (`Rule[]`: `method`, `path`, `requires`, `capability`, `useCase`, `built`): first match wins and a route not listed is denied. `USE_CASE_CAPABILITIES` lists capabilities checked inside a use case (reported by `GET /me`). `PUBLIC_PATHS` is `/health` and `/ready`.

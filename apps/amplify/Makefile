@@ -112,7 +112,6 @@ check:
 	scripts/check-logs-pii.sh
 	scripts/check-transaction-gate.sh --self-test
 	scripts/check-transaction-gate.sh
-	scripts/check-chat-transport.sh
 
 test-all:
 	scripts/test-all.sh

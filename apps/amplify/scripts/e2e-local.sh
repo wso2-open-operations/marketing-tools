@@ -16,7 +16,7 @@
 # under the License.
 #
 # Local end-to-end smoke test (plan M8a) against `make up`. DEV-ONLY: uses ADR-023 dev JWTs.
-#   register campaign -> scheduler fires amplify-run -> jobs POST /runs -> chat-stub got the card
+#   register campaign -> scheduler fires amplify-run -> jobs POST /runs -> novera-mock got the card
 #   -> connect LinkedIn via mock OAuth (scripted redirect) -> share -> run -> points -> leaderboard
 #   -> dashboards (real HTTP, real database): role gating, the repost just made shows on every board
 # Needs: curl, jq, docker compose. Exits non-zero on the first failed step.
@@ -29,17 +29,11 @@ COMPOSE=(scripts/compose.sh)
 case "$(sed -n 's/^LINKEDIN_USE_MOCK=//p' local/.env | tail -1 | tr '[:upper:]' '[:lower:]')" in
   false | 0 | no) echo "e2e needs the mock: set LINKEDIN_USE_MOCK=true in local/.env and restart the stack" >&2; exit 1 ;;
 esac
-# The card check below reads the chat-stub, which only the Club webhook path posts to.
-case "$(sed -n 's/^AMPLIFY_ON_WEBHOOK=//p' local/.env | tail -1 | tr '[:upper:]' '[:lower:]')" in
-  true | 1 | yes) ;;
-  *) echo "e2e needs the webhook path: set AMPLIFY_ON_WEBHOOK=true in local/.env and restart the stack" >&2; exit 1 ;;
-esac
-# ... and only while the webhook URL is the stub. A real webhook (`GOOGLE_CHAT_WEBHOOK_URL` = the dev test space)
-# takes every card out of the stack, so the card check would wait out its timeout with the posts already sent.
-case "$(sed -n 's/^GOOGLE_CHAT_WEBHOOK_URL=//p' local/.env | tail -1)" in
-  ''|*chat-stub*|*localhost:9095*|*127.0.0.1:9095*) ;;
-  *) echo "e2e reads the chat-stub: unset GOOGLE_CHAT_WEBHOOK_URL in local/.env (or point it at chat-stub) and restart the stack" >&2; exit 1 ;;
-esac
+# The card check below reads local/novera-mock (node server.mjs, :3003; docs/HowToTestLocally/TestNovera.md), so
+# amplify-jobs must announce through it: NOVERA_NOTIFY_URL, NOVERA_TOKEN_URL and NOVERA_ALLOW_INSECURE_HTTP=true in local/.env.
+NOVERA_MOCK="${NOVERA_MOCK:-http://localhost:3003}"
+curl -fsS -o /dev/null "$NOVERA_MOCK/card" 2>/dev/null || [ "$(curl -s -o /dev/null -w '%{http_code}' "$NOVERA_MOCK/card")" = 404 ] \
+  || { echo "e2e needs local/novera-mock running at $NOVERA_MOCK (cd local/novera-mock && node server.mjs)" >&2; exit 1; }
 # Posts must belong to the page amplify-api is configured with (local/.env, default Choreo Labs' page).
 ORG_URN=$(sed -n 's/^WSO2_ORGANIZATION_URN=//p' local/.env | tail -1)
 ORG_URN=${ORG_URN:-urn:li:organization:1477}
@@ -104,9 +98,9 @@ campaign=$(call "$ADMIN_JWT" POST /campaigns "$(jq -nc --arg t "$TITLE" --arg u 
 CAMPAIGN_ID=$(jq -r '.campaign.id // .id' <<<"$campaign")
 echo "campaign $CAMPAIGN_ID"
 
-step "scheduler -> amplify-jobs POST /runs -> chat-stub got the card"
-card_posted() { internal_get chat-stub http://localhost:9095/stub/messages | grep -q "$TITLE"; }
-wait_for 60 "Google Chat card for '$TITLE'" card_posted
+step "scheduler -> amplify-jobs POST /runs -> novera-mock got the card"
+card_posted() { curl -fsS "$NOVERA_MOCK/card" 2>/dev/null | grep -q "$TITLE"; }
+wait_for 60 "Novera card for '$TITLE'" card_posted
 run_ok() { internal_get amplify-api http://scheduler:8080/jobs/amplify-run/history | grep -q '"status":"completed"'; }
 wait_for 30 "scheduler job history shows a successful amplify-run" run_ok
 

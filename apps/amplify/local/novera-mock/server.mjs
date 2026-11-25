@@ -14,11 +14,19 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Local stand-in for Novera's gateway: POST /token (client credentials) and POST /internal/notifications.
-// Logs every notification's JSON and answers 202. Nothing reaches Google Chat.
+// ============================================================================================================
+// NoveraMock: FOR LOCAL DEVELOPMENT ONLY. Never deploy it, never point a Choreo environment at it.
+// ============================================================================================================
+// Local stand-in for Novera's gateway, so amplify-jobs can be tried end to end on a laptop:
+//   POST /token                  client-credentials token (any client id and secret is accepted)
+//   POST /internal/notifications the same body Novera takes; answers 202
+//   GET  /card                   the last Chat message built from a notification (404 before the first)
+//   GET  /health
+// Every notification is logged and its card written to OUT_DIR.
+//
 // If CHECK_URL is set (local Novera, e.g. http://localhost:3002/internal/notifications), the body is also
 // sent there and its verdict is logged: 400 = Novera's schema rejects it, 503 = schema OK (no Google key).
-// Run: node server.mjs   (PORT defaults to 3003)
+// Run: node server.mjs   (PORT defaults to 3003). See docs/HowToTestLocally/TestNovera.md.
 import http from "node:http";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -111,4 +119,4 @@ http.createServer(async (req, res) => {
   if (req.method === "GET" && path === "/card") return send(res, lastCard ? 200 : 404, lastCard ?? { error: "no notification yet" });
   if (path === "/health") return send(res, 200, { status: "ok" });
   send(res, 404, { error: "not found" });
-}).listen(PORT, "0.0.0.0", () => console.log(`[mock-novera] listening on ${PORT}`));
+}).listen(PORT, "0.0.0.0", () => console.log(`[mock-novera] LOCAL DEVELOPMENT ONLY. Listening on ${PORT}; nothing is sent to Google Chat`));

@@ -67,6 +67,9 @@ public type LinkedInConnection record {|
     time:Utc? lastRemindedAt;
     # Optimistic lock
     int version;
+    # The member's name as LinkedIn's userinfo gave it at the last connect, used as the text of a mention so
+    # LinkedIn links it. `()` for connections made before it was kept
+    string? memberName = ();
 |};
 
 # Result of a completed OAuth flow, ready to become a connection.
@@ -81,6 +84,8 @@ public type ConnectCommand record {|
     TokenRef token;
     # `expires_in` from the token response
     int expiresInSeconds;
+    # The member's name from LinkedIn userinfo, when it gave one
+    string? memberName = ();
 |};
 
 # Outcome of a connection change: the new state, the old token row to delete now (reconnect and remove

@@ -66,7 +66,8 @@ isolated function mockRosterConfigured() returns boolean {
 
 # How the fake directory answers: `ok`, `down` (418, not a breaker status, so the breaker stays closed for
 # the other tests), `unavailable` (503, which opens the breaker: only for a client of its own), `garbled` (a body that isn't a directory), `gqlerror` (a GraphQL `errors` array),
-# or `nohouse` / `nohouse400` (an HR Entity older than 1.1.1: a query asking for house gets GraphQL errors / a 400).
+# or `nohouse` / `nohouse400` (an HR Entity older than 1.1.1: a query asking for house gets GraphQL errors / a 400),
+# or `house` (rv-a is in the house Oak; every other mode leaves everyone without one).
 isolated string directoryMode = "ok";
 isolated int directoryFetches = 0;
 
@@ -166,7 +167,9 @@ service /people/graphql on jwksListener {
             offset = o is int ? o : 0;
         }
         json[] rows = from string m in RIVERS
-            select {workEmail: m.toUpperAscii(), firstName: "R", lastName: m.substring(0, 4), department: "Rivers", subTeam: (), businessUnit: "Water"};
+            select {workEmail: m.toUpperAscii(), firstName: "R", lastName: m.substring(0, 4), department: "Rivers", subTeam: (), businessUnit: "Water",
+                houseId: mode == "house" && m == "rv-a@wso2.com" ? 1 : (),
+                house: mode == "house" && m == "rv-a@wso2.com" ? "Oak" : ()};
         rows.push({workEmail: "rv-noteam@wso2.com", firstName: "N", department: (), subTeam: (), businessUnit: "Land"});
         int end = int:min(offset + 'limit, rows.length());
         json[] page = offset >= rows.length() ? [] : rows.slice(offset, end);
@@ -304,15 +307,9 @@ isolated function mockRosterPageOf(string period, recognition:RosterMember[] mem
         order by e.totalPoints descending, e.displayName ascending, e.email ascending
         select e;
     int active = ordered.filter(e => e.totalPoints > 0).length();
-    // Dense rank over points, like the SQL's window.
-    int rank = 0;
-    int last = int:MAX_VALUE;
-    foreach recognition:RosterEntry e in ordered {
-        if e.totalPoints != last {
-            rank += 1;
-            last = e.totalPoints;
-        }
-        e.teamRank = rank;
+    // Positions 1, 2, 3... with no ties, like the SQL's row_number (the fakes carry no activity time).
+    foreach int i in 0 ..< ordered.length() {
+        ordered[i].teamRank = i + 1;
     }
     recognition:RosterEntry[] matching = from var e in ordered
         where q is () || e.displayName.includes(q)
@@ -368,6 +365,19 @@ isolated function mockLedgerHistory(types:EmployeeId employeeId, int page, int s
 isolated function mockSharesOf(types:EmployeeId employeeId) returns sharing:ShareView[]|error {
     check dbGate();
     return [];
+}
+
+@test:Mock {functionName: "mentionableSearch"}
+isolated function mockMentionableSearch(string query, types:EmployeeId callerId)
+        returns connection:MentionableMember[]|error {
+    check dbGate();
+    connection:MentionableMember[] all = [
+        {employeeId: "jane@wso2.com", memberUrn: "urn:li:person:jane1", displayName: "Jane Smith", memberName: "Jane Smith"},
+        {employeeId: "joe@wso2.com", memberUrn: "urn:li:person:joe1", displayName: "Joe Bloggs", memberName: ()}
+    ];
+    return from connection:MentionableMember m in all
+        where m.employeeId != callerId && m.displayName.toLowerAscii().includes(query.toLowerAscii())
+        select m;
 }
 
 @test:Mock {functionName: "claimsOf"}
@@ -638,6 +648,7 @@ isolated function dashPost(string id, string title, string cat, boolean priority
     categoryLabel: cat == "PRODUCT" ? "Product" : "Event",
     isPriority: priority,
     status,
+    archived: status == "ARCHIVED",
     opensAt: time:utcAddSeconds(DASH_NOW, <decimal>(-86400 * openedDaysAgo)),
     closesAt: time:utcAddSeconds(DASH_NOW, <decimal>(86400 * (30 - openedDaysAgo))),
     reposts,
@@ -659,6 +670,7 @@ isolated function fixedSnapshot() returns Snapshot => {
     participation: {connected: 2, expired: 1, reposted: 30, active30Days: 25},
     points: {month: 500, year: 4000},
     peopleWithPoints: 28,
+    scope: {},
     campaigns: [
         dashPost("p-launch", "Launch", "PRODUCT", true, "OPEN", 3, 40, 12),
         dashPost("p-event", "Event", "EVENT", false, "OPEN", 10, 10),
@@ -681,7 +693,7 @@ function setSnapshot(Snapshot? s = ()) {
         fakeSnapshot = s is () ? fixedSnapshot() : s.clone();
     }
     lock {
-        snapshotCache = ();
+        snapshotCache = {};
     }
 }
 
@@ -694,19 +706,23 @@ function takeSnapshotLoads() returns int {
 }
 
 @test:Mock {functionName: "loadSnapshot"}
-isolated function mockLoadSnapshot(time:Utc now) returns Snapshot|error {
+isolated function mockLoadSnapshot(time:Utc now, reporting:PostScope scope) returns Snapshot|error {
     check dbGate();
     lock {
         snapshotLoads += 1;
     }
+    Snapshot loaded;
     lock {
         Snapshot? s = fakeSnapshot;
-        return s is () ? fixedSnapshot().clone() : s.clone();
+        loaded = s is () ? fixedSnapshot().clone() : s.clone();
     }
+    // The fake answers the same numbers for both scopes; the board reports the scope it was asked for.
+    loaded.scope = scope;
+    return loaded;
 }
 
 @test:Mock {functionName: "categoryCounts"}
-isolated function mockCategoryCounts(time:Utc since) returns reporting:CategoryCount[]|error {
+isolated function mockCategoryCounts(time:Utc since, reporting:PostScope scope) returns reporting:CategoryCount[]|error {
     check dbGate();
     return [{code: "PRODUCT", label: "Product", reposts: 45, repostsWithCommentary: 12},
         {code: "EVENT", label: "Event", reposts: 10, repostsWithCommentary: 0}];
@@ -748,8 +764,8 @@ isolated function mockPersonPosts(string employeeId) returns [reporting:PersonId
     time:Utc opened = check time:utcFromString("2025-10-19T00:00:00Z");
     time:Utc closed = check time:utcFromString("2025-11-18T00:00:00Z");
     return [{employeeId, displayName: "Ada Lovelace", email: "ada@example.com"},
-        [{campaignId: "p-launch", title: "Launch", categoryCode: "PRODUCT", categoryLabel: "Product", isPriority: true, opensAt: opened,
-            closesAt: closed, reposts: 1, repostsWithCommentary: 1, points: 15},
-        {campaignId: "p-event", title: "Event", categoryCode: "EVENT", categoryLabel: "Event", isPriority: false, opensAt: opened,
-            closesAt: closed, reposts: 0, repostsWithCommentary: 1, points: 10}], 20];
+        [{campaignId: "p-launch", title: "Launch", categoryCode: "PRODUCT", categoryLabel: "Product", isPriority: true,
+            status: "CLOSED", archived: false, opensAt: opened, closesAt: closed, reposts: 1, repostsWithCommentary: 1, points: 15},
+        {campaignId: "p-event", title: "Event", categoryCode: "EVENT", categoryLabel: "Event", isPriority: false,
+            status: "ARCHIVED", archived: true, opensAt: opened, closesAt: closed, reposts: 0, repostsWithCommentary: 1, points: 10}], 20];
 }
