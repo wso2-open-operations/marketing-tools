@@ -76,7 +76,9 @@ run() {
 
 if [ "$1" = "warm" ]; then
   # The lock files pin std-lib versions the image doesn't bundle. One online pack fetches them into $REPO.
-  run "$2" pack >/dev/null
+  # Output is hidden on success but shown on failure, so a failed warm can't pass silently and surface
+  # later as "cannot resolve module ballerina/url" when an offline test starts.
+  if ! out="$(run "$2" pack 2>&1)"; then printf '%s\n' "$out" >&2; echo "bal-docker: warm $2 failed" >&2; exit 1; fi
   exit 0
 fi
 
