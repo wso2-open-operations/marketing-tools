@@ -28,6 +28,17 @@ Docker, Node 22, `bal` (Ballerina 2201.13.3), `curl`, `jq`, `openssl`, and a sig
 
 For the PO/Marketing screens, put your test user in `amplify_po` or `amplify_marketing` at the IdP.
 
+**No `bal` or `openssl` on this machine?** Run Ballerina in Docker with `scripts/bal-docker.sh` (from `apps/amplify`). Its image has `openssl` built in (two test setups shell out to it to make throwaway RSA keys), it adds `--offline` only where `bal` accepts it, and it keeps one local Ballerina repository per checkout so two branches never overwrite each other's packed libraries:
+
+```sh
+scripts/bal-docker.sh warm amplify-common                  # once per checkout: fetch the locked std-lib versions
+scripts/bal-docker.sh amplify-common pack
+scripts/bal-docker.sh amplify-common push --repository=local
+scripts/bal-docker.sh amplify-common test
+```
+
+Do the same for `amplify-domain` before `amplify-api` and `amplify-jobs`, which depend on the packed libraries. Pass `--network NAME -e KEY=VALUE` for the integration tests that need a throwaway Postgres. `--apps DIR` runs the script against another checkout.
+
 ## 3. Start the backend
 
 ```bash
