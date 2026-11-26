@@ -88,6 +88,8 @@ type MeAppConfig record {|
     string privacyNoticeUrl;
     # Origins a post link may use (`scheme://host[:port]`, lowercase)
     string[] campaignLinkOrigins;
+    # `sharing.native_repost_default`: the share dialog starts on the native LinkedIn repost
+    boolean nativeRepostDefault;
 |};
 
 # `GET /me` response.
@@ -208,6 +210,12 @@ service http:InterceptableService / on apiListener {
                     sqlState = sqlStateOf(linked), correlationId = correlationId);
             return unavailable(DEPENDENCY_UNAVAILABLE, correlationId);
         }
+        // A settings read failure must not take `GET /me` down: the default (in-app repost) is safe.
+        Settings|error settings = loadSettings();
+        if settings is error {
+            log:printWarn("Settings unavailable for GET /me; using the defaults", errorKind = errorKind(settings),
+                    correlationId = correlationId);
+        }
         MeResponse me = {
             employee: {
                 employeeId: employee.employeeId,
@@ -221,7 +229,8 @@ service http:InterceptableService / on apiListener {
             config: {
                 linkedinOrgUrn: wso2OrganizationUrn,
                 privacyNoticeUrl: privacyNoticeUrl.trim(),
-                campaignLinkOrigins: postLinkOrigins
+                campaignLinkOrigins: postLinkOrigins,
+                nativeRepostDefault: settings is Settings ? settings.nativeRepostDefault : false
             }
         };
         // An admin's capability list alone runs past 512 chars (M11b).

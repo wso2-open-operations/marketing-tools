@@ -194,6 +194,19 @@ isolated function orgConnectionRepository(store:Actor actor) returns connection:
 isolated function nativeIntentRepository() returns sharing:NativeIntentRepository|error =>
     new sharing:PgNativeIntentRepository(check db());
 
+# Net points the employee's reshare of each campaign earned (a seam the tests replace).
+#
+# + employeeId - Employee
+# + campaignIds - Campaigns
+# + return - Campaign id -> points, or an error
+isolated function resharePoints(types:EmployeeId employeeId, string[] campaignIds) returns map<int>|error =>
+    scoring:resharePointsByCampaign(check db(), employeeId, campaignIds);
+
+# When the engagement sync last read LinkedIn (a seam the tests replace).
+#
+# + return - The time, `()` if never, or an error
+isolated function engagementLastSyncAt() returns time:Utc|error? => sharing:lastSyncAt(check db());
+
 # Community Management calls made today, UTC (a seam the tests replace).
 #
 # + return - Calls, or an error

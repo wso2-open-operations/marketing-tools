@@ -174,6 +174,23 @@ isolated function mockNativeIntentRepository() returns sharing:NativeIntentRepos
 @test:Mock {functionName: "apiCallsToday"}
 isolated function mockApiCallsToday() returns int|error => 12;
 
+const string SCORED_CAMPAIGN = "0192f0e0-0000-7000-8000-00000000e001";
+
+@test:Mock {functionName: "resharePoints"}
+isolated function mockResharePoints(types:EmployeeId employeeId, string[] campaignIds) returns map<int>|error {
+    // The detected reshare of SCORED_CAMPAIGN earned 5; anything else isn't scored yet.
+    map<int> found = {};
+    foreach string id in campaignIds {
+        if id == SCORED_CAMPAIGN {
+            found[id] = 5;
+        }
+    }
+    return found;
+}
+
+@test:Mock {functionName: "engagementLastSyncAt"}
+isolated function mockEngagementLastSyncAt() returns time:Utc|error? => [1795000000, 0];
+
 function admin(string sub) returns string|error => mint({sub, email: sub + "@wso2.com", name: sub, groups: [ADMIN_GROUP]});
 
 @test:Config {groups: ["page"]}
@@ -247,6 +264,7 @@ function testPageConnectStatusAndDisconnect() returns error? {
     http:Response status = check send("GET", "/admin/linkedin-page", (), adm);
     test:assertEquals(status.statusCode, 200);
     check assertShape(status, "LinkedInPage");
+    test:assertEquals(check (check status.getJsonPayload()).lastSyncAt, "2026-11-18T11:06:40Z");
 
     // Reconnect replaces the rows.
     string again = check stateOf(check send("POST", "/admin/linkedin-page/connect/start", (), adm));
@@ -262,6 +280,7 @@ function testPageConnectStatusAndDisconnect() returns error? {
     test:assertEquals(revoked.tokensToDelete.length(), 2);
     json after = check (check send("GET", "/admin/linkedin-page", (), adm)).getJsonPayload();
     test:assertEquals(check after.connected, false);
+    test:assertEquals(check after.lastSyncAt, "2026-11-18T11:06:40Z", "the last sync shows even when disconnected");
     test:assertEquals((check send("DELETE", "/admin/linkedin-page", (), adm)).statusCode, 204, "idempotent");
 }
 
@@ -273,23 +292,31 @@ function testNativeIntentAndStatus() returns error? {
     test:assertEquals(clicked.statusCode, 200);
     check assertShape(clicked, "NativeIntent");
     test:assertEquals(check (check clicked.getJsonPayload()).nativeStatus, "LOOKING");
+    test:assertEquals(check (check clicked.getJsonPayload()).points, (), "nothing found yet");
     test:assertEquals((check send("POST", string `/campaigns/${SAMPLE_UUID}/native-intent`, (), emp)).statusCode, 404);
 
     // A day-old click not seen, and one the sync detected.
     time:Utc now = time:utcNow();
     fakeNativeIntents.put({employeeId: "emp-native-1", campaignId: SAMPLE_UUID,
         openedAt: time:utcAddSeconds(now, -86400), detectedAt: ()});
-    fakeNativeIntents.put({employeeId: "emp-native-1", campaignId: "0192f0e0-0000-7000-8000-00000000e001",
+    fakeNativeIntents.put({employeeId: "emp-native-1", campaignId: SCORED_CAMPAIGN,
+        openedAt: time:utcAddSeconds(now, -600), detectedAt: now});
+    fakeNativeIntents.put({employeeId: "emp-native-1", campaignId: "0192f0e0-0000-7000-8000-00000000e002",
         openedAt: time:utcAddSeconds(now, -600), detectedAt: now});
     http:Response mine = check send("GET", "/me/native-intents", (), emp);
     test:assertEquals(mine.statusCode, 200);
     check assertShape(mine, "NativeIntentList");
     json[] items = check (check (check mine.getJsonPayload()).items).ensureType();
     map<string> byCampaign = {};
+    map<json> pointsOf = {};
     foreach json i in items {
         byCampaign[(check i.campaignId).toString()] = (check i.nativeStatus).toString();
+        pointsOf[(check i.campaignId).toString()] = check i.points;
     }
+    test:assertEquals(pointsOf[SCORED_CAMPAIGN], 5, "found and scored: the points it earned");
+    test:assertEquals(pointsOf["0192f0e0-0000-7000-8000-00000000e002"], (), "found, not scored yet");
+    test:assertEquals(pointsOf[SAMPLE_UUID], (), "not found");
     test:assertEquals(byCampaign[id], "LOOKING");
     test:assertEquals(byCampaign[SAMPLE_UUID], "NOT_FOUND");
-    test:assertEquals(byCampaign["0192f0e0-0000-7000-8000-00000000e001"], "DETECTED");
+    test:assertEquals(byCampaign[SCORED_CAMPAIGN], "DETECTED");
 }

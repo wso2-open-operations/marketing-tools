@@ -340,3 +340,32 @@ public isolated function timelineOf(postgresql:Client db, types:EmployeeId emplo
     }
     return {items, total};
 }
+
+# Net reshare points an employee holds per campaign: the engagement awards for a repost or share of the post, less
+# their reversals and removals. A native repost the sync detected is scored like an in-app one (and an in-app one
+# covers the native, ADR-034), so this is what the native repost earned. A campaign with no such row is left out.
+#
+# + db - Client
+# + employeeId - Employee
+# + campaignIds - Campaigns to look at
+# + return - Campaign id -> net points, or an error
+public isolated function resharePointsByCampaign(postgresql:Client db, types:EmployeeId employeeId,
+        string[] campaignIds) returns map<int>|error {
+    map<int> found = {};
+    if campaignIds.length() == 0 {
+        return found;
+    }
+    string ids = store:arrayLiteral(campaignIds);
+    stream<record {|string campaign_id; int points;|}, error?> rows = db->query(`
+        SELECT campaign_id::text AS campaign_id, sum(points)::int AS points
+        FROM scoring_points_ledger
+        WHERE employee_id = ${employeeId} AND campaign_id::text = ANY(CAST(${ids} AS text[]))
+          AND source_type IN ('ENGAGEMENT', 'REVERSAL')
+          AND action IN ('REPOST', 'REPOST_COMMENTARY', 'SHARE', 'SHARE_COMMENTARY')
+        GROUP BY campaign_id`);
+    check from var r in rows
+        do {
+            found[r.campaign_id] = r.points;
+        };
+    return found;
+}

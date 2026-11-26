@@ -40,7 +40,7 @@ Defined in `service.bal`; the contract is `openapi.yaml`.
 `run.bal` does one pass of the outbox:
 
 1. Takes a lock (an in-process flag plus a session advisory lock, so one run at a time across replicas).
-2. Releases rows left locked by a dead run, reads the settings, and counts connections that are expiring or need a reconnect.
+2. Releases rows left locked by a dead run, reads the settings (the kill switches, and the admin's posting limits `sharing.max_posts_per_day` / `max_posts_per_hour` / `spread_minutes` / `publish_gap_minutes`, S019, folded into the run config by `postingConfig` inside the configurables' ceilings), and counts connections that are expiring or need a reconnect.
 3. Claims rows in batches with `FOR UPDATE SKIP LOCKED`, hands each to the handler for its event, and settles it.
 4. Returns the run log (`RunReport` in `run.bal`).
 
@@ -116,7 +116,7 @@ All are `configurable`. In Choreo they arrive as `BAL_CONFIG_VAR_*` (see `worklo
 | Keys | `internalApiKey` (secret), `schedulerApiKey` (secret), both required | `auth.bal` |
 | Database | `dbHost` (empty gives 503), `dbPort`, `dbName`, `dbUser`, `dbPassword` (secret), `dbSchema` (default the user name), `dbSslMode` (default `VERIFY_FULL`), `dbSslRootCert`, `dbConnectTimeoutSeconds`, `dbPoolAcquireTimeoutSeconds`, `dbBreakerFailureThreshold`, `dbBreakerWindowSeconds`, `dbBreakerResetSeconds`, `dbMaintenanceSocketTimeoutSeconds`, `leaderboardTopN` | `database.bal` |
 | Run tuning | `runBatchSize` (25), `runMaxRows` (200), `runMaxSeconds` (240), `runLockLeaseSeconds` (300), `maxAttempts` (8), `backoffBaseSeconds` (30), `backoffMaxSeconds` (3600), `deferSeconds` (900) | `config.bal` |
-| LinkedIn | `linkedinApiBaseUrl`, `linkedinAuthBaseUrl`, `linkedinClientId` (empty defers sharing), `linkedinApiVersion`, `linkedinTimeoutSeconds`, `linkedinApiResilience`, `linkedinMaxPostsPerRun` (50), `linkedinMaxPostsPerDay` (1000) | `config.bal` |
+| LinkedIn | `linkedinApiBaseUrl`, `linkedinAuthBaseUrl`, `linkedinClientId` (empty defers sharing), `linkedinApiVersion`, `linkedinTimeoutSeconds`, `linkedinApiResilience`, `linkedinMaxPostsPerRun` (50), `linkedinMaxPostsPerDay` (450), `linkedinMaxPostsPerHour` (60), `sharePublishGapMinutes` (10), `shareSpreadMinutes` (120); the `sharing.*` admin settings tighten the caps and set the gap and spread per run | `config.bal` |
 | Card | `noveraButtonUrl` (env `NOVERABUTTONURL`): URL template for the card button, must contain `{campaignId}`, https only (http only with `noveraAllowInsecureHttp` on the local stack), no default; empty defers announcements. Plus the card icon and default image URLs (names in `config.bal`) | `config.bal` |
 | Novera | `amplifyOnNovera`, `noveraNotifyUrl`, `noveraTokenUrl`, `noveraClientId`, `noveraClientSecret` (secret), `noveraScopes`, `noveraTimeoutSeconds`, `noveraAllowInsecureHttp` | `config.bal` |
 | WSO2 Coins | `coinsBaseUrl` (empty = not configured), `coinsTokenUrl`, `coinsClientId`, `coinsClientSecret` (secret), `coinsScopes`, `coinsTimeoutSeconds`, `coinsResilience`, `coinsMaxSeconds` (540; below the scheduler's 600 s deadline), `coinsReconcileAfterSeconds` (600) | `coins.bal` |

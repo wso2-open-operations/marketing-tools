@@ -137,3 +137,15 @@ public isolated function lastPublishedAt(postgresql:Client db, types:EmployeeId 
         SELECT max(published_at) AS at FROM sharing_share_request WHERE employee_id = ${employeeId}`);
     return row.at;
 }
+
+# When the engagement sync last read LinkedIn: the latest cursor save over every post, finder and the page's share
+# notifications (`sharing_sync_cursor.last_run_at`). A run that found nothing new on a finder still saves the share
+# notification window, so this moves with every run that reached LinkedIn.
+#
+# + db - Client
+# + return - The time, `()` when the sync never ran, or an error
+public isolated function lastSyncAt(postgresql:Client db) returns time:Utc|error? {
+    time:Utc? last = check db->queryRow(`
+        SELECT max(last_run_at) FROM sharing_sync_cursor WHERE provider_api = ${types:COMMUNITY_MANAGEMENT}`);
+    return last;
+}

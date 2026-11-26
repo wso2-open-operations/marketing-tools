@@ -142,5 +142,16 @@ const string JOB_COINS_CONVERT = "amplify-coins-convert";
 const string SETTING_ENGAGEMENT_SYNC_ENABLED = "engagement.sync_enabled";
 const string SETTING_ENGAGEMENT_SCHEDULE = "engagement.schedule";
 const string SETTING_ENGAGEMENT_DAILY_BUDGET = "engagement.daily_call_budget";
+// ---- Phase 4 sharing settings (S019): the native repost default and the posting limits amplify-jobs reads each run --
+# Whether the share dialog starts on "Repost on LinkedIn" (native) instead of the in-app repost (`GET /me` config)
+const string SETTING_NATIVE_REPOST_DEFAULT = "sharing.native_repost_default";
+# LinkedIn posts per UTC day across runs; amplify-jobs' `linkedinMaxPostsPerDay` stays the hard ceiling
+const string SETTING_MAX_POSTS_PER_DAY = "sharing.max_posts_per_day";
+# LinkedIn posts in any rolling hour (0 = off); `linkedinMaxPostsPerHour` stays the hard ceiling when set
+const string SETTING_MAX_POSTS_PER_HOUR = "sharing.max_posts_per_hour";
+# Window after a campaign opens that its shares are spread over, minutes (0 = off)
+const string SETTING_SPREAD_MINUTES = "sharing.spread_minutes";
+# Least time between two posts of the same employee, minutes (0 = off)
+const string SETTING_PUBLISH_GAP_MINUTES = "sharing.publish_gap_minutes";
 # Scheduler unreachable on an explicit sync.
 const string SCHEDULER_UNAVAILABLE = "SCHEDULER_UNAVAILABLE";

@@ -73,6 +73,16 @@ type RunSettings record {|
     boolean announcementsEnabled = true;
     int topN = 3;
     int reminderDays = connection:DEFAULT_REMINDER_DAYS;
+    # Posting limits an admin set (S019, `()` = not set: the configurable applies). `postingConfig` folds them into the
+    # run config; the configurables stay the hard ceilings for the two caps.
+    # `sharing.max_posts_per_day`
+    int? maxPostsPerDay = ();
+    # `sharing.max_posts_per_hour`, 0 = off
+    int? maxPostsPerHour = ();
+    # `sharing.spread_minutes`, 0 = off
+    int? spreadMinutes = ();
+    # `sharing.publish_gap_minutes`, 0 = off
+    int? publishGapMinutes = ();
 |};
 
 # Connection sweep counts (derived status, `member_connection_v`).
@@ -292,6 +302,18 @@ isolated function toRunSettings(store:Setting[] rows) returns RunSettings {
             }
             "connection.reminder_days" => {
                 s.reminderDays = v is int && v >= 0 ? v : s.reminderDays;
+            }
+            "sharing.max_posts_per_day" => {
+                s.maxPostsPerDay = v is int && v >= 0 ? v : ();
+            }
+            "sharing.max_posts_per_hour" => {
+                s.maxPostsPerHour = v is int && v >= 0 ? v : ();
+            }
+            "sharing.spread_minutes" => {
+                s.spreadMinutes = v is int && v >= 0 ? v : ();
+            }
+            "sharing.publish_gap_minutes" => {
+                s.publishGapMinutes = v is int && v >= 0 ? v : ();
             }
         }
     }

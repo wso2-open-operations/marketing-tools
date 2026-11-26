@@ -140,7 +140,8 @@ public isolated function remove(LinkedInConnection connection, time:Utc now) ret
 
 // ---- Use cases ------------------------------------------------------------------------------------
 
-# Completes a LinkedIn connection after OAuth. One member can belong to only one employee (B13).
+# Completes a LinkedIn connection after OAuth. One member can belong to only one employee at a time (B13): a
+# removed connection releases it (V031).
 #
 # + repo - Connection repository
 # + command - Completed OAuth result
@@ -156,8 +157,9 @@ public isolated function completeConnection(ConnectionRepository repo, ConnectCo
     if token is StoredToken && (tokenRef(token) != command.token || token.ownerId != employeeId) {
         return error("The sealed token doesn't match the connect command");
     }
+    // A removed connection no longer holds its member: another employee may link that LinkedIn account (V031).
     LinkedInConnection? holder = check repo.findByMember(types:LINKEDIN, memberUrn);
-    if holder is LinkedInConnection && holder.employeeId != employeeId {
+    if holder is LinkedInConnection && holder.removedAt is () && holder.employeeId != employeeId {
         return types:domainError(types:ERR_MEMBER_ALREADY_LINKED,
                 "This LinkedIn account is already connected to another employee");
     }

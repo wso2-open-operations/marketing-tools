@@ -63,6 +63,39 @@ isolated function spreadDelaySeconds(time:Utc? opensAt, time:Utc now, int spread
     return remaining > 0d ? remaining : 0;
 }
 
+# The run config with the admin's posting settings applied (S019). Settings win, inside the configurables: the daily
+# cap is the smaller of the two; the hourly cap too when the configurable sets one (a setting of 0 can't lift a
+# configured cap, and with the configurable at 0 the setting alone applies). The spread and the per-employee gap are
+# taken from the settings as they are (they only slow posting down). An unset setting leaves the configurable.
+#
+# + cfg - Run config from the configurables
+# + settings - This run's settings
+# + return - The run config to post with
+isolated function postingConfig(RunConfig cfg, RunSettings settings) returns RunConfig {
+    RunConfig out = {...cfg};
+    int? day = settings.maxPostsPerDay;
+    if day is int {
+        out.linkedinMaxPostsPerDay = day < cfg.linkedinMaxPostsPerDay ? day : cfg.linkedinMaxPostsPerDay;
+    }
+    int? hour = settings.maxPostsPerHour;
+    if hour is int {
+        if cfg.linkedinMaxPostsPerHour <= 0 {
+            out.linkedinMaxPostsPerHour = hour;
+        } else if hour > 0 && hour < cfg.linkedinMaxPostsPerHour {
+            out.linkedinMaxPostsPerHour = hour;
+        }
+    }
+    int? spread = settings.spreadMinutes;
+    if spread is int {
+        out.spreadSeconds = spread * 60;
+    }
+    int? gap = settings.publishGapMinutes;
+    if gap is int {
+        out.publishGapSeconds = gap * 60;
+    }
+    return out;
+}
+
 # LinkedIn posts a run may make: the per-run ceiling, cut to what is left of the day's and the rolling hour's.
 #
 # + cfg - Run config (`linkedinMaxPostsPerRun`, `...PerDay`, `...PerHour`; an hourly cap of 0 is off)

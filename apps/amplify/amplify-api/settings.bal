@@ -73,6 +73,16 @@ type Settings record {|
     string engagementSchedule = "0 */2 * * *";
     # `engagement.daily_call_budget`: Community Management calls per UTC day
     int engagementDailyBudget = 450;
+    # `sharing.native_repost_default`: the share dialog starts on the native LinkedIn repost (`GET /me` config)
+    boolean nativeRepostDefault = false;
+    # `sharing.max_posts_per_day`: LinkedIn posts per UTC day (amplify-jobs; its configurable is the hard ceiling)
+    int maxPostsPerDay = 450;
+    # `sharing.max_posts_per_hour`: LinkedIn posts in any rolling hour, 0 = off (amplify-jobs)
+    int maxPostsPerHour = 60;
+    # `sharing.spread_minutes`: window after a campaign opens that its shares are spread over, 0 = off (amplify-jobs)
+    int spreadMinutes = 120;
+    # `sharing.publish_gap_minutes`: least time between two posts of one employee, 0 = off (amplify-jobs)
+    int publishGapMinutes = 10;
 |};
 
 # One editable key: its kind and allowed range.
@@ -112,7 +122,13 @@ final readonly & map<SettingRule> EDITABLE_SETTINGS = {
     [SETTING_COIN_MAX_PER_RUN]: {kind: "int", min: 1, max: 100000000},
     [SETTING_ENGAGEMENT_SYNC_ENABLED]: {kind: "boolean"},
     [SETTING_ENGAGEMENT_SCHEDULE]: {kind: "schedule", min: 900},
-    [SETTING_ENGAGEMENT_DAILY_BUDGET]: {kind: "int", min: 0, max: 100000}
+    [SETTING_ENGAGEMENT_DAILY_BUDGET]: {kind: "int", min: 0, max: 100000},
+    [SETTING_NATIVE_REPOST_DEFAULT]: {kind: "boolean"},
+    // LinkedIn's development tier allows 500 app posts a day; amplify-jobs' configurables cap these again.
+    [SETTING_MAX_POSTS_PER_DAY]: {kind: "int", min: 0, max: 10000},
+    [SETTING_MAX_POSTS_PER_HOUR]: {kind: "int", min: 0, max: 10000},
+    [SETTING_SPREAD_MINUTES]: {kind: "int", min: 0, max: 1440},
+    [SETTING_PUBLISH_GAP_MINUTES]: {kind: "int", min: 0, max: 1440}
 };
 
 # The business numbers the PO team changes on Amplify Admin (`GET/PUT /po/settings`). Switches and schedules stay
@@ -269,6 +285,21 @@ isolated function settingsOf(store:Setting[] rows) returns Settings {
             }
             SETTING_ENGAGEMENT_DAILY_BUDGET => {
                 s.engagementDailyBudget = v is int && v >= 0 ? v : s.engagementDailyBudget;
+            }
+            SETTING_NATIVE_REPOST_DEFAULT => {
+                s.nativeRepostDefault = v == true;
+            }
+            SETTING_MAX_POSTS_PER_DAY => {
+                s.maxPostsPerDay = v is int && v >= 0 ? v : s.maxPostsPerDay;
+            }
+            SETTING_MAX_POSTS_PER_HOUR => {
+                s.maxPostsPerHour = v is int && v >= 0 ? v : s.maxPostsPerHour;
+            }
+            SETTING_SPREAD_MINUTES => {
+                s.spreadMinutes = v is int && v >= 0 ? v : s.spreadMinutes;
+            }
+            SETTING_PUBLISH_GAP_MINUTES => {
+                s.publishGapMinutes = v is int && v >= 0 ? v : s.publishGapMinutes;
             }
         }
     }

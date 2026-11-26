@@ -25,6 +25,7 @@ Every insert is `ON CONFLICT DO NOTHING`, so an admin's later change is never ov
 - `S012__coin_settings.sql`: the Coins settings, `coin.block_points = 100`, `coin.block_coins = 10`, `coin.schedule = "MONTHLY"` and `coin.wallets_enabled = false` (phase 2: automatic conversion, wallets off until the WSO2 Coins API exists); the PO team changes the rate and schedule, an admin the switch.
 - `S013__engagement_sync_settings.sql`: the Community Management engagement sync (V025), `engagement.sync_enabled = false`, `engagement.schedule = "0 */2 * * *"` and `engagement.daily_call_budget = 450` (calls per UTC day across runs).
 - `S014__coin_caps.sql`: the Coins safety caps for the automatic conversion (V026, ADR-048), `coin.max_coins_per_person = 500` (one person in one run) and `coin.max_coins_per_run = 50000` (one period, everyone together); points above a cap carry over. Admins change them.
+- `S019__phase4_sharing_settings.sql`: phase 4 sharing settings, admin-editable: `sharing.native_repost_default = false` (in `GET /me` config), and the posting limits amplify-jobs reads each run, `sharing.max_posts_per_day = 450`, `sharing.max_posts_per_hour = 60`, `sharing.spread_minutes = 120`, `sharing.publish_gap_minutes = 10` (0 turns the last three off; the jobs configurables stay the hard ceilings). S015-S018 are left for other open branches.
 
 ## Rules
 

@@ -39,8 +39,9 @@ isolated class InMemoryConnections {
 
     public isolated function findByMember(types:Provider provider, types:MemberUrn memberUrn) returns LinkedInConnection|error? {
         lock {
+            // Like the repository: a removed connection no longer holds its member (V031).
             foreach LinkedInConnection c in self.rows {
-                if c.memberUrn == memberUrn {
+                if c.memberUrn == memberUrn && c.removedAt is () {
                     return c.clone();
                 }
             }
@@ -328,4 +329,20 @@ function resealStaleTokensPagesThroughOldKeyRows() returns error? {
     ResealReport partial = check resealStaleTokens(ring, capped, batchSize = 2, maxRows = 3);
     test:assertEquals(partial.resealed, 3);
     test:assertTrue(partial.truncated, "maxRows stops the pass; the next one carries on");
+}
+
+@test:Config
+function aRemovedConnectionReleasesTheMemberForAnotherEmployee() returns error? {
+    InMemoryConnections repo = new;
+    _ = check completeConnection(repo, command("emp-old", "urn:li:person:shared", "t-old"), T0);
+    test:assertEquals(code(completeConnection(repo, command("emp-new", "urn:li:person:shared", "t-new"), T0)),
+            types:ERR_MEMBER_ALREADY_LINKED, "held while connected (B13)");
+    LinkedInConnection removed = check removeConnection(repo, "emp-old", types:addDays(T0, 1));
+    test:assertTrue(removed.removedAt !is (), "Remove Connection sets removed_at (status REMOVED); audited as ConnectionRemoved");
+
+    LinkedInConnection taken = check completeConnection(repo, command("emp-new", "urn:li:person:shared", "t-new"),
+            types:addDays(T0, 2));
+    test:assertEquals(taken.employeeId, "emp-new", "the member is free once its connection is removed");
+    test:assertEquals(code(completeConnection(repo, command("emp-old", "urn:li:person:shared", "t-back"),
+            types:addDays(T0, 3))), types:ERR_MEMBER_ALREADY_LINKED, "and now held by the new employee");
 }

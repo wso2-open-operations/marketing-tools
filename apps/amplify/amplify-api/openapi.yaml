@@ -1172,7 +1172,7 @@ paths:
       tags: [S5 Admin]
       operationId: getLinkedInPage
       x-access: CAN_ADMIN
-      description: The company page connection (Community Management) for the configured page, and today's calls against `engagement.daily_call_budget`.
+      description: The company page connection (Community Management) for the configured page, today's calls against `engagement.daily_call_budget`, and when the engagement sync last ran.
       parameters: [{$ref: "#/components/parameters/CorrelationId"}]
       responses:
         "200":
@@ -1409,11 +1409,12 @@ components:
         config:
           description: Deployment settings the UI needs (Choreo configs, not UI config)
           type: object
-          required: [linkedinOrgUrn, privacyNoticeUrl, campaignLinkOrigins]
+          required: [linkedinOrgUrn, privacyNoticeUrl, campaignLinkOrigins, nativeRepostDefault]
           properties:
             linkedinOrgUrn: {description: "LinkedIn company page a registered post must belong to (`wso2OrganizationUrn`)", type: string}
             privacyNoticeUrl: {description: "Privacy notice for the consent dialog; empty = no link (`privacyNoticeUrl`)", type: string}
             campaignLinkOrigins: {description: "Origins a campaign link may use (`campaignLinkOrigins`)", type: array, items: {type: string}}
+            nativeRepostDefault: {description: "Admin setting `sharing.native_repost_default`: the share dialog starts on the native LinkedIn repost (false = the in-app repost)", type: boolean}
     ConnectionStatus: {type: string, enum: [ACTIVE, EXPIRING, NEEDS_RECONNECT, REMOVED, NOT_CONNECTED]}
 
     CampaignStatus: {type: string, enum: [SCHEDULED, OPEN, CLOSED, ARCHIVED]}
@@ -1589,6 +1590,7 @@ components:
         openedAt: {type: string, format: date-time}
         detectedAt: {type: string, format: date-time, nullable: true}
         nativeStatus: {type: string, enum: [LOOKING, DETECTED, NOT_FOUND]}
+        points: {type: integer, nullable: true, description: "Points the detected reshare earned, net of a reversal or removal; null until it is found and scored"}
     NativeIntentList:
       type: object
       required: [items]
@@ -1596,7 +1598,7 @@ components:
         items: {type: array, items: {$ref: "#/components/schemas/NativeIntent"}}
     LinkedInPage:
       type: object
-      required: [connected, connectedByName, connectedAt, accessExpiresAt, callsToday, dailyBudget]
+      required: [connected, connectedByName, connectedAt, accessExpiresAt, callsToday, dailyBudget, lastSyncAt]
       properties:
         connected: {type: boolean}
         connectedByName: {type: string, nullable: true}
@@ -1604,6 +1606,7 @@ components:
         accessExpiresAt: {type: string, format: date-time, nullable: true}
         callsToday: {type: integer, minimum: 0}
         dailyBudget: {type: integer, minimum: 0}
+        lastSyncAt: {type: string, format: date-time, nullable: true, description: "When the engagement sync last read LinkedIn (latest sync cursor save); null if it never ran"}
 
     ExternalShareClaim:
       type: object

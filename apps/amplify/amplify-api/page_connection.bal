@@ -168,7 +168,8 @@ isolated function disconnectPage(auth:Principal p, string? correlationId) return
 # `GET /admin/linkedin-page`.
 #
 # + correlationId - Correlation id
-# + return - `{connected, connectedByName, connectedAt, accessExpiresAt, callsToday, dailyBudget}`, or problem details
+# + return - `{connected, connectedByName, connectedAt, accessExpiresAt, callsToday, dailyBudget, lastSyncAt}`, or
+# problem details
 isolated function pageStatus(string? correlationId) returns json|ProblemResponse {
     do {
         connection:OrgConnection? c = check (check orgConnectionRepository({actorId: "system", roles: []}))
@@ -182,9 +183,11 @@ isolated function pageStatus(string? correlationId) returns json|ProblemResponse
 isolated function pageStatusBody(connection:OrgConnection? c, time:Utc now) returns json|error {
     Settings settings = check loadSettings();
     int calls = check apiCallsToday();
+    time:Utc? lastSync = check engagementLastSyncAt();
+    string? lastSyncAt = lastSync is () ? () : ts(lastSync);
     if c is () {
         return {connected: false, connectedByName: (), connectedAt: (), accessExpiresAt: (), callsToday: calls,
-            dailyBudget: settings.engagementDailyBudget};
+            dailyBudget: settings.engagementDailyBudget, lastSyncAt};
     }
     map<identity:EmployeeMatch> people = check employeesIn([c.connectedBy]);
     identity:EmployeeMatch? who = people[c.connectedBy];
@@ -195,7 +198,8 @@ isolated function pageStatusBody(connection:OrgConnection? c, time:Utc now) retu
         connectedAt: connected ? ts(c.connectedAt) : (),
         accessExpiresAt: connected ? ts(c.accessExpiresAt) : (),
         callsToday: calls,
-        dailyBudget: settings.engagementDailyBudget
+        dailyBudget: settings.engagementDailyBudget,
+        lastSyncAt
     };
 }
 
@@ -216,7 +220,8 @@ isolated function recordNativeIntent(auth:Principal p, string? correlationId, st
             return notFound("Campaign not found", correlationId);
         }
         sharing:NativeIntent intent = check (check nativeIntentRepository()).open(p.employeeId, campaignId, now);
-        return <http:Ok>{body: nativeIntentDto(intent, now)};
+        map<int> points = intent.detectedAt is () ? {} : check resharePoints(p.employeeId, [campaignId]);
+        return <http:Ok>{body: nativeIntentDto(intent, now, points)};
     } on fail error e {
         return failure(e, correlationId, "Record native repost intent");
     }
@@ -231,18 +236,28 @@ isolated function nativeIntentsOf(auth:Principal p, string? correlationId) retur
     do {
         time:Utc now = time:utcNow();
         sharing:NativeIntent[] intents = check (check nativeIntentRepository()).ofEmployee(p.employeeId);
-        return {items: from sharing:NativeIntent i in intents select nativeIntentDto(i, now)};
+        string[] detected = from sharing:NativeIntent i in intents where i.detectedAt !is () select i.campaignId;
+        map<int> points = check resharePoints(p.employeeId, detected);
+        return {items: from sharing:NativeIntent i in intents select nativeIntentDto(i, now, points)};
     } on fail error e {
         return failure(e, correlationId, "My native repost intents");
     }
 }
 
-isolated function nativeIntentDto(sharing:NativeIntent i, time:Utc now) returns json {
+# A native repost intent with the points its reshare earned: set once the sync found the reshare and it was scored
+# (net of a reversal or removal), else null.
+#
+# + i - Intent
+# + now - Current time
+# + points - Campaign id -> net reshare points (`resharePoints`)
+# + return - The intent as JSON
+isolated function nativeIntentDto(sharing:NativeIntent i, time:Utc now, map<int> points) returns json {
     time:Utc? detected = i.detectedAt;
     return {
         campaignId: i.campaignId,
         openedAt: ts(i.openedAt),
         detectedAt: detected is () ? () : ts(detected),
-        nativeStatus: sharing:nativeStatus(i, now)
+        nativeStatus: sharing:nativeStatus(i, now),
+        points: detected is () ? () : points[i.campaignId]
     };
 }
