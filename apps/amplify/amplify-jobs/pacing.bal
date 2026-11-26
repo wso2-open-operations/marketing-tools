@@ -14,10 +14,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Pacing of LinkedIn posts per employee. Sharing every open campaign at once, by hand or by a script, queues
-// them all; the Run then posts one, and each next one only after `publishGapSeconds` plus a little jitter. Points
-// come with each post, so nobody's points grow faster than anyone else's, and LinkedIn doesn't see a burst of
-// posts from one member, at exact intervals, that looks automated.
+// Pacing of LinkedIn posts, so LinkedIn never sees the app post in bursts that look automated.
+// - Per employee: sharing every open campaign at once, by hand or by a script, queues them all; the Run then posts
+//   one, and each next one only after `publishGapSeconds` plus a little jitter. Points come with each post, so
+//   nobody's points grow faster than anyone else's.
+// - Per campaign: the shares that arrive right after an announcement are spread over `spreadSeconds`.
+// - For the app: a per-run, per-day and rolling-hour ceiling on posts (`postBudget`).
 
 import ballerina/time;
 
@@ -41,6 +43,45 @@ isolated function paceDelaySeconds(time:Utc? lastPublished, time:Utc now, int ga
     }
     // Seeded with the last publish too, so each wait after a new post gets a new jitter.
     return remaining + <decimal>jitterOf(seed + time:utcToString(lastPublished), jitterSeconds);
+}
+
+# Seconds a share must still wait for its point in the campaign's spread window: `opensAt` plus an offset of up
+# to `spreadSeconds` picked from the share's id, so retries and deferrals keep the same point. 0 once the point
+# has passed (a share requested late goes at once), with no open time, or with the spread off.
+#
+# + opensAt - When the campaign opened, `()` if unknown
+# + now - Current time
+# + spreadSeconds - Length of the window; 0 or less turns the spread off
+# + seed - Picks the point (the share id)
+# + return - The wait, in seconds
+isolated function spreadDelaySeconds(time:Utc? opensAt, time:Utc now, int spreadSeconds, string seed) returns decimal {
+    if opensAt is () || spreadSeconds <= 0 {
+        return 0;
+    }
+    time:Utc point = time:utcAddSeconds(opensAt, <decimal>jitterOf("spread:" + seed, spreadSeconds));
+    decimal remaining = time:utcDiffSeconds(point, now);
+    return remaining > 0d ? remaining : 0;
+}
+
+# LinkedIn posts a run may make: the per-run ceiling, cut to what is left of the day's and the rolling hour's.
+#
+# + cfg - Run config (`linkedinMaxPostsPerRun`, `...PerDay`, `...PerHour`; an hourly cap of 0 is off)
+# + publishedToday - Posts published since 00:00 UTC
+# + publishedLastHour - Posts published in the last hour
+# + return - The budget, never negative
+isolated function postBudget(RunConfig cfg, int publishedToday, int publishedLastHour) returns int {
+    int budget = cfg.linkedinMaxPostsPerRun;
+    int dailyLeft = cfg.linkedinMaxPostsPerDay - publishedToday;
+    if dailyLeft < budget {
+        budget = dailyLeft;
+    }
+    if cfg.linkedinMaxPostsPerHour > 0 {
+        int hourlyLeft = cfg.linkedinMaxPostsPerHour - publishedLastHour;
+        if hourlyLeft < budget {
+            budget = hourlyLeft;
+        }
+    }
+    return budget < 0 ? 0 : budget;
 }
 
 # A number from 0 to `maxSeconds`, the same for the same seed (no shared random state; easy to test).

@@ -576,6 +576,64 @@ function dailyCeilingAlreadySpentDefersEveryShare() returns error? {
     test:assertEquals(w.queue.statusOf(id), ["PENDING", 0, "LinkedIn post ceiling reached"]);
 }
 
+@test:Config
+function hourlyCeilingAlreadySpentDefersEveryShare() returns error? {
+    [World, string, int] [w, _, id] = check shareWorld("emp-hourly");
+    RunConfig cfg = {...TEST_CONFIG};
+    cfg.linkedinMaxPostsPerHour = 5;
+    w.deps.config = cfg;
+    w.deps.runStore = new PublishedTodayRunStore(w.queue, 5, 5);
+    RunReport r = check run(w);
+    test:assertEquals(w.linkedIn.postCount(), 0, "the day has room, the last hour doesn't");
+    test:assertEquals(r.deferred, 1);
+    test:assertEquals(w.queue.statusOf(id), ["PENDING", 0, "LinkedIn post ceiling reached"]);
+
+    cfg.linkedinMaxPostsPerHour = 0;
+    w.deps.config = cfg;
+    w.queue.makeAllDue();
+    _ = check run(w);
+    test:assertEquals(w.linkedIn.postCount(), 1, "0 turns the hourly cap off");
+}
+
+@test:Config
+function sharesRightAfterTheCampaignOpensAreSpread() returns error? {
+    World w = harness();
+    RunConfig cfg = {...TEST_CONFIG};
+    cfg.spreadSeconds = 7200;
+    w.deps.config = cfg;
+    time:Utc now = time:utcNow();
+    check connectedEmployee(w.mem, w.cipher, "emp-fresh", now);
+    check connectedEmployee(w.mem, w.cipher, "emp-late", now);
+    // A campaign that opened a minute ago: its share waits for a point inside the two-hour window.
+    string fresh = types:newUuidV7();
+    w.mem.putCampaign(openCampaign(fresh, now, -60));
+    var freshShare = queuedShare(fresh, "emp-fresh", now);
+    w.mem.putShare(freshShare);
+    int freshRow = w.queue.enqueue(events:REPOST_REQUESTED, repostRequested(freshShare.id, fresh, "emp-fresh"));
+    // A campaign that opened three hours ago: every point in its window has passed, so the share goes now.
+    string old = types:newUuidV7();
+    w.mem.putCampaign(openCampaign(old, now, -3 * 3600));
+    var oldShare = queuedShare(old, "emp-late", now);
+    w.mem.putShare(oldShare);
+    int oldRow = w.queue.enqueue(events:REPOST_REQUESTED, repostRequested(oldShare.id, old, "emp-late"));
+
+    _ = check run(w);
+    test:assertEquals(w.queue.statusOf(oldRow)[0], "DONE");
+    test:assertEquals(w.linkedIn.postCount(), 1);
+    decimal delay = spreadDelaySeconds(time:utcAddSeconds(now, -60), now, 7200, freshShare.id);
+    if delay > 0d {
+        [string, int, string?] [status, attempts, note] = w.queue.statusOf(freshRow);
+        test:assertEquals(status, "PENDING");
+        test:assertEquals(attempts, 0, "waiting for the spread does not use up an attempt");
+        test:assertTrue(note is string && note.startsWith(store:PACED_NOTE_PREFIX),
+                "a spread wait is a paced wait, so the backlog alert ignores it");
+        decimal due = time:utcDiffSeconds(w.queue.dueAtOf(freshRow), now);
+        test:assertTrue(due > 0d && due <= 7200d, string `due inside the window, got ${due}`);
+    } else {
+        test:assertEquals(w.queue.statusOf(freshRow)[0], "DONE", "its point was in the first minute");
+    }
+}
+
 // ---- EngagementRecorded --------------------------------------------------------------------------
 
 @test:Config

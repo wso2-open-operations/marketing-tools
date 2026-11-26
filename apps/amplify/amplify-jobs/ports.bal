@@ -53,10 +53,14 @@ type RunConfig record {|
     decimal deferSeconds;
     int linkedinMaxPostsPerRun;
     int linkedinMaxPostsPerDay;
+    # LinkedIn posts in any rolling hour; 0 = no hourly cap
+    int linkedinMaxPostsPerHour = 0;
     # Least seconds between two posts of the same employee (pacing.bal); 0 = no pacing
     int publishGapSeconds = 0;
     # Most extra seconds added to a paced post
     int publishJitterSeconds = 0;
+    # Window after a campaign opens that its shares are spread over (pacing.bal); 0 = no spread
+    int spreadSeconds = 0;
     # Novera card button URL template (`noveraButtonUrl`); empty = not configured
     string noveraButtonUrl;
     string? cardAvatarUrl = ();
@@ -90,6 +94,8 @@ type RunStore isolated object {
     isolated function settings() returns RunSettings|error;
     isolated function connectionSweep() returns ConnectionSweep|error;
     isolated function publishedToday(time:Utc now) returns int|error;
+    # LinkedIn posts published at or after `since` (the hourly cap counts the last hour)
+    isolated function publishedSince(time:Utc since) returns int|error;
     # Store for one outbox row's writes, carrying its correlation id (audit and outbox rows).
     isolated function forRow(string correlationId, int topN) returns Store;
 };
@@ -172,6 +178,9 @@ isolated class PgRunStore {
         time:Utc dayStart = check time:utcFromString(time:utcToString(now).substring(0, 10) + "T00:00:00Z");
         return (check sharing:shareHealth(self.db, dayStart)).published;
     }
+
+    isolated function publishedSince(time:Utc since) returns int|error =>
+        (check sharing:shareHealth(self.db, since)).published;
 
     isolated function forRow(string correlationId, int topN) returns Store =>
         new PgStore(self.db, {actorId: store:SYSTEM.actorId, roles: store:SYSTEM.roles, correlationId}, topN);
