@@ -25,6 +25,7 @@ import amplify_common.types;
 import amplify_domain.announcements;
 import amplify_domain.connection;
 import amplify_domain.external_sharing;
+import amplify_domain.identity;
 import amplify_domain.recognition;
 import amplify_domain.reporting;
 import amplify_domain.scoring;
@@ -362,6 +363,31 @@ isolated function mockLedgerHistory(types:EmployeeId employeeId, int page, int s
         coinReference: ()
     };
     return {items: [entry], total: 1};
+}
+
+// The one fake history row above is an adjustment of 10 still waiting for the PO (status `NULL`).
+@test:Mock {functionName: "pointsSummary"}
+isolated function mockPointsSummary(types:EmployeeId employeeId) returns scoring:PointsSummary|error {
+    check dbGate();
+    return {total: 10, held: 0, paid: 0, actionRequired: 1};
+}
+
+@test:Mock {functionName: "reversalsAmong"}
+isolated function mockReversalsAmong(types:LedgerReference[] references) returns map<string>|error {
+    check dbGate();
+    return {};
+}
+
+@test:Mock {functionName: "campaignTitles"}
+isolated function mockCampaignTitles(string[] ids) returns map<string>|error {
+    check dbGate();
+    return map from string id in ids select [id, "Title of " + id];
+}
+
+@test:Mock {functionName: "employeesIn"}
+isolated function mockEmployeesIn(types:EmployeeId[] ids) returns map<identity:EmployeeMatch>|error {
+    check dbGate();
+    return map from string id in ids select [id, {employeeId: id, displayName: "Name " + id, email: id + "@wso2.com"}];
 }
 
 @test:Mock {functionName: "sharesOf"}

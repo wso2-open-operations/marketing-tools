@@ -218,3 +218,22 @@ public isolated function dashboardCampaigns(postgresql:Client db, int recentDays
             version: r.version
         };
 }
+
+# Titles of these campaigns, archived ones included (history rows name the post they were earned on).
+#
+# + db - Client
+# + ids - Campaign ids (UUIDs)
+# + return - Id -> title, or an error
+public isolated function titlesOf(postgresql:Client db, string[] ids) returns map<string>|error {
+    map<string> titles = {};
+    if ids.length() == 0 {
+        return titles;
+    }
+    stream<record {|string id; string title;|}, error?> rows = db->query(sql:queryConcat(`
+        SELECT id::text AS id, title FROM campaign WHERE id::text IN (`, sql:arrayFlattenQuery(ids), `)`));
+    check from var r in rows
+        do {
+            titles[r.id] = r.title;
+        };
+    return titles;
+}

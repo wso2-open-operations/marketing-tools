@@ -364,7 +364,7 @@ paths:
       tags: [S3 External Sharing]
       operationId: claimExternalShare
       x-access: EMPLOYEE
-      description: Claims promotion done outside Amplify (My Campaign). Any public HTTPS URL (not a `lnkd.in` short link), or just a LinkedIn post number; one claim per normalized URL across everyone (`EVIDENCE_ALREADY_CLAIMED`).
+      description: Claims promotion done outside Amplify (My Campaign). Any public HTTPS URL (not a `lnkd.in` short link), or just a LinkedIn post number; one claim per normalized URL across everyone (`EVIDENCE_ALREADY_CLAIMED`), and at most `external_share.daily_limit` claims per employee per UTC day (429 `DAILY_LIMIT_REACHED`).
       parameters:
         - {$ref: "#/components/parameters/CorrelationId"}
         - {$ref: "#/components/parameters/IdempotencyKey"}
@@ -384,6 +384,7 @@ paths:
         "401": {$ref: "#/components/responses/Problem"}
         "409": {$ref: "#/components/responses/Problem"}
         "422": {$ref: "#/components/responses/Problem"}
+        "429": {$ref: "#/components/responses/Problem"}
         "503": {$ref: "#/components/responses/Problem"}
   /me/external-shares:
     get:
@@ -592,6 +593,45 @@ paths:
         "422": {$ref: "#/components/responses/Problem"}
         "503": {$ref: "#/components/responses/Problem"}
 
+  /point-values:
+    get:
+      tags: [C2 Scoring]
+      operationId: getPointValues
+      x-access: EMPLOYEE
+      description: What each activity earns today, the point rule in force per action (screens show the value on each action, and the PO review buttons their award).
+      parameters: [{$ref: "#/components/parameters/CorrelationId"}]
+      responses:
+        "200":
+          description: Points per action
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [values]
+                properties:
+                  values: {type: object, additionalProperties: {type: integer}, description: "Action (REPOST, REPOST_COMMENTARY, REACTION, COMMENT, OWN_POST, OWN_POST_AMPLIFIED, ...) -> points"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /po/people:
+    get:
+      tags: [C2 Scoring]
+      operationId: searchPeople
+      x-access: CAN_ADJUST_POINTS
+      description: People who have used Amplify whose name or work email contains `q` (case-insensitive), by name, for Points & corrections. Erased people are left out.
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {name: q, in: query, required: true, schema: {type: string, minLength: 2, maxLength: 100}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 20, default: 10}}
+      responses:
+        "200":
+          description: Matches
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/PersonMatchList"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
   /leaderboard:
     get:
       tags: [S4 Recognition]
@@ -991,7 +1031,7 @@ paths:
       parameters: [{$ref: "#/components/parameters/CorrelationId"}]
       responses:
         "200":
-          description: Settings (Coin settings hidden in phase 1)
+          description: Settings, every editable key (the Coins settings included)
           content:
             application/json:
               schema: {$ref: "#/components/schemas/SettingList"}
@@ -1012,6 +1052,46 @@ paths:
       responses:
         "200":
           description: Settings after the change
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SettingList"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "413": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /po/settings:
+    get:
+      tags: [S5 Admin]
+      operationId: listPoSettings
+      x-access: CAN_POINT_RULES
+      description: The business settings the PO team changes on Amplify Admin, `coin.block_points`, `coin.block_coins`, `coin.schedule` and `external_share.daily_limit`.
+      parameters: [{$ref: "#/components/parameters/CorrelationId"}]
+      responses:
+        "200":
+          description: The PO settings
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SettingList"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+    put:
+      tags: [S5 Admin]
+      operationId: changePoSettings
+      x-access: CAN_POINT_RULES
+      description: Changes the PO settings, each guarded by its `version`. Any other key is refused with 403 `ROLE_NOT_PERMITTED` (switches, limits and schedules are an admin's, through `PUT /admin/settings`).
+      parameters: [{$ref: "#/components/parameters/CorrelationId"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SettingChanges"}
+      responses:
+        "200":
+          description: The PO settings after the change
           content:
             application/json:
               schema: {$ref: "#/components/schemas/SettingList"}
@@ -1118,7 +1198,7 @@ components:
             ALREADY_REVERSED, CANNOT_REVERSE_REVERSAL, INVALID_LEDGER_REFERENCE, TEAM_SCOPE,
             ANNOUNCEMENT_NOT_FAILED, UNKNOWN_SETTING, INVALID_SETTING, SCHEDULER_UNAVAILABLE, INVALID_EMPLOYEE_ID,
             INVALID_EMAIL, INVALID_MEMBER_URN, INVALID_POST_URN, INVALID_UUID, SHARE_NOT_QUEUED, PAID_NOT_ALLOWED,
-            ALREADY_ANNOUNCED, ANNOUNCEMENT_NOT_QUEUED, COMMENTARY_NOT_OWN_WORDS]
+            ALREADY_ANNOUNCED, ANNOUNCEMENT_NOT_QUEUED, COMMENTARY_NOT_OWN_WORDS, DAILY_LIMIT_REACHED, NOTE_TOO_LONG]
         detail: {type: string, nullable: true}
         correlationId: {type: string, nullable: true}
     HealthStatus:
@@ -1366,6 +1446,7 @@ components:
         activityId: {type: string, minLength: 1, maxLength: 100, pattern: "^[0-9]+$", description: "A LinkedIn post number (the activity id: the digits in `urn:li:activity:<number>` or `...-activity-<number>-...`). Amplify builds the canonical post URL from it, stores that as `evidenceUrl`, and so it collides with any other form of the same post (`EVIDENCE_ALREADY_CLAIMED`)"}
         certified: {type: boolean, enum: [true], description: "\"I certify this is related to Choreo Labs\" (must be true)"}
         campaignId: {type: string, format: uuid}
+        note: {type: string, maxLength: 500, description: "Optional note for the reviewer; blank counts as none (`NOTE_TOO_LONG` past 500 characters)"}
     ExternalShare:
       type: object
       required: [id, employeeId, action, evidenceUrl, evidenceHost, evidenceProvider, status, createdAt, version]
@@ -1384,6 +1465,22 @@ components:
         amplifiedAt: {type: string, format: date-time, nullable: true}
         createdAt: {type: string, format: date-time}
         version: {type: integer}
+        note: {type: string, nullable: true, description: "The employee's note for the reviewer"}
+        employeeName: {type: string, nullable: true, description: "Who sent it, on `GET /po/external-shares` items only"}
+        employeeEmail: {type: string, nullable: true, description: "Their work email, on `GET /po/external-shares` items only"}
+    PersonMatchList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [employeeId, displayName, email]
+            properties:
+              employeeId: {type: string}
+              displayName: {type: string}
+              email: {type: string}
     ExternalShareList:
       type: object
       required: [items]
@@ -1448,11 +1545,14 @@ components:
         sourceType: {type: string, enum: [ENGAGEMENT, EXTERNAL_SHARE, ADJUSTMENT, REVERSAL]}
         action: {type: string, nullable: true}
         points: {type: integer}
-        reason: {type: string, nullable: true, description: "A PO's free text. Callers who are not a PO get the fixed label 'Adjusted by the PO team' on adjustment and reversal rows, and null on the others"}
+        reason: {type: string, nullable: true, description: "A PO's free text. The person the row belongs to sees it too; other callers who are not a PO get the fixed label 'Adjusted by the PO team' on adjustment and reversal rows, and null on the others"}
         reversesReference: {type: string, nullable: true}
         actorId: {type: string, description: "The PO's employee id. Omitted for callers who are not a PO"}
         createdAt: {type: string, format: date-time}
         status: {type: string, nullable: true, enum: [HELD, PAID, null]}
+        campaignTitle: {type: string, nullable: true, description: "History rows only: the post the points were earned on"}
+        reversedBy: {type: string, nullable: true, description: "History rows only: the reference of the row that reversed this one"}
+        settlement: {type: string, enum: [HELD, PAID, ACTION_REQUIRED], description: "History rows only: HELD counts toward the next Coins, PAID became Coins, ACTION_REQUIRED waits for the PO team"}
 
     LeaderboardTop:
       type: object
@@ -1535,10 +1635,22 @@ components:
         lastActivityAt: {type: string, format: date-time, nullable: true}
     MyPoints:
       type: object
-      required: [period, standing, monthly]
+      required: [period, standing, monthly, coins]
       properties:
         period: {type: string}
         standing: {$ref: "#/components/schemas/PersonalStanding"}
+        coins:
+          type: object
+          description: Coins for points. Points convert automatically, only in whole blocks; the rest carries over.
+          required: [walletsEnabled, blockPoints, blockCoins, schedule, heldPoints, pointsTowardNext, coinsReceived]
+          properties:
+            walletsEnabled: {type: boolean, description: "Coins are sent to wallets (false until the WSO2 Coins API exists; points keep counting)"}
+            blockPoints: {type: integer}
+            blockCoins: {type: integer}
+            schedule: {type: string, enum: [MONTHLY, WEEKLY, DAILY]}
+            heldPoints: {type: integer, description: "Points not yet paid out"}
+            pointsTowardNext: {type: integer, description: "Progress to the next block"}
+            coinsReceived: {type: integer}
         monthly:
           type: array
           items:
@@ -1928,6 +2040,8 @@ components:
         page: {type: integer}
         size: {type: integer}
         total: {type: integer}
+        totalPoints: {type: integer, description: "All-time points of this person (every row, not just this page)"}
+        heldPoints: {type: integer, description: "Their points not yet paid out as Coins"}
         items: {type: array, items: {$ref: "#/components/schemas/LedgerEntry"}}
 
     PoDashboard:

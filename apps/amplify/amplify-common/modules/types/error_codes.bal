@@ -67,6 +67,9 @@ public const ERR_SELF_REVIEW = "SELF_REVIEW";
 public const ERR_REASON_REQUIRED = "REASON_REQUIRED";
 public const ERR_NOT_APPROVED = "NOT_APPROVED";
 public const ERR_ALREADY_AMPLIFIED = "ALREADY_AMPLIFIED";
+# One employee's own-post submissions for today are used up (`external_share.daily_limit`); the API answers 429.
+public const ERR_DAILY_LIMIT_REACHED = "DAILY_LIMIT_REACHED";
+public const ERR_NOTE_TOO_LONG = "NOTE_TOO_LONG";
 
 // C2 Scoring
 public const ERR_RULE_NOT_FOUND = "RULE_NOT_FOUND";

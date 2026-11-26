@@ -21,6 +21,7 @@
 import amplify_common.types;
 import amplify_domain.store;
 
+import ballerina/sql;
 import ballerina/time;
 import ballerinax/postgresql;
 
@@ -147,4 +148,51 @@ public isolated function recentCorrections(postgresql:Client db, int 'limit = 10
             }
         };
     return entries;
+}
+
+# One employee's points: all time, and by settlement status.
+public type PointsSummary record {|
+    # Sum of every row (awards, adjustments, reversals)
+    int total;
+    # Sum of the rows not yet paid out (`HELD`): what the next Coin conversion counts
+    int held;
+    # Sum of the rows paid out as Coins (`PAID`)
+    int paid;
+    # Rows waiting for a PO decision (status `NULL`, "action required")
+    int actionRequired;
+|};
+
+# The points summary of one employee.
+#
+# + db - Client
+# + employeeId - Employee
+# + return - The summary (zeros for someone with no rows), or an error
+public isolated function pointsSummaryOf(postgresql:Client db, types:EmployeeId employeeId) returns PointsSummary|error {
+    PointsSummary summary = check db->queryRow(`
+        SELECT coalesce(sum(points), 0)::int AS total,
+               coalesce(sum(points) FILTER (WHERE status = 'HELD'), 0)::int AS held,
+               coalesce(sum(points) FILTER (WHERE status = 'PAID'), 0)::int AS paid,
+               (count(*) FILTER (WHERE status IS NULL))::int AS "actionRequired"
+        FROM scoring_points_ledger WHERE employee_id = ${employeeId}`);
+    return summary;
+}
+
+# Which of these rows a reversal row cancels.
+#
+# + db - Client
+# + references - Ledger references (a page of history)
+# + return - Cancelled reference -> the reversal row's reference, or an error
+public isolated function reversalsOf(postgresql:Client db, types:LedgerReference[] references) returns map<string>|error {
+    map<string> reversals = {};
+    if references.length() == 0 {
+        return reversals;
+    }
+    stream<record {|string reverses; string reference;|}, error?> rows = db->query(sql:queryConcat(`
+        SELECT reverses_reference AS reverses, reference FROM scoring_points_ledger
+        WHERE reverses_reference IN (`, sql:arrayFlattenQuery(references), `)`));
+    check from var r in rows
+        do {
+            reversals[r.reverses] = r.reference;
+        };
+    return reversals;
 }

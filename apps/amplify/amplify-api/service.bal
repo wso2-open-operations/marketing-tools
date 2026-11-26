@@ -542,6 +542,23 @@ service http:InterceptableService / on apiListener {
                 isolated function() returns http:StatusCodeResponse => reverseEntry(p, c, referenceFinal, b.reason));
     }
 
+    # What each activity earns today (current point values), for every employee.
+    #
+    # + ctx - Request context
+    # + return - `{values}`, or problem details
+    resource function get point\-values(http:RequestContext ctx) returns http:Response|ProblemResponse|error =>
+        okJson(pointValues(cid(ctx)));
+
+    # Finds people by name or work email, for Points & corrections.
+    #
+    # + ctx - Request context
+    # + q - Search text, 2 to 100 characters
+    # + 'limit - Most results, 1 to 20
+    # + return - The matches, or problem details
+    resource function get po/people(http:RequestContext ctx, string q = "", int 'limit = 10)
+            returns http:Response|ProblemResponse|error =>
+        okJson(peopleSearch(cid(ctx), q, 'limit));
+
     // ---- S4 Recognition ----------------------------------------------------------------------------
 
     # Company top N, personal and My Team.
@@ -759,6 +776,24 @@ service http:InterceptableService / on apiListener {
     resource function put admin/settings(http:RequestContext ctx, @http:Payload SettingChangesBody body)
             returns http:Response|ProblemResponse|error =>
         okJson(changeSettings(check principalOf(ctx), cid(ctx), body));
+
+    # The business settings the PO team changes on Amplify Admin (Coins rate and schedule, own-post limit).
+    #
+    # + ctx - Request context
+    # + return - Those settings, or problem details
+    resource function get po/settings(http:RequestContext ctx) returns http:Response|ProblemResponse|error {
+        json|error body = settingsBody(PO_SETTINGS);
+        return okJson(body is error ? failure(body, cid(ctx), "List PO settings") : body);
+    }
+
+    # Changes the PO team's settings; any other key is refused (403).
+    #
+    # + ctx - Request context
+    # + body - Changes
+    # + return - Those settings after the change, or problem details
+    resource function put po/settings(http:RequestContext ctx, @http:Payload SettingChangesBody body)
+            returns http:Response|ProblemResponse|error =>
+        okJson(changeSettings(check principalOf(ctx), cid(ctx), body, PO_SETTINGS));
 
     # Converges the scheduler jobs to the schedule settings (ADR-026).
     #

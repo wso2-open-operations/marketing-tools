@@ -93,6 +93,8 @@ type ExternalShareBody record {|
     string? activityId = ();
     boolean certified;
     string? campaignId = ();
+    # Optional note for the reviewer, at most 500 characters
+    string? note = ();
 |};
 
 # Reason body (reject, reverse).
@@ -180,6 +182,8 @@ type ExternalShareDto record {|
     string? amplifiedAt;
     string createdAt;
     int version;
+    # The employee's note for the reviewer
+    string? note;
 |};
 
 type LedgerEntryDto record {|
@@ -281,7 +285,8 @@ isolated function externalShareDto(external_sharing:ExternalShare c) returns Ext
     decisionReason: c.decisionReason,
     amplifiedAt: tsOpt(c.amplifiedAt),
     createdAt: ts(c.createdAt),
-    version: c.version
+    version: c.version,
+    note: c.note
 };
 
 isolated function ledgerDto(types:LedgerEntry e) returns LedgerEntryDto => {
@@ -311,6 +316,17 @@ isolated function ledgerDtoForTeammate(types:LedgerEntry e) returns json {
     _ = row.remove("actorId");
     boolean byPo = e.sourceType == types:ADJUSTMENT || e.sourceType == types:REVERSAL;
     row["reason"] = byPo ? PO_ADJUSTMENT_LABEL : ();
+    return row;
+}
+
+# A ledger row for the person it belongs to: the PO's id stays internal, but the reason a PO gave is theirs to
+# read ("When points are removed, the reason is shown on the row", screens 4 and 6).
+#
+# + e - Ledger row
+# + return - The row as JSON without `actorId`
+isolated function ledgerDtoForSelf(types:LedgerEntry e) returns json {
+    map<json> row = <map<json>>ledgerDto(e).toJson();
+    _ = row.remove("actorId");
     return row;
 }
 
