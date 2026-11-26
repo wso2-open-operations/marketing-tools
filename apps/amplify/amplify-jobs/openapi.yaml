@@ -85,6 +85,36 @@ paths:
                   reason: {type: string, enum: [MAINTENANCE_IN_PROGRESS]}
         "503": {description: Database unavailable}
         "500": {description: Maintenance failed}
+  /engagement/sync:
+    post:
+      operationId: syncEngagement
+      description: >-
+        Community Management engagement sync (phase 4). Off unless `engagement.sync_enabled` is true (status `OFF`).
+        Reads reactions and comments on the page's open campaign posts from their cursors, then the page's share
+        notifications since the last run, counting every call against `engagement.daily_call_budget` and stopping
+        at the budget, on a 429 or an open breaker (cursors kept). Actors that are not connected employees are dropped;
+        comment text is never stored. Each new engagement is written with its `EngagementRecorded` event, so the next
+        `POST /runs` scores it. One sync at a time across replicas (own lock and connection): a second caller gets 202.
+        The scheduler key may call it.
+      parameters:
+        - {name: X-Correlation-ID, in: header, required: false, schema: {type: string}}
+      responses:
+        "200":
+          description: Done (or OFF / NOT_CONFIGURED / NOT_CONNECTED / NEEDS_RECONNECT, with no sync counts)
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/EngagementSyncResult"}
+        "202":
+          description: Another sync holds the lock (not a failure)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: {type: string, enum: [SKIPPED]}
+                  reason: {type: string, enum: [SYNC_IN_PROGRESS]}
+        "503": {description: Database unavailable}
+        "500": {description: Sync failed}
   /maintenance/leavers:
     post:
       operationId: sweepLeavers
@@ -121,8 +151,8 @@ components:
       name: X-Amplify-Internal-Key
       description: >-
         Two secrets (each at least 32 characters, different values). The internal key, held by amplify-api, opens
-        every route. The scheduler key, held by the scheduler's jobs, opens only POST /runs and
-        POST /maintenance/partitions; on any other route it is 403. Every call except the two probes needs one;
+        every route. The scheduler key, held by the scheduler's jobs, opens only POST /runs,
+        POST /maintenance/partitions and POST /engagement/sync; on any other route it is 403. Every call except the two probes needs one;
         a missing or wrong key is 401. ADR-039.
   schemas:
     HealthStatus:
@@ -164,6 +194,27 @@ components:
           type: object
           additionalProperties: {type: string, enum: [CLOSED, HALF_OPEN, OPEN, NOT_CONFIGURED]}
         durationMs: {type: integer}
+    EngagementSyncResult:
+      type: object
+      required: [status, tokenRefreshed]
+      properties:
+        status:
+          type: string
+          enum: [OFF, NOT_CONFIGURED, NOT_CONNECTED, NEEDS_RECONNECT, DONE, BUDGET_REACHED, RATE_LIMITED, UNAVAILABLE,
+            UNAUTHORIZED, REJECTED]
+        tokenRefreshed: {type: boolean}
+        sync:
+          type: object
+          nullable: true
+          properties:
+            status: {type: string}
+            campaigns: {type: integer}
+            calls: {type: integer}
+            reactions: {type: integer}
+            comments: {type: integer}
+            reposts: {type: integer}
+            alreadyRecorded: {type: integer}
+            dropped: {type: integer}
     MaintenanceReport:
       type: object
       properties:

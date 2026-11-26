@@ -65,7 +65,11 @@ Rules the mock enforces, matching LinkedIn:
   redirect back with `error=unauthorized_scope_error`.
 - Add `mock_consent=deny` to simulate the member cancelling (`error=user_cancelled_authorize`).
   This parameter is mock only.
-- Tokens last 60 days. There are no refresh tokens.
+- Tokens last 60 days. Only a Community Management grant (`r_organization_social_feed` or `rw_organization_admin`)
+  also gets a refresh token (`refresh_token`, `refresh_token_expires_in`, 365 days); `grant_type=refresh_token`
+  returns a new access token and the same refresh token.
+- A Community Management grant stands for a separate LinkedIn app, so it never revokes the member's Share on
+  LinkedIn token (and the other way round), although the mock serves both with one client.
 - Issuing a token with a **different scope set** revokes the member's earlier tokens.
 
 ## Share API behaviour
@@ -102,13 +106,24 @@ The exact binding error goes to the debug log, not the caller.
 URNs in paths can be URL encoded (`urn%3Ali%3Ashare%3A123`) as LinkedIn requires.
 Every response on both hosts carries an `x-li-uuid` correlation id that also appears in the logs.
 
+## Community Management API behaviour
+
+| Call | Needs | Mock behaviour |
+|---|---|---|
+| `GET /rest/organizationAcls?q=roleAssignee&role=ADMINISTRATOR&state=APPROVED` | `rw_organization_admin` | The configured member is an approved `ADMINISTRATOR` of `organizationUrn` (default `urn:li:organization:1477`). |
+| `GET /rest/reactions/(entity:{urn})?q=entity` | `r_organization_social_feed` | Reactions injected on that post, newest first, oldest first with `sort=(value:CHRONOLOGICAL)`; `start`/`count` paging. |
+| `GET /rest/socialActions/{urn}/comments` | `r_organization_social_feed` | Comments injected on that post, oldest first. The text is a placeholder: the mock keeps none. |
+| `GET /rest/organizationalEntityNotifications?q=criteria&actions=List(SHARE,...)&organizationalEntity={org}&timeRange=(start:{ms},end:{ms})` | `r_organization_social_feed` | Reshares injected in the time range, as `SHARE` notifications (`sourcePost`, `generatedActivity`, `decoratedGeneratedActivity.share.owner`). 403 for another page. |
+
 ## Admin endpoints (local only)
 
 With `enableMockAdmin = true` (off by default) and `mockAdminKey` set to at least 32 characters, the API
 listener also serves:
 
 - `GET /mock/posts` lists every post the mock holds.
-- `POST /mock/reset` clears tokens, codes, posts, uploads and rate counters.
+- `POST /mock/engagement` `{kind: REACTION|COMMENT|RESHARE, targetUrn, actorUrn, commentary?}` stores an engagement
+  the Community Management finders above return. `commentary` only marks a reshare as having words.
+- `POST /mock/reset` clears tokens, codes, posts, uploads, engagements and rate counters.
 
 Every call must carry the key in `X-Amplify-Internal-Key`, the same header amplify-jobs uses for its own
 endpoints; a missing or wrong key gets a `401`. With the flag on but no usable key, the endpoints are not

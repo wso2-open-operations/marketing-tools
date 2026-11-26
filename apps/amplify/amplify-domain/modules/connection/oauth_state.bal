@@ -46,6 +46,9 @@ public type OAuthState record {|
     time:Utc createdAt;
     # Expiry (`createdAt` + 10 minutes)
     time:Utc expiresAt;
+    # Which flow: `SHARE_ON_LINKEDIN` (an employee's own connection) or `COMMUNITY_MANAGEMENT` (an admin connecting
+    # the company page). Each flow refuses the other's state
+    types:ProviderApi providerApi = types:SHARE_ON_LINKEDIN;
 |};
 
 # Persistence port for `connection_oauth_state`.
@@ -81,6 +84,22 @@ public isolated function newOAuthState(types:EmployeeId employeeId, string? retu
     pendingCampaignId,
     createdAt: now,
     expiresAt: time:utcAddSeconds(now, <decimal>oauthStateTtlSeconds)
+};
+
+# Builds a fresh state for an admin connecting the company page (Community Management app).
+#
+# + employeeId - Signed-in admin
+# + now - Current time
+# + return - The state, or an error when the random source fails
+public isolated function newPageOAuthState(types:EmployeeId employeeId, time:Utc now) returns OAuthState|error => {
+    state: check randomToken(),
+    employeeId,
+    nonce: check randomToken(),
+    returnTo: (),
+    pendingCampaignId: (),
+    createdAt: now,
+    expiresAt: time:utcAddSeconds(now, <decimal>oauthStateTtlSeconds),
+    providerApi: types:COMMUNITY_MANAGEMENT
 };
 
 # Checks the `nonce` claim of the ID token a connect returns against the one Amplify sent on the
@@ -125,6 +144,7 @@ type OAuthStateRow record {|
     string? pending_campaign_id;
     time:Utc created_at;
     time:Utc expires_at;
+    string provider_api;
 |};
 
 # `OAuthStateRepository` over PostgreSQL.
@@ -142,7 +162,7 @@ public isolated class PgOAuthStateRepository {
         _ = check self.db->execute(`
             INSERT INTO connection_oauth_state (state, employee_id, provider, provider_api, nonce, return_to,
                                                 pending_campaign_id, created_at, expires_at)
-            VALUES (${s.state}, ${s.employeeId}, ${types:LINKEDIN}, ${types:SHARE_ON_LINKEDIN}, ${s.nonce},
+            VALUES (${s.state}, ${s.employeeId}, ${types:LINKEDIN}, ${s.providerApi}, ${s.nonce},
                     ${s.returnTo}, CAST(${s.pendingCampaignId} AS uuid), CAST(${store:ts(s.createdAt)} AS timestamptz),
                     CAST(${store:ts(s.expiresAt)} AS timestamptz))`);
     }
@@ -154,7 +174,7 @@ public isolated class PgOAuthStateRepository {
             WHERE state = ${state} AND employee_id = ${employeeId}
               AND expires_at > CAST(${store:ts(now)} AS timestamptz)
             RETURNING state, employee_id, nonce, return_to, pending_campaign_id::text AS pending_campaign_id,
-                      created_at, expires_at`);
+                      created_at, expires_at, provider_api`);
         if row is error {
             return store:isNoRows(row) ? () : row;
         }
@@ -165,7 +185,8 @@ public isolated class PgOAuthStateRepository {
             returnTo: row.return_to,
             pendingCampaignId: row.pending_campaign_id,
             createdAt: row.created_at,
-            expiresAt: row.expires_at
+            expiresAt: row.expires_at,
+            providerApi: check row.provider_api.ensureType()
         };
     }
 }

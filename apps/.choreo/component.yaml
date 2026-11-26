@@ -178,6 +178,19 @@ configurations:
           type: boolean
           required: false
     # Pacing: least minutes between two LinkedIn posts of the same employee (default 10; 0 = off).
+    # Community Management app (the company page connection): refreshes the page token. Secret as a secret.
+    - name: BAL_CONFIG_VAR_LINKEDINPAGECLIENTID
+      valueFrom:
+        configForm:
+          displayName: LinkedIn Community Management app client id
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_LINKEDINPAGECLIENTSECRET
+      valueFrom:
+        configForm:
+          displayName: LinkedIn Community Management app client secret
+          type: secret
+          required: false
     - name: BAL_CONFIG_VAR_SHAREPUBLISHGAPMINUTES
       valueFrom:
         configForm:

@@ -46,6 +46,8 @@ Enforced twice: API proxy scopes per resource, then the Ballerina request interc
 | S2 | `DELETE /connections/linkedin` | `EMPLOYEE` | D own | D own | D own | D own | D own | Revokes the token at LinkedIn first (kept and 503 if LinkedIn is down), then deletes the token row; points kept or reversed per plan D6 (open) |
 | C1 Sharing | `POST /campaigns/{id}/shares` | `EMPLOYEE` | C own | C own | C own | C own | C own | Campaign `open`; connection active (not `NEEDS_RECONNECT`); one per campaign per employee. After `FAILED` the same row is retried (ADR-015). `sharing.enabled` kill switch |
 | C1 | `GET /me/shares` | `EMPLOYEE` | R own | R own | R own | R own | R own | |
+| C1 | `POST /campaigns/{id}/native-intent` | `EMPLOYEE` | X own | X own | X own | X own | X own | Campaign OPEN, else 404; a later click restarts the 24 h look unless detected |
+| C1 | `GET /me/native-intents` | `EMPLOYEE` | R own | R own | R own | R own | R own | `nativeStatus` LOOKING (under 24 h) / DETECTED / NOT_FOUND |
 | S3 External Sharing | `POST /external-shares` | `EMPLOYEE` | C own | C own | C own | C own | C own | Normalized `(evidence_url, action)` unique across everyone → `EVIDENCE_ALREADY_CLAIMED` (ADR-017); URL host allow-list |
 | S3 | `GET /me/external-shares` | `EMPLOYEE` | R own | R own | R own | R own | R own | |
 | S3 | `GET /po/external-shares?status=PENDING` | `CAN_REVIEW_SHARES` | — | R | — | — | — | |
@@ -72,6 +74,10 @@ Enforced twice: API proxy scopes per resource, then the Ballerina request interc
 | S5 / Admin | `POST /admin/announcements/{id}/retry` | `CAN_ADMIN` | — | — | — | — | X | Only while `FAILED`; `announcements.enabled` kill switch |
 | Admin | `GET /admin/settings` | `CAN_ADMIN` | — | — | — | — | R | |
 | Admin | `PUT /admin/settings` | `CAN_ADMIN` | — | — | — | — | U | Kill switches, `leaderboard.top_n`, run schedule (`run.schedule`, `run.enabled`, `maintenance.schedule`, pushed to the scheduler, ADR-026), reminder days, `campaign.default_window_days`. Coin settings hidden |
+| Admin | `GET /admin/linkedin-page` | `CAN_ADMIN` | — | — | — | — | R | Company page connection, calls today vs `engagement.daily_call_budget` |
+| Admin | `POST /admin/linkedin-page/connect/start` | `CAN_ADMIN` | — | — | — | — | X | Community Management app, page scopes only |
+| Admin | `POST /admin/linkedin-page/connect/complete` | `CAN_ADMIN` | — | — | — | — | X | Approved LinkedIn ADMINISTRATOR of the page, else 403 `NOT_PAGE_ADMIN`; tokens sealed as ORG; audited |
+| Admin | `DELETE /admin/linkedin-page` | `CAN_ADMIN` | — | — | — | — | X | Revokes at LinkedIn, deletes the tokens, marks revoked; audited |
 | Admin | `POST /admin/scheduler/sync` | `CAN_ADMIN` | — | — | — | — | X | Converges the scheduler jobs to the settings (ADR-026) |
 | Ops | `GET /health`, `GET /ready` | n/a | n/a | n/a | n/a | n/a | n/a | Not exposed through the proxy to users |
 | Internal | `amplify-jobs POST /runs` | — | — | — | — | — | — | Project visibility only; called by the scheduler (ADR-026) and `amplify-api`, never by users |

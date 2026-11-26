@@ -21,6 +21,7 @@ import amplify_domain.store;
 
 import ballerina/http;
 import ballerina/log;
+import ballerina/time;
 import ballerinax/postgresql;
 
 # Port the worker listens on (Project visibility only, never published).
@@ -152,6 +153,47 @@ service http:InterceptableService / on jobsListener {
             return <http:InternalServerError>{body: {message: "Partition maintenance failed"}};
         }
         log:printInfo(string `Partition maintenance done: ${result.toString()}`);
+        return result;
+    }
+
+    # Community Management engagement sync (phase 4): reactions, comments and native reshares on the page's open
+    # campaign posts become engagements with their `EngagementRecorded` event, scored by the next `POST /runs`.
+    # Off unless `engagement.sync_enabled` is true (answers `OFF`). One sync at a time across replicas, on its own
+    # connection and lock: a second caller gets 202 `SKIPPED`. The scheduler calls it (`engagement.schedule`).
+    #
+    # + correlationId - Trigger correlation id (`X-Correlation-ID`), logged with the sync
+    # + return - What was done, 202 when another sync is in progress, 503 when the database isn't reachable, or 500
+    resource function post engagement/sync(@http:Header {name: "X-Correlation-ID"} string? correlationId)
+            returns EngagementSyncResult|http:Accepted|http:ServiceUnavailable|http:InternalServerError {
+        postgresql:Client|error dbc = engagementDb();
+        if dbc is error {
+            log:printError("Engagement sync: database unavailable", resilience:loggable(dbc));
+            return <http:ServiceUnavailable>{body: {message: "Database unavailable"}};
+        }
+        PgRunLock guard = new (dbc, ENGAGEMENT_SYNC_LOCK_KEY);
+        boolean|error acquired = guard.tryAcquire();
+        if acquired is error {
+            recordDbFailure(acquired);
+            log:printError("Engagement sync: could not take the sync lock", resilience:loggable(acquired));
+            return <http:ServiceUnavailable>{body: {message: "Database unavailable"}};
+        }
+        if !acquired {
+            log:printInfo("Engagement sync skipped: another sync is in progress", correlationId = correlationId);
+            return <http:Accepted>{body: <EngagementSyncSkipped>{}};
+        }
+        // `trap`: however the sync ends (error or panic), the session lock is released below.
+        EngagementSyncResult|error result = trap runEngagementSync(new PgEngagementStore(dbc), communityAdapter,
+                tokenCipher, time:utcNow());
+        error? released = guard.release();
+        if released is error {
+            log:printError("Engagement sync lock release failed (the session drop releases it)", released);
+        }
+        if result is error {
+            recordDbFailure(result);
+            log:printError("Engagement sync failed", resilience:loggable(result), correlationId = correlationId);
+            return <http:InternalServerError>{body: {message: "Engagement sync failed"}};
+        }
+        logEngagementSync(result, correlationId);
         return result;
     }
 

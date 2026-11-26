@@ -30,6 +30,9 @@ type AccessTokenResponse record {
     int expires_in;
     string scope?;
     string id_token?;
+    // Community Management apps get a programmatic refresh token (about 365 days) with the access token.
+    string refresh_token?;
+    int refresh_token_expires_in?;
 };
 
 type UserInfoResponse record {
@@ -119,16 +122,7 @@ public isolated class LinkedInAdapter {
         http:Response|http:ClientError response = self.auth->post("/oauth/v2/accessToken", form,
                 mediaType = mime:APPLICATION_FORM_URLENCODED);
         http:Response ok = check expectStatus(response, "token exchange");
-        AccessTokenResponse body = check readTokenBody(ok);
-        string[] scopes = [];
-        foreach string scope in re `[,\s]+`.split(body.scope ?: "") {
-            if scope.length() > 0 {
-                scopes.push(scope);
-            }
-        }
-        string? idToken = body.id_token;
-        return {accessToken: body.access_token, expiresInSeconds: body.expires_in, scopes,
-            idToken: idToken is string && idToken.trim().length() > 0 ? idToken : ()};
+        return toTokenGrant(check readTokenBody(ok));
     }
 
     public isolated function userInfo(string accessToken) returns MemberProfile|ProviderError {
@@ -310,6 +304,31 @@ isolated function classify(int status) returns [ProviderErrorCode, boolean] {
         return [UNAVAILABLE, true];
     }
     return [REJECTED, false];
+}
+
+# Maps a token endpoint body to a `TokenGrant` (code exchange and refresh grant alike).
+#
+# + body - Token endpoint body
+# + return - The grant
+isolated function toTokenGrant(AccessTokenResponse body) returns TokenGrant {
+    string[] scopes = [];
+    foreach string scope in re `[,\s]+`.split(body.scope ?: "") {
+        if scope.length() > 0 {
+            scopes.push(scope);
+        }
+    }
+    string? idToken = body.id_token;
+    string? refreshToken = body.refresh_token;
+    boolean hasRefresh = refreshToken is string && refreshToken.trim().length() > 0;
+    int? refreshExpires = body.refresh_token_expires_in;
+    return {
+        accessToken: body.access_token,
+        expiresInSeconds: body.expires_in,
+        scopes,
+        idToken: idToken is string && idToken.trim().length() > 0 ? idToken : (),
+        refreshToken: hasRefresh ? refreshToken : (),
+        refreshExpiresInSeconds: hasRefresh && refreshExpires is int && refreshExpires > 0 ? refreshExpires : ()
+    };
 }
 
 isolated function readTokenBody(http:Response response) returns AccessTokenResponse|ProviderError {

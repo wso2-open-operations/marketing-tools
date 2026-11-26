@@ -21,6 +21,9 @@ Every insert is `ON CONFLICT DO NOTHING`, so an admin's later change is never ov
 - `S008__token_grace_one_day.sql`: moves `connection.token_grace_days` from 5 to 1 (ADR-002). S003 can't be edited once applied; V016 does the same for databases that already have the 5.
 - `S009__top_scope_month.sql`: moves `leaderboard.top_scope` from WEEK to MONTH (ADR-037 amended). S007 can't be edited once applied. It changes WEEK to MONTH whoever set it, so an admin's WEEK becomes MONTH on its first run; an admin value of ALL is kept.
 - `S010__top_min_points_setting.sql`: `leaderboard.top_min_points = 100`, the points needed in the month to qualify for the Celebrate top three (ADR-037); an admin can change it.
+- `S011__external_share_daily_limit.sql`: `external_share.daily_limit = 3`, the own posts one employee may submit per UTC day (phase 3; 0 = no limit); the PO team decides the number, and an admin can change it.
+- `S012__coin_settings.sql`: the Coins settings, `coin.block_points = 100`, `coin.block_coins = 10`, `coin.schedule = "MONTHLY"` and `coin.wallets_enabled = false` (phase 2: automatic conversion, wallets off until the WSO2 Coins API exists); the PO team changes the rate and schedule, an admin the switch.
+- `S013__engagement_sync_settings.sql`: the Community Management engagement sync (V025), `engagement.sync_enabled = false`, `engagement.schedule = "0 */2 * * *"` and `engagement.daily_call_budget = 450` (calls per UTC day across runs).
 
 ## Rules
 

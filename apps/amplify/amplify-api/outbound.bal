@@ -136,6 +136,13 @@ configurable string tokenKeys = "";
 # Key id used for new tokens.
 configurable string tokenCurrentKeyId = "";
 
+# Community Management app client id (the page connection; a separate LinkedIn app from Share on LinkedIn). Locally
+# the mock client. Empty = page connection unavailable (503).
+configurable string linkedinPageClientId = "";
+# Its client secret (Choreo secret).
+configurable string linkedinPageClientSecret = "";
+# Redirect URI registered on that app (the Amplify Admin page callback in One WSO2).
+configurable string linkedinPageRedirectUri = "";
 # Validate the OIDC ID token from the code exchange (common H1 / api H1): RS256 against LinkedIn's JWKS,
 # `iss`, `aud` = client id, `exp`/`iat`, and its `sub` must match userinfo. Off by default until a real
 # LinkedIn app has been seen to return the ID token for this flow. No PKCE: it is native-client-only at
@@ -154,6 +161,7 @@ configurable string linkedinJwksUrl = linkedin:LINKEDIN_JWKS_URL;
 configurable string linkedinOidcIssuer = linkedin:LINKEDIN_OIDC_ISSUER;
 
 final linkedin:ProviderAdapter? linkedInAdapter = check newLinkedInAdapter();
+final linkedin:CommunityPort? communityAdapter = check newCommunityAdapter();
 final crypto:TokenCipher? tokenCipher = check newTokenCipher();
 final linkedin:IdTokenValidator? idTokenValidator = check newIdTokenValidator();
 
@@ -269,6 +277,35 @@ isolated function checkPrivacyNoticeUrl(string url) returns error? {
         return error("privacyNoticeUrl must be empty or an absolute https:// URL without spaces");
     }
 }
+
+# The Community Management client for the page connection (admin connect, ACL check, revoke). Its own pools and
+# breakers. Empty `linkedinPageClientId` = page connection unavailable (503).
+#
+# + return - The adapter, `()` when not configured, or an error
+isolated function newCommunityAdapter() returns linkedin:CommunityPort?|error {
+    if linkedinPageClientId.trim() == "" {
+        return ();
+    }
+    check checkRedirectUri(linkedinPageRedirectUri, environment);
+    return check new linkedin:CommunityAdapter({
+        apiBaseUrl: linkedinApiBaseUrl,
+        authBaseUrl: linkedinAuthBaseUrl,
+        authorizeBaseUrl: linkedinAuthorizeBaseUrl,
+        clientId: linkedinPageClientId.trim(),
+        clientSecret: linkedinPageClientSecret,
+        redirectUri: linkedinPageRedirectUri
+    });
+}
+
+# Test seam: the Community Management client.
+#
+# + return - The client, or `()` when not configured
+isolated function communityProvider() returns linkedin:CommunityPort? => communityAdapter;
+
+# Test seam: the page connection's redirect URI (the admin callback page).
+#
+# + return - The URI
+isolated function pageRedirectUri() returns string => linkedinPageRedirectUri;
 
 # Test seam: the configured LinkedIn redirect URI (what the authorize request and the token exchange carry).
 #

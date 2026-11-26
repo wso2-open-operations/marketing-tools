@@ -14,7 +14,7 @@ Ballerina backend for WSO2 Amplify phase 1. Three Ballerina deployables, the sch
 ## Architecture
 - `amplify-api`: published API, fronted by the Choreo API proxy at the cell edge (ADR-004). Only the proxy is published; the backend endpoint is Organization-visible so the proxy's gateway can reach it (ADR-004 amendment).
 - `amplify-jobs`: HTTP-triggered worker, no internal timer (ADR-003).
-- `amplify-scheduler`: pinned `akorn/scheduler` image (ADR-026, replaces amplify-cron). Calls `amplify-jobs POST /runs` and `/maintenance/partitions`; amplify-api pushes the schedules from `config_app_setting`. Its API has no auth: internal only, own Postgres database/user. Scheduler IT: `scripts/it-scheduler.sh`.
+- `amplify-scheduler`: pinned `akorn/scheduler` image (ADR-026, replaces amplify-cron). Calls `amplify-jobs POST /runs`, `/maintenance/partitions` and `/engagement/sync` (off unless `engagement.sync_enabled`); amplify-api pushes the schedules from `config_app_setting`. Its API has no auth: internal only, own Postgres database/user. Scheduler IT: `scripts/it-scheduler.sh`.
 - `amplify-database`: Amplify DB Migrate (Manual Task / Compose one-shot), forward-only `V###__name.sql`.
 - `amplify-common`: shared types, events, crypto and adapters (ADR-020).
 - `amplify-domain`: bounded contexts (domain + repository ports + PostgreSQL repositories) and `store` (client, outbox/audit writers), used by api and jobs (ADR-021).

@@ -6,7 +6,7 @@ The Amplify worker (Ballerina). It does the background work: announcements, Link
 
 amplify-jobs has no timer of its own (ADR-003). Two callers start its work:
 
-- The scheduler (the pinned `akorn/scheduler` image, ADR-026) calls `POST /runs` and `POST /maintenance/partitions` on the schedules in `config_app_setting`. amplify-api registers those jobs (`amplify-api/scheduler_sync.bal`).
+- The scheduler (the pinned `akorn/scheduler` image, ADR-026) calls `POST /runs`, `POST /maintenance/partitions` and `POST /engagement/sync` on the schedules in `config_app_setting`. amplify-api registers those jobs (`amplify-api/scheduler_sync.bal`).
 - amplify-api calls it right away for "Save & Share Now".
 
 It is reachable inside the Amplify project only and is never published (`workload.yaml`: `visibility: project`, port 9091).
@@ -16,7 +16,7 @@ Every route except `GET /health` and `GET /ready` needs the header `X-Amplify-In
 | Key | Setting | What it opens |
 | --- | --- | --- |
 | Internal key | `internalApiKey` | Every route. Used by amplify-api |
-| Scheduler key | `schedulerApiKey` | Only `POST /runs` and `POST /maintenance/partitions`. Any other route answers 403 |
+| Scheduler key | `schedulerApiKey` | Only `POST /runs`, `POST /maintenance/partitions` and `POST /engagement/sync`. Any other route answers 403 |
 
 A missing or wrong key answers 401. The worker refuses to start without both keys, or when they are equal (`checkKeys` in `auth.bal`). Keys are compared in constant time.
 
@@ -30,6 +30,7 @@ Defined in `service.bal`; the contract is `openapi.yaml`.
 | `GET /ready` | Readiness. Reports the database, each breaker, the outbox backlog and the token partition runway. Answers 200 unless the database is not configured (`dbHost` empty), because Choreo stops routing on any non-2xx |
 | `POST /runs` | The Run. Synchronous. Returns the run log. `202 SKIPPED` while another run holds the lock, `503` when the database is not reachable. Optional `X-Correlation-ID` header |
 | `POST /maintenance/partitions` | Daily upkeep (see Maintenance). `202 SKIPPED` when another pass is running |
+| `POST /engagement/sync` | Community Management engagement sync (`engagement.bal`): off unless `engagement.sync_enabled`; reactions, comments and native reshares on the page's open posts become engagements with `EngagementRecorded`, within `engagement.daily_call_budget`. `202 SKIPPED` when another sync is running. Refreshing the page token needs `linkedinPageClientSecret` |
 | `POST /maintenance/leavers` | Runs only the leaver sweep (the daily upkeep includes it) |
 | `POST /maintenance/rebuild-recognition` | Rebuilds every leaderboard and standing table from the ledger and returns the new standing version. The ledger is the source of truth, so this is always safe |
 
