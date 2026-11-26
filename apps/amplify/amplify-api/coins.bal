@@ -126,5 +126,35 @@ isolated function captureCoinsWallet(auth:Principal p, string? userAssertion, st
 isolated function walletDto(string address, time:Utc capturedAt) returns json =>
     {walletAddress: scoring:maskWallet(address), capturedAt: ts(capturedAt)};
 
+# History row kinds (openapi `HistoryItem.kind`).
+type HistoryKind "LEDGER"|"COIN_CONVERSION";
+
+# A ledger row.
+const HistoryKind HISTORY_LEDGER = "LEDGER";
+# A Coins conversion.
+const HistoryKind HISTORY_COIN_CONVERSION = "COIN_CONVERSION";
+
+# A conversion row's state (openapi `HistoryItem.conversionStatus`).
+type ConversionStatus "SENT"|"IN_PROGRESS";
+
+# The Coins service recorded the transfer.
+const ConversionStatus CONVERSION_SENT = "SENT";
+# The transfer is not confirmed yet (PENDING or UNKNOWN; the next conversion run settles it).
+const ConversionStatus CONVERSION_IN_PROGRESS = "IN_PROGRESS";
+
+# The Coins service as the admin settings screen shows it (openapi `SettingList.coins`).
+type CoinsConnection record {|
+    # Whether the Coins client is configured (URL, token endpoint and credentials set)
+    boolean connected;
+    # Its breaker, `NOT_CONFIGURED` when not configured
+    BreakerReport breaker;
+|};
+
+# Whether the Coins service is set up, from the client in memory (no call to the service).
+#
+# + return - The connection status
+isolated function coinsConnection() returns CoinsConnection =>
+    {connected: coinsPort() !is (), breaker: coinsBreaker()};
+
 isolated function coinsUnavailable(string? correlationId) returns http:ServiceUnavailable =>
     unavailable(COINS_UNAVAILABLE, correlationId, "WSO2 Coins can't be reached right now, try again shortly");

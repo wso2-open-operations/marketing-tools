@@ -386,15 +386,23 @@ isolated function history(auth:Principal p, string? correlationId, string employ
                 return forbidden(TEAM_SCOPE, correlationId, "You can only see your team's history");
             }
         }
-        scoring:LedgerPage result = check ledgerHistory(target, page, size);
+        scoring:TimelinePage result = check ledgerTimeline(target, page, size);
         boolean adjuster = can(p, auth:CAN_ADJUST_POINTS);
         boolean own = target == p.employeeId;
         scoring:PointsSummary summary = check pointsSummary(target);
-        map<string> reversals = check reversalsAmong(from types:LedgerEntry e in result.items select e.reference);
-        map<string> titles = check campaignTitles(campaignIdsOf(result.items));
-        json[] items = from types:LedgerEntry e in result.items
-            select historyItem(adjuster ? ledgerDto(e).toJson() : own ? ledgerDtoForSelf(e) : ledgerDtoForTeammate(e),
-                    e, reversals, titles);
+        types:LedgerEntry[] entries = from scoring:TimelineEntry t in result.items
+            where t is types:LedgerEntry select t;
+        map<string> reversals = check reversalsAmong(from types:LedgerEntry e in entries select e.reference);
+        map<string> titles = check campaignTitles(campaignIdsOf(entries));
+        json[] items = [];
+        foreach scoring:TimelineEntry t in result.items {
+            if t is types:LedgerEntry {
+                items.push(historyItem(adjuster ? ledgerDto(t).toJson() : own ? ledgerDtoForSelf(t)
+                    : ledgerDtoForTeammate(t), t, reversals, titles));
+            } else {
+                items.push(conversionItem(t, adjuster || own));
+            }
+        }
         return {employeeId: target, page, size, total: result.total, totalPoints: summary.total,
             heldPoints: summary.held, items};
     } on fail error e {
@@ -542,11 +550,15 @@ isolated function dashboardTx(postgresql:Client pg, string month, int slaHours, 
 
 isolated function settingsBody(readonly & string[]? only = ()) returns json|error {
     store:Setting[] rows = check settingRows();
-    return {
-        settings: from store:Setting s in rows
-            where isVisibleSetting(s.key) && (only is () || only.indexOf(s.key) !is ())
-            select {key: s.key, value: s.value, version: s.version, updatedBy: s.updatedBy, updatedAt: ts(s.updatedAt)}
-    };
+    json[] settings = from store:Setting s in rows
+        where isVisibleSetting(s.key) && (only is () || only.indexOf(s.key) !is ())
+        select {key: s.key, value: s.value, version: s.version, updatedBy: s.updatedBy, updatedAt: ts(s.updatedAt)};
+    if only is string[] {
+        return {settings};
+    }
+    // The admin view: whether the Coins service is set up beside the "Send Coins to wallets" switch. Read from the
+    // client in memory; no call to the Coins service.
+    return {settings, coins: coinsConnection().toJson()};
 }
 
 isolated function changeSettings(auth:Principal p, string? correlationId, SettingChangesBody body,
@@ -690,9 +702,27 @@ isolated function historyItem(json base, types:LedgerEntry e, map<string> revers
     row["campaignTitle"] = campaignId is string ? titles[campaignId] : ();
     row["reversedBy"] = reversals[e.reference];
     types:LedgerStatus? status = e.status;
+    row["kind"] = HISTORY_LEDGER;
     row["settlement"] = status is () ? "ACTION_REQUIRED" : status == types:PAID ? "PAID" : "HELD";
     return row;
 }
+
+# A history row for one Coins conversion (ADR-048): `800 points -> 80 Coins`, `SENT` or `IN_PROGRESS` while the transfer
+# is not confirmed (PENDING or UNKNOWN). The transfer reference is for the person and the PO team only.
+#
+# + c - The conversion
+# + withTransfer - Whether to include the Coins service's transfer reference
+# + return - The row
+isolated function conversionItem(scoring:CoinConversion c, boolean withTransfer) returns json => {
+    kind: HISTORY_COIN_CONVERSION,
+    reference: c.reference,
+    employeeId: c.employeeId,
+    createdAt: ts(c.at),
+    points: c.points,
+    coins: c.coins,
+    conversionStatus: c.status == scoring:COIN_SENT ? CONVERSION_SENT : CONVERSION_IN_PROGRESS,
+    transferReference: withTransfer ? c.transferReference : ()
+};
 
 # A review item with who sent it (name and work email), when they are known.
 #

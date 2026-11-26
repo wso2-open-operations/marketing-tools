@@ -340,8 +340,8 @@ isolated function mockMonthlyPoints(types:EmployeeId employeeId) returns recogni
     return [{month: "2026-10", points: 30, actions: 2}, {month: "2026-09", points: 10, actions: 1}];
 }
 
-@test:Mock {functionName: "ledgerHistory"}
-isolated function mockLedgerHistory(types:EmployeeId employeeId, int page, int size) returns scoring:LedgerPage|error {
+@test:Mock {functionName: "ledgerTimeline"}
+isolated function mockLedgerTimeline(types:EmployeeId employeeId, int page, int size) returns scoring:TimelinePage|error {
     check dbGate();
     types:LedgerEntry entry = {
         reference: "ADJ:" + employeeId + ":1",
@@ -362,6 +362,25 @@ isolated function mockLedgerHistory(types:EmployeeId employeeId, int page, int s
         paidAt: (),
         coinReference: ()
     };
+    if employeeId.startsWith("coins-") {
+        // Someone the conversion paid: a SENT conversion, a PAID row that names it, and one still in progress.
+        types:LedgerEntry paid = entry.clone();
+        paid.reference = "AMP-" + employeeId;
+        paid.sourceType = types:ENGAGEMENT;
+        paid.action = types:REPOST;
+        paid.reason = ();
+        paid.points = 800;
+        paid.status = types:PAID;
+        paid.paidAt = [1796090400, 0];
+        paid.coinReference = "CNV-" + employeeId;
+        return {items: [
+            <scoring:CoinConversion>{reference: "CNV-next-" + employeeId, employeeId, points: 100, coins: 10,
+                status: scoring:COIN_UNKNOWN, transferReference: (), at: [1798768800, 0]},
+            <scoring:CoinConversion>{reference: "CNV-" + employeeId, employeeId, points: 800, coins: 80,
+                status: scoring:COIN_SENT, transferReference: "tx-80", at: [1796090400, 0]},
+            paid
+        ], total: 3};
+    }
     return {items: [entry], total: 1};
 }
 

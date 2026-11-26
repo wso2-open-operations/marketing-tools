@@ -211,3 +211,53 @@ function testCoinCapsAreAdminSettings() {
     test:assertTrue(touchesSchedule(["coin.schedule"]));
     test:assertTrue(touchesSchedule(["coin.wallets_enabled"]));
 }
+
+@test:Config {groups: ["coins"]}
+function testHistoryCarriesCoinConversionsBesideTheLedgerRows() returns error? {
+    string token = check employee("coins-hist");
+    http:Response res = check send("GET", "/team/coins-hist/history", (), token);
+    test:assertEquals(res.statusCode, 200);
+    check assertShape(res, "PointsHistory");
+    json body = check res.getJsonPayload();
+    test:assertEquals(check body.total, 3);
+    json[] items = <json[]>check body.items;
+    test:assertEquals(items[0], {kind: "COIN_CONVERSION", reference: "CNV-next-coins-hist", employeeId: "coins-hist",
+        createdAt: "2027-01-01T02:00:00Z", points: 100, coins: 10, conversionStatus: "IN_PROGRESS",
+        transferReference: ()}, "an unconfirmed transfer shows in progress");
+    test:assertEquals(items[1], {kind: "COIN_CONVERSION", reference: "CNV-coins-hist", employeeId: "coins-hist",
+        createdAt: "2026-12-01T02:00:00Z", points: 800, coins: 80, conversionStatus: "SENT",
+        transferReference: "tx-80"});
+    map<json> paid = <map<json>>items[2];
+    test:assertEquals([paid["kind"], paid["settlement"], paid["coinReference"], paid["paidAt"]],
+        ["LEDGER", "PAID", "CNV-coins-hist", "2026-12-01T02:00:00Z"], "the paid row names its conversion");
+
+    // A PO sees the transfer reference too; it is the person's and the PO team's only.
+    http:Response asPo = check send("GET", "/team/coins-hist/history", (), check po());
+    test:assertEquals((<map<json>>(<json[]>check (check asPo.getJsonPayload()).items)[1])["transferReference"], "tx-80");
+}
+
+@test:Config {groups: ["coins"]}
+function testConversionRowsHideTheTransferFromTeammates() {
+    scoring:CoinConversion c = {reference: "CNV-1", employeeId: "e1", points: 800, coins: 80, status: scoring:COIN_SENT,
+        transferReference: "tx-1", at: [1796090400, 0]};
+    test:assertEquals((<map<json>>conversionItem(c, false))["transferReference"], ());
+    test:assertEquals((<map<json>>conversionItem(c, true))["transferReference"], "tx-1");
+    c.status = scoring:COIN_PENDING;
+    test:assertEquals((<map<json>>conversionItem(c, true))["conversionStatus"], "IN_PROGRESS");
+}
+
+@test:Config {groups: ["coins"]}
+function testAdminSettingsSayWhetherTheCoinsServiceIsConnected() returns error? {
+    string admin = check mint({sub: "adm-coins", email: "adm-coins@wso2.com", groups: [ADMIN_GROUP]});
+    setCoinsConfigured(true);
+    http:Response connected = check send("GET", "/admin/settings", (), admin);
+    test:assertEquals(connected.statusCode, 200);
+    check assertShape(connected, "SettingList");
+    test:assertEquals(check (check connected.getJsonPayload()).coins, {connected: true, breaker: "CLOSED"});
+    setCoinsConfigured(false);
+    http:Response off = check send("GET", "/admin/settings", (), admin);
+    test:assertEquals(check (check off.getJsonPayload()).coins, {connected: false, breaker: "NOT_CONFIGURED"});
+    setCoinsConfigured(true);
+    http:Response poView = check send("GET", "/po/settings", (), check po());
+    test:assertFalse((check poView.getJsonPayload()).coins is json, "the PO view has no connection block");
+}

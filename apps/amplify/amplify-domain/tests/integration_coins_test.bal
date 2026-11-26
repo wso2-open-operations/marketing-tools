@@ -66,8 +66,9 @@ function testCoinRepositoryRoundTrip() returns error? {
         AND entity_id = ${alice} AND after::text LIKE '%…%'`), 3, "audited with the masked address only");
 
     scoring:PgCoinRepository repo = new (db);
-    // A period of its own (the shared database may hold others; a rerun reopens it, the employees are new).
-    string period = "2091-07";
+    // A period of its own: the shared database may hold others, and a rerun on the same database must not reuse it.
+    int n = check int:fromHexString(uniq().substring(0, 4));
+    string period = string `2091-${(n / 100 % 100).toString().padZero(2)}-${(n % 100).toString().padZero(2)}`;
     scoring:CoinRun run = check repo.openRun(period, now);
     scoring:CoinRun reopened = check repo.openRun(period, now);
     test:assertEquals(reopened.id, run.id, "one run per period");
@@ -138,5 +139,22 @@ function testCoinRepositoryRoundTrip() returns error? {
     scoring:CoinSummary none = check scoring:coinSummaryOf(db, bob);
     test:assertEquals([none.coinsReceived, none.carryPoints], [0, 0]);
     test:assertEquals(none.walletAddress, ());
+
+    // History: the conversion is a row of its own next to the ledger rows; a skipped issue moved nothing and is not.
+    scoring:TimelinePage timeline = check scoring:timelineOf(db, alice, 0, 10);
+    test:assertEquals(timeline.total, 3);
+    scoring:CoinConversion[] conversions = from scoring:TimelineEntry e in timeline.items
+        where e is scoring:CoinConversion select e;
+    test:assertEquals(conversions.length(), 1);
+    test:assertEquals([conversions[0].points, conversions[0].coins], [200, 20], "blocks x block points, not points in");
+    test:assertEquals(conversions[0].status, scoring:COIN_SENT);
+    test:assertEquals(conversions[0].transferReference, "tx-it-" + alice);
+    test:assertEquals(conversions[0].reference, ia.reference);
+    scoring:TimelinePage second = check scoring:timelineOf(db, alice, 1, 2);
+    test:assertEquals([second.total, second.items.length()], [3, 1], "paged across both kinds");
+    scoring:TimelinePage past = check scoring:timelineOf(db, alice, 5, 2);
+    test:assertEquals([past.total, past.items.length()], [3, 0]);
+    scoring:TimelinePage bobs = check scoring:timelineOf(db, bob, 0, 10);
+    test:assertEquals(bobs.total, 1, "SKIPPED_NO_WALLET is not a history row");
     check db.close();
 }

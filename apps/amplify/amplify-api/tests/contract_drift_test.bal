@@ -128,7 +128,10 @@ function testApiEnumsMatchTheirBallerinaTypes() returns error? {
         [["TeamPage", "scope"], "TeamScope"],
         [["CampaignRegistration", "run"], "RunTrigger"],
         [["BreakerState"], "BreakerReport"],
-        [["ReadyStatus", "breakers", "jobs"], "BreakerReport"]
+        [["ReadyStatus", "breakers", "jobs"], "BreakerReport"],
+        [["HistoryItem", "kind"], "HistoryKind"],
+        [["HistoryItem", "conversionStatus"], "ConversionStatus"],
+        [["SettingList", "coins", "breaker"], "BreakerReport"]
     ];
     foreach [string[], string] [path, typeName] in cases {
         assertSameSet(check specEnum(...path), check unionValues(src, typeName), string:'join(".", ...path));
@@ -154,6 +157,7 @@ function testDomainEnumsMatchTheSpec() returns error? {
             announcements:FAILED]],
         [["LedgerEntry", "sourceType"], [types:ENGAGEMENT, types:EXTERNAL_SHARE, types:ADJUSTMENT, types:REVERSAL]],
         [["LedgerEntry", "status"], [types:HELD, types:PAID]],
+        [["HistoryItem", "status"], [types:HELD, types:PAID]],
         [["Me", "grants", "items"], [auth:EMPLOYEE, auth:CAN_CAMPAIGN, auth:CAN_DASHBOARD, auth:CAN_EXPORT,
             auth:CAN_REVIEW_SHARES, auth:CAN_POINT_RULES, auth:CAN_ADJUST_POINTS, auth:CAN_PO_DASHBOARD, auth:CAN_REPORTS,
             auth:CAN_ADMIN]]

@@ -301,9 +301,15 @@ isolated function claimsForReview(external_sharing:ExternalShareStatus? status, 
     }
 }
 
-isolated function ledgerHistory(types:EmployeeId employeeId, int page, int size) returns scoring:LedgerPage|error {
+# One person's history: ledger rows and Coins conversions in one paged list (a seam the tests replace).
+#
+# + employeeId - Employee
+# + page - Zero-based page
+# + size - Page size
+# + return - The page, or an error
+isolated function ledgerTimeline(types:EmployeeId employeeId, int page, int size) returns scoring:TimelinePage|error {
     retry<resilience:TransientDbRetry> (dbReadRetries) {
-        return check scoring:historyOf(check db(), employeeId, page, size);
+        return check scoring:timelineOf(check db(), employeeId, page, size);
     }
 }
 

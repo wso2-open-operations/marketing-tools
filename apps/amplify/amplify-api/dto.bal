@@ -198,6 +198,10 @@ type LedgerEntryDto record {|
     string actorId;
     string createdAt;
     string? status;
+    # When the row became Coins (PAID only)
+    string? paidAt;
+    # The `CNV-` reference of the conversion that took (or paid) the row
+    string? coinReference;
 |};
 
 type PointRuleDto record {|
@@ -300,7 +304,9 @@ isolated function ledgerDto(types:LedgerEntry e) returns LedgerEntryDto => {
     reversesReference: e.reversesReference,
     actorId: e.actorId,
     createdAt: ts(e.createdAt),
-    status: e.status
+    status: e.status,
+    paidAt: tsOpt(e.paidAt),
+    coinReference: e.coinReference
 };
 
 # Label shown in place of a PO's free-text reason on adjustment and reversal rows.

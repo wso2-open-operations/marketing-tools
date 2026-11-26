@@ -853,7 +853,7 @@ paths:
       tags: [S4 Recognition]
       operationId: getPointsHistory
       x-access: EMPLOYEE
-      description: Ledger rows of one person, newest first. Without `CAN_ADJUST_POINTS` - self or a member of their team, else 403 `TEAM_SCOPE`.
+      description: Ledger rows and Coins conversions (`HistoryItem.kind`) of one person, newest first in one paged list. Without `CAN_ADJUST_POINTS` - self or a member of their team, else 403 `TEAM_SCOPE`.
       parameters:
         - {$ref: "#/components/parameters/CorrelationId"}
         - {$ref: "#/components/parameters/Page"}
@@ -1722,9 +1722,41 @@ components:
         actorId: {type: string, description: "The PO's employee id. Omitted for callers who are not a PO"}
         createdAt: {type: string, format: date-time}
         status: {type: string, nullable: true, enum: [HELD, PAID, null]}
+        paidAt: {type: string, format: date-time, nullable: true, description: "When the row became Coins (PAID only)"}
+        coinReference: {type: string, nullable: true, description: "The CNV- reference of the Coins conversion that took the row (set while the transfer is in progress, kept once PAID; ADR-048)"}
         campaignTitle: {type: string, nullable: true, description: "History rows only: the post the points were earned on"}
         reversedBy: {type: string, nullable: true, description: "History rows only: the reference of the row that reversed this one"}
         settlement: {type: string, enum: [HELD, PAID, ACTION_REQUIRED], description: "History rows only: HELD counts toward the next Coins, PAID became Coins, ACTION_REQUIRED waits for the PO team"}
+
+    HistoryItem:
+      type: object
+      description: >-
+        One history row. `kind: LEDGER` is a ledger row (the `LedgerEntry` fields plus `campaignTitle`, `reversedBy`,
+        `settlement`). `kind: COIN_CONVERSION` is one Coins conversion (ADR-048): `points` converted (whole blocks x
+        block points) became `coins`, dated when sent (else when attempted); the ledger rows it paid carry its
+        `reference` as `coinReference`.
+      required: [kind, reference, employeeId, points, createdAt]
+      properties:
+        kind: {type: string, enum: [LEDGER, COIN_CONVERSION]}
+        reference: {type: string, description: "Ledger reference, or the conversion's CNV- reference"}
+        employeeId: {type: string}
+        points: {type: integer, description: "LEDGER: signed points; COIN_CONVERSION: points converted"}
+        createdAt: {type: string, format: date-time}
+        campaignId: {type: string, nullable: true}
+        sourceType: {type: string, enum: [ENGAGEMENT, EXTERNAL_SHARE, ADJUSTMENT, REVERSAL]}
+        action: {type: string, nullable: true}
+        reason: {type: string, nullable: true, description: "As in LedgerEntry"}
+        reversesReference: {type: string, nullable: true}
+        actorId: {type: string, description: "The PO's employee id. Omitted for callers who are not a PO"}
+        status: {type: string, nullable: true, enum: [HELD, PAID, null]}
+        paidAt: {type: string, format: date-time, nullable: true}
+        coinReference: {type: string, nullable: true}
+        campaignTitle: {type: string, nullable: true}
+        reversedBy: {type: string, nullable: true}
+        settlement: {type: string, enum: [HELD, PAID, ACTION_REQUIRED]}
+        coins: {type: integer, description: "COIN_CONVERSION only: Coins sent"}
+        conversionStatus: {type: string, enum: [SENT, IN_PROGRESS], description: "COIN_CONVERSION only: SENT, or IN_PROGRESS while the transfer is not confirmed"}
+        transferReference: {type: string, nullable: true, description: "COIN_CONVERSION only: the WSO2 Coins transfer reference (SENT); null for teammates"}
 
     LeaderboardTop:
       type: object
@@ -2220,7 +2252,7 @@ components:
         total: {type: integer}
         totalPoints: {type: integer, description: "All-time points of this person (every row, not just this page)"}
         heldPoints: {type: integer, description: "Their points not yet paid out as Coins"}
-        items: {type: array, items: {$ref: "#/components/schemas/LedgerEntry"}}
+        items: {type: array, items: {$ref: "#/components/schemas/HistoryItem"}}
 
     PoDashboard:
       type: object
@@ -2360,6 +2392,13 @@ components:
           type: string
           enum: [SYNCED, PENDING, NOT_CONFIGURED]
           description: Only on a PUT that changed a schedule setting (ADR-026)
+        coins:
+          type: object
+          description: Admin view only (`/admin/settings`), not `/po/settings`. Whether the WSO2 Coins service is set up, from the client in memory (no call to it); shown beside `coin.wallets_enabled` (ADR-048)
+          required: [connected, breaker]
+          properties:
+            connected: {type: boolean, description: "The Coins URL, token endpoint and credentials are configured"}
+            breaker: {$ref: "#/components/schemas/BreakerState"}
     SchedulerSync:
       type: object
       required: [schedulerSync, jobs]

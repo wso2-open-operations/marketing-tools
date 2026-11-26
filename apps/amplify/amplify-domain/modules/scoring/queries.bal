@@ -224,3 +224,119 @@ public isolated function coinSummaryOf(postgresql:Client db, types:EmployeeId em
                (SELECT captured_at FROM scoring_coin_wallet WHERE employee_id = ${employeeId}) AS "walletCapturedAt"`);
     return summary;
 }
+
+# One Coins conversion as a history row (`scoring_coin_issue`, SENT or still in progress).
+public type CoinConversion record {|
+    # Our `CNV-` reference (the ledger rows it paid carry it as `coin_reference`)
+    string reference;
+    # Employee
+    types:EmployeeId employeeId;
+    # Points converted: whole blocks × block points (carry in + points in − carry out)
+    int points;
+    # Coins
+    int coins;
+    # `SENT`, or `PENDING` / `UNKNOWN` while the transfer is not confirmed
+    CoinIssueStatus status;
+    # The Coins service's transfer reference (SENT only)
+    string? transferReference;
+    # When it was sent, else when the transfer was attempted
+    time:Utc at;
+|};
+
+# A history row: a ledger row or a Coins conversion.
+public type TimelineEntry types:LedgerEntry|CoinConversion;
+
+# One page of an employee's history.
+public type TimelinePage record {|
+    # Rows, newest first
+    TimelineEntry[] items;
+    # Rows across all pages
+    int total;
+|};
+
+type ConversionRow record {|
+    string id;
+    string reference;
+    string employee_id;
+    int points;
+    int coins;
+    string status;
+    string? transfer_reference;
+    time:Utc at;
+|};
+
+# An employee's ledger rows and Coins conversions (SENT, PENDING, UNKNOWN; not FAILED or skipped, which moved
+# nothing), newest first in one paged list. A conversion is dated when it was sent (else attempted).
+#
+# + db - Client
+# + employeeId - Employee
+# + page - Zero-based page
+# + size - Page size
+# + return - The page, or an error
+public isolated function timelineOf(postgresql:Client db, types:EmployeeId employeeId, int page, int size)
+        returns TimelinePage|error {
+    [int, int] ['limit, offset] = store:pageWindow(page, size);
+    stream<record {|string kind; string ref; int total;|}, error?> keys = db->query(`
+        WITH t AS (
+            SELECT 'L' AS kind, reference AS ref, created_at AS at FROM scoring_points_ledger
+             WHERE employee_id = ${employeeId}
+            UNION ALL
+            SELECT 'C', id::text, coalesce(sent_at, attempted_at, created_at) FROM scoring_coin_issue
+             WHERE employee_id = ${employeeId} AND status IN ('SENT', 'PENDING', 'UNKNOWN'))
+        SELECT kind, ref, (count(*) OVER ())::int AS total FROM t
+        ORDER BY at DESC, ref LIMIT ${'limit} OFFSET ${offset}`);
+    string[] keyOrder = [];
+    string[] ledgerRefs = [];
+    string[] issueIds = [];
+    int total = 0;
+    check from var k in keys
+        do {
+            total = k.total;
+            keyOrder.push(k.kind + k.ref);
+            if k.kind == "L" {
+                ledgerRefs.push(k.ref);
+            } else {
+                issueIds.push(k.ref);
+            }
+        };
+    if keyOrder.length() == 0 && offset > 0 {
+        total = check db->queryRow(`
+            SELECT ((SELECT count(*) FROM scoring_points_ledger WHERE employee_id = ${employeeId})
+                  + (SELECT count(*) FROM scoring_coin_issue WHERE employee_id = ${employeeId}
+                      AND status IN ('SENT', 'PENDING', 'UNKNOWN')))::int`);
+    }
+    map<TimelineEntry> byKey = {};
+    if ledgerRefs.length() > 0 {
+        stream<LedgerRow, error?> rows = db->query(sql:queryConcat(`
+            SELECT reference, employee_id, campaign_id::text AS campaign_id, source_type, source_id::text AS source_id,
+                   action, points, rule_id::text AS rule_id, reverses_reference, reason, actor_id, correlation_id,
+                   created_at, status, status_changed_at, paid_at, coin_reference
+            FROM scoring_points_ledger WHERE reference IN (`, sql:arrayFlattenQuery(ledgerRefs), `)`));
+        check from LedgerRow r in rows
+            do {
+                types:LedgerEntry? e = check toEntry(r);
+                if e is types:LedgerEntry {
+                    byKey["L" + e.reference] = e;
+                }
+            };
+    }
+    if issueIds.length() > 0 {
+        stream<ConversionRow, error?> rows = db->query(sql:queryConcat(`
+            SELECT id::text AS id, reference, employee_id, ((coins / block_coins) * block_points)::int AS points, coins,
+                   status, transfer_reference, coalesce(sent_at, attempted_at, created_at) AS at
+            FROM scoring_coin_issue WHERE id::text IN (`, sql:arrayFlattenQuery(issueIds), `)`));
+        check from ConversionRow r in rows
+            do {
+                byKey["C" + r.id] = {reference: r.reference, employeeId: r.employee_id, points: r.points, coins: r.coins,
+                    status: check r.status.ensureType(), transferReference: r.transfer_reference, at: r.at};
+            };
+    }
+    TimelineEntry[] items = [];
+    foreach string key in keyOrder {
+        TimelineEntry? e = byKey[key];
+        if e !is () {
+            items.push(e);
+        }
+    }
+    return {items, total};
+}
