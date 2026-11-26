@@ -127,10 +127,13 @@ isolated function execute(Deps deps, string? correlationId) returns RunReport|er
 
     report.staleReleased = check deps.runStore.releaseStale();
     RunSettings settings = check deps.runStore.settings();
+    // The admin's posting limits (S019), read once per run, inside the configurables' ceilings.
+    RunConfig posting = postingConfig(cfg, settings);
     report.connections = check deps.runStore.connectionSweep();
     int publishedToday = check deps.runStore.publishedToday(startedAt);
-    int dailyLeft = cfg.linkedinMaxPostsPerDay - publishedToday;
-    LinkedInBudget budget = new (dailyLeft < cfg.linkedinMaxPostsPerRun ? dailyLeft : cfg.linkedinMaxPostsPerRun);
+    int publishedLastHour = posting.linkedinMaxPostsPerHour > 0
+        ? check deps.runStore.publishedSince(time:utcAddSeconds(startedAt, -3600)) : 0;
+    LinkedInBudget budget = new (postBudget(posting, publishedToday, publishedLastHour));
 
     while report.claimed < cfg.maxRows && time:monotonicNow() - started < <decimal>cfg.maxSeconds {
         int room = cfg.maxRows - report.claimed;
@@ -147,7 +150,7 @@ isolated function execute(Deps deps, string? correlationId) returns RunReport|er
                 report.deferred += 1;
                 continue;
             }
-            check settle(deps, runId, row, processRow(deps, row, settings, budget, runId), report);
+            check settle(deps, runId, row, processRow(deps, row, settings, posting, budget, runId), report);
         }
     }
 
@@ -165,8 +168,8 @@ isolated function execute(Deps deps, string? correlationId) returns RunReport|er
     return report;
 }
 
-isolated function processRow(Deps deps, store:OutboxRow row, RunSettings settings, LinkedInBudget budget,
-        string runId) returns Outcome {
+isolated function processRow(Deps deps, store:OutboxRow row, RunSettings settings, RunConfig config,
+        LinkedInBudget budget, string runId) returns Outcome {
     // Correlation id travels outbox row → handler → audit/outbox writes → external calls (M9).
     string correlationId = row.correlationId ?: runId;
     return dispatch({
@@ -174,7 +177,7 @@ isolated function processRow(Deps deps, store:OutboxRow row, RunSettings setting
         row,
         correlationId,
         settings,
-        config: deps.config,
+        config,
         novera: deps.novera,
         linkedIn: deps.linkedIn,
         cipher: deps.cipher,

@@ -119,19 +119,22 @@ public isolated class PgLedgerRepository {
     private isolated function updateSettlementTx(types:LedgerReference reference, types:LedgerStatus? status,
             time:Utc changedAt) returns error? {
         transaction {
-            // Only the settlement columns: the V021 trigger refuses anything else. The old status is read and locked in the
-            // same statement that changes it (`RETURNING old.*` needs PostgreSQL 18).
+            // Only the settlement columns: the V021 trigger refuses anything else. The old status is read and locked
+            // first; a PAID row is final (V026), PAID itself comes only from the Coins conversion (it names the issue).
             record {|string? status;|}|error before = self.db->queryRow(`
-                WITH prev AS (
-                    SELECT reference, status AS old_status FROM scoring_points_ledger
-                    WHERE reference = ${reference} FOR UPDATE)
-                UPDATE scoring_points_ledger SET status = ${status}, status_changed_at = CAST(${store:ts(changedAt)} AS timestamptz)
-                FROM prev
-                WHERE scoring_points_ledger.reference = prev.reference
-                RETURNING prev.old_status AS status`);
+                SELECT status FROM scoring_points_ledger WHERE reference = ${reference} FOR UPDATE`);
             if before is error {
                 fail store:isNoRows(before) ? types:domainError(types:ERR_NOT_FOUND, "Ledger entry not found") : before;
             }
+            if before.status == types:PAID {
+                fail types:domainError(types:ERR_ALREADY_PAID, "These points became Coins and can't change");
+            }
+            if status == types:PAID {
+                fail types:domainError(types:ERR_PAID_NOT_ALLOWED, "Points become PAID only through the Coins conversion");
+            }
+            _ = check self.db->execute(`
+                UPDATE scoring_points_ledger SET status = ${status}, status_changed_at = CAST(${store:ts(changedAt)} AS timestamptz)
+                WHERE reference = ${reference}`);
             check store:writeAudit(self.db, store:auditOf(self.actor, "PointsSettlementChanged", LEDGER_TABLE,
                     reference, {status}, (), {status: before.status}));
             check commit;

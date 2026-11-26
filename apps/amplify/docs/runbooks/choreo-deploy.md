@@ -67,7 +67,7 @@ After each build, confirm the endpoint Choreo shows matches the descriptor (name
 4. **D4** Security headers at the proxy too if supported (`nosniff`, CSP `upgrade-insecure-requests`, HSTS).
 5. **D5 WAF / egress.** If the org uses egress control, allow-list only `api.linkedin.com`, `www.linkedin.com`, `chat.googleapis.com` and the people-app connection's gateway host for this project. Attach the org WAF policy to the proxy if one exists.
 6. **D6 Ingress rate limiting.** Put a rate limit on the proxy in front of amplify-api that slows an abusive caller without touching normal use. The limit itself is still to be chosen.
-7. **D7 Egress rate limiting to LinkedIn.** On the developer tier we are on for now, LinkedIn allows 500 reposts in a 24-hour window. amplify-jobs caps a run at 50 and a day at 1000 (`linkedinMaxPostsPerRun`, `linkedinMaxPostsPerDay`), so its own day cap sits above that limit. `linkedinMaxPostsPerDay` is not in the Jobs descriptor yet, so it cannot be lowered from the config form: add it (and to `workload.yaml`) before relying on it, or expect LinkedIn to answer 429 past 500.
+7. **D7 Egress rate limiting to LinkedIn.** On the developer tier we are on for now, LinkedIn allows 500 reposts in a 24-hour window. amplify-jobs caps a run at 50, any rolling hour at 60 and a UTC day at 450 (`linkedinMaxPostsPerRun`, `LINKEDINMAXPOSTSPERHOUR`, `LINKEDINMAXPOSTSPERDAY`), and spreads each campaign's posts over the 120 minutes after it opens (`SHARESPREADMINUTES`), so the app never posts in a burst or past LinkedIn's limit. The hour, day and spread are in the Jobs config form: set them to the values the PO and Marketing agree in the posting-decisions doc. An hourly cap or spread of 0 turns it off.
 
 ## E. Versioning and promotion
 
@@ -137,6 +137,11 @@ Same names in two components (`DBHOST`, `DBPORT`, `DBNAME`, `DBUSER`, `DBPASSWOR
 | `LINKEDINNONCEMODE` | cfg | O | `OFF` | `OFF`, `SEND` (checked when LinkedIn echoes the nonce) or `REQUIRE`. Only with ID-token validation on. Empty = `OFF` |
 | `INTERNALAPIKEY` | secret | R | | Ops-generated, at least 32 characters, the same value as Jobs (C2) |
 | `SCHEDULERAPIKEY` | secret | R | | Ops-generated, at least 32 characters, different from the internal key, the same value as Jobs (C2) |
+| `COINSBASEURL` | cfg | O | empty | TBD, the WSO2 Coins transaction service's gateway URL (https). Empty = wallet capture answers 503 `COINS_UNAVAILABLE` (ADR-048) |
+| `COINSTOKENURL` | cfg | O | | TBD, the token endpoint of the application subscribed to the Coins API |
+| `COINSCLIENTID` | cfg | O | | TBD, that application's client id (the same application as Jobs is fine) |
+| `COINSCLIENTSECRET` | secret | O | | TBD |
+| `COINSSCOPES` | cfg | O | empty | Empty unless the Coins API needs a scope |
 
 ### G2. Amplify Jobs
 
@@ -165,12 +170,17 @@ Same names in two components (`DBHOST`, `DBPORT`, `DBNAME`, `DBUSER`, `DBPASSWOR
 | `AMPLIFYONNOVERA` | cfg | O | `false` locally (default `true`) | TBD, the open item in `prod-deploy-handoff.md` |
 | `AMPLIFYONWEBHOOK` | cfg | O | `true` locally (default `false`) | TBD, same open item |
 | `INTERNALAPIKEY` | secret | R | | Ops-generated, at least 32 characters, the same value as the Backend (C5) |
-| `SCHEDULERAPIKEY` | secret | R | | Ops-generated, at least 32 characters, different from the internal key; accepted only for `POST /runs` and `POST /maintenance/partitions`; the same value as the Backend |
+| `SCHEDULERAPIKEY` | secret | R | | Ops-generated, at least 32 characters, different from the internal key; accepted only for `POST /runs`, `POST /maintenance/partitions`, `POST /engagement/sync` and `POST /coins/convert`; the same value as the Backend |
 | `LEAVERSWEEPMODE` | cfg | O | `OFF` | `OFF`, `DRY_RUN` or `ERASE`. Start with `DRY_RUN` (ADR-040) |
 | `HRENTITYBASEURL` | cfg | O | | HR Entity GraphQL URL for the leaver sweep |
 | `HRENTITYTOKENURL` | cfg | O | | HR Entity OAuth token URL |
 | `HRENTITYCLIENTID` | cfg | O | | HR Entity client id |
 | `HRENTITYCLIENTSECRET` | secret | O | | HR Entity client secret |
+| `COINSBASEURL` | cfg | O | empty | TBD, the WSO2 Coins transaction service's gateway URL (https). Empty = `POST /coins/convert` answers `SKIPPED COINS_NOT_CONFIGURED` (ADR-048) |
+| `COINSTOKENURL` | cfg | O | | TBD, the token endpoint of the application subscribed to the Coins API |
+| `COINSCLIENTID` | cfg | O | | TBD, the application the Coins team maps to Amplify's funded master wallet (`client_master_wallet`) |
+| `COINSCLIENTSECRET` | secret | O | | TBD |
+| `COINSSCOPES` | cfg | O | empty | Empty unless the Coins API needs a scope |
 
 ### G3. Amplify Scheduler
 

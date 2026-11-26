@@ -44,7 +44,7 @@ public type Problem record {|
 
 # Every error response a resource can return.
 type ProblemResponse http:BadRequest|http:Unauthorized|http:Forbidden|http:NotFound|http:Conflict
-    |http:UnprocessableEntity|http:InternalServerError|http:ServiceUnavailable;
+    |http:UnprocessableEntity|http:TooManyRequests|http:InternalServerError|http:ServiceUnavailable;
 
 isolated function problem(int status, string title, string code, string? detail, string? correlationId) returns Problem => {
     'type: PROBLEM_TYPE_PREFIX + code,
@@ -94,6 +94,17 @@ isolated function unprocessable(string code, string detail, string? correlationI
     body: problem(422, "Unprocessable Content", code, detail, correlationId)
 };
 
+# 429 for a per-person quota a use case enforces (not the gateway's rate limit).
+#
+# + code - Domain code
+# + detail - Safe message
+# + correlationId - Correlation id
+# + return - The response
+isolated function tooMany(string code, string detail, string? correlationId) returns http:TooManyRequests => {
+    mediaType: PROBLEM_JSON,
+    body: problem(429, "Too Many Requests", code, detail, correlationId)
+};
+
 isolated function internalError(string? correlationId) returns http:InternalServerError => {
     mediaType: PROBLEM_JSON,
     body: problem(500, "Internal Server Error", INTERNAL_ERROR, "Something went wrong on our side", correlationId)
@@ -105,7 +116,7 @@ final readonly & string[] CONFLICT_CODES = [types:ERR_VERSION_CONFLICT, types:ER
     types:ERR_CONNECTION_REMOVED, types:ERR_CONNECTION_NEEDS_RECONNECT, types:ERR_SHARE_ALREADY_QUEUED,
     types:ERR_SHARE_ALREADY_PUBLISHED, types:ERR_SHARE_NOT_QUEUED, types:ERR_EVIDENCE_ALREADY_CLAIMED,
     types:ERR_NOT_PENDING, types:ERR_NOT_APPROVED, types:ERR_ALREADY_AMPLIFIED, types:ERR_ALREADY_REVERSED,
-    types:ERR_CANNOT_REVERSE_REVERSAL, types:ERR_RULE_VERSION_EXISTS, types:ERR_RULE_NOT_FOUND,
+    types:ERR_CANNOT_REVERSE_REVERSAL, types:ERR_ALREADY_PAID, types:ERR_RULE_VERSION_EXISTS, types:ERR_RULE_NOT_FOUND,
     types:ERR_TOP_UP_NOT_POSITIVE, types:ERR_ALREADY_ANNOUNCED, types:ERR_ANNOUNCEMENT_NOT_FAILED,
     types:ERR_ANNOUNCEMENT_NOT_QUEUED, LINKEDIN_NOT_CONNECTED, NEEDS_RECONNECT, CAMPAIGN_CLOSED, DUPLICATE_ACTION,
     FEATURE_DISABLED, OAUTH_STATE_INVALID, EMAIL_CONFLICT];
@@ -148,6 +159,9 @@ isolated function failure(error err, string? correlationId, string context) retu
         }
         if code == types:ERR_SELF_REVIEW {
             return forbidden(code, correlationId, detail);
+        }
+        if code == types:ERR_DAILY_LIMIT_REACHED {
+            return tooMany(code, detail, correlationId);
         }
         if CONFLICT_CODES.indexOf(code) !is () {
             return conflicted(code, detail, correlationId);

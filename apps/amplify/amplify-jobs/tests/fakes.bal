@@ -214,6 +214,8 @@ isolated class MemRunStore {
 
     isolated function publishedToday(time:Utc now) returns int|error => 0;
 
+    isolated function publishedSince(time:Utc since) returns int|error => 0;
+
     isolated function forRow(string correlationId, int topN) returns Store => self.memStore();
 }
 
@@ -743,6 +745,8 @@ isolated class PanickingRunStore {
 
     isolated function publishedToday(time:Utc now) returns int|error => self.inner.publishedToday(now);
 
+    isolated function publishedSince(time:Utc since) returns int|error => self.inner.publishedSince(since);
+
     isolated function forRow(string correlationId, int topN) returns Store => self.inner.forRow(correlationId, topN);
 }
 
@@ -773,16 +777,18 @@ isolated class CountingLock {
     }
 }
 
-# Reports a fixed number of LinkedIn posts already published today.
+# Reports a fixed number of LinkedIn posts already published today, and in the last hour.
 isolated class PublishedTodayRunStore {
     *RunStore;
 
     private final MemRunStore inner;
     private final int published;
+    private final int publishedLastHour;
 
-    isolated function init(MemRunStore inner, int published) {
+    isolated function init(MemRunStore inner, int published, int publishedLastHour = 0) {
         self.inner = inner;
         self.published = published;
+        self.publishedLastHour = publishedLastHour;
     }
 
     isolated function claim(string runId, int batchSize, int leaseSeconds) returns store:OutboxRow[]|error =>
@@ -803,6 +809,8 @@ isolated class PublishedTodayRunStore {
     isolated function connectionSweep() returns ConnectionSweep|error => self.inner.connectionSweep();
 
     isolated function publishedToday(time:Utc now) returns int|error => self.published;
+
+    isolated function publishedSince(time:Utc since) returns int|error => self.publishedLastHour;
 
     isolated function forRow(string correlationId, int topN) returns Store => self.inner.forRow(correlationId, topN);
 }

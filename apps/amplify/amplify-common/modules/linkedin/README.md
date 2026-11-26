@@ -22,6 +22,16 @@ File: `modules/linkedin/adapter.bal`.
 - `escapeLittleText` escapes an employee's commentary for LinkedIn little text format. `postUrl(urn)` returns the public feed URL.
 - Retry stays 0 on both clients (a repeated post would post twice, an auth code is single use).
 
+## Community Management (page connection and engagement reads)
+
+File: `modules/linkedin/community.bal`.
+
+- `CommunityPort` is the port: `authorizationUrl` (scopes `PAGE_SCOPES` only: `r_organization_social_feed`, `rw_organization_admin`), `exchangeCode`, `refresh` (refresh-token grant), `revokeToken`, `isAdmin` (`GET /rest/organizationAcls?q=roleAssignee&role=ADMINISTRATOR&state=APPROVED`), `listReactions` (`GET /rest/reactions/(entity:{urn})?q=entity`, chronological), `listComments` (`GET /rest/socialActions/{urn}/comments`), `listShareNotifications` (`GET /rest/organizationalEntityNotifications?q=criteria&actions=List(SHARE,SHARE_MENTION)&organizationalEntity=…&timeRange=(start:…,end:…)`).
+- `CommunityAdapter` implements it with its own REST and OAuth clients (own pools and breakers, `breakers()`), configured by `CommunityConfig` (the Community Management app's client, a separate LinkedIn app).
+- Pages (`ReactionPage`, `CommentPage`, `NotificationPage`) carry the usable items and `fetched`, every element returned, so an offset cursor moves by it.
+- Comment and reshare text is never kept: a comment keeps its URN, actor and time; a reshare keeps a `hasCommentary` flag.
+- Shapes: reactions, comments and ACLs follow `linkedin/resources/openapi/openapi/community-management.openapi.yaml`. Notifications follow LinkedIn's documentation: `generatedActivity`, `sourcePost`, `lastModifiedAt`, `decoratedGeneratedActivity.share.owner` and `.text`. The refresh grant returns `refresh_token` and `refresh_token_expires_in` with the access token (`TokenGrant.refreshToken`, `refreshExpiresInSeconds`).
+
 ## ID-token validator
 
 File: `modules/linkedin/id_token.bal`.
@@ -39,9 +49,9 @@ File: `modules/linkedin/id_token.bal`.
 
 - No token storage or encryption (see `crypto` and `amplify_domain.connection`).
 - No retry or scheduling of failed shares (the outbox and the jobs do that).
-- No engagement reads (Community Management API is a later phase).
+- No engagement storage or matching (the sync in `amplify_domain.sharing` and amplify-jobs do that).
 - Never logs tokens or commentary. Errors carry status and codes only.
 
 ## Tests
 
-`modules/linkedin/tests/adapter_test.bal`, `modules/linkedin/tests/id_token_test.bal`. They start local stub servers (ports 18210 to 18213 are shared across this package). Run `bal test` from `amplify-common`.
+`modules/linkedin/tests/adapter_test.bal`, `modules/linkedin/tests/id_token_test.bal`. `modules/linkedin/tests/community_test.bal` (parsing and the Community Management wire contract). They start local stub servers (ports 18210 to 18214 are shared across this package). Run `bal test` from `amplify-common`.

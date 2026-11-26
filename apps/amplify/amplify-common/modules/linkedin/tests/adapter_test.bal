@@ -158,7 +158,7 @@ function authorizationUrlCarriesClientStateAndScopes() returns error? {
 function exchangeCodeReturnsTokenAndScopes() returns error? {
     TokenGrant grant = check (check adapter()).exchangeCode("good-code");
     test:assertEquals(grant, {accessToken: GOOD_TOKEN, expiresInSeconds: 5184000,
-        scopes: ["openid", "profile", "w_member_social"], idToken: ()});
+        scopes: ["openid", "profile", "w_member_social"], idToken: (), refreshToken: (), refreshExpiresInSeconds: ()});
 }
 
 @test:Config

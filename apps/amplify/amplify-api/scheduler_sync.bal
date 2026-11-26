@@ -14,9 +14,9 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// SchedulerSync (ADR-026): the database settings are the source of truth; the scheduler holds a copy as two
-// jobs with stable ids. After a settings commit, at startup and on `POST /admin/scheduler/sync`, amplify-api
-// reads the settings and upserts both jobs. The scheduler being down never fails a settings save: the
+// SchedulerSync (ADR-026): the database settings are the source of truth; the scheduler holds a copy as four
+// jobs with stable ids (run, partition maintenance, engagement sync, Coins conversion). After a settings commit, at startup and on
+// `POST /admin/scheduler/sync`, amplify-api reads the settings and upserts them. The scheduler being down never fails a settings save: the
 // answer says `PENDING` and the next reconcile converges.
 
 import amplify_api.auth;
@@ -44,6 +44,11 @@ configurable string schedulerCollection = "amplify";
 configurable int runDeadlineSeconds = 300;
 # Deadline for `POST /maintenance/partitions`, seconds.
 configurable int maintenanceDeadlineSeconds = 180;
+# Deadline for `POST /engagement/sync`, seconds.
+configurable int engagementDeadlineSeconds = 240;
+# Deadline for `POST /coins/convert`, seconds. Longer than amplify-jobs `coinsMaxSeconds` (540), so the scheduler never
+# cancels a healthy conversion.
+configurable int coinsDeadlineSeconds = 600;
 # Shortest `@every` interval an admin may set for `run.schedule`, seconds.
 configurable int minRunIntervalSeconds = 60;
 # Startup reconcile attempts (the scheduler or the database may start after amplify-api).
@@ -141,9 +146,44 @@ isolated function desiredJobs(Settings s) returns scheduler:JobSpec[] {
             retryIntervalSeconds: 60,
             deadlineSeconds: maintenanceDeadlineSeconds,
             headers: schedulerKeyHeaders()
+        },
+        {
+            id: JOB_ENGAGEMENT_SYNC,
+            name: "Amplify engagement sync",
+            schedule: s.engagementSchedule,
+            // Off until an admin turns the sync on; amplify-jobs checks the setting again.
+            enabled: s.engagementSyncEnabled,
+            uri: base + "/engagement/sync",
+            // 202 SKIPPED (a sync in progress) is a success; a failed sync is picked up by the next tick.
+            retryCount: 0,
+            retryIntervalSeconds: 60,
+            deadlineSeconds: engagementDeadlineSeconds,
+            headers: schedulerKeyHeaders()
+        },
+        {
+            id: JOB_COINS_CONVERT,
+            name: "Amplify Coins conversion",
+            schedule: coinCron(s.coinSchedule),
+            // Off until an admin turns wallets on; amplify-jobs checks the setting again (ADR-048).
+            enabled: s.coinWalletsEnabled,
+            uri: base + "/coins/convert",
+            // A re-run of the period is safe (SENT issues send nothing; UNKNOWN ones are reconciled, never resent), so
+            // one retry after a 5xx; 202 SKIPPED is a success.
+            retryCount: 1,
+            retryIntervalSeconds: 900,
+            deadlineSeconds: coinsDeadlineSeconds,
+            headers: schedulerKeyHeaders()
         }
     ];
 }
+
+# The scheduler expression for `coin.schedule`, 02:00 UTC like the daily maintenance: `MONTHLY` the 1st of the month,
+# `WEEKLY` Mondays, `DAILY` every day.
+#
+# + schedule - `coin.schedule`
+# + return - Cron expression (UTC)
+isolated function coinCron(string schedule) returns string =>
+    schedule == "DAILY" ? "0 2 * * *" : schedule == "WEEKLY" ? "0 2 * * 1" : "0 2 1 * *";
 
 // Serializes syncs, so two admins saving at once push in commit order: each sync reads the settings
 // after taking the lock, so the last one pushes the latest committed state.

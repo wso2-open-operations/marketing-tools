@@ -84,7 +84,8 @@ public isolated class PgConnectionRepository {
             SELECT employee_id, provider, member_urn, provider_api, array_to_json(scopes)::text AS scopes,
                    current_token_id::text AS current_token_id, current_token_issued_on::text AS current_token_issued_on,
                    access_expires_at, connected_at, revoked_at, removed_at, last_reminded_at, version
-            FROM connection_member_connection WHERE provider = ${provider} AND member_urn = ${memberUrn}`);
+            FROM connection_member_connection
+            WHERE provider = ${provider} AND member_urn = ${memberUrn} AND removed_at IS NULL`);
         return toConnection(row);
     }
 

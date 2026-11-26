@@ -37,6 +37,14 @@ configurable readonly & string[] redirectUris = ?;
 # Access token lifetime. LinkedIn self-serve tokens last 60 days.
 configurable int tokenTtlSeconds = 5184000;
 
+# Refresh token lifetime, issued with Community Management scopes only. LinkedIn's programmatic refresh tokens last
+# 365 days.
+configurable int refreshTokenTtlSeconds = 31536000;
+
+# The company page the configured member administers (`GET /rest/organizationAcls`), and the page share
+# notifications are reported for.
+configurable string organizationUrn = "urn:li:organization:1477";
+
 # Authorization code lifetime. LinkedIn codes last 30 minutes.
 configurable int authorizationCodeTtlSeconds = 1800;
 
@@ -51,7 +59,7 @@ configurable int appDailyLimit = 100000;
 # upload ceiling is 10 MB.
 configurable int maxUploadBytes = 10485760;
 
-# Exposes the mock admin endpoints (`/mock/posts`, `/mock/reset`). Keep off outside local testing.
+# Exposes the mock admin endpoints (`/mock/posts`, `/mock/engagement`, `/mock/reset`). Keep off outside local testing.
 configurable boolean enableMockAdmin = false;
 
 # Shared key the admin endpoints require in `X-Amplify-Internal-Key`. Required when `enableMockAdmin`

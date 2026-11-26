@@ -45,6 +45,7 @@ type ExternalShareRow record {|
     time:Utc? amplified_at;
     time:Utc created_at;
     int version;
+    string? note;
 |};
 
 # `ExternalShareRepository` over PostgreSQL.
@@ -68,7 +69,7 @@ public isolated class PgExternalShareRepository {
         ExternalShareRow|error row = self.db->queryRow(`
             SELECT id::text AS id, employee_id, campaign_id::text AS campaign_id, action, evidence_url,
                    evidence_url_submitted, evidence_host, provider, resource_urn, certified_at, decision, decided_by,
-                   decided_at, decision_reason, amplified_at, created_at, version
+                   decided_at, decision_reason, amplified_at, created_at, version, note
             FROM external_sharing_external_share WHERE id = CAST(${id} AS uuid)`);
         return toClaim(row);
     }
@@ -78,6 +79,13 @@ public isolated class PgExternalShareRepository {
             SELECT EXISTS (SELECT 1 FROM external_sharing_external_share
                            WHERE evidence_url = ${normalizedUrl} AND action = ${action})`);
         return claimed;
+    }
+
+    public isolated function submittedSince(types:EmployeeId employeeId, time:Utc since) returns int|error {
+        int submitted = check self.db->queryRow(`
+            SELECT count(*)::int FROM external_sharing_external_share
+            WHERE employee_id = ${employeeId} AND created_at >= CAST(${store:ts(since)} AS timestamptz)`);
+        return submitted;
     }
 
     public isolated function insert(ExternalShare claim, events:OutboxEvent[] outbox) returns error? {
@@ -161,11 +169,11 @@ public isolated class PgExternalShareRepository {
             _ = check self.db->execute(`
                 INSERT INTO external_sharing_external_share (id, employee_id, campaign_id, action, evidence_url,
                     evidence_url_submitted, evidence_host, provider, resource_urn, certified_at, decision, decided_by,
-                    decided_at, decision_reason, amplified_at, created_at, version)
+                    decided_at, decision_reason, amplified_at, created_at, version, note)
                 VALUES (CAST(${c.id} AS uuid), ${c.employeeId}, CAST(${c.campaignId} AS uuid), ${c.action},
                     ${c.evidence.normalized}, ${c.evidence.submitted}, ${c.evidence.host}, ${c.evidence.provider},
                     ${c.evidence.resourceUrn}, CAST(${store:ts(c.certifiedAt)} AS timestamptz), ${c.decision}, ${c.decidedBy}, CAST(${store:ts(c.decidedAt)} AS timestamptz),
-                    ${c.decisionReason}, CAST(${store:ts(c.amplifiedAt)} AS timestamptz), CAST(${store:ts(c.createdAt)} AS timestamptz), ${c.version})`);
+                    ${c.decisionReason}, CAST(${store:ts(c.amplifiedAt)} AS timestamptz), CAST(${store:ts(c.createdAt)} AS timestamptz), ${c.version}, ${c.note})`);
             _ = check store:writeOutbox(self.db, outbox, self.actor.correlationId);
             check store:writeAudit(self.db, store:auditOf(self.actor, events:EXTERNAL_SHARE_SUBMITTED,
                     EXTERNAL_SHARE_TABLE, c.id, {evidenceHost: c.evidence.host}));
@@ -198,6 +206,7 @@ isolated function toClaim(ExternalShareRow|error row) returns ExternalShare|erro
         decisionReason: row.decision_reason,
         amplifiedAt: row.amplified_at,
         createdAt: row.created_at,
-        version: row.version
+        version: row.version,
+        note: row.note
     };
 }

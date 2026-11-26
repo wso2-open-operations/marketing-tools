@@ -10,11 +10,12 @@ Shared Ballerina library (`wso2/amplify_common`, version in `Ballerina.toml`) fo
 | `events` | One payload record and one outbox builder per domain event | [events](modules/events/README.md) |
 | `linkedin` | `ProviderAdapter` port, `LinkedInAdapter`, `IdTokenValidator` | [linkedin](modules/linkedin/README.md) |
 | `crypto` | `TokenCipher` (AES-256-GCM key ring), `constantTimeEquals` | [crypto](modules/crypto/README.md) |
+| `coins` | `CoinsPort` and `CoinsClient` for the WSO2 Coins transaction service (ADR-048) | [coins](modules/coins/README.md) |
 | `resilience` | HTTP client resilience, database breaker, retry, metric gauges | [resilience](modules/resilience/README.md) |
 
 The default module (`common.bal`) holds one thing: `PRODUCT`, the product name used in logs and health bodies.
 
-Dependency order inside the package: `types` has no sibling dependency; `resilience` has none; `events` uses `types`; `linkedin` uses `types` and `resilience`; `crypto` has none. The Novera client is in `amplify-jobs` (`novera.bal`), and the Novera card is built in `amplify_domain.announcements` (ADR-047).
+Dependency order inside the package: `types` has no sibling dependency; `resilience` has none; `events` uses `types`; `linkedin` uses `types` and `resilience`; `coins` uses `resilience`; `crypto` has none. The Novera client is in `amplify-jobs` (`novera.bal`), and the Novera card is built in `amplify_domain.announcements` (ADR-047).
 
 ## What is not here
 

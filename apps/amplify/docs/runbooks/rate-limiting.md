@@ -34,7 +34,7 @@ Amplify touches three rate-limited surfaces. Two are limits we **meet** (LinkedI
 
 - [ ] **L1** In the [Developer Portal](https://www.linkedin.com/developers/apps), open the Amplify app (non-prod first, then prod) › **Analytics**. Make one real `POST /rest/posts` first (a share through Amplify counts), then refresh. The page only lists endpoints called at least once that UTC day. Record the application and member limits for `POST /rest/posts` in section 5.
 - [ ] **L2** Make sure the Developer Admins on the app include a team mailbox, not just one person, so the 75% alert reaches someone on a day off.
-- [ ] **L3** Set `linkedinMaxPostsPerDay` (amplify-jobs, default 1000) **below** the application limit from L1. It counts published shares per UTC day across Runs and defers the rest. Today's default of 1000 is far under the 100,000 documented for Share on LinkedIn, but L1 may show a different number for `/rest/posts`.
+- [ ] **L3** Keep `linkedinMaxPostsPerDay` (amplify-jobs, default 450) **below** the application limit from L1. It counts published shares per UTC day across Runs and defers the rest. The default sits under the 500 a day of the development tier. `linkedinMaxPostsPerHour` (default 60, 0 = off) caps any rolling hour the same way, and `shareSpreadMinutes` (default 120, 0 = off) spreads each campaign's posts after it opens. Admins tune these day to day in Settings (S019): `sharing.max_posts_per_day` (450), `sharing.max_posts_per_hour` (60, 0 = off), `sharing.spread_minutes` (120) and `sharing.publish_gap_minutes` (10, the per-employee gap). amplify-jobs reads them at the start of each Run. The two caps can only be tightened below the configurables, which stay the hard ceilings (a setting of 0 can't switch a configured hourly cap off); the spread and the gap are taken as set.
 - [ ] **L4** Decide whether a per-member ceiling is needed. One employee reposting 150 campaign posts in a day is unlikely, so the pilot probably doesn't need it. Amplify has **no per-member counter** today (one share per person per campaign limits it indirectly).
 - [ ] **L5** After the pilot's first week, compare real peak daily posts to the limit and write the headroom in section 5.
 
@@ -48,7 +48,7 @@ Amplify touches three rate-limited surfaces. Two are limits we **meet** (LinkedI
 
 | Symptom | Check | Action |
 | --- | --- | --- |
-| Run log shows `deferred` rising and `linkedinPosts` near the per-run or daily ceiling | `linkedinMaxPostsPerRun` (50), `linkedinMaxPostsPerDay` | Expected. Rows are due again later. Raise the ceiling only if L1 shows room |
+| Run log shows `deferred` rising and `linkedinPosts` near the per-run, hourly or daily ceiling | `linkedinMaxPostsPerRun` (50), `linkedinMaxPostsPerHour` (60), `linkedinMaxPostsPerDay` (450) | Expected. Rows are due again later. Raise a ceiling only if L1 shows room |
 | Shares end `FAILED` with reason `RETRIES_EXHAUSTED` and code `RATE_LIMITED` | `sharing_share_request`, Developer Portal Analytics | A daily limit was hit. After 00:00 UTC the employee can request again (a failed share retries on the same row) |
 | Run log `breakers` shows `linkedinApi: OPEN` | LinkedIn status, Developer Portal | Wait: it half-opens after 30 s and one trial call decides. Nothing to reset by hand |
 | 75% email from LinkedIn | Developer Portal Analytics | Look at the day's volume. If real demand, lower the per-run ceiling so posts spread out |
@@ -103,7 +103,7 @@ Nothing special. The Amplify screens don't read `Retry-After` or retry, so a thr
 | LinkedIn app limit for `POST /rest/posts` (non-prod) | _open (L1)_ | | |
 | LinkedIn member limit for `POST /rest/posts` (non-prod) | _open (L1)_ | | |
 | LinkedIn app and member limits (prod) | _open (L1)_ | | |
-| `linkedinMaxPostsPerDay` / `linkedinMaxPostsPerRun` set to | 1000 / 50 (defaults) | 2026-10-21 | |
+| `linkedinMaxPostsPerDay` / `linkedinMaxPostsPerHour` / `linkedinMaxPostsPerRun` set to | 450 / 60 / 50 (defaults) | 2026-11-25 | Daily was 1000 until the posting-gates change |
 | Google Chat webhook limit (if published) | _open (G3)_ | | |
 | Proxy limit per operation (reads / writes / shares) | _open (P2)_ | | |
 | Proxy 429: status, body, `Retry-After` present? | _open (P4)_ | | |

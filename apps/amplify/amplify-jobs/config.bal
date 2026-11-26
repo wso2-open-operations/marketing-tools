@@ -52,15 +52,29 @@ configurable string linkedinApiVersion = "202610";
 configurable decimal linkedinTimeoutSeconds = 10;
 # Breaker, retry (keep 0, ADR-025) and pool for the LinkedIn REST API.
 configurable resilience:HttpResilience linkedinApiResilience = {};
+# Community Management app (the page connection's app; a separate LinkedIn app from Share on LinkedIn). jobs uses it
+# only for the refresh grant of the page token. Empty client id = `linkedinClientId` (locally the mock client).
+configurable string linkedinPageClientId = "";
+# Its client secret (Choreo secret; never logged). Empty = the page token can't be refreshed: the sync uses it until it
+# expires, then reports NEEDS_RECONNECT.
+configurable string linkedinPageClientSecret = "";
 # LinkedIn posts per run (app quota protection).
 configurable int linkedinMaxPostsPerRun = 50;
-# LinkedIn posts per UTC day across runs, counted from published shares (app daily limit budget).
-configurable int linkedinMaxPostsPerDay = 1000;
+# LinkedIn posts per UTC day across runs, counted from published shares. Kept under LinkedIn's app limit (500 a
+# day on the development tier), so LinkedIn never has to refuse one with a 429.
+configurable int linkedinMaxPostsPerDay = 450;
+# LinkedIn posts in any rolling hour across runs, counted from published shares, so a day's posts spread over the
+# day instead of going out in one burst. 0 turns the hourly cap off.
+configurable int linkedinMaxPostsPerHour = 60;
 # Least time between two LinkedIn posts for the same employee, minutes (pacing.bal). Sharing many posts at once
 # still queues them all; they go out one at a time. 0 turns pacing off.
 configurable int sharePublishGapMinutes = 10;
 # Most extra wait added to a paced post, minutes, so an employee's posts don't land at exact intervals.
 configurable int sharePublishJitterMinutes = 5;
+# Spread of each campaign's reposts, minutes (pacing.bal): a share waits for a point picked for it inside this
+# window after the campaign opens, so the burst of shares right after an announcement reaches LinkedIn as a
+# trickle. A share requested after its point goes at once. 0 turns the spread off.
+configurable int shareSpreadMinutes = 120;
 
 // ---- Novera (Google Chat assistant): the one announcement channel (M6a) -----------------------------
 

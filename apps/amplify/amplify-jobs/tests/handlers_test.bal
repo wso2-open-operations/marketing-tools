@@ -576,6 +576,64 @@ function dailyCeilingAlreadySpentDefersEveryShare() returns error? {
     test:assertEquals(w.queue.statusOf(id), ["PENDING", 0, "LinkedIn post ceiling reached"]);
 }
 
+@test:Config
+function hourlyCeilingAlreadySpentDefersEveryShare() returns error? {
+    [World, string, int] [w, _, id] = check shareWorld("emp-hourly");
+    RunConfig cfg = {...TEST_CONFIG};
+    cfg.linkedinMaxPostsPerHour = 5;
+    w.deps.config = cfg;
+    w.deps.runStore = new PublishedTodayRunStore(w.queue, 5, 5);
+    RunReport r = check run(w);
+    test:assertEquals(w.linkedIn.postCount(), 0, "the day has room, the last hour doesn't");
+    test:assertEquals(r.deferred, 1);
+    test:assertEquals(w.queue.statusOf(id), ["PENDING", 0, "LinkedIn post ceiling reached"]);
+
+    cfg.linkedinMaxPostsPerHour = 0;
+    w.deps.config = cfg;
+    w.queue.makeAllDue();
+    _ = check run(w);
+    test:assertEquals(w.linkedIn.postCount(), 1, "0 turns the hourly cap off");
+}
+
+@test:Config
+function sharesRightAfterTheCampaignOpensAreSpread() returns error? {
+    World w = harness();
+    RunConfig cfg = {...TEST_CONFIG};
+    cfg.spreadSeconds = 7200;
+    w.deps.config = cfg;
+    time:Utc now = time:utcNow();
+    check connectedEmployee(w.mem, w.cipher, "emp-fresh", now);
+    check connectedEmployee(w.mem, w.cipher, "emp-late", now);
+    // A campaign that opened a minute ago: its share waits for a point inside the two-hour window.
+    string fresh = types:newUuidV7();
+    w.mem.putCampaign(openCampaign(fresh, now, -60));
+    var freshShare = queuedShare(fresh, "emp-fresh", now);
+    w.mem.putShare(freshShare);
+    int freshRow = w.queue.enqueue(events:REPOST_REQUESTED, repostRequested(freshShare.id, fresh, "emp-fresh"));
+    // A campaign that opened three hours ago: every point in its window has passed, so the share goes now.
+    string old = types:newUuidV7();
+    w.mem.putCampaign(openCampaign(old, now, -3 * 3600));
+    var oldShare = queuedShare(old, "emp-late", now);
+    w.mem.putShare(oldShare);
+    int oldRow = w.queue.enqueue(events:REPOST_REQUESTED, repostRequested(oldShare.id, old, "emp-late"));
+
+    _ = check run(w);
+    test:assertEquals(w.queue.statusOf(oldRow)[0], "DONE");
+    test:assertEquals(w.linkedIn.postCount(), 1);
+    decimal delay = spreadDelaySeconds(time:utcAddSeconds(now, -60), now, 7200, freshShare.id);
+    if delay > 0d {
+        [string, int, string?] [status, attempts, note] = w.queue.statusOf(freshRow);
+        test:assertEquals(status, "PENDING");
+        test:assertEquals(attempts, 0, "waiting for the spread does not use up an attempt");
+        test:assertTrue(note is string && note.startsWith(store:PACED_NOTE_PREFIX),
+                "a spread wait is a paced wait, so the backlog alert ignores it");
+        decimal due = time:utcDiffSeconds(w.queue.dueAtOf(freshRow), now);
+        test:assertTrue(due > 0d && due <= 7200d, string `due inside the window, got ${due}`);
+    } else {
+        test:assertEquals(w.queue.statusOf(freshRow)[0], "DONE", "its point was in the first minute");
+    }
+}
+
 // ---- EngagementRecorded --------------------------------------------------------------------------
 
 @test:Config
@@ -631,7 +689,8 @@ function settingsParseKillSwitchesAndRejectBadNumbers() {
         setting("connection.reminder_days", 10),
         setting("unrelated.key", "x")
     ]);
-    test:assertEquals(s, {sharingEnabled: false, announcementsEnabled: true, topN: 5, reminderDays: 10});
+    RunSettings expected = {sharingEnabled: false, announcementsEnabled: true, topN: 5, reminderDays: 10};
+    test:assertEquals(s, expected);
     RunSettings fallback = toRunSettings([
         setting("leaderboard.top_n", 0),
         setting("connection.reminder_days", -1),
@@ -644,3 +703,64 @@ function settingsParseKillSwitchesAndRejectBadNumbers() {
 
 function setting(string key, json value) returns store:Setting =>
     {key, value, updatedBy: "system", updatedAt: time:utcNow(), version: 1};
+
+// ---- Posting limits from the admin settings (S019) ---------------------------------------------------
+
+@test:Config
+function postingSettingsWinInsideTheConfigurables() {
+    RunConfig cfg = {...TEST_CONFIG};
+    cfg.linkedinMaxPostsPerDay = 450;
+    cfg.linkedinMaxPostsPerHour = 60;
+    cfg.spreadSeconds = 7200;
+    cfg.publishGapSeconds = 600;
+    test:assertEquals(postingConfig(cfg, {}), cfg, "no settings: the configurables");
+
+    RunConfig tighter = postingConfig(cfg, {maxPostsPerDay: 300, maxPostsPerHour: 20, spreadMinutes: 30,
+        publishGapMinutes: 0});
+    test:assertEquals([tighter.linkedinMaxPostsPerDay, tighter.linkedinMaxPostsPerHour, tighter.spreadSeconds,
+        tighter.publishGapSeconds], [300, 20, 1800, 0], "settings win; 0 turns the gap off");
+
+    RunConfig looser = postingConfig(cfg, {maxPostsPerDay: 5000, maxPostsPerHour: 0});
+    test:assertEquals([looser.linkedinMaxPostsPerDay, looser.linkedinMaxPostsPerHour], [450, 60],
+            "the configurables are the hard ceilings: a setting can't lift them or switch the hourly cap off");
+
+    RunConfig noHourlyCap = {...cfg};
+    noHourlyCap.linkedinMaxPostsPerHour = 0;
+    test:assertEquals(postingConfig(noHourlyCap, {maxPostsPerHour: 40}).linkedinMaxPostsPerHour, 40,
+            "with no configured hourly cap the setting alone applies");
+    test:assertEquals(postingConfig(cfg, {maxPostsPerDay: 0}).linkedinMaxPostsPerDay, 0, "0 stops posting for the day");
+}
+
+@test:Config
+function postingSettingsAreReadFromTheSettingRows() {
+    RunSettings s = toRunSettings([
+        {key: "sharing.max_posts_per_day", value: 200, updatedBy: "a", updatedAt: [0, 0], version: 1},
+        {key: "sharing.max_posts_per_hour", value: 0, updatedBy: "a", updatedAt: [0, 0], version: 1},
+        {key: "sharing.spread_minutes", value: -5, updatedBy: "a", updatedAt: [0, 0], version: 1},
+        {key: "sharing.publish_gap_minutes", value: "ten", updatedBy: "a", updatedAt: [0, 0], version: 1}
+    ]);
+    test:assertEquals([s.maxPostsPerDay, s.maxPostsPerHour, s.spreadMinutes, s.publishGapMinutes], [200, 0, (), ()],
+            "a bad value counts as unset, so the configurable applies");
+    RunSettings none = toRunSettings([]);
+    test:assertEquals([none.maxPostsPerDay, none.maxPostsPerHour, none.spreadMinutes, none.publishGapMinutes],
+            [(), (), (), ()]);
+}
+
+@test:Config
+function theDailyCapSettingDefersSharesEachRun() returns error? {
+    [World, string, int] [w, _, id] = check shareWorld("emp-daily-setting");
+    RunConfig cfg = {...TEST_CONFIG};
+    cfg.linkedinMaxPostsPerDay = 1000;
+    w.deps.config = cfg;
+    w.mem.setSettings({maxPostsPerDay: 10});
+    w.deps.runStore = new PublishedTodayRunStore(w.queue, 10);
+    RunReport r = check run(w);
+    test:assertEquals(w.linkedIn.postCount(), 0, "the admin's cap of 10 is spent although the configurable allows 1000");
+    test:assertEquals(r.deferred, 1);
+    test:assertEquals(w.queue.statusOf(id), ["PENDING", 0, "LinkedIn post ceiling reached"]);
+
+    w.mem.setSettings({maxPostsPerDay: 20});
+    w.queue.makeAllDue();
+    _ = check run(w);
+    test:assertEquals(w.linkedIn.postCount(), 1, "raised: the next run posts");
+}

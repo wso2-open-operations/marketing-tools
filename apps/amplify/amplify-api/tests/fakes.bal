@@ -22,6 +22,7 @@ import amplify_common.events;
 import amplify_common.types;
 import amplify_domain.campaign;
 import amplify_domain.external_sharing;
+import amplify_domain.identity;
 import amplify_domain.scoring;
 import amplify_domain.sharing;
 import amplify_domain.store;
@@ -260,6 +261,18 @@ isolated class FakeExternalShares {
         }
     }
 
+    public isolated function submittedSince(types:EmployeeId employeeId, time:Utc since) returns int|error {
+        lock {
+            int n = 0;
+            foreach var c in self.rows {
+                if c.employeeId == employeeId && time:utcDiffSeconds(c.createdAt, since) >= 0d {
+                    n += 1;
+                }
+            }
+            return n;
+        }
+    }
+
     public isolated function insert(external_sharing:ExternalShare c, events:OutboxEvent[] outbox) returns error? {
         lock {
             self.rows[c.id] = c.clone();
@@ -363,6 +376,19 @@ isolated function mockShareRepository(store:Actor actor) returns sharing:ShareRe
 @test:Mock {functionName: "externalShareRepository"}
 isolated function mockExternalShareRepository(store:Actor actor, int topN)
         returns external_sharing:ExternalShareRepository|error => fakeExternalShares;
+
+@test:Mock {functionName: "searchPeople"}
+isolated function mockSearchPeople(string text, int 'limit) returns identity:EmployeeMatch[]|error {
+    identity:EmployeeMatch[] everyone = [
+        {employeeId: "emp-avery", displayName: "Avery Perera", email: "avery.perera@wso2.com"},
+        {employeeId: "emp-sam", displayName: "Sam Silva", email: "sam@wso2.com"}
+    ];
+    string t = text.toLowerAscii();
+    return from identity:EmployeeMatch m in everyone
+        where m.displayName.toLowerAscii().includes(t) || m.email.includes(t)
+        limit 'limit
+        select m;
+}
 
 @test:Mock {functionName: "ledgerRepository"}
 isolated function mockLedgerRepository(store:Actor actor, int topN) returns scoring:LedgerRepository|error => fakeLedger;

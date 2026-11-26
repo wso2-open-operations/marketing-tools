@@ -106,7 +106,7 @@ public type ConnectionRepository isolated object {
     # + return - The connection, `()` if none, or an error
     public isolated function findByEmployee(types:EmployeeId employeeId, types:Provider provider) returns LinkedInConnection|error?;
 
-    # Finds the connection holding a member URN.
+    # Finds the connection holding a member URN now. A removed connection doesn't hold it (V031), so it is left out.
     #
     # + provider - Provider
     # + memberUrn - Member URN

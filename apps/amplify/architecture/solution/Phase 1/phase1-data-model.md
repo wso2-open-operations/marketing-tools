@@ -546,7 +546,7 @@ erDiagram
 | Value | Meaning | Set by |
 | --- | --- | --- |
 | `HELD` | Valid points, waiting for Coin issue. **Phase 1 default** for awards | jobs on award; PO when clearing an action |
-| `PAID` | Converted to Coins; `paid_at` and `coin_reference` set | Coin issuer (**phase 2**) |
+| `PAID` | Converted to Coins; `paid_at` and `coin_reference` set; final (V026 guard) | jobs, the automatic Coins conversion (**phase 2**, ADR-048) |
 | `null` | **Action required** before it can be paid: verification couldn't run (token expired, LinkedIn down), or PO flagged it | verification pass; PO |
 
 - **Facts never change.** The only updatable columns are `status`, `status_changed_at`, `paid_at`, `coin_reference`, through **column-level grants** (`GRANT UPDATE (status, status_changed_at, paid_at, coin_reference)`). `points`, `employee_id`, `reference` and the rest are physically immutable to app roles. A correction is still a new `ADJ-`/`REV-` row.
@@ -559,10 +559,14 @@ erDiagram
 | A row is reversed at most once | `UNIQUE (reverses_reference)` |
 | ADJ/REV carry a reason and a PO actor | `CHECK (source_type IN ('ENGAGEMENT','EXTERNAL_SHARE') OR reason IS NOT NULL)`; API role `amplify_po` (ADR-010) |
 | PAID has a paid time | `CHECK (status IS DISTINCT FROM 'PAID' OR paid_at IS NOT NULL)` |
-| No PAID in phase 1 | `CHECK (status IS DISTINCT FROM 'PAID')`, dropped by the phase 2 migration |
+| ~~No PAID in phase 1~~ | dropped by V026 (phase 2) |
+| PAID names its conversion | `CHECK (status IS DISTINCT FROM 'PAID' OR coin_reference IS NOT NULL)` (V026) |
+| A PAID row is final | the ledger guard trigger (V021, tightened by V026) |
 | One rule per action per effective time | `UNIQUE (action, effective_from)` |
 
 Indexes: `(employee_id, created_at)`; `(campaign_id)`; `(created_at) WHERE status IS NULL` for the PO "action required" list.
+
+**Coins conversion (phase 2, V026, ADR-048).** `scoring_coin_wallet` (PK `employee_id`: the captured wallet address, `captured_at`, `updated_at`; erasure deletes it), `scoring_coin_run` (one per `period`, unique: `RUNNING` / `DONE` / `PARTIAL` / `STOPPED` with `stop_reason`, the period's totals) and `scoring_coin_issue` (per employee per run, unique `(run_id, employee_id)`: `points_in`, `carry_in`, `coins`, `carry_out`, the rate used, `wallet_address`, our `CNV-` `reference` (unique, set on the ledger rows as `coin_reference`), the service's `transfer_reference` (unique), `status` `PENDING` / `SENT` / `FAILED` / `UNKNOWN` / `SKIPPED_NO_WALLET`, `attempts`, `last_error_code`, `next_attempt_at`, `attempted_at`, `sent_at`). A check keeps whole blocks: `carry_in + points_in = (coins / block_coins) × block_points + carry_out`. Convertible rows: `status = 'HELD' AND coin_reference IS NULL` (partial index).
 
 ## recognition — S4 Recognition (read models)
 

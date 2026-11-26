@@ -38,6 +38,9 @@ const int RUN_LOCK_KEY = 1634561132;
 # Advisory lock key for "one partition maintenance pass at a time" across replicas ("main").
 const int MAINTENANCE_LOCK_KEY = 1835755886;
 
+# Advisory lock key for "one Coins conversion at a time" across replicas ("coin", ADR-048).
+const int COINS_LOCK_KEY = 1668247918;
+
 # Run settings from config.
 type RunConfig record {|
     int batchSize;
@@ -50,10 +53,14 @@ type RunConfig record {|
     decimal deferSeconds;
     int linkedinMaxPostsPerRun;
     int linkedinMaxPostsPerDay;
+    # LinkedIn posts in any rolling hour; 0 = no hourly cap
+    int linkedinMaxPostsPerHour = 0;
     # Least seconds between two posts of the same employee (pacing.bal); 0 = no pacing
     int publishGapSeconds = 0;
     # Most extra seconds added to a paced post
     int publishJitterSeconds = 0;
+    # Window after a campaign opens that its shares are spread over (pacing.bal); 0 = no spread
+    int spreadSeconds = 0;
     # Novera card button URL template (`noveraButtonUrl`); empty = not configured
     string noveraButtonUrl;
     string? cardAvatarUrl = ();
@@ -66,6 +73,16 @@ type RunSettings record {|
     boolean announcementsEnabled = true;
     int topN = 3;
     int reminderDays = connection:DEFAULT_REMINDER_DAYS;
+    # Posting limits an admin set (S019, `()` = not set: the configurable applies). `postingConfig` folds them into the
+    # run config; the configurables stay the hard ceilings for the two caps.
+    # `sharing.max_posts_per_day`
+    int? maxPostsPerDay = ();
+    # `sharing.max_posts_per_hour`, 0 = off
+    int? maxPostsPerHour = ();
+    # `sharing.spread_minutes`, 0 = off
+    int? spreadMinutes = ();
+    # `sharing.publish_gap_minutes`, 0 = off
+    int? publishGapMinutes = ();
 |};
 
 # Connection sweep counts (derived status, `member_connection_v`).
@@ -87,6 +104,8 @@ type RunStore isolated object {
     isolated function settings() returns RunSettings|error;
     isolated function connectionSweep() returns ConnectionSweep|error;
     isolated function publishedToday(time:Utc now) returns int|error;
+    # LinkedIn posts published at or after `since` (the hourly cap counts the last hour)
+    isolated function publishedSince(time:Utc since) returns int|error;
     # Store for one outbox row's writes, carrying its correlation id (audit and outbox rows).
     isolated function forRow(string correlationId, int topN) returns Store;
 };
@@ -169,6 +188,9 @@ isolated class PgRunStore {
         time:Utc dayStart = check time:utcFromString(time:utcToString(now).substring(0, 10) + "T00:00:00Z");
         return (check sharing:shareHealth(self.db, dayStart)).published;
     }
+
+    isolated function publishedSince(time:Utc since) returns int|error =>
+        (check sharing:shareHealth(self.db, since)).published;
 
     isolated function forRow(string correlationId, int topN) returns Store =>
         new PgStore(self.db, {actorId: store:SYSTEM.actorId, roles: store:SYSTEM.roles, correlationId}, topN);
@@ -280,6 +302,18 @@ isolated function toRunSettings(store:Setting[] rows) returns RunSettings {
             }
             "connection.reminder_days" => {
                 s.reminderDays = v is int && v >= 0 ? v : s.reminderDays;
+            }
+            "sharing.max_posts_per_day" => {
+                s.maxPostsPerDay = v is int && v >= 0 ? v : ();
+            }
+            "sharing.max_posts_per_hour" => {
+                s.maxPostsPerHour = v is int && v >= 0 ? v : ();
+            }
+            "sharing.spread_minutes" => {
+                s.spreadMinutes = v is int && v >= 0 ? v : ();
+            }
+            "sharing.publish_gap_minutes" => {
+                s.publishGapMinutes = v is int && v >= 0 ? v : ();
             }
         }
     }

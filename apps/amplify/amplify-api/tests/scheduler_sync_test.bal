@@ -205,7 +205,8 @@ function testScheduleChangeCommitsThenPushes() returns error? {
     test:assertEquals(res.statusCode, 200);
     json body = check res.getJsonPayload();
     test:assertEquals(check body.schedulerSync, "SYNCED");
-    test:assertEquals(takeEvents(), ["commit", "push:amplify-run=*/10 * * * *", "push:amplify-maintenance-partitions=0 2 * * *"]);
+    test:assertEquals(takeEvents(), ["commit", "push:amplify-run=*/10 * * * *", "push:amplify-maintenance-partitions=0 2 * * *",
+        "push:amplify-engagement-sync=0 */2 * * *", "push:amplify-coins-convert=0 2 1 * *"]);
     scheduler:JobSpec run = check fakeScheduler.job(JOB_RUN).ensureType();
     test:assertEquals(run.uri, "http://amplify-jobs:9598/runs");
     test:assertEquals(run.deadlineSeconds, 300, "deadline outlives runMaxSeconds (240)");
@@ -238,10 +239,10 @@ function testSchedulerDownSaveStillSucceeds() returns error? {
     fakeScheduler.setUp(true);
     SchedulerSyncResult first = syncScheduler((), "test");
     test:assertEquals(first.status, "SYNCED");
-    test:assertEquals(first.jobs.map(j => j.result), ["CREATED", "CREATED"]);
+    test:assertEquals(first.jobs.map(j => j.result), ["CREATED", "CREATED", "CREATED", "CREATED"]);
     test:assertEquals((check fakeScheduler.job(JOB_MAINTENANCE).ensureType(scheduler:JobSpec)).schedule, "30 3 * * *");
     SchedulerSyncResult again = syncScheduler((), "test");
-    test:assertEquals(again.jobs.map(j => j.result), ["UNCHANGED", "UNCHANGED"]);
+    test:assertEquals(again.jobs.map(j => j.result), ["UNCHANGED", "UNCHANGED", "UNCHANGED", "UNCHANGED"]);
 }
 
 @test:Config {groups: ["scheduler"]}
@@ -252,7 +253,7 @@ function testReconcileFixesDriftedJob() returns error? {
     drifted.schedule = "@every 1m";
     fakeScheduler.put(drifted);
     SchedulerSyncResult result = syncScheduler((), "test");
-    test:assertEquals(result.jobs.map(j => j.result), ["UPDATED", "CREATED"]);
+    test:assertEquals(result.jobs.map(j => j.result), ["UPDATED", "CREATED", "CREATED", "CREATED"]);
     test:assertEquals((check fakeScheduler.job(JOB_RUN).ensureType(scheduler:JobSpec)).schedule, "@every 5m");
 }
 
@@ -301,7 +302,7 @@ function testAdminSyncEndpoint() returns error? {
     test:assertEquals(ok.statusCode, 200);
     json body = check ok.getJsonPayload();
     test:assertEquals(check body.schedulerSync, "SYNCED");
-    test:assertEquals((<json[]>check body.jobs).length(), 2);
+    test:assertEquals((<json[]>check body.jobs).length(), 4);
 
     fakeScheduler.setUp(false);
     http:Response down = check send("POST", "/admin/scheduler/sync", {}, token);
@@ -351,8 +352,8 @@ function testRealSchedulerReconcileUpdateAndFire() returns error? {
         }
         SchedulerSyncResult created = syncScheduler((), "it-reconcile");
         test:assertEquals(created.status, "SYNCED");
-        test:assertEquals(created.jobs.map(j => j.result), ["CREATED", "CREATED"]);
-        test:assertEquals(syncScheduler((), "it-again").jobs.map(j => j.result), ["UNCHANGED", "UNCHANGED"]);
+        test:assertEquals(created.jobs.map(j => j.result), ["CREATED", "CREATED", "CREATED"]);
+        test:assertEquals(syncScheduler((), "it-again").jobs.map(j => j.result), ["UNCHANGED", "UNCHANGED", "UNCHANGED"]);
         json maintenance = check raw->get("/jobs/amplify-maintenance-partitions");
         test:assertEquals(check maintenance.schedule, "0 2 * * *");
         test:assertEquals(check maintenance.collectionId, "amplify");
@@ -392,6 +393,45 @@ function testRealSchedulerReconcileUpdateAndFire() returns error? {
     lock {
         itScheduler = ();
     }
+}
+
+@test:Config {groups: ["scheduler"]}
+function testEngagementSyncJobFollowsItsSettings() returns error? {
+    resetSync();
+    scheduler:JobSpec off = desiredJobs({})[2];
+    test:assertEquals(off.id, JOB_ENGAGEMENT_SYNC);
+    test:assertEquals(off.uri, "http://amplify-jobs:9598/engagement/sync");
+    test:assertFalse(off.enabled, "off until an admin turns the sync on");
+    test:assertEquals(off.schedule, "0 */2 * * *");
+    http:Response res = check putSetting("engagement.sync_enabled", true);
+    test:assertEquals(res.statusCode, 200);
+    scheduler:JobSpec enabledJob = check fakeScheduler.job(JOB_ENGAGEMENT_SYNC).ensureType();
+    test:assertTrue(enabledJob.enabled);
+    test:assertEquals((check putSetting("engagement.schedule", "@every 1m")).statusCode, 422,
+            "no faster than every 15 minutes");
+}
+
+@test:Config {groups: ["scheduler"]}
+function testCoinsConversionJobFollowsTheCoinSettings() returns error? {
+    resetSync();
+    scheduler:JobSpec off = desiredJobs({})[3];
+    test:assertEquals(off.id, JOB_COINS_CONVERT);
+    test:assertEquals(off.uri, "http://amplify-jobs:9598/coins/convert");
+    test:assertFalse(off.enabled, "off until an admin turns wallets on");
+    test:assertEquals(off.schedule, "0 2 1 * *", "MONTHLY: the 1st at 02:00 UTC");
+    test:assertEquals(off.deadlineSeconds, 600, "outlives coinsMaxSeconds (540)");
+    test:assertEquals(off.retryCount, 1);
+    test:assertEquals(desiredJobs({coinSchedule: "WEEKLY"})[3].schedule, "0 2 * * 1");
+    test:assertEquals(desiredJobs({coinSchedule: "DAILY"})[3].schedule, "0 2 * * *");
+    http:Response res = check putSetting("coin.wallets_enabled", true);
+    test:assertEquals(res.statusCode, 200);
+    test:assertEquals(check (check res.getJsonPayload()).schedulerSync, "SYNCED", "wallets_enabled is a schedule key");
+    scheduler:JobSpec turnedOn = check fakeScheduler.job(JOB_COINS_CONVERT).ensureType();
+    test:assertTrue(turnedOn.enabled);
+    http:Response weekly = check putSetting("coin.schedule", "WEEKLY");
+    test:assertEquals(weekly.statusCode, 200);
+    scheduler:JobSpec moved = check fakeScheduler.job(JOB_COINS_CONVERT).ensureType();
+    test:assertEquals(moved.schedule, "0 2 * * 1");
 }
 
 @test:Config
