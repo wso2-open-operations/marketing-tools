@@ -6,7 +6,7 @@ The Amplify worker (Ballerina). It does the background work: announcements, Link
 
 amplify-jobs has no timer of its own (ADR-003). Two callers start its work:
 
-- The scheduler (the pinned `akorn/scheduler` image, ADR-026) calls `POST /runs`, `POST /maintenance/partitions`, `POST /engagement/sync` and `POST /coins/convert` on the schedules in `config_app_setting`. amplify-api registers those jobs (`amplify-api/scheduler_sync.bal`).
+- The scheduler (the pinned `akorn/scheduler` image, ADR-026) calls `POST /runs`, `POST /maintenance/partitions`, `POST /engagement/sync`, `POST /coins/convert` and `POST /reach/refresh` on the schedules in `config_app_setting`. amplify-api registers those jobs (`amplify-api/scheduler_sync.bal`).
 - amplify-api calls it right away for "Save & Share Now".
 
 It is reachable inside the Amplify project only and is never published (`workload.yaml`: `visibility: project`, port 9091).
@@ -16,7 +16,7 @@ Every route except `GET /health` and `GET /ready` needs the header `X-Amplify-In
 | Key | Setting | What it opens |
 | --- | --- | --- |
 | Internal key | `internalApiKey` | Every route. Used by amplify-api |
-| Scheduler key | `schedulerApiKey` | Only `POST /runs`, `POST /maintenance/partitions`, `POST /engagement/sync` and `POST /coins/convert`. Any other route answers 403 |
+| Scheduler key | `schedulerApiKey` | Only `POST /runs`, `POST /maintenance/partitions`, `POST /engagement/sync`, `POST /coins/convert` and `POST /reach/refresh`. Any other route answers 403 |
 
 A missing or wrong key answers 401. The worker refuses to start without both keys, or when they are equal (`checkKeys` in `auth.bal`). Keys are compared in constant time.
 
@@ -31,6 +31,7 @@ Defined in `service.bal`; the contract is `openapi.yaml`.
 | `POST /runs` | The Run. Synchronous. Returns the run log. `202 SKIPPED` while another run holds the lock, `503` when the database is not reachable. Optional `X-Correlation-ID` header |
 | `POST /maintenance/partitions` | Daily upkeep (see Maintenance). `202 SKIPPED` when another pass is running |
 | `POST /engagement/sync` | Community Management engagement sync (`engagement.bal`): off unless `engagement.sync_enabled`; reactions, comments and native reshares on the page's open posts become engagements with `EngagementRecorded`, within `engagement.daily_call_budget`. `202 SKIPPED` when another sync is running. Refreshing the page token needs `linkedinPageClientSecret` |
+| `POST /reach/refresh` | Post reach refresh (`reach.bal`, rules in `amplify_domain.sharing.refreshReach`, #1781): off unless `reach.enabled`. For each in-app share of the last `reach.window_days` days by an employee with a Reach connection, reads the post's impressions and members reached (`GET /rest/memberCreatorPostAnalytics`, `TOTAL`) with that employee's own token, refreshed near expiry, and keeps the latest value per post per UTC day in `sharing_engagement_metric`. Two calls per post against `engagement.daily_call_budget`, shared with the engagement sync; at most `reachMaxPostsPerRun` (500) posts. A refused token skips the employee, a refused post skips the post, a rate limit or outage stops the run. `202 SKIPPED` when another refresh is running |
 | `POST /coins/convert` | Automatic Coins conversion (`coins.bal`, rules in `amplify_domain.scoring`, ADR-048): off unless `coin.wallets_enabled` (`202 SKIPPED WALLETS_OFF`). Reconciles open issues of earlier runs first, plans whole blocks within `coin.max_coins_per_person` / `coin.max_coins_per_run`, stops before sending anything when the master wallet can't cover the run, then per employee: issue PENDING + rows tagged (one transaction), transfer, rows PAID + issue SENT (one transaction). A refusal is FAILED (rows back to HELD), no clear answer is UNKNOWN (the run stops; the next run reconciles). Employees without a captured wallet are `SKIPPED_NO_WALLET`. Re-running a period sends nothing for its SENT issues. `202 SKIPPED` when another conversion is running |
 | `POST /maintenance/leavers` | Runs only the leaver sweep (the daily upkeep includes it) |
 | `POST /maintenance/rebuild-recognition` | Rebuilds every leaderboard and standing table from the ledger and returns the new standing version. The ledger is the source of truth, so this is always safe |
@@ -149,6 +150,7 @@ The HR Entity client has a timeout and an optional OAuth2 client-credentials tok
 | `outcome.bal` | The four outcomes and the backoff |
 | `ports.bal` | Ports (`RunStore`, `Store`, `RunLock`) and their Postgres implementations |
 | `novera.bal` | `NoveraPort` and the client for Novera's notifications endpoint |
+| `reach.bal` | `POST /reach/refresh` wiring: the `reach.*` settings, `ReachTokenReader` (each employee's Reach token, opened once per run, refreshed and re-sealed near expiry), `PgReachJobStore` over its own single-connection client (`reachDb`) and lock (`REACH_LOCK_KEY` in `ports.bal`) |
 | `coins.bal` | `POST /coins/convert` wiring: the Coins client (`amplify_common.coins`), the `coin.*` settings, `PgCoinConversionStore` over its own single-connection client (`coinsDb`) and lock (`COINS_LOCK_KEY` in `ports.bal`) |
 | `outbound.bal`, `config.bal` | LinkedIn adapter, Novera client set-up, token cipher, run tuning |
 | `leavers.bal` | The leaver sweep and its HR Entity reader |

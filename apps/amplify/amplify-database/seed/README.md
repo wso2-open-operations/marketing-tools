@@ -25,6 +25,7 @@ Every insert is `ON CONFLICT DO NOTHING`, so an admin's later change is never ov
 - `S012__coin_settings.sql`: the Coins settings, `coin.block_points = 100`, `coin.block_coins = 10`, `coin.schedule = "MONTHLY"` and `coin.wallets_enabled = false` (phase 2: automatic conversion, wallets off until the WSO2 Coins API exists); the PO team changes the rate and schedule, an admin the switch.
 - `S013__engagement_sync_settings.sql`: the Community Management engagement sync (V025), `engagement.sync_enabled = false`, `engagement.schedule = "0 */2 * * *"` and `engagement.daily_call_budget = 450` (calls per UTC day across runs).
 - `S014__coin_caps.sql`: the Coins safety caps for the automatic conversion (V026, ADR-048), `coin.max_coins_per_person = 500` (one person in one run) and `coin.max_coins_per_run = 50000` (one period, everyone together); points above a cap carry over. Admins change them.
+- `S016__reach_settings.sql`: post reach (V028) and the reports, `reach.enabled = false`, `reach.schedule = "30 3 * * *"`, `reach.window_days = 30` (in-app shares of the last N days are measured) and `dashboards.min_group_size = 5` (a location with fewer people is merged into "Other"). Admins change them.
 
 ## Rules
 

@@ -25,6 +25,10 @@ File: `modules/sharing/sync_repository.bal`. `PgEngagementSyncRepository`: `curs
 
 File: `modules/sharing/native_intent.bal`. `NativeIntent`, `NativeStatus` (`LOOKING` under 24 h, `DETECTED`, `NOT_FOUND`), `nativeStatus`, `NativeIntentRepository` and `PgNativeIntentRepository` (`open`, `ofEmployee`).
 
+## Post reach (#1781)
+
+File: `modules/sharing/reach.bal`. Ports: `ReachReader` (reads a post's impressions and members reached with the employee's Reach token; amplify-jobs adapts `linkedin:MemberAnalyticsPort`) and `ReachStore` (targets, the shared call budget, the readings). Use case `refreshReach`: in-app shares of the last `windowDays` by consenting employees without today's reading, two calls each counted first; a token problem skips the employee, a refused post skips the post, a rate limit or outage stops the run (`ReachReport`). `PgReachRepository`: `sharesToMeasure` (share actions, `IN_APP`, not deleted) and `saveReading` (upsert per engagement per UTC day into `sharing_engagement_metric`).
+
 ## Events
 
 File: `modules/sharing/events.bal`: `repostRequestedEvent`, `engagementRecordedEvent`, `repostFailedEvent`.

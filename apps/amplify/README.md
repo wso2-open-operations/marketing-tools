@@ -103,6 +103,7 @@ Every setting is a Ballerina `configurable`, set through `BAL_CONFIG_VAR_<NAME>`
 | `SCORECARDTARGETCONNECTEDPCT`, `SCORECARDMAXEXPIREDPCT`, `SCORECARDTARGETSHARESUCCESSPCT`, `SCORECARDTARGETPRIORITYREACHPCT`, `SCORECARDTARGETACTIVE30D`, `SCORECARDTARGETREPOSTSPERMONTH` | ✓ | | | | unset (defaults 25, 5, 98, 25, 100, 600). The scorecard lines; local `.env` names are `SCORECARD_TARGET_CONNECTED_PCT` etc. |
 | `HRENTITYTOKENURL`, `HRENTITYCLIENTID`, `HRENTITYCLIENTSECRET` | ✓ | ✓ | | ✓ (secret) | unset. OAuth2 client credentials for the HR Entity service; same shape as leave-app's `oauthConfig` |
 | `HRENTITYPAGESIZE`, `HRENTITYSTATUSES` | ✓ | ✓ | | | unset (defaults 1000, `["Active","Marked leaver"]`) |
+| `HRENTITYLOCATIONFIELD` | ✓ | | | | `workLocation`. The HR Entity employee field with the work location (the Participation board's location breakdown and the export's `location`). The people-app directory query names it `workLocation`; the HR Entity GraphQL schema isn't in this repo, so confirm it there. A service that refuses the field is read without it (everyone in "Other") |
 | `LINKEDINCLIENTID` | ✓ | ✓ | | | `amplify-local` (mock) |
 | `LINKEDINCLIENTSECRET` | ✓ | | | ✓ | random, shared with the mock |
 | `LINKEDINREDIRECTURI` | ✓ | | | | `http://localhost:3000/amplify/connect/callback` |

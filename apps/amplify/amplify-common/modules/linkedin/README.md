@@ -32,6 +32,13 @@ File: `modules/linkedin/community.bal`.
 - Comment and reshare text is never kept: a comment keeps its URN, actor and time; a reshare keeps a `hasCommentary` flag.
 - Shapes: reactions, comments and ACLs follow `linkedin/resources/openapi/openapi/community-management.openapi.yaml`. Notifications follow LinkedIn's documentation: `generatedActivity`, `sourcePost`, `lastModifiedAt`, `decoratedGeneratedActivity.share.owner` and `.text`. The refresh grant returns `refresh_token` and `refresh_token_expires_in` with the access token (`TokenGrant.refreshToken`, `refreshExpiresInSeconds`).
 
+## Member post analytics (Reach connection)
+
+File: `modules/linkedin/analytics.bal` (#1781).
+
+- `MemberAnalyticsPort`: `memberAuthorizationUrl(state, redirectUri)` (scope `REACH_SCOPES` only: `r_member_postAnalytics`), `exchangeMemberCode(code, redirectUri)`, `refresh`, `revokeToken`, `memberPostMetric(token, postUrn, metric)`. `CommunityAdapter` satisfies it (the same Community Management app); the redirect is passed in, because Reach returns to the member callback page, not the page connection's.
+- `memberPostMetric` calls `GET /rest/memberCreatorPostAnalytics?q=entity&entity=(share:{urn})` (or `(ugc:{urn})`) `&queryType={IMPRESSION|MEMBERS_REACHED}&aggregation=TOTAL` and returns the sum of the elements' `count`. Another URN kind is `REJECTED` without a call.
+
 ## ID-token validator
 
 File: `modules/linkedin/id_token.bal`.

@@ -1,6 +1,6 @@
 # amplify_domain.connection
 
-LinkedIn connection per employee: OAuth consent state, the encrypted token vault, expiry and removal. Tables: `connection_member_connection` (view `connection_member_connection_v`), `connection_provider_token` (daily partitions), `connection_oauth_state`, `connection_linkedin_consent`, `connection_org_connection` (V025).
+LinkedIn connection per employee: OAuth consent state, the encrypted token vault, expiry and removal. Tables: `connection_member_connection` (view `connection_member_connection_v`), `connection_provider_token` (daily partitions), `connection_oauth_state`, `connection_linkedin_consent`, `connection_org_connection` (V025), `connection_member_analytics` (V028).
 
 ## Types and ports
 
@@ -25,6 +25,10 @@ File: `modules/connection/oauth_state.bal`. `OAuthState`, `newOAuthState`, `nonc
 ## Page connection (Community Management)
 
 File: `modules/connection/org_connection.bal`. `OrgConnection` (one per page, token pointers to ORG rows of `connection_provider_token`), `OrgConnectionStatus` (`CONNECTED`, `EXPIRED`, `REVOKED`), `orgStatus`, `canRefresh`, `needsRefresh` (within `ORG_REFRESH_LEAD_SECONDS`), `connectOrg`, `refreshOrg`, `revokeOrg`, `sealOrgToken` (AAD `token_id|org_urn|provider`). `OrgConnectionRepository` and `PgOrgConnectionRepository` (`find`, `findActive`, `save`: token rows inserted and deleted with the pointers and an audit row, in one transaction). `employeesOfMembers(db, memberUrns)` matches synced actors to connected employees (removed connections left out). `OAuthState.providerApi` tells the page flow (`newPageOAuthState`, `COMMUNITY_MANAGEMENT`) from the member flow.
+
+## Reach connection (member post analytics)
+
+File: `modules/connection/member_analytics.bal` (#1781). `ReachConnection` (one per employee, token pointers to `MEMBER_ANALYTICS` rows of `connection_provider_token`, owner id = employee id), `ReachStatus` (`CONNECTED`, `EXPIRED`), `reachStatus`, `canRefreshReach`, `needsReachRefresh`, `connectReach`, `refreshReach`, `reachTokenRefs`, `sealReachToken`. `ReachConnectionRepository` and `PgReachConnectionRepository` (`find`, `allConnections`, `save` and `delete`: token rows with the pointers and an audit row in one transaction; audit actions `ReachConnected`, `ReachTokenRefreshed`, `ReachDisconnected`). `reachConsentingCount(db)`. `OAuthState.purpose` (`CONNECT`, `PAGE`, `REACH`, V028) keeps the three flows apart; `newReachOAuthState` prefixes the state with `REACH_STATE_PREFIX` (`reach-`) for the shared callback page.
 
 ## Consent
 

@@ -21,9 +21,14 @@ The schedules come from `config_app_setting` (seeded by `amplify-database/seed/S
 | `amplify-run` | Amplify Run | `@every 5m` (`run.schedule`, minimum 60 s; `run.enabled` switches it off) | `amplify-jobs POST /runs` | 1 retry, 30 s apart | 300 s (`runDeadlineSeconds`) |
 | `amplify-maintenance-partitions` | Amplify partition maintenance | `0 2 * * *`, daily 02:00 UTC (`maintenance.schedule`) | `amplify-jobs POST /maintenance/partitions` | 2 retries, 60 s apart | 180 s (`maintenanceDeadlineSeconds`) |
 | `amplify-engagement-sync` | Amplify engagement sync | `0 */2 * * *` (`engagement.schedule`; fires only while `engagement.sync_enabled`) | `amplify-jobs POST /engagement/sync` | none | 240 s (`engagementDeadlineSeconds`) |
+| `amplify-reach-refresh` | Amplify reach refresh | `30 3 * * *`, daily 03:30 UTC (`reach.schedule`, at most hourly; fires only while `reach.enabled`) | `amplify-jobs POST /reach/refresh` | none | 240 s (`reachDeadlineSeconds`) |
 | `amplify-coins-convert` | Amplify Coins conversion | `0 2 1 * *`, the 1st of the month 02:00 UTC (`coin.schedule`: `MONTHLY`; `WEEKLY` = `0 2 * * 1`, `DAILY` = `0 2 * * *`; fires only while `coin.wallets_enabled`) | `amplify-jobs POST /coins/convert` | 1 retry, 900 s apart | 600 s (`coinsDeadlineSeconds`) |
 
 Every job sends the scheduler key in `X-Amplify-Internal-Key`. That key opens only these routes on amplify-jobs (ADR-039).
+
+### amplify-reach-refresh
+
+The post reach refresh (#1781). It reads the impressions and members reached of the last `reach.window_days` days' in-app shares by employees who connected Reach, with each employee's own token, within the daily Community Management budget it shares with the engagement sync. A post already read that day is skipped, so a repeat call costs nothing; a failure is picked up the next day. Changing `reach.schedule` or `reach.enabled` pushes the job again.
 
 ### amplify-coins-convert
 

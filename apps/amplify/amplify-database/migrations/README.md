@@ -1,6 +1,6 @@
 # Migrations
 
-Forward-only, versioned: `V001__schema_and_extensions.sql` … `V026__coins.sql`. Lowercase snake_case
+Forward-only, versioned: `V001__schema_and_extensions.sql` … `V028__member_post_reach.sql`. Lowercase snake_case
 after `__`. The runner is `../main.bal`; see `../README.md` for settings and how a run works. Never edit an applied script (the runner compares checksums and stops); add a new version. One exception, once: V001-V020 and S001-S010 were rewritten for ADR-043 on 2026-11-02 and the dev database reinstalled.
 
 ## Scripts
@@ -32,6 +32,7 @@ after `__`. The runner is `../main.bal`; see `../README.md` for settings and how
 | V024 | `external_sharing_external_share.note` (nullable, 1 to 500 characters): the employee's note for the reviewer. Recreates the view (it expanded `es.*` at creation) and redefines `identity_erase_employee` so erasure clears the note. V023 is left for open PR #271 |
 | V025 | The page connection and the engagement sync: `connection_org_connection` (token pointers into `connection_provider_token` with `owner_type` ORG, `revoked_at` keeps no token), `sharing_sync_cursor` (per post and endpoint, or per page for share notifications), `sharing_api_usage` (Community Management calls per UTC day), `sharing_native_intent` (a "Repost on LinkedIn" click and when the sync saw the reshare). Widens `sharing_engagement.action` to `REACTION` and `COMMENT`. `identity_erase_employee` unchanged: the new tables hold pseudonymous ids, URNs of posts and pages and counters only |
 | V026 | Automatic Coins conversion (ADR-048): drops V006's `points_ledger_no_paid_phase1_ck`, adds `points_ledger_paid_coin_ck` (a PAID row names its `coin_reference`) and makes a PAID row final in the V021 guard; `scoring_coin_wallet` (one captured wallet per employee), `scoring_coin_run` (one per period, unique), `scoring_coin_issue` (per employee per run: points and carry in, Coins, carry out, our `CNV-` reference, the service's transfer reference, `PENDING`/`SENT`/`FAILED`/`UNKNOWN`/`SKIPPED_NO_WALLET`; whole blocks enforced by a check). `identity_erase_employee` also deletes the captured wallet (`coinWallets`) |
+| V028 | Post reach and the SLT reports (#1781, #1780): `connection_member_analytics` (one Reach connection per employee, consent through the Community Management app to `r_member_postAnalytics`; token pointers, no revoked state: disconnect deletes the row), `connection_provider_token.owner_type` also `MEMBER_ANALYTICS`, `connection_oauth_state.purpose` (`CONNECT`/`PAGE`/`REACH`; page states issued before it become `PAGE`), `sharing_engagement_metric` (per engagement and UTC day: post URN, impressions, members reached, `fetched_at`). `identity_erase_employee` also deletes the Reach connection and its tokens (`reachConnections`); the readings stay (pseudonymous). V027 belongs to another branch |
 
 ## Rules
 
