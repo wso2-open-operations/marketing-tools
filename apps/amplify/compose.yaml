@@ -94,10 +94,6 @@ services:
       BAL_CONFIG_VAR_LINKEDINCLIENTID: ${LINKEDIN_APP_CLIENT_ID:-${LINKEDIN_CLIENT_ID:?}}
       BAL_CONFIG_VAR_LINKEDINCLIENTSECRET: ${LINKEDIN_APP_CLIENT_SECRET:-${LINKEDIN_CLIENT_SECRET:?}}
       BAL_CONFIG_VAR_LINKEDINREDIRECTURI: ${LINKEDIN_REDIRECT_URI:?}
-      # Company page connection (Community Management app). Locally the mock client stands in for it.
-      BAL_CONFIG_VAR_LINKEDINPAGECLIENTID: ${LINKEDIN_PAGE_CLIENT_ID:-${LINKEDIN_CLIENT_ID:?}}
-      BAL_CONFIG_VAR_LINKEDINPAGECLIENTSECRET: ${LINKEDIN_PAGE_CLIENT_SECRET:-${LINKEDIN_CLIENT_SECRET:?}}
-      BAL_CONFIG_VAR_LINKEDINPAGEREDIRECTURI: ${LINKEDIN_PAGE_REDIRECT_URI:-http://localhost:3000/amplify/admin/linkedin-page/callback}
       BAL_CONFIG_VAR_LINKEDINAPIBASEURL: ${LINKEDIN_API_BASE_URL:-http://mock-linkedin:9090}
       BAL_CONFIG_VAR_LINKEDINAUTHBASEURL: ${LINKEDIN_OAUTH_BASE_URL:-http://mock-linkedin:9091}
       # No colon on purpose: unset = the mock's browser-facing port; set but empty = use LINKEDINAUTHBASEURL.
@@ -179,8 +175,6 @@ services:
       BAL_CONFIG_VAR_AMPLIFYONNOVERA: ${AMPLIFY_ON_NOVERA:-true}
       # Pacing between one employee's LinkedIn posts, minutes. Off locally so `make e2e` publishes at once; set it to
       # try pacing (Choreo default 10).
-      BAL_CONFIG_VAR_LINKEDINPAGECLIENTID: ${LINKEDIN_PAGE_CLIENT_ID:-${LINKEDIN_CLIENT_ID:?}}
-      BAL_CONFIG_VAR_LINKEDINPAGECLIENTSECRET: ${LINKEDIN_PAGE_CLIENT_SECRET:-${LINKEDIN_CLIENT_SECRET:?}}
       BAL_CONFIG_VAR_SHAREPUBLISHGAPMINUTES: ${SHARE_PUBLISH_GAP_MINUTES:-0}
       # Novera (Google Chat assistant), the one announcement channel (ADR-047): the Choreo gateway URL of its
       # POST /internal/notifications and the client-credentials application subscribed to it. Empty settings =
@@ -272,10 +266,7 @@ services:
       BAL_CONFIG_VAR_ENABLEMOCKADMIN: "true"
       # The admin endpoints (/mock/posts, /mock/reset) also need the key; with none the mock keeps them off (404).
       BAL_CONFIG_VAR_MOCKADMINKEY: ${MOCK_ADMIN_KEY:?set MOCK_ADMIN_KEY in local/.env (make env)}
-      # The member callback and the admin page callback; the page the mock member administers.
-      BAL_CONFIG_DATA: |
-        redirectUris = ["${LINKEDIN_REDIRECT_URI:?}", "${LINKEDIN_PAGE_REDIRECT_URI:-http://localhost:3000/amplify/admin/linkedin-page/callback}"]
-        organizationUrn = "${WSO2_ORGANIZATION_URN:-urn:li:organization:1477}"
+      BAL_CONFIG_DATA: redirectUris = ["${LINKEDIN_REDIRECT_URI:?}"]
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:9090/health >/dev/null"]
       interval: 5s
