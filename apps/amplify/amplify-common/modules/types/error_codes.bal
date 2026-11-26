@@ -80,6 +80,8 @@ public const ERR_TOP_UP_NOT_POSITIVE = "TOP_UP_NOT_POSITIVE";
 public const ERR_ALREADY_REVERSED = "ALREADY_REVERSED";
 public const ERR_CANNOT_REVERSE_REVERSAL = "CANNOT_REVERSE_REVERSAL";
 public const ERR_PAID_NOT_ALLOWED = "PAID_NOT_ALLOWED";
+# A PAID row became Coins: its settlement never changes again (V026, ADR-048).
+public const ERR_ALREADY_PAID = "ALREADY_PAID";
 
 // S5 Announcements
 public const ERR_ALREADY_ANNOUNCED = "ALREADY_ANNOUNCED";

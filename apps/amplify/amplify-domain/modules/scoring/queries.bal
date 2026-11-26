@@ -196,3 +196,31 @@ public isolated function reversalsOf(postgresql:Client db, types:LedgerReference
         };
     return reversals;
 }
+
+# One employee's Coins: what they received, the carry toward the next block and the captured wallet.
+public type CoinSummary record {|
+    # Coins in their SENT issues
+    int coinsReceived;
+    # carry_out of their last SENT issue (points that count toward the next block on top of the HELD ones)
+    int carryPoints;
+    # Captured wallet address (unmasked; the API masks it), `()` when none
+    string? walletAddress;
+    # When that wallet was captured
+    time:Utc? walletCapturedAt;
+|};
+
+# The Coins summary of one employee.
+#
+# + db - Client
+# + employeeId - Employee
+# + return - The summary (zeros and no wallet for someone with no conversion), or an error
+public isolated function coinSummaryOf(postgresql:Client db, types:EmployeeId employeeId) returns CoinSummary|error {
+    CoinSummary summary = check db->queryRow(`
+        SELECT coalesce((SELECT sum(coins) FROM scoring_coin_issue
+                          WHERE employee_id = ${employeeId} AND status = 'SENT'), 0)::int AS "coinsReceived",
+               coalesce((SELECT carry_out FROM scoring_coin_issue WHERE employee_id = ${employeeId} AND status = 'SENT'
+                          ORDER BY sent_at DESC, created_at DESC LIMIT 1), 0)::int AS "carryPoints",
+               (SELECT wallet_address FROM scoring_coin_wallet WHERE employee_id = ${employeeId}) AS "walletAddress",
+               (SELECT captured_at FROM scoring_coin_wallet WHERE employee_id = ${employeeId}) AS "walletCapturedAt"`);
+    return summary;
+}
