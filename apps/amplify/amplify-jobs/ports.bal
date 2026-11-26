@@ -38,6 +38,9 @@ const int RUN_LOCK_KEY = 1634561132;
 # Advisory lock key for "one partition maintenance pass at a time" across replicas ("main").
 const int MAINTENANCE_LOCK_KEY = 1835755886;
 
+# Advisory lock key for "one Coins conversion at a time" across replicas ("coin", ADR-048).
+const int COINS_LOCK_KEY = 1668247918;
+
 # Run settings from config.
 type RunConfig record {|
     int batchSize;

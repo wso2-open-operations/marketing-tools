@@ -49,7 +49,7 @@ public type LedgerSourceType ENGAGEMENT|EXTERNAL_SHARE|ADJUSTMENT|REVERSAL;
 
 # Valid points waiting for Coin issue. Phase 1 default for awards.
 public const HELD = "HELD";
-# Converted to Coins (phase 2; blocked by a `CHECK` in phase 1).
+# Converted to Coins by the automatic conversion (phase 2, ADR-048); final once set.
 public const PAID = "PAID";
 
 # Settlement status. `()` means action required.

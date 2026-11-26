@@ -53,6 +53,11 @@ public isolated function newExternalShare(ExternalShareClaim claim, string id, t
         return types:domainError(types:ERR_CERTIFICATION_REQUIRED, "Please confirm this is related to Choreo Labs");
     }
     types:EvidenceUrl evidence = check types:parseEvidenceUrl(claim.evidenceUrl);
+    string? note = types:trimToNil(claim.note);
+    if note is string && note.length() > NOTE_MAX_LENGTH {
+        return types:domainError(types:ERR_NOTE_TOO_LONG,
+                string `The note for the reviewer must be at most ${NOTE_MAX_LENGTH} characters`);
+    }
     return {
         id,
         employeeId: claim.employeeId,
@@ -66,7 +71,8 @@ public isolated function newExternalShare(ExternalShareClaim claim, string id, t
         decisionReason: (),
         amplifiedAt: (),
         createdAt: now,
-        version: 1
+        version: 1,
+        note
     };
 }
 
@@ -135,17 +141,31 @@ public isolated function markAmplified(ExternalShare claim, time:Utc now, types:
     return amplified;
 }
 
+# 00:00 UTC on the day of `now`.
+#
+# + now - Current time
+# + return - The start of that UTC day
+isolated function utcDayStart(time:Utc now) returns time:Utc|error =>
+    time:utcFromString(time:utcToString(now).substring(0, 10) + "T00:00:00Z");
+
 // ---- Use cases ------------------------------------------------------------------------------------
 
-# Submits a claim (`POST /external-shares`). One claim per normalized URL and action, across everyone.
+# Submits a claim (`POST /external-shares`). One claim per normalized URL and action, across everyone, and at
+# most `dailyLimit` claims per employee per UTC day.
 #
 # + repo - External share repository
 # + claim - The claim
 # + now - Current time
-# + return - The pending claim, `EVIDENCE_ALREADY_CLAIMED`, another domain error, or a repository error
-public isolated function submitExternalShare(ExternalShareRepository repo, ExternalShareClaim claim, time:Utc now)
-        returns ExternalShare|error {
+# + dailyLimit - Claims one employee may submit per UTC day (`external_share.daily_limit`); 0 or less = no limit
+# + return - The pending claim, `EVIDENCE_ALREADY_CLAIMED`, `DAILY_LIMIT_REACHED`, another domain error, or a
+# repository error
+public isolated function submitExternalShare(ExternalShareRepository repo, ExternalShareClaim claim, time:Utc now,
+        int dailyLimit = 0) returns ExternalShare|error {
     ExternalShare share = check newExternalShare(claim, types:newUuidV7(), now);
+    if dailyLimit > 0 && check repo.submittedSince(claim.employeeId, check utcDayStart(now)) >= dailyLimit {
+        return types:domainError(types:ERR_DAILY_LIMIT_REACHED,
+                string `You can submit up to ${dailyLimit} of your own posts a day. Try again tomorrow.`);
+    }
     if check repo.isClaimed(share.evidence.normalized, share.action) {
         return evidenceAlreadyClaimed();
     }

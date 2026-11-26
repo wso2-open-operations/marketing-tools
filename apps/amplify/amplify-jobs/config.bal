@@ -52,6 +52,12 @@ configurable string linkedinApiVersion = "202610";
 configurable decimal linkedinTimeoutSeconds = 10;
 # Breaker, retry (keep 0, ADR-025) and pool for the LinkedIn REST API.
 configurable resilience:HttpResilience linkedinApiResilience = {};
+# Community Management app (the page connection's app; a separate LinkedIn app from Share on LinkedIn). jobs uses it
+# only for the refresh grant of the page token. Empty client id = `linkedinClientId` (locally the mock client).
+configurable string linkedinPageClientId = "";
+# Its client secret (Choreo secret; never logged). Empty = the page token can't be refreshed: the sync uses it until it
+# expires, then reports NEEDS_RECONNECT.
+configurable string linkedinPageClientSecret = "";
 # LinkedIn posts per run (app quota protection).
 configurable int linkedinMaxPostsPerRun = 50;
 # LinkedIn posts per UTC day across runs, counted from published shares (app daily limit budget).

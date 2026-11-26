@@ -35,6 +35,32 @@ public type AccessToken readonly & record {|
     decimal expiresAt;
 |};
 
+# An issued refresh token (Community Management scopes only).
+public type RefreshToken readonly & record {|
+    string value;
+    string clientId;
+    string memberSub;
+    string[] scopes;
+    decimal expiresAt;
+|};
+
+# A reaction, comment or reshare `POST /mock/engagement` injected, served by the Community Management finders.
+# Comment and reshare text is never kept: only whether a reshare had words.
+public type Engagement readonly & record {|
+    # `REACTION`, `COMMENT` or `RESHARE`
+    string kind;
+    # Post acted on
+    string targetUrn;
+    # Who did it
+    string actorUrn;
+    # Comment id or reshare URN; `()` for a reaction
+    string? activityUrn;
+    # A reshare with words
+    boolean hasCommentary;
+    # Epoch seconds
+    decimal createdAt;
+|};
+
 # A post created through `/rest/posts` or `/v2/ugcPosts`.
 public type Post readonly & record {|
     string urn;
@@ -79,6 +105,8 @@ public type Upload readonly & record {|
 
 isolated map<AuthorizationCode> authorizationCodes = {};
 isolated map<AccessToken> accessTokens = {};
+isolated map<RefreshToken> refreshTokens = {};
+isolated Engagement[] engagements = [];
 isolated map<Post> posts = {};
 isolated map<Upload> uploads = {};
 isolated map<int> requestCounts = {};
@@ -104,16 +132,24 @@ public isolated function takeAuthorizationCode(string code) returns Authorizatio
 }
 
 # Stores an access token. LinkedIn invalidates a member's earlier tokens when the app
-# requests a different set of scopes, so those tokens are revoked here.
+# requests a different set of scopes, so those tokens are revoked here. A Community Management grant (organization
+# scopes) belongs to a separate LinkedIn app, so it never revokes a Share on LinkedIn token or the other way round,
+# even though the mock serves both with one client.
 #
 # + token - Token to store
+# + organizationScopes - Scopes that mark a Community Management grant
 # + return - Number of earlier tokens revoked
-public isolated function issueAccessToken(AccessToken token) returns int {
+public isolated function issueAccessToken(AccessToken token, readonly & string[] organizationScopes = [])
+        returns int {
     lock {
-        string[] revoked = from AccessToken existing in accessTokens
-            where existing.clientId == token.clientId && existing.memberSub == token.memberSub
-                && !sameScopes(existing.scopes, token.scopes)
-            select existing.value;
+        string[] revoked = [];
+        foreach AccessToken existing in accessTokens {
+            if existing.clientId == token.clientId && existing.memberSub == token.memberSub
+                    && hasAny(existing.scopes, organizationScopes) == hasAny(token.scopes, organizationScopes)
+                    && !sameScopes(existing.scopes, token.scopes) {
+                revoked.push(existing.value);
+            }
+        }
         foreach string value in revoked {
             _ = accessTokens.remove(value);
         }
@@ -140,6 +176,53 @@ public isolated function removeAccessToken(string value) returns boolean {
     lock {
         return accessTokens.removeIfHasKey(value) !is ();
     }
+}
+
+# Stores a refresh token.
+#
+# + token - Token to store
+public isolated function putRefreshToken(RefreshToken token) {
+    lock {
+        refreshTokens[token.value] = token;
+    }
+}
+
+# Looks up a refresh token.
+#
+# + value - Token value
+# + return - The token, or `()` if unknown
+public isolated function getRefreshToken(string value) returns RefreshToken? {
+    lock {
+        return refreshTokens[value];
+    }
+}
+
+# Stores an injected engagement.
+#
+# + engagement - Reaction, comment or reshare
+public isolated function addEngagement(Engagement engagement) {
+    lock {
+        engagements.push(engagement);
+    }
+}
+
+# Injected engagements of a kind, oldest first.
+#
+# + kind - `REACTION`, `COMMENT` or `RESHARE`
+# + targetUrn - Only those on this post; `()` = any post
+# + return - The engagements
+public isolated function listEngagements(string kind, string? targetUrn = ()) returns Engagement[] {
+    Engagement[] all;
+    lock {
+        all = engagements.cloneReadOnly();
+    }
+    Engagement[] matching = [];
+    foreach Engagement e in all {
+        if e.kind == kind && (targetUrn is () || e.targetUrn == targetUrn) {
+            matching.push(e);
+        }
+    }
+    return matching;
 }
 
 # Adds one to a request counter and returns the new count.
@@ -298,6 +381,12 @@ public isolated function reset() {
         accessTokens.removeAll();
     }
     lock {
+        refreshTokens.removeAll();
+    }
+    lock {
+        engagements.setLength(0);
+    }
+    lock {
         posts.removeAll();
     }
     lock {
@@ -306,6 +395,15 @@ public isolated function reset() {
     lock {
         requestCounts.removeAll();
     }
+}
+
+isolated function hasAny(string[] scopes, string[] wanted) returns boolean {
+    foreach string scope in wanted {
+        if scopes.indexOf(scope) !is () {
+            return true;
+        }
+    }
+    return false;
 }
 
 isolated function sameScopes(string[] left, string[] right) returns boolean {

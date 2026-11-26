@@ -16,8 +16,8 @@
 
 
 // Settings the resources depend on (`config_app_setting`), typed with defaults, and the rules for the
-// admin `PUT /admin/settings`: only known keys, values in range. Coin settings (`coin.*`) stay hidden in
-// phase 1.
+// admin `PUT /admin/settings`: only known keys, values in range. The PO team changes the business numbers
+// (`PO_SETTINGS`) through `PUT /po/settings`; admins change everything.
 
 import amplify_api.scheduler;
 import amplify_domain.store;
@@ -53,6 +53,26 @@ type Settings record {|
     boolean runEnabled = true;
     # `maintenance.schedule`: when the scheduler calls `POST /maintenance/partitions`
     string maintenanceSchedule = "0 2 * * *";
+    # `external_share.daily_limit`: own posts one employee may submit per UTC day; 0 = no limit
+    int externalShareDailyLimit = 3;
+    # `coin.block_points`: points in one conversion block
+    int coinBlockPoints = 100;
+    # `coin.block_coins`: Coins one block becomes
+    int coinBlockCoins = 10;
+    # `coin.schedule`: how often points convert, `MONTHLY` (the 1st), `WEEKLY` (Mondays) or `DAILY`
+    string coinSchedule = "MONTHLY";
+    # `coin.wallets_enabled`: the automatic conversion sends Coins to captured wallets; off = points keep counting
+    boolean coinWalletsEnabled = false;
+    # `coin.max_coins_per_person`: Coins one person gets in one conversion run
+    int coinMaxPerPerson = 500;
+    # `coin.max_coins_per_run`: Coins one period's conversion sends in all
+    int coinMaxPerRun = 50000;
+    # `engagement.sync_enabled`: the scheduler's engagement sync job fires (and amplify-jobs syncs) only when true
+    boolean engagementSyncEnabled = false;
+    # `engagement.schedule`: when the scheduler calls amplify-jobs `POST /engagement/sync`
+    string engagementSchedule = "0 */2 * * *";
+    # `engagement.daily_call_budget`: Community Management calls per UTC day
+    int engagementDailyBudget = 450;
 |};
 
 # One editable key: its kind and allowed range.
@@ -82,17 +102,35 @@ final readonly & map<SettingRule> EDITABLE_SETTINGS = {
     [SETTING_ANNOUNCEMENTS_ENABLED]: {kind: "boolean"},
     [SETTING_RUN_SCHEDULE]: {kind: "schedule", min: minRunIntervalSeconds},
     [SETTING_RUN_ENABLED]: {kind: "boolean"},
-    [SETTING_MAINTENANCE_SCHEDULE]: {kind: "schedule", min: 3600}
+    [SETTING_MAINTENANCE_SCHEDULE]: {kind: "schedule", min: 3600},
+    [SETTING_EXTERNAL_SHARE_DAILY_LIMIT]: {kind: "int", min: 0, max: 50},
+    [SETTING_COIN_BLOCK_POINTS]: {kind: "int", min: 1, max: 100000},
+    [SETTING_COIN_BLOCK_COINS]: {kind: "int", min: 1, max: 100000},
+    [SETTING_COIN_SCHEDULE]: {kind: "enum", values: ["MONTHLY", "WEEKLY", "DAILY"]},
+    [SETTING_COIN_WALLETS_ENABLED]: {kind: "boolean"},
+    [SETTING_COIN_MAX_PER_PERSON]: {kind: "int", min: 1, max: 1000000},
+    [SETTING_COIN_MAX_PER_RUN]: {kind: "int", min: 1, max: 100000000},
+    [SETTING_ENGAGEMENT_SYNC_ENABLED]: {kind: "boolean"},
+    [SETTING_ENGAGEMENT_SCHEDULE]: {kind: "schedule", min: 900},
+    [SETTING_ENGAGEMENT_DAILY_BUDGET]: {kind: "int", min: 0, max: 100000}
 };
 
-# Keys whose change is pushed to the scheduler.
-final readonly & string[] SCHEDULE_SETTINGS = [SETTING_RUN_SCHEDULE, SETTING_RUN_ENABLED, SETTING_MAINTENANCE_SCHEDULE];
+# The business numbers the PO team changes on Amplify Admin (`GET/PUT /po/settings`). Switches and schedules stay
+# with admins (`PUT /admin/settings`, which can change these too).
+final readonly & string[] PO_SETTINGS = [SETTING_COIN_BLOCK_POINTS, SETTING_COIN_BLOCK_COINS, SETTING_COIN_SCHEDULE,
+    SETTING_EXTERNAL_SHARE_DAILY_LIMIT];
 
-# Whether a key is shown on the admin screen (Coin settings are hidden in phase 1).
+# Keys whose change is pushed to the scheduler.
+final readonly & string[] SCHEDULE_SETTINGS = [SETTING_RUN_SCHEDULE, SETTING_RUN_ENABLED, SETTING_MAINTENANCE_SCHEDULE,
+    SETTING_ENGAGEMENT_SYNC_ENABLED, SETTING_ENGAGEMENT_SCHEDULE, SETTING_COIN_SCHEDULE, SETTING_COIN_WALLETS_ENABLED];
+
+# Whether a key is listed: every editable key, plus the read-only ones the admin screen shows. Seeded keys nobody
+# reads yet (an old `coin.*` placeholder, for example) stay out.
 #
 # + key - Setting key
-# + return - True when visible
-isolated function isVisibleSetting(string key) returns boolean => !key.startsWith("coin.");
+# + return - True when listed
+isolated function isVisibleSetting(string key) returns boolean =>
+    !key.startsWith("coin.") || EDITABLE_SETTINGS.hasKey(key);
 
 # Loads the typed settings; unknown or malformed values fall back to the defaults.
 #
@@ -193,6 +231,27 @@ isolated function settingsOf(store:Setting[] rows) returns Settings {
             SETTING_ANNOUNCEMENTS_ENABLED => {
                 s.announcementsEnabled = v != false;
             }
+            SETTING_EXTERNAL_SHARE_DAILY_LIMIT => {
+                s.externalShareDailyLimit = v is int && v >= 0 ? v : s.externalShareDailyLimit;
+            }
+            SETTING_COIN_BLOCK_POINTS => {
+                s.coinBlockPoints = v is int && v > 0 ? v : s.coinBlockPoints;
+            }
+            SETTING_COIN_BLOCK_COINS => {
+                s.coinBlockCoins = v is int && v > 0 ? v : s.coinBlockCoins;
+            }
+            SETTING_COIN_SCHEDULE => {
+                s.coinSchedule = v == "WEEKLY" ? "WEEKLY" : v == "DAILY" ? "DAILY" : "MONTHLY";
+            }
+            SETTING_COIN_WALLETS_ENABLED => {
+                s.coinWalletsEnabled = v == true;
+            }
+            SETTING_COIN_MAX_PER_PERSON => {
+                s.coinMaxPerPerson = v is int && v > 0 ? v : s.coinMaxPerPerson;
+            }
+            SETTING_COIN_MAX_PER_RUN => {
+                s.coinMaxPerRun = v is int && v > 0 ? v : s.coinMaxPerRun;
+            }
             SETTING_RUN_SCHEDULE => {
                 s.runSchedule = v is string && scheduler:checkSchedule(v) is () ? v : s.runSchedule;
             }
@@ -201,6 +260,15 @@ isolated function settingsOf(store:Setting[] rows) returns Settings {
             }
             SETTING_MAINTENANCE_SCHEDULE => {
                 s.maintenanceSchedule = v is string && scheduler:checkSchedule(v) is () ? v : s.maintenanceSchedule;
+            }
+            SETTING_ENGAGEMENT_SYNC_ENABLED => {
+                s.engagementSyncEnabled = v == true;
+            }
+            SETTING_ENGAGEMENT_SCHEDULE => {
+                s.engagementSchedule = v is string && scheduler:checkSchedule(v) is () ? v : s.engagementSchedule;
+            }
+            SETTING_ENGAGEMENT_DAILY_BUDGET => {
+                s.engagementDailyBudget = v is int && v >= 0 ? v : s.engagementDailyBudget;
             }
         }
     }
