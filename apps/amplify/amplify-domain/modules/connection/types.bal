@@ -125,7 +125,7 @@ public type ConnectionRepository isolated object {
 // ---- Token store (M3) ---------------------------------------------------------------------------
 
 # Owner kind of a token row.
-public type TokenOwnerType "MEMBER"|"ORG";
+public type TokenOwnerType "MEMBER"|"ORG"|"MEMBER_ANALYTICS";
 
 # Kind of a token row.
 public type TokenKind "ACCESS"|"REFRESH";
@@ -137,7 +137,7 @@ public type StoredToken record {|
     string tokenId;
     # UTC day of issue, `YYYY-MM-DD` (partition key)
     string issuedOn;
-    # `MEMBER` (phase 1) or `ORG` (future)
+    # `MEMBER` (Share on LinkedIn), `ORG` (the company page) or `MEMBER_ANALYTICS` (an employee's Reach connection)
     TokenOwnerType ownerType;
     # Employee id or org URN, part of the AAD
     string ownerId;

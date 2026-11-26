@@ -16,7 +16,10 @@
 
 
 // The dashboard queries. Pure SQL over views and tables the API role can already read; each one is a small
-// indexed aggregate at pilot volume (~830 employees, tens of campaigns).
+// indexed aggregate at pilot volume (~830 employees, tens of campaigns). A repost is an engagement with a share
+// action (REPOST, REPOST_COMMENTARY, SHARE, SHARE_COMMENTARY): the reactions and comments the engagement sync records
+// (V025) are counted on their own and never as reposts. Reach is the latest reading of each in-app share's own post
+// (`sharing_engagement_metric`, V028), only for employees who connected Reach, so it is approximate.
 
 import amplify_domain.store;
 
@@ -55,6 +58,30 @@ public type CampaignRow record {|
     int reposts;
     # Of those, reposts with the employee's own commentary (`REPOST_COMMENTARY`, `SHARE_COMMENTARY`)
     int repostsWithCommentary;
+    # Reactions on the campaign post the engagement sync recorded (employees only)
+    int reactions = 0;
+    # Comments on the campaign post the engagement sync recorded (employees only)
+    int comments = 0;
+    # Impressions of the employees' reposts, latest reading of each (approximate: Reach-connected employees only)
+    int impressions = 0;
+    # Members the employees' reposts reached, summed over the reposts' latest readings (approximate)
+    int membersReached = 0;
+    # Reposts with a reading
+    int measuredReposts = 0;
+|};
+
+# Reactions, comments and reach of the engagements in one period.
+public type EngagementTotals record {|
+    # Reactions recorded
+    int reactions;
+    # Comments recorded
+    int comments;
+    # Impressions of the period's reposts (latest reading of each)
+    int impressions;
+    # Members the period's reposts reached (sum of the latest readings; the same person may count twice)
+    int membersReached;
+    # Reposts with a reading
+    int measuredReposts;
 |};
 
 # Connections by derived state.
@@ -148,7 +175,8 @@ public isolated function repostsBetween(postgresql:Client db, time:Utc 'from, ti
     string b = time:utcToString(to);
     return db->queryRow(`
         SELECT count(*)::int FROM sharing_engagement_v
-        WHERE status = 'ACTIVE' AND occurred_at >= CAST(${a} AS timestamptz) AND occurred_at < CAST(${b} AS timestamptz)`);
+        WHERE status = 'ACTIVE' AND action IN ('REPOST', 'REPOST_COMMENTARY', 'SHARE', 'SHARE_COMMENTARY')
+          AND occurred_at >= CAST(${a} AS timestamptz) AND occurred_at < CAST(${b} AS timestamptz)`);
 }
 
 # Campaigns that are open or opened in the last `days`, with their repost counts (not archived).
@@ -171,15 +199,31 @@ public isolated function campaignRows(postgresql:Client db, int days, int 'limit
         time:Utc closes_at;
         int reposts;
         int with_commentary;
+        int reactions;
+        int comments;
+        int impressions;
+        int members_reached;
+        int measured;
     |}, error?> rows = db->query(`
         SELECT c.id::text AS id, c.title, c.category_code, COALESCE(cat.label, c.category_code) AS category_label,
-               c.is_priority, c.status, c.opens_at, c.closes_at, COALESCE(e.n, 0)::int AS reposts, COALESCE(e.c, 0)::int AS with_commentary
+               c.is_priority, c.status, c.opens_at, c.closes_at, COALESCE(e.n, 0)::int AS reposts, COALESCE(e.c, 0)::int AS with_commentary,
+               COALESCE(e.reactions, 0)::int AS reactions, COALESCE(e.comments, 0)::int AS comments,
+               COALESCE(r.impressions, 0)::int AS impressions, COALESCE(r.members_reached, 0)::int AS members_reached,
+               COALESCE(r.measured, 0)::int AS measured
         FROM campaign_v c
         LEFT JOIN campaign_category cat ON cat.code = c.category_code
-        LEFT JOIN (SELECT campaign_id, count(*) AS n,
-                          count(*) FILTER (WHERE action IN ('REPOST_COMMENTARY', 'SHARE_COMMENTARY')) AS c
+        LEFT JOIN (SELECT campaign_id, count(*) FILTER (WHERE action IN ('REPOST', 'REPOST_COMMENTARY', 'SHARE', 'SHARE_COMMENTARY')) AS n,
+                          count(*) FILTER (WHERE action IN ('REPOST_COMMENTARY', 'SHARE_COMMENTARY')) AS c,
+                          count(*) FILTER (WHERE action = 'REACTION') AS reactions,
+                          count(*) FILTER (WHERE action = 'COMMENT') AS comments
                    FROM sharing_engagement_v WHERE status = 'ACTIVE'
                    GROUP BY campaign_id) e ON e.campaign_id = c.id
+        LEFT JOIN (SELECT e.campaign_id, sum(m.impressions) AS impressions, sum(m.members_reached) AS members_reached,
+                          count(*) AS measured
+                   FROM (SELECT DISTINCT ON (engagement_id) engagement_id, impressions, members_reached
+                         FROM sharing_engagement_metric ORDER BY engagement_id, captured_on DESC) m
+                   JOIN sharing_engagement_v e ON e.id = m.engagement_id AND e.status = 'ACTIVE'
+                   GROUP BY e.campaign_id) r ON r.campaign_id = c.id
         WHERE c.archived_at IS NULL AND c.status IN ('OPEN', 'CLOSED')
           AND (c.status = 'OPEN' OR c.opens_at >= CAST(${since} AS timestamptz))
         ORDER BY c.is_priority DESC, c.opens_at DESC, c.id
@@ -195,7 +239,12 @@ public isolated function campaignRows(postgresql:Client db, int days, int 'limit
             opensAt: r.opens_at,
             closesAt: r.closes_at,
             reposts: r.reposts,
-            repostsWithCommentary: r.with_commentary
+            repostsWithCommentary: r.with_commentary,
+            reactions: r.reactions,
+            comments: r.comments,
+            impressions: r.impressions,
+            membersReached: r.members_reached,
+            measuredReposts: r.measured
         };
 }
 
@@ -263,7 +312,7 @@ public isolated function repostsByDay(postgresql:Client db, string campaignId, i
         SELECT (floor(extract(epoch FROM (e.occurred_at - c.opens_at)) / 86400)::int + 1) AS day, count(*)::int AS n
         FROM sharing_engagement_v e
         JOIN campaign c ON c.id = e.campaign_id
-        WHERE e.status = 'ACTIVE' AND e.campaign_id = CAST(${campaignId} AS uuid)
+        WHERE e.status = 'ACTIVE' AND e.action IN ('REPOST', 'REPOST_COMMENTARY', 'SHARE', 'SHARE_COMMENTARY') AND e.campaign_id = CAST(${campaignId} AS uuid)
         GROUP BY 1`);
     int[] counts = [];
     foreach int _ in 0 ..< days {
@@ -291,7 +340,7 @@ public isolated function repostsByCategory(postgresql:Client db, time:Utc since)
         FROM sharing_engagement_v e
         JOIN campaign c ON c.id = e.campaign_id
         LEFT JOIN campaign_category cat ON cat.code = c.category_code
-        WHERE e.status = 'ACTIVE' AND e.occurred_at >= CAST(${s} AS timestamptz)
+        WHERE e.status = 'ACTIVE' AND e.action IN ('REPOST', 'REPOST_COMMENTARY', 'SHARE', 'SHARE_COMMENTARY') AND e.occurred_at >= CAST(${s} AS timestamptz)
         GROUP BY c.category_code, cat.label
         ORDER BY n DESC, label`);
     return from var r in rows
@@ -307,9 +356,11 @@ public isolated function participationCounts(postgresql:Client db) returns Parti
         SELECT (SELECT count(*) FROM connection_member_connection_v WHERE status <> 'REMOVED')::int AS connected,
                (SELECT count(*) FROM connection_member_connection_v
                 WHERE status = 'NEEDS_RECONNECT' AND access_expires_at <= now())::int AS expired,
-               (SELECT count(DISTINCT employee_id) FROM sharing_engagement_v WHERE status = 'ACTIVE')::int AS reposted,
                (SELECT count(DISTINCT employee_id) FROM sharing_engagement_v
-                WHERE status = 'ACTIVE' AND occurred_at >= now() - interval '30 days')::int AS "active30Days"`);
+                WHERE status = 'ACTIVE' AND action IN ('REPOST', 'REPOST_COMMENTARY', 'SHARE', 'SHARE_COMMENTARY'))::int AS reposted,
+               (SELECT count(DISTINCT employee_id) FROM sharing_engagement_v
+                WHERE status = 'ACTIVE' AND action IN ('REPOST', 'REPOST_COMMENTARY', 'SHARE', 'SHARE_COMMENTARY')
+                  AND occurred_at >= now() - interval '30 days')::int AS "active30Days"`);
 }
 
 # Reposts per calendar month (UTC) for the last `months` months, zero-filled, oldest first.
@@ -323,7 +374,7 @@ public isolated function monthlyReposts(postgresql:Client db, int months) return
         FROM generate_series(date_trunc('month', now() AT TIME ZONE 'UTC') - make_interval(months => CAST(${months - 1} AS int)),
                              date_trunc('month', now() AT TIME ZONE 'UTC'), interval '1 month') AS m(month_start)
         LEFT JOIN sharing_engagement_v e
-               ON e.status = 'ACTIVE'
+               ON e.status = 'ACTIVE' AND e.action IN ('REPOST', 'REPOST_COMMENTARY', 'SHARE', 'SHARE_COMMENTARY')
               AND date_trunc('month', e.occurred_at AT TIME ZONE 'UTC') = m.month_start
         GROUP BY m.month_start ORDER BY m.month_start`);
     return from var r in rows
@@ -335,7 +386,8 @@ public isolated function monthlyReposts(postgresql:Client db, int months) return
 # + db - Client
 # + return - Count, or an error
 public isolated function repostingPeople(postgresql:Client db) returns int|error {
-    return db->queryRow(`SELECT count(DISTINCT employee_id)::int FROM sharing_engagement_v WHERE status = 'ACTIVE'`);
+    return db->queryRow(`SELECT count(DISTINCT employee_id)::int FROM sharing_engagement_v
+                         WHERE status = 'ACTIVE' AND action IN ('REPOST', 'REPOST_COMMENTARY', 'SHARE', 'SHARE_COMMENTARY')`);
 }
 
 # Points awarded in a month (employee_points_monthly).
@@ -436,7 +488,7 @@ public isolated function campaignReposters(postgresql:Client db, string campaign
         FROM sharing_engagement_v e
         LEFT JOIN identity_employee p ON p.employee_id = e.employee_id
         LEFT JOIN recognition_standing st ON st.employee_id = e.employee_id AND st.period_key = 'ALL'
-        WHERE e.status = 'ACTIVE' AND e.campaign_id = CAST(${campaignId} AS uuid)
+        WHERE e.status = 'ACTIVE' AND e.action IN ('REPOST', 'REPOST_COMMENTARY', 'SHARE', 'SHARE_COMMENTARY') AND e.campaign_id = CAST(${campaignId} AS uuid)
         ORDER BY lower(COALESCE(p.display_name, st.display_name, e.employee_id)), e.employee_id
         LIMIT 2000`);
     return from var r in rows
@@ -471,6 +523,13 @@ public type ExportRow record {|
     int? points;
     # Anything else worth a column: failure reason, source type, closing time, token expiry
     string? detail;
+    # Reactions on the campaign post (CAMPAIGN rows)
+    int? reactions = ();
+    # Comments on the campaign post (CAMPAIGN rows)
+    int? comments = ();
+    # Members reached: the share's latest reading (ENGAGEMENT rows) or the campaign's reposts summed (CAMPAIGN rows);
+    # approximate, Reach-connected employees only
+    int? reach = ();
 |};
 
 # The raw rows behind every board for a date range, oldest first: engagements, share attempts, points ledger
@@ -484,15 +543,20 @@ public isolated function exportRows(postgresql:Client db, time:Utc 'from, time:U
     string a = time:utcToString('from);
     string b = time:utcToString(to);
     stream<ExportRow, error?> rows = db->query(`
+        WITH latest AS (
+            SELECT DISTINCT ON (engagement_id) engagement_id, members_reached
+            FROM sharing_engagement_metric ORDER BY engagement_id, captured_on DESC)
         SELECT x."recordType", x."occurredAt", x."campaignId", x."campaignTitle", x.category, x."isPriority", x."employeeId",
-               x."employeeName", x."employeeEmail", x.action, x.status, x.points, x.detail
+               x."employeeName", x."employeeEmail", x.action, x.status, x.points, x.detail, x.reactions, x.comments, x.reach
         FROM (
             SELECT 'ENGAGEMENT' AS "recordType", to_char(e.occurred_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "occurredAt",
                    e.campaign_id::text AS "campaignId", c.title AS "campaignTitle", COALESCE(cat.label, c.category_code) AS category,
                    c.is_priority AS "isPriority", e.employee_id AS "employeeId", p.display_name AS "employeeName",
                    p.email::text AS "employeeEmail", e.action, e.status, NULL::int AS points, NULL::text AS detail,
+                   NULL::int AS reactions, NULL::int AS comments, lt.members_reached AS reach,
                    e.occurred_at AS sort_at
             FROM sharing_engagement_v e
+            LEFT JOIN latest lt ON lt.engagement_id = e.id
             LEFT JOIN campaign c ON c.id = e.campaign_id
             LEFT JOIN campaign_category cat ON cat.code = c.category_code
             LEFT JOIN identity_employee p ON p.employee_id = e.employee_id
@@ -500,7 +564,8 @@ public isolated function exportRows(postgresql:Client db, time:Utc 'from, time:U
           UNION ALL
             SELECT 'SHARE_REQUEST', to_char(s.requested_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
                    s.campaign_id::text, c.title, COALESCE(cat.label, c.category_code), c.is_priority,
-                   s.employee_id, p.display_name, p.email::text, s.kind, s.status, NULL, s.failure_reason, s.requested_at
+                   s.employee_id, p.display_name, p.email::text, s.kind, s.status, NULL, s.failure_reason, NULL, NULL, NULL,
+                   s.requested_at
             FROM sharing_share_request_v s
             LEFT JOIN campaign c ON c.id = s.campaign_id
             LEFT JOIN campaign_category cat ON cat.code = c.category_code
@@ -509,7 +574,8 @@ public isolated function exportRows(postgresql:Client db, time:Utc 'from, time:U
           UNION ALL
             SELECT 'POINTS', to_char(l.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
                    l.campaign_id::text, c.title, COALESCE(cat.label, c.category_code), c.is_priority,
-                   l.employee_id, p.display_name, p.email::text, l.action, l.status, l.points, l.source_type, l.created_at
+                   l.employee_id, p.display_name, p.email::text, l.action, l.status, l.points, l.source_type, NULL, NULL, NULL,
+                   l.created_at
             FROM scoring_points_ledger l
             LEFT JOIN campaign c ON c.id = l.campaign_id
             LEFT JOIN campaign_category cat ON cat.code = c.category_code
@@ -520,16 +586,23 @@ public isolated function exportRows(postgresql:Client db, time:Utc 'from, time:U
                    c.id::text, c.title, COALESCE(cat.label, c.category_code), c.is_priority,
                    NULL, NULL, NULL, NULL, c.status, NULL,
                    'closes ' || to_char(c.closes_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') || '; card ' || COALESCE(a.status, 'NONE'),
+                   COALESCE(ce.reactions, 0)::int, COALESCE(ce.comments, 0)::int, ce.reach::int,
                    c.opens_at
             FROM campaign_v c
             LEFT JOIN campaign_category cat ON cat.code = c.category_code
             LEFT JOIN announcement_v a ON a.campaign_id = c.id
+            LEFT JOIN (SELECT e.campaign_id, count(*) FILTER (WHERE e.action = 'REACTION') AS reactions,
+                              count(*) FILTER (WHERE e.action = 'COMMENT') AS comments, sum(lt.members_reached) AS reach
+                       FROM sharing_engagement_v e
+                       LEFT JOIN latest lt ON lt.engagement_id = e.id
+                       WHERE e.status = 'ACTIVE'
+                       GROUP BY e.campaign_id) ce ON ce.campaign_id = c.id
             WHERE c.opens_at >= CAST(${a} AS timestamptz) AND c.opens_at < CAST(${b} AS timestamptz)
           UNION ALL
             SELECT 'CONNECTION', to_char(m.connected_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
                    NULL, NULL, NULL, NULL, m.employee_id, p.display_name, p.email::text, NULL, m.status, NULL,
                    'token expires ' || to_char(m.access_expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-                   m.connected_at
+                   NULL, NULL, NULL, m.connected_at
             FROM connection_member_connection_v m
             LEFT JOIN identity_employee p ON p.employee_id = m.employee_id
             WHERE m.connected_at >= CAST(${a} AS timestamptz) AND m.connected_at < CAST(${b} AS timestamptz)
@@ -612,7 +685,7 @@ public isolated function personPosts(postgresql:Client db, string employeeId) re
         LEFT JOIN (SELECT campaign_id, sum(points) AS points FROM scoring_points_ledger
                    WHERE employee_id = ${employeeId} AND campaign_id IS NOT NULL GROUP BY campaign_id) pts
                ON pts.campaign_id = c.id
-        WHERE e.status = 'ACTIVE' AND e.employee_id = ${employeeId}
+        WHERE e.status = 'ACTIVE' AND e.action IN ('REPOST', 'REPOST_COMMENTARY', 'SHARE', 'SHARE_COMMENTARY') AND e.employee_id = ${employeeId}
         GROUP BY c.id, c.title, c.category_code, cat.label, c.is_priority, c.opens_at, c.closes_at
         ORDER BY c.opens_at DESC, c.id
         LIMIT 200`);
@@ -635,4 +708,90 @@ public isolated function personPointsThisMonth(postgresql:Client db, string empl
         SELECT COALESCE(sum(points), 0)::int FROM scoring_points_ledger
         WHERE employee_id = ${employeeId}
           AND created_at >= date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'`);
+}
+
+# Reactions, comments and reach of what happened in a time range: reactions and comments recorded in it, and the
+# latest readings of the reposts made in it.
+#
+# + db - Client
+# + from - Start, inclusive
+# + to - End, exclusive
+# + return - Totals, or an error
+public isolated function engagementTotalsBetween(postgresql:Client db, time:Utc 'from, time:Utc to)
+        returns EngagementTotals|error {
+    string a = time:utcToString('from);
+    string b = time:utcToString(to);
+    return db->queryRow(`
+        SELECT count(*) FILTER (WHERE e.action = 'REACTION')::int AS reactions,
+               count(*) FILTER (WHERE e.action = 'COMMENT')::int AS comments,
+               COALESCE(sum(m.impressions), 0)::int AS impressions,
+               COALESCE(sum(m.members_reached), 0)::int AS "membersReached",
+               count(m.engagement_id)::int AS "measuredReposts"
+        FROM sharing_engagement_v e
+        LEFT JOIN (SELECT DISTINCT ON (engagement_id) engagement_id, impressions, members_reached
+                   FROM sharing_engagement_metric ORDER BY engagement_id, captured_on DESC) m
+               ON m.engagement_id = e.id AND e.action IN ('REPOST', 'REPOST_COMMENTARY', 'SHARE', 'SHARE_COMMENTARY')
+        WHERE e.status = 'ACTIVE'
+          AND e.occurred_at >= CAST(${a} AS timestamptz) AND e.occurred_at < CAST(${b} AS timestamptz)`);
+}
+
+# Employees with a Reach connection: the "approximate, from N people" note next to reach.
+#
+# + db - Client
+# + return - Count, or an error
+public isolated function reachConsenting(postgresql:Client db) returns int|error {
+    return db->queryRow(`SELECT count(*)::int FROM connection_member_analytics`);
+}
+
+# One employee's participation, for the location breakdown (the API groups people by the directory's location).
+public type PersonParticipation record {|
+    # Work email, lowercase: the key into the people directory
+    string email;
+    # A LinkedIn connection that isn't removed
+    boolean connected;
+    # At least one active repost
+    boolean reposted;
+    # A repost in the last 30 days
+    boolean active30Days;
+    # Points since the 1st of this month (UTC), from the ledger
+    int pointsThisMonth;
+    # Members their reposts reached, summed over each repost's latest reading (approximate)
+    int membersReached;
+|};
+
+# Every employee Amplify knows who connected, reposted or earned points this month (erased people left out).
+#
+# + db - Client
+# + return - One row per employee, or an error
+public isolated function participationByPerson(postgresql:Client db) returns PersonParticipation[]|error {
+    stream<PersonParticipation, error?> rows = db->query(`
+        WITH reposts AS (
+            SELECT employee_id, bool_or(occurred_at >= now() - interval '30 days') AS recent
+            FROM sharing_engagement_v WHERE status = 'ACTIVE' AND action IN ('REPOST', 'REPOST_COMMENTARY', 'SHARE', 'SHARE_COMMENTARY')
+            GROUP BY employee_id),
+        points AS (
+            SELECT employee_id, sum(points) AS points FROM scoring_points_ledger
+            WHERE created_at >= date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'
+            GROUP BY employee_id),
+        reach AS (
+            SELECT e.employee_id, sum(m.members_reached) AS reached
+            FROM (SELECT DISTINCT ON (engagement_id) engagement_id, members_reached
+                  FROM sharing_engagement_metric ORDER BY engagement_id, captured_on DESC) m
+            JOIN sharing_engagement_v e ON e.id = m.engagement_id AND e.status = 'ACTIVE'
+            GROUP BY e.employee_id),
+        connected AS (
+            SELECT DISTINCT employee_id FROM connection_member_connection_v WHERE status <> 'REMOVED')
+        SELECT lower(p.email::text) AS email, (c.employee_id IS NOT NULL) AS connected,
+               (r.employee_id IS NOT NULL) AS reposted, COALESCE(r.recent, false) AS "active30Days",
+               COALESCE(pt.points, 0)::int AS "pointsThisMonth", COALESCE(rc.reached, 0)::int AS "membersReached"
+        FROM identity_employee p
+        LEFT JOIN connected c ON c.employee_id = p.employee_id
+        LEFT JOIN reposts r ON r.employee_id = p.employee_id
+        LEFT JOIN points pt ON pt.employee_id = p.employee_id
+        LEFT JOIN reach rc ON rc.employee_id = p.employee_id
+        WHERE p.email::text NOT LIKE 'erased-%@amplify.invalid'
+          AND (c.employee_id IS NOT NULL OR r.employee_id IS NOT NULL OR pt.employee_id IS NOT NULL)
+        LIMIT 100000`);
+    return from PersonParticipation r in rows
+        select r;
 }

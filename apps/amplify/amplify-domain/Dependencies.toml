@@ -73,7 +73,7 @@ modules = [
 [[package]]
 org = "ballerina"
 name = "http"
-version = "2.17.4"
+version = "2.17.5"
 dependencies = [
 	{org = "ballerina", name = "auth"},
 	{org = "ballerina", name = "cache"},
@@ -174,6 +174,9 @@ dependencies = [
 	{org = "ballerina", name = "jballerina.java"},
 	{org = "ballerina", name = "lang.__internal"},
 	{org = "ballerina", name = "lang.object"}
+]
+modules = [
+	{org = "ballerina", packageName = "lang.int", moduleName = "lang.int"}
 ]
 
 [[package]]
@@ -396,7 +399,7 @@ modules = [
 [[package]]
 org = "ballerinax"
 name = "cdc"
-version = "1.4.0"
+version = "1.4.2"
 dependencies = [
 	{org = "ballerina", name = "crypto"},
 	{org = "ballerina", name = "data.jsondata"},
@@ -472,6 +475,7 @@ version = "0.6.0"
 dependencies = [
 	{org = "ballerina", name = "file"},
 	{org = "ballerina", name = "io"},
+	{org = "ballerina", name = "lang.int"},
 	{org = "ballerina", name = "lang.regexp"},
 	{org = "ballerina", name = "lang.runtime"},
 	{org = "ballerina", name = "lang.value"},
