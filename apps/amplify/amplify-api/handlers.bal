@@ -236,7 +236,8 @@ isolated function completeConnect(auth:Principal p, string? correlationId, Conne
         time:Utc now = time:utcNow();
         // Single use: consume deletes the state whether or not the rest succeeds.
         connection:OAuthState? state = check (check oauthStateRepository()).consume(body.state, p.employeeId, now);
-        if state is () {
+        // A page-connection state (Amplify Admin) never completes a member connect.
+        if state is () || state.providerApi != types:SHARE_ON_LINKEDIN {
             return conflicted(OAUTH_STATE_INVALID, "This sign-in link expired or was already used; start again",
                     correlationId);
         }
@@ -496,14 +497,17 @@ isolated function claimExternalShare(auth:Principal p, string? correlationId, Ex
         returns http:StatusCodeResponse {
     do {
         string? campaignId = body.campaignId;
+        check maxLen(body.note, external_sharing:NOTE_MAX_LENGTH, "note");
         string evidenceUrl = check evidenceUrlOf(body);
+        Settings settings = check loadSettings();
         external_sharing:ExternalShare claim = check external_sharing:submitExternalShare(
                 check externalShareRepository(actorOf(p, correlationId), 3), {
             employeeId: p.employeeId,
             evidenceUrl,
             certified: body.certified,
-            campaignId: campaignId is string ? check uuidOf(campaignId, "campaignId") : ()
-        }, time:utcNow());
+            campaignId: campaignId is string ? check uuidOf(campaignId, "campaignId") : (),
+            note: body.note
+        }, time:utcNow(), settings.externalShareDailyLimit);
         return <http:Created>{body: externalShareDto(claim)};
     } on fail error e {
         return failure(e, correlationId, "Claim external share");
@@ -595,6 +599,37 @@ isolated function reverseEntry(auth:Principal p, string? correlationId, string r
         return <http:Created>{body: ledgerDto(entry)};
     } on fail error e {
         return failure(e, correlationId, "Reverse ledger entry");
+    }
+}
+
+# "Remove invalid activity" (ADR-010 amendment 2026-11-26). Step 1, C2: the removal row and `ActivityRemoved` in one
+# gated transaction. Step 2, C1: the engagement flagged invalid right away. Step 2 is idempotent and the outbox row
+# repeats it in amplify-jobs, so a failure here only delays the flag (the run is triggered) and never undoes step 1.
+isolated function removeActivity(auth:Principal p, string? correlationId, string reference, RemoveActivityBody body)
+        returns http:StatusCodeResponse {
+    do {
+        types:RemovalReason|error reason = body.reasonCode.ensureType();
+        if reason is error {
+            return badRequest("reasonCode must be DUPLICATE, NOT_A_REAL_REPOST, SPAM or OTHER", correlationId);
+        }
+        string? note = body.note;
+        if note is string {
+            check maxLen(note, 1000, "note");
+        }
+        Settings settings = check loadSettings();
+        store:Actor actor = actorOf(p, correlationId);
+        scoring:Removal removal = check scoring:removeInvalidActivity(check ledgerRepository(actor, settings.topN),
+                reference, reason, note, p.employeeId, correlationId, time:utcNow());
+        boolean|error flagged = sharing:markEngagementInvalid(check invalidActivityRepository(actor), removal.removed);
+        if flagged is error {
+            log:printWarn("Remove invalid activity: engagement flag deferred to amplify-jobs",
+                    errorKind = errorKind(flagged), correlationId = correlationId);
+            _ = triggerJobs("/runs", correlationId);
+        }
+        dropSnapshot();
+        return <http:Created>{body: ledgerDto(removal.entry)};
+    } on fail error e {
+        return failure(e, correlationId, "Remove invalid activity");
     }
 }
 

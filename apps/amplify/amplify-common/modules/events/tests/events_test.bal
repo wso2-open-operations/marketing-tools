@@ -89,3 +89,15 @@ function payloadsAreJsonSafe() returns error? {
     test:assertEquals(payload, {shareRequestId: "s1", campaignId: "c1", employeeId: "e1", kind: "REPOST_COMMENTARY",
         targetResourceUrn: "urn:li:share:1", attempts: 1}, "no commentary in the outbox payload");
 }
+
+@test:Config
+function activityRemovedIsKeyedByEngagement() returns error? {
+    OutboxEvent event = newActivityRemoved({reference: "REV-1", reversesReference: "AMP-1", engagementId: "g1",
+        employeeId: "e1", removalReason: types:REMOVAL_DUPLICATE, removedAt: "2026-11-26T00:00:00Z"});
+    test:assertEquals(event.eventType, ACTIVITY_REMOVED);
+    test:assertEquals(event.aggregateType, AGG_ENGAGEMENT);
+    test:assertEquals(event.aggregateId, "g1");
+    test:assertEquals(event.idempotencyKey, "ActivityRemoved:g1");
+    ActivityRemoved back = check event.payload.toJson().cloneWithType();
+    test:assertEquals(back.removalReason, types:REMOVAL_DUPLICATE);
+}

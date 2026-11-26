@@ -38,6 +38,9 @@ const int RUN_LOCK_KEY = 1634561132;
 # Advisory lock key for "one partition maintenance pass at a time" across replicas ("main").
 const int MAINTENANCE_LOCK_KEY = 1835755886;
 
+# Advisory lock key for "one Coins conversion at a time" across replicas ("coin", ADR-048).
+const int COINS_LOCK_KEY = 1668247918;
+
 # Run settings from config.
 type RunConfig record {|
     int batchSize;
@@ -114,6 +117,8 @@ type Store isolated object {
     isolated function saveConnection(connection:ConnectionChange change, int expectedVersion) returns error?;
     isolated function pointRules() returns scoring:PointRule[]|error;
     isolated function appendLedger(scoring:LedgerAppend append) returns boolean|error;
+    # Flags a removed engagement invalid (C1, `ActivityRemoved`): true when flagged now, false when it already was.
+    isolated function markEngagementInvalid(events:ActivityRemoved event) returns boolean|error;
 };
 
 # One run at a time across replicas.
@@ -232,6 +237,9 @@ isolated class PgStore {
 
     isolated function appendLedger(scoring:LedgerAppend append) returns boolean|error =>
         (new scoring:PgLedgerRepository(self.db, self.actor, self.topN)).append(append);
+
+    isolated function markEngagementInvalid(events:ActivityRemoved event) returns boolean|error =>
+        sharing:markEngagementInvalid(new sharing:PgInvalidActivityRepository(self.db, self.actor), event);
 }
 
 # Session advisory lock on a dedicated single-connection client: lock and unlock run on the same

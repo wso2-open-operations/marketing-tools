@@ -359,12 +359,52 @@ paths:
         "401": {$ref: "#/components/responses/Problem"}
         "503": {$ref: "#/components/responses/Problem"}
 
+  /campaigns/{id}/native-intent:
+    post:
+      tags: [C1 Sharing]
+      operationId: recordNativeIntent
+      x-access: EMPLOYEE
+      description: >-
+        Records that the caller opened an open campaign to reshare it on LinkedIn itself. The engagement sync marks it
+        `DETECTED` when it sees the reshare; a later click restarts the 24-hour look unless it was already detected.
+        404 for a campaign that isn't open.
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+        - {$ref: "#/components/parameters/CampaignId"}
+      responses:
+        "200":
+          description: Recorded
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/NativeIntent"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /me/native-intents:
+    get:
+      tags: [C1 Sharing]
+      operationId: listMyNativeIntents
+      x-access: EMPLOYEE
+      description: The caller's native reposts, newest first, each with `nativeStatus` (`LOOKING` under 24 hours, `DETECTED`, `NOT_FOUND` after 24 hours).
+      parameters: [{$ref: "#/components/parameters/CorrelationId"}]
+      responses:
+        "200":
+          description: Intents
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/NativeIntentList"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+
   /external-shares:
     post:
       tags: [S3 External Sharing]
       operationId: claimExternalShare
       x-access: EMPLOYEE
-      description: Claims promotion done outside Amplify (My Campaign). Any public HTTPS URL (not a `lnkd.in` short link), or just a LinkedIn post number; one claim per normalized URL across everyone (`EVIDENCE_ALREADY_CLAIMED`).
+      description: Claims promotion done outside Amplify (My Campaign). Any public HTTPS URL (not a `lnkd.in` short link), or just a LinkedIn post number; one claim per normalized URL across everyone (`EVIDENCE_ALREADY_CLAIMED`), and at most `external_share.daily_limit` claims per employee per UTC day (429 `DAILY_LIMIT_REACHED`).
       parameters:
         - {$ref: "#/components/parameters/CorrelationId"}
         - {$ref: "#/components/parameters/IdempotencyKey"}
@@ -384,6 +424,7 @@ paths:
         "401": {$ref: "#/components/responses/Problem"}
         "409": {$ref: "#/components/responses/Problem"}
         "422": {$ref: "#/components/responses/Problem"}
+        "429": {$ref: "#/components/responses/Problem"}
         "503": {$ref: "#/components/responses/Problem"}
   /me/external-shares:
     get:
@@ -592,6 +633,82 @@ paths:
         "422": {$ref: "#/components/responses/Problem"}
         "503": {$ref: "#/components/responses/Problem"}
 
+  /po/points/{reference}/remove:
+    parameters:
+      - {name: reference, in: path, required: true, schema: {type: string, maxLength: 66}}
+    post:
+      tags: [C2 Scoring]
+      operationId: removeInvalidActivity
+      x-access: CAN_ADJUST_POINTS
+      description: >-
+        Removes an invalid activity (ADR-010 amendment 2026-11-26): reverses an engagement award (`AMP-`, source
+        ENGAGEMENT) with a reason code, and flags the engagement invalid so it leaves the dashboards and is never scored
+        again. A reason code is required, and a note for OTHER. Not on your own activity (403 SELF_REVIEW); once per row
+        (409 ALREADY_REVERSED); adjustments, reversals and own-post awards are adjusted or reversed instead (409
+        NOT_REMOVABLE). A PAID award stays PAID: the removal row is HELD and reduces the next Coins conversion.
+        Standings update in the same transaction as the removal row (B12).
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/RemoveActivity"}
+      responses:
+        "201":
+          description: Removal row (a reversal with its removalReason)
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LedgerEntry"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "413": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+
+  /point-values:
+    get:
+      tags: [C2 Scoring]
+      operationId: getPointValues
+      x-access: EMPLOYEE
+      description: What each activity earns today, the point rule in force per action (screens show the value on each action, and the PO review buttons their award).
+      parameters: [{$ref: "#/components/parameters/CorrelationId"}]
+      responses:
+        "200":
+          description: Points per action
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [values]
+                properties:
+                  values: {type: object, additionalProperties: {type: integer}, description: "Action (REPOST, REPOST_COMMENTARY, REACTION, COMMENT, OWN_POST, OWN_POST_AMPLIFIED, ...) -> points"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /po/people:
+    get:
+      tags: [C2 Scoring]
+      operationId: searchPeople
+      x-access: CAN_ADJUST_POINTS
+      description: People who have used Amplify whose name or work email contains `q` (case-insensitive), by name, for Points & corrections. Erased people are left out.
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {name: q, in: query, required: true, schema: {type: string, minLength: 2, maxLength: 100}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 20, default: 10}}
+      responses:
+        "200":
+          description: Matches
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/PersonMatchList"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
   /leaderboard:
     get:
       tags: [S4 Recognition]
@@ -706,7 +823,7 @@ paths:
       tags: [S4 Recognition]
       operationId: getMyPoints
       x-access: EMPLOYEE
-      description: Own total, rank and monthly history. Points only, no Coin value (A11).
+      description: Own total, rank and monthly history, and the Coins block (rate, progress, Coins received, the captured wallet masked).
       parameters:
         - {$ref: "#/components/parameters/CorrelationId"}
         - {$ref: "#/components/parameters/Period"}
@@ -718,6 +835,31 @@ paths:
               schema: {$ref: "#/components/schemas/MyPoints"}
         "400": {$ref: "#/components/responses/Problem"}
         "401": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /me/coins/wallet:
+    post:
+      tags: [S4 Recognition]
+      operationId: captureMyCoinsWallet
+      x-access: EMPLOYEE
+      description: >-
+        Captures the caller's WSO2 Coins wallet for the automatic Coins conversion (ADR-048). amplify-api asks the WSO2
+        Coins transaction service for the caller's wallets (`GET /wallets/me`) with its own service token and the
+        caller's backend JWT forwarded as `X-User-Assertion`, takes the default wallet (else the first) and stores it.
+        Calling it again refreshes the wallet. 404 `NO_WALLET` when the Coins service lists none for the caller; 503
+        `COINS_UNAVAILABLE` when the Coins service is not configured or did not answer. The address is answered masked.
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      responses:
+        "200":
+          description: Captured
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CoinWallet"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
         "503": {$ref: "#/components/responses/Problem"}
   /team:
     get:
@@ -748,7 +890,7 @@ paths:
       tags: [S4 Recognition]
       operationId: getPointsHistory
       x-access: EMPLOYEE
-      description: Ledger rows of one person, newest first. Without `CAN_ADJUST_POINTS` - self or a member of their team, else 403 `TEAM_SCOPE`.
+      description: Ledger rows and Coins conversions (`HistoryItem.kind`) of one person, newest first in one paged list. Without `CAN_ADJUST_POINTS` - self or a member of their team, else 403 `TEAM_SCOPE`.
       parameters:
         - {$ref: "#/components/parameters/CorrelationId"}
         - {$ref: "#/components/parameters/Page"}
@@ -991,7 +1133,7 @@ paths:
       parameters: [{$ref: "#/components/parameters/CorrelationId"}]
       responses:
         "200":
-          description: Settings (Coin settings hidden in phase 1)
+          description: Settings, every editable key (the Coins settings included)
           content:
             application/json:
               schema: {$ref: "#/components/schemas/SettingList"}
@@ -1022,12 +1164,126 @@ paths:
         "409": {$ref: "#/components/responses/Problem"}
         "422": {$ref: "#/components/responses/Problem"}
         "503": {$ref: "#/components/responses/Problem"}
+  /po/settings:
+    get:
+      tags: [S5 Admin]
+      operationId: listPoSettings
+      x-access: CAN_POINT_RULES
+      description: The business settings the PO team changes on Amplify Admin, `coin.block_points`, `coin.block_coins`, `coin.schedule` and `external_share.daily_limit`.
+      parameters: [{$ref: "#/components/parameters/CorrelationId"}]
+      responses:
+        "200":
+          description: The PO settings
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SettingList"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+    put:
+      tags: [S5 Admin]
+      operationId: changePoSettings
+      x-access: CAN_POINT_RULES
+      description: Changes the PO settings, each guarded by its `version`. Any other key is refused with 403 `ROLE_NOT_PERMITTED` (switches, limits and schedules are an admin's, through `PUT /admin/settings`).
+      parameters: [{$ref: "#/components/parameters/CorrelationId"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SettingChanges"}
+      responses:
+        "200":
+          description: The PO settings after the change
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SettingList"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "413": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /admin/linkedin-page:
+    get:
+      tags: [S5 Admin]
+      operationId: getLinkedInPage
+      x-access: CAN_ADMIN
+      description: The company page connection (Community Management) for the configured page, and today's calls against `engagement.daily_call_budget`.
+      parameters: [{$ref: "#/components/parameters/CorrelationId"}]
+      responses:
+        "200":
+          description: Page connection
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LinkedInPage"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+    delete:
+      tags: [S5 Admin]
+      operationId: disconnectLinkedInPage
+      x-access: CAN_ADMIN
+      description: Revokes the page token at LinkedIn, deletes the token rows and marks the connection revoked (audited). 503 when LinkedIn couldn't confirm; the connection is kept.
+      parameters: [{$ref: "#/components/parameters/CorrelationId"}]
+      responses:
+        "204": {description: Disconnected (or never connected)}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /admin/linkedin-page/connect/start:
+    post:
+      tags: [S5 Admin]
+      operationId: startLinkedInPageConnect
+      x-access: CAN_ADMIN
+      description: Starts the page OAuth flow with the Community Management app and the page scopes only (`r_organization_social_feed rw_organization_admin`). Issues a single-use state valid for 10 minutes.
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      responses:
+        "200":
+          description: Redirect the browser to `authorizationUrl`
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ConnectAuthorization"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /admin/linkedin-page/connect/complete:
+    post:
+      tags: [S5 Admin]
+      operationId: completeLinkedInPageConnect
+      x-access: CAN_ADMIN
+      description: >-
+        Completes the page flow. The state must be the caller's page state, unused and unexpired; `redirectUri` the
+        configured page callback. Exchanges the code and checks the admin is an approved ADMINISTRATOR of the page
+        (403 `NOT_PAGE_ADMIN` otherwise), then seals the tokens as ORG and upserts the connection (audited).
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ConnectComplete"}
+      responses:
+        "200":
+          description: Connected
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LinkedInPage"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
   /admin/scheduler/sync:
     post:
       tags: [S5 Admin]
       operationId: syncScheduler
       x-access: CAN_ADMIN
-      description: Converges the scheduler's jobs (`amplify-run`, `amplify-maintenance-partitions`) to the schedule settings (ADR-026). Safe to repeat. 503 `SCHEDULER_UNAVAILABLE` when the scheduler can't be reached.
+      description: Converges the scheduler's jobs (`amplify-run`, `amplify-maintenance-partitions`, `amplify-engagement-sync`) to the schedule settings (ADR-026). Safe to repeat. 503 `SCHEDULER_UNAVAILABLE` when the scheduler can't be reached.
       parameters:
         - {$ref: "#/components/parameters/CorrelationId"}
         - {$ref: "#/components/parameters/IdempotencyKey"}
@@ -1115,12 +1371,19 @@ components:
             INVALID_EVIDENCE_URL, EVIDENCE_URL_NOT_HTTPS, EVIDENCE_URL_TOO_LONG, EVIDENCE_URL_CREDENTIALS,
             EVIDENCE_URL_IP_HOST, NOT_PENDING, SELF_REVIEW, REASON_REQUIRED, NOT_APPROVED, ALREADY_AMPLIFIED,
             RULE_NOT_FOUND, RULE_VERSION_EXISTS, RULE_BACKDATED, INVALID_POINTS, TOP_UP_NOT_POSITIVE,
-            ALREADY_REVERSED, CANNOT_REVERSE_REVERSAL, INVALID_LEDGER_REFERENCE, TEAM_SCOPE,
+            ALREADY_REVERSED, CANNOT_REVERSE_REVERSAL, NOT_REMOVABLE, INVALID_LEDGER_REFERENCE, TEAM_SCOPE,
             ANNOUNCEMENT_NOT_FAILED, UNKNOWN_SETTING, INVALID_SETTING, SCHEDULER_UNAVAILABLE, INVALID_EMPLOYEE_ID,
             INVALID_EMAIL, INVALID_MEMBER_URN, INVALID_POST_URN, INVALID_UUID, SHARE_NOT_QUEUED, PAID_NOT_ALLOWED,
-            ALREADY_ANNOUNCED, ANNOUNCEMENT_NOT_QUEUED, COMMENTARY_NOT_OWN_WORDS]
+            ALREADY_ANNOUNCED, ANNOUNCEMENT_NOT_QUEUED, COMMENTARY_NOT_OWN_WORDS, DAILY_LIMIT_REACHED, NOTE_TOO_LONG,
+            NOT_PAGE_ADMIN, ALREADY_PAID, NO_WALLET, COINS_UNAVAILABLE]
         detail: {type: string, nullable: true}
         correlationId: {type: string, nullable: true}
+    CoinWallet:
+      type: object
+      required: [walletAddress, capturedAt]
+      properties:
+        walletAddress: {type: string, description: "Masked: the first 6 and last 4 characters (0x12ab…9f3c)"}
+        capturedAt: {type: string, format: date-time}
     HealthStatus:
       type: object
       required: [component, status]
@@ -1136,7 +1399,7 @@ components:
         database: {type: string, enum: [UP, DOWN]}
         breakers:
           type: object
-          required: [database, jwks, jobs, roster, linkedinOAuth, linkedinApi, linkedinIdTokenJwks]
+          required: [database, jwks, jobs, roster, linkedinOAuth, linkedinApi, linkedinIdTokenJwks, coins]
           properties:
             database: {$ref: "#/components/schemas/BreakerState"}
             jwks: {$ref: "#/components/schemas/BreakerState"}
@@ -1147,6 +1410,9 @@ components:
             linkedinIdTokenJwks:
               allOf: [{$ref: "#/components/schemas/BreakerState"}]
               description: LinkedIn OIDC JWKS (ID-token validation on connect). Reported, never gates readiness; NOT_CONFIGURED while linkedinIdTokenValidation is off
+            coins:
+              allOf: [{$ref: "#/components/schemas/BreakerState"}]
+              description: WSO2 Coins transaction service (wallet capture, ADR-048). Reported, never gates readiness
     BreakerState:
       type: string
       enum: [CLOSED, HALF_OPEN, OPEN, NOT_CONFIGURED]
@@ -1352,6 +1618,29 @@ components:
       required: [items]
       properties:
         items: {type: array, items: {$ref: "#/components/schemas/Share"}}
+    NativeIntent:
+      type: object
+      required: [campaignId, openedAt, detectedAt, nativeStatus]
+      properties:
+        campaignId: {type: string, format: uuid}
+        openedAt: {type: string, format: date-time}
+        detectedAt: {type: string, format: date-time, nullable: true}
+        nativeStatus: {type: string, enum: [LOOKING, DETECTED, NOT_FOUND]}
+    NativeIntentList:
+      type: object
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/NativeIntent"}}
+    LinkedInPage:
+      type: object
+      required: [connected, connectedByName, connectedAt, accessExpiresAt, callsToday, dailyBudget]
+      properties:
+        connected: {type: boolean}
+        connectedByName: {type: string, nullable: true}
+        connectedAt: {type: string, format: date-time, nullable: true}
+        accessExpiresAt: {type: string, format: date-time, nullable: true}
+        callsToday: {type: integer, minimum: 0}
+        dailyBudget: {type: integer, minimum: 0}
 
     ExternalShareClaim:
       type: object
@@ -1366,6 +1655,7 @@ components:
         activityId: {type: string, minLength: 1, maxLength: 100, pattern: "^[0-9]+$", description: "A LinkedIn post number (the activity id: the digits in `urn:li:activity:<number>` or `...-activity-<number>-...`). Amplify builds the canonical post URL from it, stores that as `evidenceUrl`, and so it collides with any other form of the same post (`EVIDENCE_ALREADY_CLAIMED`)"}
         certified: {type: boolean, enum: [true], description: "\"I certify this is related to Choreo Labs\" (must be true)"}
         campaignId: {type: string, format: uuid}
+        note: {type: string, maxLength: 500, description: "Optional note for the reviewer; blank counts as none (`NOTE_TOO_LONG` past 500 characters)"}
     ExternalShare:
       type: object
       required: [id, employeeId, action, evidenceUrl, evidenceHost, evidenceProvider, status, createdAt, version]
@@ -1384,6 +1674,22 @@ components:
         amplifiedAt: {type: string, format: date-time, nullable: true}
         createdAt: {type: string, format: date-time}
         version: {type: integer}
+        note: {type: string, nullable: true, description: "The employee's note for the reviewer"}
+        employeeName: {type: string, nullable: true, description: "Who sent it, on `GET /po/external-shares` items only"}
+        employeeEmail: {type: string, nullable: true, description: "Their work email, on `GET /po/external-shares` items only"}
+    PersonMatchList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [employeeId, displayName, email]
+            properties:
+              employeeId: {type: string}
+              displayName: {type: string}
+              email: {type: string}
     ExternalShareList:
       type: object
       required: [items]
@@ -1403,6 +1709,15 @@ components:
       required: [reason]
       properties:
         reason: {type: string, minLength: 1, maxLength: 1000}
+
+    RemovalReason: {type: string, enum: [DUPLICATE, NOT_A_REAL_REPOST, SPAM, OTHER]}
+    RemoveActivity:
+      type: object
+      additionalProperties: false
+      required: [reasonCode]
+      properties:
+        reasonCode: {$ref: "#/components/schemas/RemovalReason"}
+        note: {type: string, nullable: true, maxLength: 1000, description: "Required for OTHER"}
 
     PointAction: {type: string, enum: [REPOST, REPOST_COMMENTARY, SHARE, SHARE_COMMENTARY, OWN_POST, OWN_POST_AMPLIFIED, REACTION, COMMENT, CHALLENGE_ENTRY, CHALLENGE_WINNER]}
     PointRule:
@@ -1448,11 +1763,48 @@ components:
         sourceType: {type: string, enum: [ENGAGEMENT, EXTERNAL_SHARE, ADJUSTMENT, REVERSAL]}
         action: {type: string, nullable: true}
         points: {type: integer}
-        reason: {type: string, nullable: true, description: "A PO's free text. Callers who are not a PO get the fixed label 'Adjusted by the PO team' on adjustment and reversal rows, and null on the others"}
+        reason: {type: string, nullable: true, description: "A PO's free text. The person the row belongs to sees it too; other callers who are not a PO get the fixed label 'Adjusted by the PO team' on adjustment and reversal rows, and null on the others. A removed invalid activity reads 'Removed after review by the PO team' to everyone who is not a PO, its owner included"}
         reversesReference: {type: string, nullable: true}
         actorId: {type: string, description: "The PO's employee id. Omitted for callers who are not a PO"}
         createdAt: {type: string, format: date-time}
         status: {type: string, nullable: true, enum: [HELD, PAID, null]}
+        paidAt: {type: string, format: date-time, nullable: true, description: "When the row became Coins (PAID only)"}
+        coinReference: {type: string, nullable: true, description: "The CNV- reference of the Coins conversion that took the row (set while the transfer is in progress, kept once PAID; ADR-048)"}
+        removalReason: {type: string, nullable: true, enum: [DUPLICATE, NOT_A_REAL_REPOST, SPAM, OTHER, null], description: "Set on the reversal that removed an invalid activity, for the PO team only; everyone else gets null and the reason 'Removed after review by the PO team'"}
+        campaignTitle: {type: string, nullable: true, description: "History rows only: the post the points were earned on"}
+        reversedBy: {type: string, nullable: true, description: "History rows only: the reference of the row that reversed this one"}
+        settlement: {type: string, enum: [HELD, PAID, ACTION_REQUIRED], description: "History rows only: HELD counts toward the next Coins, PAID became Coins, ACTION_REQUIRED waits for the PO team"}
+
+    HistoryItem:
+      type: object
+      description: >-
+        One history row. `kind: LEDGER` is a ledger row (the `LedgerEntry` fields plus `campaignTitle`, `reversedBy`,
+        `settlement`). `kind: COIN_CONVERSION` is one Coins conversion (ADR-048): `points` converted (whole blocks x
+        block points) became `coins`, dated when sent (else when attempted); the ledger rows it paid carry its
+        `reference` as `coinReference`.
+      required: [kind, reference, employeeId, points, createdAt]
+      properties:
+        kind: {type: string, enum: [LEDGER, COIN_CONVERSION]}
+        reference: {type: string, description: "Ledger reference, or the conversion's CNV- reference"}
+        employeeId: {type: string}
+        points: {type: integer, description: "LEDGER: signed points; COIN_CONVERSION: points converted"}
+        createdAt: {type: string, format: date-time}
+        campaignId: {type: string, nullable: true}
+        sourceType: {type: string, enum: [ENGAGEMENT, EXTERNAL_SHARE, ADJUSTMENT, REVERSAL]}
+        action: {type: string, nullable: true}
+        reason: {type: string, nullable: true, description: "As in LedgerEntry"}
+        reversesReference: {type: string, nullable: true}
+        actorId: {type: string, description: "The PO's employee id. Omitted for callers who are not a PO"}
+        status: {type: string, nullable: true, enum: [HELD, PAID, null]}
+        paidAt: {type: string, format: date-time, nullable: true}
+        coinReference: {type: string, nullable: true}
+        removalReason: {type: string, nullable: true, enum: [DUPLICATE, NOT_A_REAL_REPOST, SPAM, OTHER, null], description: "As in LedgerEntry"}
+        campaignTitle: {type: string, nullable: true}
+        reversedBy: {type: string, nullable: true}
+        settlement: {type: string, enum: [HELD, PAID, ACTION_REQUIRED]}
+        coins: {type: integer, description: "COIN_CONVERSION only: Coins sent"}
+        conversionStatus: {type: string, enum: [SENT, IN_PROGRESS], description: "COIN_CONVERSION only: SENT, or IN_PROGRESS while the transfer is not confirmed"}
+        transferReference: {type: string, nullable: true, description: "COIN_CONVERSION only: the WSO2 Coins transfer reference (SENT); null for teammates"}
 
     LeaderboardTop:
       type: object
@@ -1535,10 +1887,28 @@ components:
         lastActivityAt: {type: string, format: date-time, nullable: true}
     MyPoints:
       type: object
-      required: [period, standing, monthly]
+      required: [period, standing, monthly, coins]
       properties:
         period: {type: string}
         standing: {$ref: "#/components/schemas/PersonalStanding"}
+        coins:
+          type: object
+          description: Coins for points. Points convert automatically, only in whole blocks; the rest carries over (ADR-048).
+          required: [walletsEnabled, blockPoints, blockCoins, schedule, heldPoints, carryPoints, pointsTowardNext,
+            coinsReceived, wallet]
+          properties:
+            walletsEnabled: {type: boolean, description: "The automatic conversion sends Coins to captured wallets (false: points keep counting)"}
+            blockPoints: {type: integer}
+            blockCoins: {type: integer}
+            schedule: {type: string, enum: [MONTHLY, WEEKLY, DAILY]}
+            heldPoints: {type: integer, description: "Points not yet paid out"}
+            carryPoints: {type: integer, description: "What the last conversion carried over; counts toward the next block"}
+            pointsTowardNext: {type: integer, description: "Progress to the next block (held plus carry)"}
+            coinsReceived: {type: integer, description: "Coins the conversion has sent to the caller"}
+            wallet:
+              allOf: [{$ref: "#/components/schemas/CoinWallet"}]
+              nullable: true
+              description: The captured wallet (masked), null until `POST /me/coins/wallet`
         monthly:
           type: array
           items:
@@ -1928,7 +2298,9 @@ components:
         page: {type: integer}
         size: {type: integer}
         total: {type: integer}
-        items: {type: array, items: {$ref: "#/components/schemas/LedgerEntry"}}
+        totalPoints: {type: integer, description: "All-time points of this person (every row, not just this page)"}
+        heldPoints: {type: integer, description: "Their points not yet paid out as Coins"}
+        items: {type: array, items: {$ref: "#/components/schemas/HistoryItem"}}
 
     PoDashboard:
       type: object
@@ -2068,6 +2440,13 @@ components:
           type: string
           enum: [SYNCED, PENDING, NOT_CONFIGURED]
           description: Only on a PUT that changed a schedule setting (ADR-026)
+        coins:
+          type: object
+          description: Admin view only (`/admin/settings`), not `/po/settings`. Whether the WSO2 Coins service is set up, from the client in memory (no call to it); shown beside `coin.wallets_enabled` (ADR-048)
+          required: [connected, breaker]
+          properties:
+            connected: {type: boolean, description: "The Coins URL, token endpoint and credentials are configured"}
+            breaker: {$ref: "#/components/schemas/BreakerState"}
     SchedulerSync:
       type: object
       required: [schedulerSync, jobs]

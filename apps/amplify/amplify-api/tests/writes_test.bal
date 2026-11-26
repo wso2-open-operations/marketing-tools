@@ -170,6 +170,11 @@ function testScoringValidation() returns error? {
         ["POST", "/po/points/adjustments", {employeeId: "bad id", points: 5, reason: "r"}, 422, "INVALID_EMPLOYEE_ID"],
         ["POST", "/po/points/not-a-reference/reverse", {reason: "r"}, 422, "INVALID_LEDGER_REFERENCE"],
         ["POST", "/po/points/ADJ:x:1/reverse", {reason: "r".padEnd(1001, "r")}, 400, "VALIDATION_FAILED"],
+        ["POST", "/po/points/not-a-reference/remove", {reasonCode: "SPAM"}, 422, "INVALID_LEDGER_REFERENCE"],
+        ["POST", "/po/points/AMP-x/remove", {reasonCode: "BORING"}, 400, "VALIDATION_FAILED"],
+        ["POST", "/po/points/AMP-x/remove", {reasonCode: "OTHER", note: "n".padEnd(1001, "n")}, 400,
+            "VALIDATION_FAILED"],
+        ["POST", "/po/points/AMP-x/remove", {note: "no code"}, 400, "VALIDATION_FAILED"],
         ["POST", "/po/external-shares/nope/approve", (), 400, "VALIDATION_FAILED"],
         ["POST", "/po/external-shares/" + SAMPLE_UUID + "/approve", (), 404, "NOT_FOUND"]
     ];
@@ -198,6 +203,77 @@ function testSelfReviewIsForbidden() returns error? {
     http:Response self = check send("POST", string `/po/external-shares/${id}/approve`, (), token);
     test:assertEquals(self.statusCode, 403);
     test:assertEquals(check codeIn(self), "SELF_REVIEW");
+}
+
+@test:Config {groups: ["writes"]}
+function testOwnPostNoteAndDailyLimit() returns error? {
+    string token = check employee("note-poster");
+    http:Response first = check send("POST", "/external-shares",
+            {evidenceUrl: "https://dev.to/note-poster/one", certified: true, note: "  About our agent platform  "}, token);
+    test:assertEquals(first.statusCode, 201);
+    json claim = check first.getJsonPayload();
+    test:assertEquals(check claim.note, "About our agent platform", "trimmed and returned");
+    check assertShape(first, "ExternalShare");
+
+    string long = "";
+    foreach int i in 0 ..< 501 {
+        long += "x";
+    }
+    http:Response tooLong = check send("POST", "/external-shares",
+            {evidenceUrl: "https://dev.to/note-poster/long", certified: true, note: long}, token);
+    test:assertEquals(tooLong.statusCode, 400);
+    test:assertEquals(check codeIn(tooLong), "VALIDATION_FAILED");
+
+    // The default daily limit is 3: two more go in, the fourth today is refused with 429.
+    foreach string slug in ["two", "three"] {
+        http:Response ok = check send("POST", "/external-shares",
+                {evidenceUrl: "https://dev.to/note-poster/" + slug, certified: true}, token);
+        test:assertEquals(ok.statusCode, 201, slug);
+    }
+    http:Response fourth = check send("POST", "/external-shares",
+            {evidenceUrl: "https://dev.to/note-poster/four", certified: true}, token);
+    test:assertEquals(fourth.statusCode, 429);
+    test:assertEquals(check codeIn(fourth), "DAILY_LIMIT_REACHED");
+    test:assertEquals(fourth.getContentType(), "application/problem+json", "a problem body, like every other error");
+}
+
+@test:Config {groups: ["writes"]}
+function testPeopleSearchIsForThePoTeam() returns error? {
+    http:Response refused = check send("GET", "/po/people?q=avery", (), check employee("curious-employee"));
+    test:assertEquals(refused.statusCode, 403, "employees can't search people");
+    string token = check po();
+    http:Response short = check send("GET", "/po/people?q=a", (), token);
+    test:assertEquals(short.statusCode, 400);
+    test:assertEquals(check codeIn(short), "VALIDATION_FAILED");
+    http:Response badLimit = check send("GET", "/po/people?q=avery&limit=50", (), token);
+    test:assertEquals(badLimit.statusCode, 400);
+    http:Response found = check send("GET", "/po/people?q=AVERY", (), token);
+    test:assertEquals(found.statusCode, 200);
+    check assertShape(found, "PersonMatchList");
+    json[] items = <json[]>(check (check found.getJsonPayload()).items);
+    test:assertEquals(items.length(), 1);
+    test:assertEquals(check items[0].employeeId, "emp-avery");
+}
+
+@test:Config {groups: ["writes"], dependsOn: [testSettingsVersionConflictIs409]}
+function testPoSettingsAreTheBusinessNumbersOnly() returns error? {
+    string token = check po();
+    http:Response listed = check send("GET", "/po/settings", (), token);
+    test:assertEquals(listed.statusCode, 200);
+    json[] rows = <json[]>(check (check listed.getJsonPayload()).settings);
+    foreach json r in rows {
+        string key = (check r.key).toString();
+        test:assertTrue(PO_SETTINGS.indexOf(key) !is (), "only PO keys are listed, got " + key);
+    }
+    http:Response refused = check send("PUT", "/po/settings",
+            {changes: [{key: "sharing.enabled", value: false, version: 1}]}, token);
+    test:assertEquals(refused.statusCode, 403, "switches are an admin's");
+    test:assertEquals(check codeIn(refused), "ROLE_NOT_PERMITTED");
+    http:Response bad = check send("PUT", "/po/settings",
+            {changes: [{key: "coin.schedule", value: "HOURLY", version: 1}]}, token);
+    test:assertEquals(bad.statusCode, 422, "values are checked like the admin's");
+    http:Response employeeTry = check send("GET", "/po/settings", (), check employee("not-a-po"));
+    test:assertEquals(employeeTry.statusCode, 403);
 }
 
 // ---- Announcements -----------------------------------------------------------------------------------

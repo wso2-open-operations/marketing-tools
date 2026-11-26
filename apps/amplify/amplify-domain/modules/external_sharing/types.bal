@@ -65,7 +65,12 @@ public type ExternalShare record {|
     time:Utc createdAt;
     # Optimistic lock
     int version;
+    # The employee's note for the reviewer (V024), `()` if none
+    string? note = ();
 |};
+
+# Longest note for the reviewer (`external_sharing_external_share.note` CHECK).
+public const int NOTE_MAX_LENGTH = 500;
 
 # An employee's claim.
 public type ExternalShareClaim record {|
@@ -77,6 +82,8 @@ public type ExternalShareClaim record {|
     boolean certified;
     # Campaign, optional
     string? campaignId = ();
+    # Note for the reviewer, optional; blank counts as none
+    string? note = ();
 |};
 
 # Persistence port for the `external_sharing` schema.
@@ -93,6 +100,13 @@ public type ExternalShareRepository isolated object {
     # + action - Action
     # + return - True if claimed, or an error
     public isolated function isClaimed(string normalizedUrl, types:ExternalAction action) returns boolean|error;
+
+    # How many claims the employee submitted at or after `since` (the daily submission limit).
+    #
+    # + employeeId - Claimant
+    # + since - Start of the window
+    # + return - The count, or an error
+    public isolated function submittedSince(types:EmployeeId employeeId, time:Utc since) returns int|error;
 
     # Inserts a claim with its events. The unique key backs up `isClaimed` under a race.
     #

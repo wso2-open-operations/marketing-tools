@@ -269,7 +269,7 @@ function aPoCannotAdjustOrReverseTheirOwnPoints() returns error? {
 }
 
 @test:Config
-function settlementChangesOnlyStatusAndNoPaidInPhase1() returns error? {
+function settlementChangesOnlyStatusAndPaidNeedsAConversion() returns error? {
     LedgerAppend a = check awardForEngagement(rules(), engagement(), (), T0);
     types:LedgerEntry flagged = check changeSettlement(a.entry, (), types:addDays(T0, 1));
     test:assertEquals(flagged.status, (), "null = action required");
@@ -277,5 +277,6 @@ function settlementChangesOnlyStatusAndNoPaidInPhase1() returns error? {
     expected.status = ();
     expected.statusChangedAt = types:addDays(T0, 1);
     test:assertEquals(flagged, expected, "every fact is unchanged");
-    test:assertEquals(code(changeSettlement(a.entry, types:PAID, T0)), types:ERR_PAID_NOT_ALLOWED);
+    test:assertEquals(code(changeSettlement(a.entry, types:PAID, T0)), types:ERR_PAID_NOT_ALLOWED,
+            "PAID only from a conversion (coins_test.bal has the paid path)");
 }

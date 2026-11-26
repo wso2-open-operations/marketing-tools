@@ -77,6 +77,16 @@ public type LedgerAppend record {|
     types:LedgerEntry entry;
     # `PointsAwarded`, `PointsAdjusted` or `PointsReversed`
     events:OutboxEvent event;
+    # Further events written in the same transaction (`ActivityRemoved` for a removal)
+    events:OutboxEvent[] extraEvents = [];
+|};
+
+# What `removeInvalidActivity` did.
+public type Removal record {|
+    # The removal row (`REV-`, with its reason code)
+    types:LedgerEntry entry;
+    # The event C1 acts on
+    events:ActivityRemoved removed;
 |};
 
 # Persistence port for `scoring_points_ledger`. Append-only: there is no update of facts, only `append`
@@ -100,7 +110,8 @@ public type LedgerRepository isolated object {
     # + return - The reversal row, `()` if none, or an error
     public isolated function findReversalOf(types:LedgerReference reference) returns types:LedgerEntry|error?;
 
-    # Updates only the settlement columns (`status`, `status_changed_at`, `paid_at`, `coin_reference`).
+    # Updates the settlement status of a row (`HELD` or action required). A PAID row is final (`ALREADY_PAID`); PAID
+    # itself comes only from the Coins conversion (`PAID_NOT_ALLOWED` here).
     #
     # + reference - Ledger reference
     # + status - New status, `()` = action required

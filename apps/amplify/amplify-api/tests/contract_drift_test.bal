@@ -128,7 +128,10 @@ function testApiEnumsMatchTheirBallerinaTypes() returns error? {
         [["TeamPage", "scope"], "TeamScope"],
         [["CampaignRegistration", "run"], "RunTrigger"],
         [["BreakerState"], "BreakerReport"],
-        [["ReadyStatus", "breakers", "jobs"], "BreakerReport"]
+        [["ReadyStatus", "breakers", "jobs"], "BreakerReport"],
+        [["HistoryItem", "kind"], "HistoryKind"],
+        [["HistoryItem", "conversionStatus"], "ConversionStatus"],
+        [["SettingList", "coins", "breaker"], "BreakerReport"]
     ];
     foreach [string[], string] [path, typeName] in cases {
         assertSameSet(check specEnum(...path), check unionValues(src, typeName), string:'join(".", ...path));
@@ -145,6 +148,7 @@ function testDomainEnumsMatchTheSpec() returns error? {
         [["PointAction"], [types:REPOST, types:REPOST_COMMENTARY, types:SHARE, types:SHARE_COMMENTARY, types:OWN_POST,
             types:OWN_POST_AMPLIFIED, types:REACTION, types:COMMENT, types:CHALLENGE_ENTRY, types:CHALLENGE_WINNER]],
         [["Share", "status"], [sharing:QUEUED, sharing:PUBLISHED, sharing:FAILED]],
+        [["NativeIntent", "nativeStatus"], [sharing:LOOKING, sharing:DETECTED, sharing:NOT_FOUND]],
         [["Share", "failureReason"], [types:NEEDS_RECONNECT, types:PROVIDER_REJECTED, types:RETRIES_EXHAUSTED]],
         [["ExternalShare", "status"], [external_sharing:PENDING, external_sharing:APPROVED, external_sharing:REJECTED,
             external_sharing:AMPLIFIED]],
@@ -153,6 +157,7 @@ function testDomainEnumsMatchTheSpec() returns error? {
             announcements:FAILED]],
         [["LedgerEntry", "sourceType"], [types:ENGAGEMENT, types:EXTERNAL_SHARE, types:ADJUSTMENT, types:REVERSAL]],
         [["LedgerEntry", "status"], [types:HELD, types:PAID]],
+        [["HistoryItem", "status"], [types:HELD, types:PAID]],
         [["Me", "grants", "items"], [auth:EMPLOYEE, auth:CAN_CAMPAIGN, auth:CAN_DASHBOARD, auth:CAN_EXPORT,
             auth:CAN_REVIEW_SHARES, auth:CAN_POINT_RULES, auth:CAN_ADJUST_POINTS, auth:CAN_PO_DASHBOARD, auth:CAN_REPORTS,
             auth:CAN_ADMIN]]
@@ -201,8 +206,10 @@ function domainCodes() returns string[] => [types:ERR_INVALID_EMPLOYEE_ID, types
     types:ERR_NOT_PENDING, types:ERR_SELF_REVIEW, types:ERR_REASON_REQUIRED, types:ERR_NOT_APPROVED,
     types:ERR_ALREADY_AMPLIFIED, types:ERR_RULE_NOT_FOUND, types:ERR_RULE_VERSION_EXISTS, types:ERR_RULE_BACKDATED,
     types:ERR_INVALID_POINTS, types:ERR_TOP_UP_NOT_POSITIVE, types:ERR_ALREADY_REVERSED,
-    types:ERR_CANNOT_REVERSE_REVERSAL, types:ERR_PAID_NOT_ALLOWED, types:ERR_ALREADY_ANNOUNCED,
-    types:ERR_ANNOUNCEMENT_NOT_QUEUED, types:ERR_ANNOUNCEMENT_NOT_FAILED, types:ERR_COMMENTARY_NOT_OWN_WORDS];
+    types:ERR_CANNOT_REVERSE_REVERSAL, types:ERR_NOT_REMOVABLE, types:ERR_PAID_NOT_ALLOWED, types:ERR_ALREADY_PAID,
+    types:ERR_ALREADY_ANNOUNCED,
+    types:ERR_ANNOUNCEMENT_NOT_QUEUED, types:ERR_ANNOUNCEMENT_NOT_FAILED, types:ERR_COMMENTARY_NOT_OWN_WORDS,
+    types:ERR_DAILY_LIMIT_REACHED, types:ERR_NOTE_TOO_LONG];
 
 # `const string NAME = "VALUE";` values in a source file whose value is UPPER_SNAKE.
 #

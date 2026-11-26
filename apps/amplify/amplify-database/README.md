@@ -43,7 +43,7 @@ All are `configurable` in `main.bal`. In Choreo they arrive as `BAL_CONFIG_VAR_*
 | Path | What |
 | --- | --- |
 | `main.bal` | The runner: script listing, version table, checksums, out-of-order check, dry run, TLS check, server version check |
-| `migrations/` | Forward-only schema scripts, `V001` to `V022` (`V017` is unused). See `migrations/README.md` |
+| `migrations/` | Forward-only schema scripts, `V001` to `V025` (`V017` and `V023` are unused here; V023 is reserved by an open PR). See `migrations/README.md` |
 | `seed/` | Idempotent seed data, `S001` to `S010`. See `seed/README.md` |
 | `checks/` | One-off read-only checks, not run by the runner. See below |
 | `tests/` | Unit tests and the `integration` group. See below |
@@ -516,7 +516,7 @@ erDiagram
 | connection | `member_connection.(provider, member_urn)` | sharing | `engagement.(provider, actor_member_urn)` |
 | campaign | `campaign.(provider, resource_urn)` | sharing | `sync_cursor.(provider, resource_urn)` *(future)* |
 
-**Derived status** (`sharing_share_request_v`): `PUBLISHED` if `published_at`; `FAILED` if `failed_at`; else `QUEUED`. `engagement_v` adds `ACTIVE` / `DELETED` from `deleted_at`. These are the share states every doc uses (B14); there is no `PENDING` share state.
+**Derived status** (`sharing_share_request_v`): `PUBLISHED` if `published_at`; `FAILED` if `failed_at`; else `QUEUED`. `engagement_v` adds `ACTIVE` / `DELETED` from `deleted_at`, and since V030 `INVALID` first from `invalidated_at` (a PO removed it as invalid activity, ADR-010 amendment 2026-11-26). These are the share states every doc uses (B14); there is no `PENDING` share state.
 
 **Kinds (B4):** `REPOST` / `REPOST_COMMENTARY` reshare the campaign post (`reshareContext.parent`). `SHARE` / `SHARE_COMMENTARY` create a new post that links to it, and are the fallback. The M0 D5 spike passed on 2026-10-20 (a member token can reshare an organization post), so the Amplify action is `REPOST` ([ADR-034](../architecture/decisions/ADR-034-share-is-a-repost.md)). All four are in the enums from the first migration, so the fallback needs no schema change.
 
@@ -556,6 +556,7 @@ erDiagram
         timestamptz decided_at
         text decision_reason
         timestamptz amplified_at "WSO2 or a senior leader amplified it"
+        text note "optional note for the reviewer (V024), cleared on erasure"
         timestamptz created_at
         int version
     }
@@ -885,6 +886,8 @@ history. The scripts as they stand carry neither.
 | `V020__employee_alias.sql` | `identity_employee_alias`: a re-created Asgardeo account maps to the first employee id (ADR-041); `amplify_api` SELECT, INSERT, `amplify_jobs` and `amplify_readonly` SELECT |
 | `V021__immutable_ledger_and_audit.sql` | |
 | `V022__announcement_attempted_at.sql` | nullable `announcement.attempted_at timestamptz`, the Novera attempt marker (ADR-047). Jobs saves it before the call; a row already attempted is never sent again automatically |
+| `V024__external_share_note.sql` | nullable `external_sharing_external_share.note` (1 to 500 characters), the employee's note for the reviewer; recreates `external_sharing_external_share_v` so it carries the column; `identity_erase_employee` also clears it (`claimNotes` in its result) |
+| `V025__engagement_sync.sql` | `connection_org_connection` (the company page's token pointers, tokens in `connection_provider_token` as ORG), `sharing_sync_cursor`, `sharing_api_usage`, `sharing_native_intent`; `sharing_engagement.action` also allows `REACTION` and `COMMENT`. Erasure unchanged (no personal data in the new tables) |
 
 
 There are no grants to change since ADR-043. The review proposals about `REVOKE` on app roles (jobs-db review D4/D5, H3) no longer apply; V021 covers the ledger and the audit log, and `REVOKE TEMPORARY ON DATABASE <db> FROM PUBLIC` is a DBA decision.

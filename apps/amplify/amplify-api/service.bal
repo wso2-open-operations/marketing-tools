@@ -393,6 +393,28 @@ service http:InterceptableService / on apiListener {
             : {items: from var r in rows select shareViewDto(r).toJson()});
     }
 
+    # Records that the caller opened an open campaign post to reshare it on LinkedIn itself (native repost).
+    #
+    # + ctx - Request context
+    # + req - Request
+    # + id - Campaign id
+    # + return - The intent with its `nativeStatus`, or problem details
+    resource function post campaigns/[string id]/native\-intent(http:RequestContext ctx, http:Request req)
+            returns http:Response|error {
+        final auth:Principal & readonly p = (check principalOf(ctx)).cloneReadOnly();
+        final string? c = cid(ctx);
+        final string idFinal = id;
+        return idempotent(ctx, req, p, "/campaigns/" + id + "/native-intent", (),
+                isolated function() returns http:StatusCodeResponse => recordNativeIntent(p, c, idFinal));
+    }
+
+    # The caller's native repost intents: `LOOKING` (under 24 h), `DETECTED` or `NOT_FOUND`.
+    #
+    # + ctx - Request context
+    # + return - Intents, or problem details
+    resource function get me/native\-intents(http:RequestContext ctx) returns http:Response|ProblemResponse|error =>
+        okJson(nativeIntentsOf(check principalOf(ctx), cid(ctx)));
+
     // ---- S3 External Sharing -----------------------------------------------------------------------
 
     # Claims an external share.
@@ -542,6 +564,40 @@ service http:InterceptableService / on apiListener {
                 isolated function() returns http:StatusCodeResponse => reverseEntry(p, c, referenceFinal, b.reason));
     }
 
+    # Removes an invalid activity: reverses an engagement award with a reason code and flags the engagement invalid.
+    #
+    # + ctx - Request context
+    # + req - Request
+    # + reference - Ledger reference of the award (`AMP-`)
+    # + body - Reason code and note
+    # + return - 201 with the removal row, or problem details
+    resource function post po/points/[string reference]/remove(http:RequestContext ctx, http:Request req,
+            @http:Payload RemoveActivityBody body) returns http:Response|error {
+        final auth:Principal & readonly p = (check principalOf(ctx)).cloneReadOnly();
+        final string? c = cid(ctx);
+        final readonly & RemoveActivityBody b = body.cloneReadOnly();
+        final string referenceFinal = reference;
+        return idempotent(ctx, req, p, "/po/points/" + reference + "/remove", b.toJson(),
+                isolated function() returns http:StatusCodeResponse => removeActivity(p, c, referenceFinal, b));
+    }
+
+    # What each activity earns today (current point values), for every employee.
+    #
+    # + ctx - Request context
+    # + return - `{values}`, or problem details
+    resource function get point\-values(http:RequestContext ctx) returns http:Response|ProblemResponse|error =>
+        okJson(pointValues(cid(ctx)));
+
+    # Finds people by name or work email, for Points & corrections.
+    #
+    # + ctx - Request context
+    # + q - Search text, 2 to 100 characters
+    # + 'limit - Most results, 1 to 20
+    # + return - The matches, or problem details
+    resource function get po/people(http:RequestContext ctx, string q = "", int 'limit = 10)
+            returns http:Response|ProblemResponse|error =>
+        okJson(peopleSearch(cid(ctx), q, 'limit));
+
     // ---- S4 Recognition ----------------------------------------------------------------------------
 
     # Company top N, personal and My Team.
@@ -667,6 +723,21 @@ service http:InterceptableService / on apiListener {
             returns http:Response|ProblemResponse|error =>
         okJson(myPoints(check principalOf(ctx), cid(ctx), period));
 
+    # Captures the caller's WSO2 Coins wallet (ADR-048): their default wallet at the Coins service, else the first. The
+    # caller's own backend JWT is forwarded to the Coins service so it lists only their wallets.
+    #
+    # + ctx - Request context
+    # + req - Request (its backend JWT is forwarded)
+    # + return - The masked wallet, 404 `NO_WALLET`, 503 `COINS_UNAVAILABLE`, or problem details
+    resource function post me/coins/wallet(http:RequestContext ctx, http:Request req) returns http:Response|error {
+        final auth:Principal & readonly p = (check principalOf(ctx)).cloneReadOnly();
+        final string? c = cid(ctx);
+        string|http:HeaderNotFoundError header = req.getHeader(jwtHeader);
+        final string? assertion = header is string && header.trim() != "" ? header.trim() : ();
+        return idempotent(ctx, req, p, "/me/coins/wallet", (),
+                isolated function() returns http:StatusCodeResponse => captureCoinsWallet(p, assertion, c));
+    }
+
     # Team page.
     #
     # + ctx - Request context
@@ -759,6 +830,67 @@ service http:InterceptableService / on apiListener {
     resource function put admin/settings(http:RequestContext ctx, @http:Payload SettingChangesBody body)
             returns http:Response|ProblemResponse|error =>
         okJson(changeSettings(check principalOf(ctx), cid(ctx), body));
+
+    # The business settings the PO team changes on Amplify Admin (Coins rate and schedule, own-post limit).
+    #
+    # + ctx - Request context
+    # + return - Those settings, or problem details
+    resource function get po/settings(http:RequestContext ctx) returns http:Response|ProblemResponse|error {
+        json|error body = settingsBody(PO_SETTINGS);
+        return okJson(body is error ? failure(body, cid(ctx), "List PO settings") : body);
+    }
+
+    # Changes the PO team's settings; any other key is refused (403).
+    #
+    # + ctx - Request context
+    # + body - Changes
+    # + return - Those settings after the change, or problem details
+    resource function put po/settings(http:RequestContext ctx, @http:Payload SettingChangesBody body)
+            returns http:Response|ProblemResponse|error =>
+        okJson(changeSettings(check principalOf(ctx), cid(ctx), body, PO_SETTINGS));
+
+    # The company page connection: who connected it, its expiry and today's Community Management calls.
+    #
+    # + ctx - Request context
+    # + return - The status, or problem details
+    resource function get admin/linkedin\-page(http:RequestContext ctx) returns http:Response|ProblemResponse|error =>
+        okJson(pageStatus(cid(ctx)));
+
+    # Starts the company page OAuth flow (Community Management app, page scopes only).
+    #
+    # + ctx - Request context
+    # + req - Request
+    # + return - Authorization URL and state, or problem details
+    resource function post admin/linkedin\-page/connect/'start(http:RequestContext ctx, http:Request req)
+            returns http:Response|error {
+        final auth:Principal & readonly p = (check principalOf(ctx)).cloneReadOnly();
+        final string? c = cid(ctx);
+        return idempotent(ctx, req, p, "/admin/linkedin-page/connect/start", (),
+                isolated function() returns http:StatusCodeResponse => startPageConnect(p, c));
+    }
+
+    # Completes the company page OAuth flow: the admin must be an approved administrator of the page.
+    #
+    # + ctx - Request context
+    # + req - Request
+    # + body - Code, state and the callback page
+    # + return - The page status, 403 `NOT_PAGE_ADMIN`, or problem details
+    resource function post admin/linkedin\-page/connect/complete(http:RequestContext ctx, http:Request req,
+            @http:Payload ConnectCompleteBody body) returns http:Response|error {
+        final auth:Principal & readonly p = (check principalOf(ctx)).cloneReadOnly();
+        final string? c = cid(ctx);
+        final readonly & ConnectCompleteBody b = body.cloneReadOnly();
+        // The code is a one-time secret: fingerprint the state only.
+        return idempotent(ctx, req, p, "/admin/linkedin-page/connect/complete", {state: b.state},
+                isolated function() returns http:StatusCodeResponse => completePageConnect(p, c, b));
+    }
+
+    # Disconnects the company page: revokes the token at LinkedIn and deletes it.
+    #
+    # + ctx - Request context
+    # + return - 204, or problem details
+    resource function delete admin/linkedin\-page(http:RequestContext ctx) returns http:NoContent|ProblemResponse|error =>
+        disconnectPage(check principalOf(ctx), cid(ctx));
 
     # Converges the scheduler jobs to the schedule settings (ADR-026).
     #

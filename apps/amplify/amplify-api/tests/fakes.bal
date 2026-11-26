@@ -22,6 +22,7 @@ import amplify_common.events;
 import amplify_common.types;
 import amplify_domain.campaign;
 import amplify_domain.external_sharing;
+import amplify_domain.identity;
 import amplify_domain.scoring;
 import amplify_domain.sharing;
 import amplify_domain.store;
@@ -260,6 +261,18 @@ isolated class FakeExternalShares {
         }
     }
 
+    public isolated function submittedSince(types:EmployeeId employeeId, time:Utc since) returns int|error {
+        lock {
+            int n = 0;
+            foreach var c in self.rows {
+                if c.employeeId == employeeId && time:utcDiffSeconds(c.createdAt, since) >= 0d {
+                    n += 1;
+                }
+            }
+            return n;
+        }
+    }
+
     public isolated function insert(external_sharing:ExternalShare c, events:OutboxEvent[] outbox) returns error? {
         lock {
             self.rows[c.id] = c.clone();
@@ -364,8 +377,60 @@ isolated function mockShareRepository(store:Actor actor) returns sharing:ShareRe
 isolated function mockExternalShareRepository(store:Actor actor, int topN)
         returns external_sharing:ExternalShareRepository|error => fakeExternalShares;
 
+@test:Mock {functionName: "searchPeople"}
+isolated function mockSearchPeople(string text, int 'limit) returns identity:EmployeeMatch[]|error {
+    identity:EmployeeMatch[] everyone = [
+        {employeeId: "emp-avery", displayName: "Avery Perera", email: "avery.perera@wso2.com"},
+        {employeeId: "emp-sam", displayName: "Sam Silva", email: "sam@wso2.com"}
+    ];
+    string t = text.toLowerAscii();
+    return from identity:EmployeeMatch m in everyone
+        where m.displayName.toLowerAscii().includes(t) || m.email.includes(t)
+        limit 'limit
+        select m;
+}
+
 @test:Mock {functionName: "ledgerRepository"}
 isolated function mockLedgerRepository(store:Actor actor, int topN) returns scoring:LedgerRepository|error => fakeLedger;
+
+# Invalid-activity flags on engagements; `failing` makes the flag fail like a database blip.
+isolated class FakeInvalidActivity {
+    *sharing:InvalidActivityRepository;
+    private map<types:RemovalReason> flagged = {};
+    private boolean failing = false;
+
+    public isolated function markInvalid(string engagementId, types:RemovalReason reason,
+            types:LedgerReference reference, time:Utc at) returns boolean|error {
+        lock {
+            if self.failing {
+                return error("database down");
+            }
+            if self.flagged.hasKey(engagementId) {
+                return false;
+            }
+            self.flagged[engagementId] = reason;
+            return true;
+        }
+    }
+
+    isolated function reasonOf(string engagementId) returns types:RemovalReason? {
+        lock {
+            return self.flagged[engagementId];
+        }
+    }
+
+    isolated function setFailing(boolean failing) {
+        lock {
+            self.failing = failing;
+        }
+    }
+}
+
+final FakeInvalidActivity fakeInvalidActivity = new;
+
+@test:Mock {functionName: "invalidActivityRepository"}
+isolated function mockInvalidActivityRepository(store:Actor actor) returns sharing:InvalidActivityRepository|error =>
+    fakeInvalidActivity;
 
 @test:Mock {functionName: "pointRuleRepository"}
 isolated function mockPointRuleRepository(store:Actor actor) returns scoring:PointRuleRepository|error => fakeRules;

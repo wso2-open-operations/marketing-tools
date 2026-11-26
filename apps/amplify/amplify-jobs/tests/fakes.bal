@@ -217,6 +217,9 @@ isolated class MemRunStore {
     isolated function forRow(string correlationId, int topN) returns Store => self.memStore();
 }
 
+# An engagement id the fake store doesn't know (`markEngagementInvalid` answers `NOT_FOUND`).
+const string UNKNOWN_ENGAGEMENT = "01900000-0000-7000-8000-00000000dead";
+
 isolated class MemStore {
     *Store;
 
@@ -228,6 +231,7 @@ isolated class MemStore {
     private final map<connection:LinkedInConnection> connections = {};
     private final map<connection:StoredToken> tokens = {};
     private final map<types:LedgerEntry> ledger = {};
+    private final map<types:RemovalReason> invalidEngagements = {};
     private scoring:PointRule[] rules = [];
     private RunSettings settingsValue = {};
     private boolean duplicateNext = false;
@@ -514,8 +518,27 @@ isolated class MemStore {
             }
             self.ledger[entry.reference] = entry;
         }
-        self.queue.enqueueEvents([append.event], ());
+        self.queue.enqueueEvents([append.event, ...append.extraEvents], ());
         return true;
+    }
+
+    isolated function markEngagementInvalid(events:ActivityRemoved event) returns boolean|error {
+        lock {
+            if self.invalidEngagements.hasKey(event.engagementId) {
+                return false;
+            }
+            if event.engagementId == UNKNOWN_ENGAGEMENT {
+                return types:domainError(types:ERR_NOT_FOUND, "Engagement not found");
+            }
+            self.invalidEngagements[event.engagementId] = event.removalReason;
+            return true;
+        }
+    }
+
+    isolated function invalidReasonOf(string engagementId) returns types:RemovalReason? {
+        lock {
+            return self.invalidEngagements[engagementId];
+        }
     }
 }
 

@@ -26,3 +26,7 @@ export = true
 [[package.modules]]
 name = "amplify_common.resilience"
 export = true
+
+[[package.modules]]
+name = "amplify_common.coins"
+export = true

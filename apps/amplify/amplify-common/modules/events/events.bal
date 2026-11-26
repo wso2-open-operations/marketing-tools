@@ -40,11 +40,12 @@ public const EXTERNAL_SHARE_AMPLIFIED = "ExternalShareAmplified";
 public const POINTS_AWARDED = "PointsAwarded";
 public const POINTS_ADJUSTED = "PointsAdjusted";
 public const POINTS_REVERSED = "PointsReversed";
+public const ACTIVITY_REMOVED = "ActivityRemoved";
 
 # Outbox `event_type`.
 public type EventType CAMPAIGN_REGISTERED|CAMPAIGN_ANNOUNCED|CONNECTION_READY|CONNECTION_REVOKED|CONNECTION_REMOVED
     |REPOST_REQUESTED|ENGAGEMENT_RECORDED|REPOST_FAILED|EXTERNAL_SHARE_SUBMITTED|EXTERNAL_SHARE_APPROVED
-    |EXTERNAL_SHARE_REJECTED|EXTERNAL_SHARE_AMPLIFIED|POINTS_AWARDED|POINTS_ADJUSTED|POINTS_REVERSED;
+    |EXTERNAL_SHARE_REJECTED|EXTERNAL_SHARE_AMPLIFIED|POINTS_AWARDED|POINTS_ADJUSTED|POINTS_REVERSED|ACTIVITY_REMOVED;
 
 // ---- Aggregate types (outbox `aggregate_type`) -----------------------------------------------------
 
@@ -248,10 +249,27 @@ public type PointsChanged record {|
     string createdAt;
 |};
 
+# C2 → C1: a PO removed an engagement as invalid activity. Written with the reversal row (same transaction);
+# amplify-jobs flags the engagement invalid in C1 (`invalidated_at`), so no context writes another's tables.
+public type ActivityRemoved record {|
+    # The reversal row (`REV-`)
+    types:LedgerReference reference;
+    # The award it cancels (`AMP-`)
+    types:LedgerReference reversesReference;
+    # Engagement id (the award's `source_id`)
+    string engagementId;
+    # Employee the activity belongs to
+    types:EmployeeId employeeId;
+    # Why
+    types:RemovalReason removalReason;
+    # When the PO removed it
+    string removedAt;
+|};
+
 # Any event payload.
 public type EventPayload CampaignRegistered|CampaignAnnounced|ConnectionReady|ConnectionRevoked|ConnectionRemoved
     |RepostRequested|EngagementRecorded|RepostFailed|ExternalShareSubmitted|ExternalShareApproved
-    |ExternalShareRejected|ExternalShareAmplified|PointsChanged;
+    |ExternalShareRejected|ExternalShareAmplified|PointsChanged|ActivityRemoved;
 
 # One outbox row before insert. `idempotency_key` is unique, so it is `<event_type>:<catalogue key>`;
 # the event-type prefix stops two events of one aggregate (for example `RepostRequested` and
@@ -397,6 +415,16 @@ public isolated function newExternalShareAmplified(ExternalShareAmplified payloa
     eventType: EXTERNAL_SHARE_AMPLIFIED,
     payload,
     idempotencyKey: idempotencyKey(EXTERNAL_SHARE_AMPLIFIED, payload.externalShareId, "AMPLIFIED")
+};
+
+# + payload - Event payload
+# + return - Outbox row, key `engagement.id` (an engagement is removed at most once)
+public isolated function newActivityRemoved(ActivityRemoved payload) returns OutboxEvent => {
+    aggregateType: AGG_ENGAGEMENT,
+    aggregateId: payload.engagementId,
+    eventType: ACTIVITY_REMOVED,
+    payload,
+    idempotencyKey: idempotencyKey(ACTIVITY_REMOVED, payload.engagementId)
 };
 
 # Builds `PointsAwarded`, `PointsAdjusted` or `PointsReversed` from the ledger row's source type.

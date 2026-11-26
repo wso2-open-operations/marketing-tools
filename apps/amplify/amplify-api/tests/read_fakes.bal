@@ -25,6 +25,7 @@ import amplify_common.types;
 import amplify_domain.announcements;
 import amplify_domain.connection;
 import amplify_domain.external_sharing;
+import amplify_domain.identity;
 import amplify_domain.recognition;
 import amplify_domain.reporting;
 import amplify_domain.scoring;
@@ -339,8 +340,8 @@ isolated function mockMonthlyPoints(types:EmployeeId employeeId) returns recogni
     return [{month: "2026-10", points: 30, actions: 2}, {month: "2026-09", points: 10, actions: 1}];
 }
 
-@test:Mock {functionName: "ledgerHistory"}
-isolated function mockLedgerHistory(types:EmployeeId employeeId, int page, int size) returns scoring:LedgerPage|error {
+@test:Mock {functionName: "ledgerTimeline"}
+isolated function mockLedgerTimeline(types:EmployeeId employeeId, int page, int size) returns scoring:TimelinePage|error {
     check dbGate();
     types:LedgerEntry entry = {
         reference: "ADJ:" + employeeId + ":1",
@@ -361,7 +362,51 @@ isolated function mockLedgerHistory(types:EmployeeId employeeId, int page, int s
         paidAt: (),
         coinReference: ()
     };
+    if employeeId.startsWith("coins-") {
+        // Someone the conversion paid: a SENT conversion, a PAID row that names it, and one still in progress.
+        types:LedgerEntry paid = entry.clone();
+        paid.reference = "AMP-" + employeeId;
+        paid.sourceType = types:ENGAGEMENT;
+        paid.action = types:REPOST;
+        paid.reason = ();
+        paid.points = 800;
+        paid.status = types:PAID;
+        paid.paidAt = [1796090400, 0];
+        paid.coinReference = "CNV-" + employeeId;
+        return {items: [
+            <scoring:CoinConversion>{reference: "CNV-next-" + employeeId, employeeId, points: 100, coins: 10,
+                status: scoring:COIN_UNKNOWN, transferReference: (), at: [1798768800, 0]},
+            <scoring:CoinConversion>{reference: "CNV-" + employeeId, employeeId, points: 800, coins: 80,
+                status: scoring:COIN_SENT, transferReference: "tx-80", at: [1796090400, 0]},
+            paid
+        ], total: 3};
+    }
     return {items: [entry], total: 1};
+}
+
+// The one fake history row above is an adjustment of 10 still waiting for the PO (status `NULL`).
+@test:Mock {functionName: "pointsSummary"}
+isolated function mockPointsSummary(types:EmployeeId employeeId) returns scoring:PointsSummary|error {
+    check dbGate();
+    return {total: 10, held: 0, paid: 0, actionRequired: 1};
+}
+
+@test:Mock {functionName: "reversalsAmong"}
+isolated function mockReversalsAmong(types:LedgerReference[] references) returns map<string>|error {
+    check dbGate();
+    return {};
+}
+
+@test:Mock {functionName: "campaignTitles"}
+isolated function mockCampaignTitles(string[] ids) returns map<string>|error {
+    check dbGate();
+    return map from string id in ids select [id, "Title of " + id];
+}
+
+@test:Mock {functionName: "employeesIn"}
+isolated function mockEmployeesIn(types:EmployeeId[] ids) returns map<identity:EmployeeMatch>|error {
+    check dbGate();
+    return map from string id in ids select [id, {employeeId: id, displayName: "Name " + id, email: id + "@wso2.com"}];
 }
 
 @test:Mock {functionName: "sharesOf"}

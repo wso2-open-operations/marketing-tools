@@ -599,6 +599,34 @@ function engagementWithoutAPointRuleFailsAndBadTimeRetries() returns error? {
     test:assertEquals(w.mem.ledgerSize(), 0);
 }
 
+// ---- ActivityRemoved -----------------------------------------------------------------------------
+
+@test:Config
+function activityRemovedFlagsTheEngagementOnce() returns error? {
+    World w = harness();
+    string engagementId = types:newUuidV7();
+    json removed = {reference: "REV-" + types:newUuidV7(), reversesReference: "AMP-x", engagementId,
+        employeeId: "emp-removed", removalReason: types:REMOVAL_SPAM, removedAt: time:utcToString(time:utcNow())};
+    int first = w.queue.enqueue(events:ACTIVITY_REMOVED, removed);
+    _ = check run(w);
+    test:assertEquals(w.queue.statusOf(first)[0], "DONE");
+    test:assertEquals(w.mem.invalidReasonOf(engagementId), types:REMOVAL_SPAM);
+
+    map<json> again = (<map<json>>removed).clone();
+    again["reference"] = "REV-" + types:newUuidV7();
+    int second = w.queue.enqueue(events:ACTIVITY_REMOVED, again);
+    _ = check run(w);
+    test:assertEquals(w.queue.statusOf(second)[0], "DONE", "already flagged by amplify-api: a no-op");
+
+    map<json> unknown = (<map<json>>removed).clone();
+    unknown["engagementId"] = UNKNOWN_ENGAGEMENT;
+    int missing = w.queue.enqueue(events:ACTIVITY_REMOVED, unknown);
+    _ = check run(w);
+    [string, int, string?] [status, _, lastError] = w.queue.statusOf(missing);
+    test:assertEquals(status, "FAILED");
+    test:assertTrue(lastError is string && lastError.startsWith("engagement not flagged"));
+}
+
 // ---- the run ---------------------------------------------------------------------------------------
 
 @test:Config

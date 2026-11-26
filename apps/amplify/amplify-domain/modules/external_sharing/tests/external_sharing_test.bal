@@ -46,6 +46,18 @@ isolated class InMemoryExternalShares {
         }
     }
 
+    public isolated function submittedSince(types:EmployeeId employeeId, time:Utc since) returns int|error {
+        lock {
+            int n = 0;
+            foreach ExternalShare s in self.rows {
+                if s.employeeId == employeeId && time:utcDiffSeconds(s.createdAt, since) >= 0d {
+                    n += 1;
+                }
+            }
+            return n;
+        }
+    }
+
     public isolated function insert(ExternalShare claim, events:OutboxEvent[] outbox) returns error? {
         lock {
             self.rows[claim.id] = claim.clone();
@@ -176,6 +188,39 @@ function oneClaimPerUrlAcrossEmployees() returns error? {
     if second is types:DomainError {
         test:assertEquals(second.message(), "Someone else already submitted this url, contact PO Team for review");
     }
+}
+
+@test:Config
+function aNoteForTheReviewerIsTrimmedAndCapped() returns error? {
+    ExternalShareClaim withNote = claim();
+    withNote.note = "  About our new agent platform  ";
+    test:assertEquals((check newExternalShare(withNote, "x1", T0)).note, "About our new agent platform");
+    withNote.note = "   ";
+    test:assertEquals((check newExternalShare(withNote, "x1", T0)).note, (), "a blank note is no note");
+    test:assertEquals((check newExternalShare(claim(), "x1", T0)).note, (), "the note is optional");
+    string long = "";
+    foreach int i in 0 ..< NOTE_MAX_LENGTH + 1 {
+        long += "x";
+    }
+    withNote.note = long;
+    test:assertEquals(code(newExternalShare(withNote, "x1", T0)), types:ERR_NOTE_TOO_LONG);
+}
+
+@test:Config
+function dailySubmissionLimitCountsTodayOnly() returns error? {
+    InMemoryExternalShares repo = new;
+    time:Utc noon = check time:utcFromString("2026-11-25T12:00:00Z");
+    time:Utc lateYesterday = check time:utcFromString("2026-11-24T23:30:00Z");
+    // Yesterday's claim doesn't count toward today's limit.
+    _ = check submitExternalShare(repo, claim(url = "https://medium.com/@avery/one"), lateYesterday, 2);
+    _ = check submitExternalShare(repo, claim(url = "https://medium.com/@avery/two"), noon, 2);
+    _ = check submitExternalShare(repo, claim(url = "https://medium.com/@avery/three"), noon, 2);
+    ExternalShare|error fourth = submitExternalShare(repo, claim(url = "https://medium.com/@avery/four"), noon, 2);
+    test:assertEquals(code(fourth), types:ERR_DAILY_LIMIT_REACHED, "two today already");
+    test:assertEquals(code(submitExternalShare(repo, claim(employeeId = "emp-2", url = "https://medium.com/@avery/five"),
+            noon, 2)), "OK", "the limit is per employee");
+    test:assertEquals(code(submitExternalShare(repo, claim(url = "https://medium.com/@avery/six"), noon, 0)), "OK",
+            "0 turns the limit off");
 }
 
 @test:Config

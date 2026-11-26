@@ -20,9 +20,28 @@
 import amplify_common.events;
 import amplify_common.types;
 
+import ballerina/time;
+
 # The points event for a ledger row.
 #
 # + entry - Appended row
 # + return - Outbox row
 public isolated function pointsChangedEvent(types:LedgerEntry entry) returns events:OutboxEvent =>
     events:newPointsChanged(entry);
+
+# `ActivityRemoved` for a removal row: C1 flags the engagement invalid from it.
+#
+# + entry - The removal row (`REV-`)
+# + engagementId - The removed award's engagement
+# + removalReason - Reason code
+# + return - Outbox row
+public isolated function activityRemovedEvent(types:LedgerEntry entry, string engagementId,
+        types:RemovalReason removalReason) returns events:OutboxEvent =>
+    events:newActivityRemoved({
+        reference: entry.reference,
+        reversesReference: entry.reversesReference ?: "",
+        engagementId,
+        employeeId: entry.employeeId,
+        removalReason,
+        removedAt: time:utcToString(entry.createdAt)
+    });
