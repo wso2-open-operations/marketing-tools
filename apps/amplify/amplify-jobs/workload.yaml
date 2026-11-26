@@ -91,3 +91,9 @@ configurations:
       value: "true"
     - name: BAL_CONFIG_VAR_SHAREPUBLISHGAPMINUTES
       value: "10"
+    - name: BAL_CONFIG_VAR_SHARESPREADMINUTES
+      value: "120"
+    - name: BAL_CONFIG_VAR_LINKEDINMAXPOSTSPERDAY
+      value: "450"
+    - name: BAL_CONFIG_VAR_LINKEDINMAXPOSTSPERHOUR
+      value: "60"
