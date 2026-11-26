@@ -288,6 +288,55 @@ public isolated class CommunityAdapter {
         return parseShareNotifications(body);
     }
 
+    # Authorization URL for an employee's Reach connection (scope `REACH_SCOPES` only), on the given redirect URI.
+    #
+    # + state - Single-use `oauth_state.state` (purpose REACH)
+    # + redirectUri - Redirect URI registered on this app (the member callback page)
+    # + return - The URL
+    public isolated function memberAuthorizationUrl(string state, string redirectUri) returns string|ProviderError {
+        string|url:Error query = buildQuery({
+            "response_type": "code",
+            "client_id": self.clientId,
+            "redirect_uri": redirectUri,
+            "state": state,
+            "scope": string:'join(" ", ...REACH_SCOPES)
+        });
+        if query is url:Error {
+            return providerError(BAD_RESPONSE, "Could not encode the authorization URL", (), (), false);
+        }
+        return string `${self.authorizeBaseUrl}/oauth/v2/authorization?${query}`;
+    }
+
+    # Exchanges an employee's Reach authorization code, with the redirect URI the authorize request carried.
+    #
+    # + code - Code from the redirect
+    # + redirectUri - Same redirect URI as on the authorization URL
+    # + return - The grant, or a provider error
+    public isolated function exchangeMemberCode(string code, string redirectUri) returns TokenGrant|ProviderError =>
+        self.tokenCall({
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": redirectUri,
+            "client_id": self.clientId,
+            "client_secret": self.clientSecret
+        }, "reach token exchange");
+
+    # One lifetime metric of a post the token's member authored (`GET /rest/memberCreatorPostAnalytics`,
+    # `aggregation=TOTAL`).
+    #
+    # + accessToken - The member's Reach token
+    # + postUrn - `urn:li:share:{id}` or `urn:li:ugcPost:{id}`
+    # + metric - `IMPRESSION` or `MEMBERS_REACHED`
+    # + return - The count, or a provider error (`REJECTED` for a URN of another kind)
+    public isolated function memberPostMetric(string accessToken, string postUrn, AnalyticsMetric metric)
+            returns int|ProviderError {
+        string entity = check analyticsEntity(postUrn);
+        json body = check self.getJson(accessToken,
+                string `/rest/memberCreatorPostAnalytics?q=entity&entity=${entity}&queryType=${metric}&aggregation=TOTAL`,
+                "member post analytics");
+        return parseMetricTotal(body);
+    }
+
     # Breaker states of the REST API and OAuth clients.
     #
     # + return - `{api, auth}`

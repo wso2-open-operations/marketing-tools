@@ -61,6 +61,23 @@ service / on communityListener {
         return {elements: []};
     }
 
+    resource function get rest/memberCreatorPostAnalytics(http:Request req, @http:Header string Authorization)
+            returns json|http:Unauthorized|http:Forbidden {
+        lock {
+            lastCommunityPath = req.rawPath;
+        }
+        if Authorization == "Bearer not-mine" {
+            return <http:Forbidden>{body: {status: 403}};
+        }
+        if Authorization != "Bearer reach-token" {
+            return <http:Unauthorized>{body: {status: 401}};
+        }
+        string queryType = req.getQueryParamValue("queryType") ?: "";
+        return {elements: [{count: queryType == "IMPRESSION" ? 1200 : 640,
+            metricType: {"com.linkedin.adsexternalapi.memberanalytics.v1.CreatorPostAnalyticsMetricTypeV1": queryType},
+            targetEntity: {share: "urn:li:share:7"}}]};
+    }
+
     resource function get rest/organizationAcls(http:Request req) returns json =>
         {elements: [{role: "ADMINISTRATOR", state: "APPROVED", organization: ORG, roleAssignee: "urn:li:person:abc"}]};
 
@@ -69,6 +86,10 @@ service / on communityListener {
         if form["grant_type"] == "refresh_token" && form["refresh_token"] == "r-1" && form["client_secret"] == "page-secret" {
             return {access_token: "a-2", expires_in: 5184000, refresh_token: "r-1", refresh_token_expires_in: 31536000,
                 scope: "r_organization_social_feed,rw_organization_admin"};
+        }
+        if form["grant_type"] == "authorization_code" && form["code"] == "reach-code"
+                && form["redirect_uri"] == "https://one.wso2.com/amplify/connect/callback" {
+            return {access_token: "reach-token", expires_in: 5184000, scope: "r_member_postAnalytics"};
         }
         if form["grant_type"] == "authorization_code" && form["code"] == "page-code" {
             return {access_token: "a-1", expires_in: 5184000, refresh_token: "r-1", refresh_token_expires_in: 31536000,
