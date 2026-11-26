@@ -93,6 +93,8 @@ type ExternalShareBody record {|
     string? activityId = ();
     boolean certified;
     string? campaignId = ();
+    # Optional note for the reviewer, at most 500 characters
+    string? note = ();
 |};
 
 # Reason body (reject, reverse).
@@ -105,6 +107,12 @@ type PointRuleBody record {|
     string action;
     int points;
     string? effectiveFrom = ();
+|};
+
+# `POST /po/points/{reference}/settlement` body: `HELD` clears an action-required row (it converts without another
+# LinkedIn check), `ACTION_REQUIRED` holds a row back from the Coins conversion.
+type SettlementBody record {|
+    string status;
 |};
 
 # `POST /po/points/adjustments` body.
@@ -180,6 +188,8 @@ type ExternalShareDto record {|
     string? amplifiedAt;
     string createdAt;
     int version;
+    # The employee's note for the reviewer
+    string? note;
 |};
 
 type LedgerEntryDto record {|
@@ -194,6 +204,17 @@ type LedgerEntryDto record {|
     string actorId;
     string createdAt;
     string? status;
+    # When the row became Coins (PAID only)
+    string? paidAt;
+    # The `CNV-` reference of the conversion that took (or paid) the row
+    string? coinReference;
+    # Pre-coin verification (V027): `VERIFIED`, `REMOVED`, `UNVERIFIABLE`, `PO_CLEARED`, or `()` = never checked
+    string? verification;
+    # When `verification` was last set
+    string? verifiedAt;
+    # Why it could not be checked (`UNVERIFIABLE`): `NO_TOKEN`, `TOKEN_EXPIRED`, `NOT_PERMITTED`, `NO_ACTIVITY`,
+    # `SOURCE_NOT_FOUND`, `MEMBER_ERASED`
+    string? verificationReason;
 |};
 
 type PointRuleDto record {|
@@ -281,7 +302,8 @@ isolated function externalShareDto(external_sharing:ExternalShare c) returns Ext
     decisionReason: c.decisionReason,
     amplifiedAt: tsOpt(c.amplifiedAt),
     createdAt: ts(c.createdAt),
-    version: c.version
+    version: c.version,
+    note: c.note
 };
 
 isolated function ledgerDto(types:LedgerEntry e) returns LedgerEntryDto => {
@@ -295,7 +317,12 @@ isolated function ledgerDto(types:LedgerEntry e) returns LedgerEntryDto => {
     reversesReference: e.reversesReference,
     actorId: e.actorId,
     createdAt: ts(e.createdAt),
-    status: e.status
+    status: e.status,
+    paidAt: tsOpt(e.paidAt),
+    coinReference: e.coinReference,
+    verification: e.verification,
+    verifiedAt: tsOpt(e.verifiedAt),
+    verificationReason: e.verificationReason
 };
 
 # Label shown in place of a PO's free-text reason on adjustment and reversal rows.
@@ -311,6 +338,17 @@ isolated function ledgerDtoForTeammate(types:LedgerEntry e) returns json {
     _ = row.remove("actorId");
     boolean byPo = e.sourceType == types:ADJUSTMENT || e.sourceType == types:REVERSAL;
     row["reason"] = byPo ? PO_ADJUSTMENT_LABEL : ();
+    return row;
+}
+
+# A ledger row for the person it belongs to: the PO's id stays internal, but the reason a PO gave is theirs to
+# read ("When points are removed, the reason is shown on the row", screens 4 and 6).
+#
+# + e - Ledger row
+# + return - The row as JSON without `actorId`
+isolated function ledgerDtoForSelf(types:LedgerEntry e) returns json {
+    map<json> row = <map<json>>ledgerDto(e).toJson();
+    _ = row.remove("actorId");
     return row;
 }
 

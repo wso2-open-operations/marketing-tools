@@ -100,7 +100,8 @@ public type LedgerRepository isolated object {
     # + return - The reversal row, `()` if none, or an error
     public isolated function findReversalOf(types:LedgerReference reference) returns types:LedgerEntry|error?;
 
-    # Updates only the settlement columns (`status`, `status_changed_at`, `paid_at`, `coin_reference`).
+    # Updates the settlement status of a row (`HELD` or action required). A PAID row is final (`ALREADY_PAID`); PAID
+    # itself comes only from the Coins conversion (`PAID_NOT_ALLOWED` here).
     #
     # + reference - Ledger reference
     # + status - New status, `()` = action required

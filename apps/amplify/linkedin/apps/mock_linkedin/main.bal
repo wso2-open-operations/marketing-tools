@@ -52,6 +52,60 @@ final http:Service mockAdminService = service object {
         return store:listPosts();
     }
 
+    # Injects a reaction, comment or reshare that the Community Management finders then return (reactions and
+    # comments on `targetUrn`, reshares in the page's share notifications). Commentary only sets whether a reshare
+    # had words; the mock keeps no text.
+    #
+    # + req - Request, carrying the internal key
+    # + payload - What happened
+    # + return - 201 with the stored engagement, 400 when malformed, or 401 without the key
+    isolated resource function post engagement(http:Request req, @http:Payload MockEngagementRequest payload)
+            returns http:Created|http:BadRequest|http:Unauthorized {
+        http:Unauthorized? denied = requireAdminKey(req);
+        if denied is http:Unauthorized {
+            return denied;
+        }
+        if !payload.targetUrn.startsWith("urn:li:") || !re `urn:li:(person|organization):[A-Za-z0-9_\-]+`.isFullMatch(payload.actorUrn) {
+            return <http:BadRequest>{body: {message: "targetUrn must be a URN and actorUrn a person or organization URN"}};
+        }
+        string? commentary = payload.commentary;
+        string? activity = payload.kind == ENGAGEMENT_REACTION ? ()
+            : payload.kind == ENGAGEMENT_COMMENT ? store:nextPostSequence().toString() + "000"
+            : ACTIVITY_URN_PREFIX + newShareUrn().substring(SHARE_URN_PREFIX.length());
+        store:Engagement stored = {
+            kind: payload.kind,
+            targetUrn: payload.targetUrn,
+            actorUrn: payload.actorUrn,
+            activityUrn: activity,
+            hasCommentary: commentary is string && commentary.trim() != "",
+            createdAt: nowSeconds()
+        };
+        store:addEngagement(stored);
+        log:printInfo("Mock engagement added", kind = payload.kind, target = payload.targetUrn);
+        return <http:Created>{body: stored.toJson()};
+    }
+
+    # Removes an injected reaction, comment or reshare, as if the member deleted it: the finders stop listing it and
+    # the single reads (`GET /rest/reactions/(actor:…,entity:…)`, `GET …/comments/{id}`, `GET /rest/posts/{urn}`) answer
+    # 404 (pre-coin verification tests).
+    #
+    # + req - Request, carrying the internal key
+    # + payload - Which engagement (`commentary` is ignored)
+    # + return - 200 with how many were removed, 404 when none matched, or 401 without the key
+    isolated resource function post engagement/remove(http:Request req, @http:Payload MockEngagementRequest payload)
+            returns http:Ok|http:NotFound|http:Unauthorized {
+        http:Unauthorized? denied = requireAdminKey(req);
+        if denied is http:Unauthorized {
+            return denied;
+        }
+        int removed = store:removeEngagements(payload.kind, payload.targetUrn, payload.actorUrn);
+        if removed == 0 {
+            return <http:NotFound>{body: {message: "No such engagement"}};
+        }
+        log:printInfo("Mock engagement removed", kind = payload.kind, target = payload.targetUrn);
+        return <http:Ok>{body: {removed}};
+    }
+
     # Clears tokens, codes, posts, uploads and rate counters.
     #
     # + req - Request, carrying the internal key

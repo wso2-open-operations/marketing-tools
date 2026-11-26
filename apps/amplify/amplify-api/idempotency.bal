@@ -103,7 +103,7 @@ isolated function toResponse(http:StatusCodeResponse res) returns http:Response 
 
 # Responses this API builds with a body.
 type BodyResponse http:Ok|http:Created|http:Accepted|http:BadRequest|http:Unauthorized|http:Forbidden|http:NotFound
-    |http:Conflict|http:UnprocessableEntity|http:InternalServerError|http:ServiceUnavailable;
+    |http:Conflict|http:UnprocessableEntity|http:TooManyRequests|http:InternalServerError|http:ServiceUnavailable;
 
 isolated function bodyOf(http:StatusCodeResponse res) returns json =>
     res is BodyResponse ? res?.body.toJson() : ();

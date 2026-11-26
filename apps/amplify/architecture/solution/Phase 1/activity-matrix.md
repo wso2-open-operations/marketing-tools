@@ -46,6 +46,8 @@ Enforced twice: API proxy scopes per resource, then the Ballerina request interc
 | S2 | `DELETE /connections/linkedin` | `EMPLOYEE` | D own | D own | D own | D own | D own | Revokes the token at LinkedIn first (kept and 503 if LinkedIn is down), then deletes the token row; points kept or reversed per plan D6 (open) |
 | C1 Sharing | `POST /campaigns/{id}/shares` | `EMPLOYEE` | C own | C own | C own | C own | C own | Campaign `open`; connection active (not `NEEDS_RECONNECT`); one per campaign per employee. After `FAILED` the same row is retried (ADR-015). `sharing.enabled` kill switch |
 | C1 | `GET /me/shares` | `EMPLOYEE` | R own | R own | R own | R own | R own | |
+| C1 | `POST /campaigns/{id}/native-intent` | `EMPLOYEE` | X own | X own | X own | X own | X own | Campaign OPEN, else 404; a later click restarts the 24 h look unless detected |
+| C1 | `GET /me/native-intents` | `EMPLOYEE` | R own | R own | R own | R own | R own | `nativeStatus` LOOKING (under 24 h) / DETECTED / NOT_FOUND |
 | S3 External Sharing | `POST /external-shares` | `EMPLOYEE` | C own | C own | C own | C own | C own | Normalized `(evidence_url, action)` unique across everyone → `EVIDENCE_ALREADY_CLAIMED` (ADR-017); URL host allow-list |
 | S3 | `GET /me/external-shares` | `EMPLOYEE` | R own | R own | R own | R own | R own | |
 | S3 | `GET /po/external-shares?status=PENDING` | `CAN_REVIEW_SHARES` | — | R | — | — | — | |
@@ -56,6 +58,8 @@ Enforced twice: API proxy scopes per resource, then the Ballerina request interc
 | C2 | `POST /po/point-rules` | `CAN_POINT_RULES` | — | C/U | — | — | — | ADR-011. Recommended: new version of a rule, past awards keep their value |
 | C2 | `POST /po/points/adjustments` | `CAN_ADJUST_POINTS` | — | C | — | — | — | Reason required; actor recorded; `recognition` updated in the same transaction (B12). ADR-010 |
 | C2 | `POST /po/points/{reference}/reverse` | `CAN_ADJUST_POINTS` | — | C (reversal row) | — | — | — | Reason required; only on an entry not already reversed; append-only ledger. ADR-010 |
+| C2 | `POST /po/points/{reference}/settlement` | `CAN_ADJUST_POINTS` | — | U (settlement) | — | — | — | `HELD` clears an action-required row for the Coins conversion (`PO_CLEARED`, no further LinkedIn check, V027); `ACTION_REQUIRED` holds a row back; not own points; PAID is final. Audited. ADR-048 amendment |
+| C2 | `GET /po/points/action-required` | `CAN_ADJUST_POINTS` | — | R | — | — | — | Rows waiting for the PO team, oldest first, with the pre-coin verification's reason (V027) |
 | S4 Recognition | `GET /leaderboard` | `EMPLOYEE` | R | R | R | R | R | Three views: company top N (`leaderboard.top_n` = 3), personal, My Team (ADR-014). The full company list is `/leaderboard/people` (ADR-035) |
 | S4 | `GET /leaderboard/people?scope=&bu=&team=` | `EMPLOYEE` | R | R | R | R | R | People ranked in the company, a BU or a team. Open to every employee ([ADR-035](../../decisions/ADR-035-open-leaderboards-and-employee-count.md)); `BU`/`TEAM` default to the caller's own. Needs the people directory (503 otherwise) |
 | S4 | `GET /leaderboard/groups?by=TEAM\| `EMPLOYEE` |BU&bu=` | R | R | R | R | R | Teams or BUs ranked by points, with participants and headcount. Open to every employee (ADR-035) |
@@ -63,7 +67,8 @@ Enforced twice: API proxy scopes per resource, then the Ballerina request interc
 | S6 Dashboards | `GET /dashboards/operations`, `/campaigns`, `/participation`, `/glance`, `/scorecard` | `CAN_DASHBOARD` | — | R | R | R | R | Every `amplify_*` role, never a plain employee (403 `ROLE_NOT_PERMITTED`). Read-only, one 60 s snapshot ([ADR-036](../../decisions/ADR-036-dashboards-for-amplify-roles.md)) |
 | S6 | `GET /dashboards/people/{employeeId}` | `CAN_DASHBOARD` | — | R | R | R | R | One person's Post Performance popup (ADR-036) |
 | S6 | `GET /dashboards/export?from=&to=` | `CAN_EXPORT` | — | R | R | R | R | Raw rows behind the boards as CSV, with names and emails. Its own grant so the export can be narrowed (e.g. to PO and Admin) without code (R16) |
-| S4 | `GET /me/points` | `EMPLOYEE` | R own | R own | R own | R own | R own | Points only, no Coin value (A11) |
+| S4 | `GET /me/points` | `EMPLOYEE` | R own | R own | R own | R own | R own | Points, and the Coins block: rate, progress, Coins received, the captured wallet masked (ADR-048) |
+| S4 | `POST /me/coins/wallet` | `EMPLOYEE` | U own | U own | U own | U own | U own | Captures the caller's default WSO2 Coins wallet (`GET /wallets/me` with the caller's own JWT, ADR-048); 404 `NO_WALLET`, 503 `COINS_UNAVAILABLE` |
 | S4 | `GET /team?q=&sort=&page=` | `EMPLOYEE` | R (per ADR-014) | R | R (per ADR-014) | R (per ADR-014) | R (per ADR-014) | Returns emails for One WSO2 enrichment (ADR-009). Without `CAN_ADJUST_POINTS`, visibility follows the three-leaderboard rule |
 | S4 | `GET /team/{employeeId}/history` | `EMPLOYEE` | R own + team | R any | R own + team | R own + team | R own + team | Without `CAN_ADJUST_POINTS`: own, or a member of the caller's team from the people-app directory (sub-team, else team; ADR-019) (`team.visibility = COMPANY` does not widen it, ADR-035), else 403 `TEAM_SCOPE` ([leaderboards.md](leaderboards.md)). `CAN_ADJUST_POINTS` sees any row (needed for adjust/reverse) |
 | S4 | `GET /po/dashboard` | `CAN_PO_DASHBOARD` | — | R | — | — | — | Phase 1 (ADR-013); shape defined in M0c B6 |
@@ -72,6 +77,10 @@ Enforced twice: API proxy scopes per resource, then the Ballerina request interc
 | S5 / Admin | `POST /admin/announcements/{id}/retry` | `CAN_ADMIN` | — | — | — | — | X | Only while `FAILED`; `announcements.enabled` kill switch |
 | Admin | `GET /admin/settings` | `CAN_ADMIN` | — | — | — | — | R | |
 | Admin | `PUT /admin/settings` | `CAN_ADMIN` | — | — | — | — | U | Kill switches, `leaderboard.top_n`, run schedule (`run.schedule`, `run.enabled`, `maintenance.schedule`, pushed to the scheduler, ADR-026), reminder days, `campaign.default_window_days`. Coin settings hidden |
+| Admin | `GET /admin/linkedin-page` | `CAN_ADMIN` | — | — | — | — | R | Company page connection, calls today vs `engagement.daily_call_budget` |
+| Admin | `POST /admin/linkedin-page/connect/start` | `CAN_ADMIN` | — | — | — | — | X | Community Management app, page scopes only |
+| Admin | `POST /admin/linkedin-page/connect/complete` | `CAN_ADMIN` | — | — | — | — | X | Approved LinkedIn ADMINISTRATOR of the page, else 403 `NOT_PAGE_ADMIN`; tokens sealed as ORG; audited |
+| Admin | `DELETE /admin/linkedin-page` | `CAN_ADMIN` | — | — | — | — | X | Revokes at LinkedIn, deletes the tokens, marks revoked; audited |
 | Admin | `POST /admin/scheduler/sync` | `CAN_ADMIN` | — | — | — | — | X | Converges the scheduler jobs to the settings (ADR-026) |
 | Ops | `GET /health`, `GET /ready` | n/a | n/a | n/a | n/a | n/a | n/a | Not exposed through the proxy to users |
 | Internal | `amplify-jobs POST /runs` | — | — | — | — | — | — | Project visibility only; called by the scheduler (ADR-026) and `amplify-api`, never by users |

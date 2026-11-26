@@ -39,7 +39,9 @@ Route groups follow the tags in `openapi.yaml`. `EMPLOYEE` means any signed-in e
 | | `/po/external-shares` and its `approve`, `reject`, `amplified` actions | Review those claims | `CAN_REVIEW_SHARES` | `handlers.bal`, `reads.bal` |
 | C2 Scoring | `/po/point-rules` | List and add point rules | `CAN_POINT_RULES` | `handlers.bal`, `reads.bal` |
 | | `POST /po/points/adjustments`, `POST /po/points/{reference}/reverse` | Adjust points; reverse a ledger entry | `CAN_ADJUST_POINTS` | `handlers.bal` |
+| | `POST /po/points/{reference}/settlement`, `GET /po/points/action-required` | Clear an action-required row for the Coins conversion (`HELD`, PO_CLEARED) or hold one back; list the rows waiting for the PO team (V027) | `CAN_ADJUST_POINTS` | `handlers.bal`, `reads.bal` |
 | S4 Recognition | `/leaderboard`, `/leaderboard/people`, `/leaderboard/groups`, `/headcount`, `/me/points`, `/team`, `/team/{employeeId}/history` | Leaderboards, the viewer's points, My Team and the employee count | `EMPLOYEE` | `reads.bal`, `groups.bal` |
+| | `POST /me/coins/wallet` | Capture the caller's WSO2 Coins wallet for the automatic Coins conversion (ADR-048); `GET /me/points` shows it masked | `EMPLOYEE` | `coins.bal` |
 | | `/leaderboard/top` | Celebrate top three and the caller's position (ADR-037) | `EMPLOYEE` | `topboard.bal` |
 | | `GET /po/dashboard` | Program owner dashboard for a month | `CAN_PO_DASHBOARD` | `reads.bal` |
 | S6 Dashboards | `/dashboards/operations`, `/campaigns`, `/participation`, `/glance`, `/scorecard`, `/people/{employeeId}` | The `amplify_*` boards over one cached snapshot (ADR-036) | `CAN_DASHBOARD` | `dashboards.bal`, `dashboard_data.bal` |
@@ -53,7 +55,7 @@ Every POST accepts `Idempotency-Key` (`idempotency.bal`, ADR-024): a repeat with
 
 File: `outbound.bal`.
 
-Calls to amplify-jobs (trigger a run), the HR Entity GraphQL directory (teams, business units, names, headcount, and house name and id; OAuth2 client credentials, ADR-045; the team is the HR Entity's `department`, and an HR Entity older than 1.1.1 is read without house instead of failing) and LinkedIn (OAuth, ID-token check, token cipher, revoke). Each client has a timeout and a circuit breaker. The breaker states show on `/ready`.
+Calls to amplify-jobs (trigger a run), the HR Entity GraphQL directory (teams, business units, names, headcount, and house name and id; OAuth2 client credentials, ADR-045; the team is the HR Entity's `department`, and an HR Entity older than 1.1.1 is read without house instead of failing), LinkedIn (OAuth, ID-token check, token cipher, revoke) and the WSO2 Coins transaction service (`coins.bal`: `GET /wallets/me` with the caller's own JWT as `X-User-Assertion` and a client-credentials service token, for the wallet capture; ADR-048). Each client has a timeout and a circuit breaker. The breaker states show on `/ready`.
 
 ## Scheduler sync
 

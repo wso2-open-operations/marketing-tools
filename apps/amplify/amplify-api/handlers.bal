@@ -236,7 +236,8 @@ isolated function completeConnect(auth:Principal p, string? correlationId, Conne
         time:Utc now = time:utcNow();
         // Single use: consume deletes the state whether or not the rest succeeds.
         connection:OAuthState? state = check (check oauthStateRepository()).consume(body.state, p.employeeId, now);
-        if state is () {
+        // A page-connection state (Amplify Admin) never completes a member connect.
+        if state is () || state.providerApi != types:SHARE_ON_LINKEDIN {
             return conflicted(OAUTH_STATE_INVALID, "This sign-in link expired or was already used; start again",
                     correlationId);
         }
@@ -496,14 +497,17 @@ isolated function claimExternalShare(auth:Principal p, string? correlationId, Ex
         returns http:StatusCodeResponse {
     do {
         string? campaignId = body.campaignId;
+        check maxLen(body.note, external_sharing:NOTE_MAX_LENGTH, "note");
         string evidenceUrl = check evidenceUrlOf(body);
+        Settings settings = check loadSettings();
         external_sharing:ExternalShare claim = check external_sharing:submitExternalShare(
                 check externalShareRepository(actorOf(p, correlationId), 3), {
             employeeId: p.employeeId,
             evidenceUrl,
             certified: body.certified,
-            campaignId: campaignId is string ? check uuidOf(campaignId, "campaignId") : ()
-        }, time:utcNow());
+            campaignId: campaignId is string ? check uuidOf(campaignId, "campaignId") : (),
+            note: body.note
+        }, time:utcNow(), settings.externalShareDailyLimit);
         return <http:Created>{body: externalShareDto(claim)};
     } on fail error e {
         return failure(e, correlationId, "Claim external share");
@@ -595,6 +599,33 @@ isolated function reverseEntry(auth:Principal p, string? correlationId, string r
         return <http:Created>{body: ledgerDto(entry)};
     } on fail error e {
         return failure(e, correlationId, "Reverse ledger entry");
+    }
+}
+
+# Settlement a PO sets to hold a ledger row back from the Coins conversion (`status` NULL in the ledger). Not a problem
+# code, so not in constants.bal.
+const string SETTLEMENT_ACTION_REQUIRED = "ACTION_REQUIRED";
+
+# A PO settles a ledger row (`POST /po/points/{reference}/settlement`): `HELD` clears an action-required row for the
+# Coins conversion (V027 `PO_CLEARED`), `ACTION_REQUIRED` holds a row back. Audited in the repository.
+#
+# + p - The PO
+# + correlationId - Correlation id
+# + reference - Ledger reference
+# + status - `HELD` or `ACTION_REQUIRED`
+# + return - 200 with the row, or problem details
+isolated function settleLedgerEntry(auth:Principal p, string? correlationId, string reference, string status)
+        returns http:StatusCodeResponse {
+    do {
+        if status != types:HELD && status != SETTLEMENT_ACTION_REQUIRED {
+            return unprocessable(VALIDATION_FAILED, "status must be HELD or ACTION_REQUIRED", correlationId);
+        }
+        Settings settings = check loadSettings();
+        types:LedgerEntry entry = check scoring:settleEntry(check ledgerRepository(actorOf(p, correlationId),
+                settings.topN), reference, status == types:HELD ? types:HELD : (), p.employeeId, time:utcNow());
+        return <http:Ok>{body: ledgerDto(entry)};
+    } on fail error e {
+        return failure(e, correlationId, "Settle ledger entry");
     }
 }
 

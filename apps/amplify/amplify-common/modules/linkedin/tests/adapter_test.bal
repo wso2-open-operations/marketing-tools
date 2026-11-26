@@ -118,6 +118,23 @@ service / on stubListener {
         }
         return <http:Created>{headers: {"x-restli-id": "urn:li:share:7000000000000000001"}};
     }
+
+    resource function get rest/posts/[string urn](http:Request req, @http:Header string Authorization)
+            returns http:Ok|http:NotFound|http:Gone|http:Forbidden|http:Unauthorized {
+        if Authorization == "Bearer forbidden" {
+            return <http:Forbidden>{body: {status: 403, serviceErrorCode: 100}};
+        }
+        if Authorization != "Bearer " + GOOD_TOKEN {
+            return <http:Unauthorized>{body: {status: 401}};
+        }
+        if req.rawPath == "/rest/posts/urn%3Ali%3Ashare%3A1" {
+            return <http:Ok>{body: {id: "urn:li:share:1", lifecycleState: "PUBLISHED"}};
+        }
+        if req.rawPath == "/rest/posts/urn%3Ali%3Ashare%3A410" {
+            return <http:Gone>{};
+        }
+        return <http:NotFound>{body: {status: 404}};
+    }
 }
 
 function adapter() returns LinkedInAdapter|error => new ({
@@ -158,7 +175,7 @@ function authorizationUrlCarriesClientStateAndScopes() returns error? {
 function exchangeCodeReturnsTokenAndScopes() returns error? {
     TokenGrant grant = check (check adapter()).exchangeCode("good-code");
     test:assertEquals(grant, {accessToken: GOOD_TOKEN, expiresInSeconds: 5184000,
-        scopes: ["openid", "profile", "w_member_social"], idToken: ()});
+        scopes: ["openid", "profile", "w_member_social"], idToken: (), refreshToken: (), refreshExpiresInSeconds: ()});
 }
 
 @test:Config
@@ -370,4 +387,14 @@ function revokeSendsTheClientCredentialsAndTheToken() returns error? {
 @test:Config
 function revokeRefusedByLinkedInIsAProviderError() returns error? {
     test:assertEquals(providerCode((check adapter()).revokeToken("refuse-me")), REJECTED);
+}
+
+@test:Config
+function postPresenceReadsWithTheMemberToken() returns error? {
+    LinkedInAdapter a = check adapter();
+    test:assertEquals(check a.postPresence(GOOD_TOKEN, "urn:li:share:1"), PRESENT);
+    test:assertEquals(check a.postPresence(GOOD_TOKEN, "urn:li:share:2"), GONE, "404 is gone");
+    test:assertEquals(check a.postPresence(GOOD_TOKEN, "urn:li:share:410"), GONE, "410 is gone");
+    test:assertEquals(providerCode(a.postPresence("forbidden", "urn:li:share:1")), FORBIDDEN);
+    test:assertEquals(providerCode(a.postPresence("expired", "urn:li:share:1")), UNAUTHORIZED);
 }

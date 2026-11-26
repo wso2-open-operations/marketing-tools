@@ -21,6 +21,8 @@ Paths: `apps/…` = `apps/amplify/…`. Local commands run from `apps/amplify/`.
 | Kill switches | `PUT /admin/settings` `sharing.enabled` / `announcements.enabled` |
 | DB shell (local) | `docker compose exec postgres psql -U postgres -d amplify` |
 | Refresh team rosters now | Restart Amplify Backend (the people-directory index lives in memory, §13) |
+| Coins conversion now | `POST {jobs}/coins/convert` (either key); safe to repeat in a period (§15) |
+| Pre-coin verification now | `POST {jobs}/coins/verify` (either key); checks only what is still due (§15) |
 
 Alert list that pairs with these procedures: [choreo-deploy.md](choreo-deploy.md) §alerts (outbox `FAILED`, share failure rate, breaker `OPEN`, 5xx rate, scheduler job failures, `schedulerSync: PENDING`, partition-maintenance failures), plus **sessions idle in transaction > 30 s** (§11).
 
@@ -214,3 +216,33 @@ Two secrets guard amplify-jobs: `INTERNALAPIKEY` (full access; amplify-api's own
 3. **Then force a scheduler sync** so the registered jobs carry the new value: `POST /admin/scheduler/sync` (admin); the Backend also syncs at start-up. Check the response lists both jobs as `UPDATED`. Until then the scheduler still sends the old key and Jobs answers 401 (`Internal call refused` in the Jobs log, `keySent=true`).
 4. **Internal key:** set `INTERNALAPIKEY` on both and redeploy. No scheduler sync needed (the scheduler never holds it). "Save & Share Now" falls back to the scheduled run while the two disagree.
 5. A `403` in the Jobs log (`scheduler key on a route it may not call`) means something other than `/runs` or `/maintenance/partitions` was called with the scheduler key: check the job URIs in the scheduler.
+
+## 15. Coins conversion (ADR-048)
+
+The scheduler's `amplify-coins-convert` job calls `POST {jobs}/coins/convert` on `coin.schedule` (MONTHLY: the 1st, 02:00 UTC) while `coin.wallets_enabled` is true. Each employee's HELD points plus their carry become Coins in whole blocks (`coin.block_points` = `coin.block_coins`), capped by `coin.max_coins_per_person` and `coin.max_coins_per_run`, sent from Amplify's master wallet at the WSO2 Coins transaction service to the wallet the employee captured (`POST /me/coins/wallet`). State is in `scoring_coin_run` (one row per period) and `scoring_coin_issue` (one per employee per period).
+
+**Turning it on.** Set `COINS*` on Amplify Jobs (and Backend, for the wallet capture), redeploy, check `/ready` shows the `coins` breaker `CLOSED`, then `PUT /admin/settings` `coin.wallets_enabled = true`; the job is pushed enabled. Employees capture their wallet first; until then they are `SKIPPED_NO_WALLET` and keep their points.
+
+**Reading a run.** The response (and the `Coins conversion` log line) gives `status`, `stopReason` and counts. `scoring_coin_run` holds the period's totals:
+
+```sql
+SELECT period, status, stop_reason, issues_sent, coins_sent, issues_failed, issues_unknown, issues_skipped
+FROM scoring_coin_run ORDER BY started_at DESC LIMIT 5;
+```
+
+- **`STOPPED INSUFFICIENT_BALANCE`.** The master wallet can't cover the run (checked before anything is sent), or a transfer was refused for funds. Ask the Coins team to fund Amplify's master wallet, then call `POST {jobs}/coins/convert` again; it carries on where it stopped.
+- **`STOPPED COINS_UNAVAILABLE`.** The master balance call or a transfer failed with nothing moved (token, credentials, 401/403, 429, open breaker). Fix the cause and call again.
+- **`STOPPED OUTCOME_UNKNOWN`.** A transfer got no clear answer (timeout, 5xx). The issue is `UNKNOWN` and its points stay tagged, so nothing can pay them twice. The next run, at least `coinsReconcileAfterSeconds` (600) later, searches the Coins ledger (master wallet to that wallet, the same amount, from the attempt on): one match marks it SENT, none marks it FAILED and converts the points again.
+- **`PARTIAL`.** The run hit `coinsMaxSeconds` (540). Call again in the same period; employees already SENT are passed over.
+
+**An issue stuck in `UNKNOWN` with `last_error_code = RECONCILE_AMBIGUOUS`.** The search found more than one possible transfer (or more than one page of them), so Amplify won't guess. Look the transfers up with the Coins team (by wallet and time), then settle the issue by hand in one transaction, with an audit row: for the transfer that is Amplify's, set the issue `SENT` with that `transfer_reference` and `sent_at`, and its ledger rows (`coin_reference` = the issue's `reference`) `PAID` with `paid_at`; if none is, set the issue `FAILED` and clear `coin_reference` on its rows (they convert next run). Never send Coins by hand for such an issue.
+
+**`FAILED` issues.** Nothing moved (`last_error_code`: `RECIPIENT_NOT_FOUND`, `REJECTED`, `NOT_SENT`). The points are HELD again; a re-run in the same period retries after `next_attempt_at`, and the next period takes them anyway. `RECIPIENT_NOT_FOUND` usually means the captured wallet was deleted at the Coins service: the employee captures it again.
+
+**Pre-coin verification (V027).** The `amplify-coins-verify` job calls `POST {jobs}/coins/verify` an hour before the conversion. The conversion takes an engagement row only when that check saw its LinkedIn activity within `coin.verify_max_age_hours` (48), so a row the verification never reached waits for the next period. The response (and the `Pre-coin verification` log line) gives `checked`, `verified`, `removed` (gone from LinkedIn, reversed "No longer on LinkedIn") and `actionRequired` with `unverifiableByReason`.
+- **`STOPPED BUDGET_REACHED`.** The day's calls are spent: page-token reads share `engagement.daily_call_budget` with the engagement sync, member-token reads have `coin.verify_member_daily_call_budget`. Call `POST {jobs}/coins/verify` again the next UTC day (before the conversion's retry, or raise the budget), or let the next period take the rows.
+- **`STOPPED RATE_LIMITED` / `UNAVAILABLE`.** LinkedIn answered 429 or was down; nothing was recorded for the row it stopped on. Call again later.
+- **Many `NOT_PERMITTED`.** LinkedIn refused to let either token read members' posts: the rows wait for the PO team on Points & corrections (`GET /po/points/action-required`), who clears them (`POST /po/points/{reference}/settlement` `HELD`) or reverses them. `NO_TOKEN` / `TOKEN_EXPIRED` mean the employee (or the page) is not connected.
+- **The page token.** The verification does not refresh it (the engagement sync does). A page that needs reconnecting makes every reaction and comment `TOKEN_EXPIRED`.
+
+**Turning it off.** `coin.wallets_enabled = false`: the job is disabled and the endpoint answers `SKIPPED WALLETS_OFF`; points keep counting and convert when it is back on. Open `UNKNOWN` issues are reconciled on the first run after that.

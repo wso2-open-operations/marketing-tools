@@ -30,6 +30,9 @@ type AccessTokenResponse record {
     int expires_in;
     string scope?;
     string id_token?;
+    // Community Management apps get a programmatic refresh token (about 365 days) with the access token.
+    string refresh_token?;
+    int refresh_token_expires_in?;
 };
 
 type UserInfoResponse record {
@@ -48,6 +51,7 @@ type ErrorBody record {
 # `POST /rest/posts` (Share on LinkedIn).
 public isolated class LinkedInAdapter {
     *ProviderAdapter;
+    *PostPresencePort;
 
     private final http:Client api;
     private final http:Client auth;
@@ -119,16 +123,7 @@ public isolated class LinkedInAdapter {
         http:Response|http:ClientError response = self.auth->post("/oauth/v2/accessToken", form,
                 mediaType = mime:APPLICATION_FORM_URLENCODED);
         http:Response ok = check expectStatus(response, "token exchange");
-        AccessTokenResponse body = check readTokenBody(ok);
-        string[] scopes = [];
-        foreach string scope in re `[,\s]+`.split(body.scope ?: "") {
-            if scope.length() > 0 {
-                scopes.push(scope);
-            }
-        }
-        string? idToken = body.id_token;
-        return {accessToken: body.access_token, expiresInSeconds: body.expires_in, scopes,
-            idToken: idToken is string && idToken.trim().length() > 0 ? idToken : ()};
+        return toTokenGrant(check readTokenBody(ok));
     }
 
     public isolated function userInfo(string accessToken) returns MemberProfile|ProviderError {
@@ -163,6 +158,14 @@ public isolated class LinkedInAdapter {
     public isolated function breakers() returns map<resilience:BreakerState> =>
         {api: resilience:breakerState(self.api), auth: resilience:breakerState(self.auth)};
 
+    # Whether a post still exists, read with the member's token (`PostPresencePort`, pre-coin verification).
+    #
+    # + accessToken - Member token
+    # + postUrn - Post URN
+    # + return - `PRESENT`, `GONE`, or a provider error
+    public isolated function postPresence(string accessToken, string postUrn) returns Presence|ProviderError =>
+        postPresenceOf(self.api, self.apiVersion, accessToken, postUrn);
+
     public isolated function publishShare(string accessToken, ShareCommand command) returns types:PostUrn|ProviderError {
         json payload = buildPostPayload(command);
         map<string> headers = {
@@ -186,6 +189,43 @@ public isolated class LinkedInAdapter {
         }
         return urn;
     }
+}
+
+# `GET /rest/posts/{urn}` on a client: the post's presence.
+#
+# + api - REST API client
+# + apiVersion - `LinkedIn-Version`
+# + accessToken - Bearer token
+# + postUrn - Post URN
+# + return - `PRESENT`, `GONE`, or a provider error
+isolated function postPresenceOf(http:Client api, string apiVersion, string accessToken, string postUrn)
+        returns Presence|ProviderError {
+    string urn = check encodeUrn(postUrn);
+    return presenceOf(api, apiVersion, accessToken, string `/rest/posts/${urn}`, "read post");
+}
+
+# A GET whose only question is "does it exist": 2xx is `PRESENT`, 404 or 410 is `GONE`, anything else the
+# `expectStatus` error. The body is never read (it may carry post text).
+#
+# + api - REST API client
+# + apiVersion - `LinkedIn-Version`
+# + accessToken - Bearer token
+# + path - Encoded path
+# + operation - For the error text
+# + return - The presence, or a provider error
+isolated function presenceOf(http:Client api, string apiVersion, string accessToken, string path, string operation)
+        returns Presence|ProviderError {
+    http:Response|http:ClientError response = api->get(path, {
+        [HEADER_AUTHORIZATION]: bearer(accessToken),
+        [HEADER_LINKEDIN_VERSION]: apiVersion,
+        [HEADER_RESTLI_PROTOCOL]: RESTLI_PROTOCOL_VERSION
+    });
+    if response is http:Response
+            && (response.statusCode == http:STATUS_NOT_FOUND || response.statusCode == http:STATUS_GONE) {
+        return GONE;
+    }
+    _ = check expectStatus(response, operation);
+    return PRESENT;
 }
 
 # Builds the `POST /rest/posts` body for a share command (B4).
@@ -310,6 +350,31 @@ isolated function classify(int status) returns [ProviderErrorCode, boolean] {
         return [UNAVAILABLE, true];
     }
     return [REJECTED, false];
+}
+
+# Maps a token endpoint body to a `TokenGrant` (code exchange and refresh grant alike).
+#
+# + body - Token endpoint body
+# + return - The grant
+isolated function toTokenGrant(AccessTokenResponse body) returns TokenGrant {
+    string[] scopes = [];
+    foreach string scope in re `[,\s]+`.split(body.scope ?: "") {
+        if scope.length() > 0 {
+            scopes.push(scope);
+        }
+    }
+    string? idToken = body.id_token;
+    string? refreshToken = body.refresh_token;
+    boolean hasRefresh = refreshToken is string && refreshToken.trim().length() > 0;
+    int? refreshExpires = body.refresh_token_expires_in;
+    return {
+        accessToken: body.access_token,
+        expiresInSeconds: body.expires_in,
+        scopes,
+        idToken: idToken is string && idToken.trim().length() > 0 ? idToken : (),
+        refreshToken: hasRefresh ? refreshToken : (),
+        refreshExpiresInSeconds: hasRefresh && refreshExpires is int && refreshExpires > 0 ? refreshExpires : ()
+    };
 }
 
 isolated function readTokenBody(http:Response response) returns AccessTokenResponse|ProviderError {

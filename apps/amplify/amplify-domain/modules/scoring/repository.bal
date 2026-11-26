@@ -44,6 +44,9 @@ type LedgerRow record {|
     time:Utc? status_changed_at;
     time:Utc? paid_at;
     string? coin_reference;
+    string? verification;
+    time:Utc? verified_at;
+    string? verification_reason;
 |};
 
 type RuleRow record {|
@@ -96,7 +99,8 @@ public isolated class PgLedgerRepository {
         LedgerRow|error row = self.db->queryRow(`
             SELECT reference, employee_id, campaign_id::text AS campaign_id, source_type, source_id::text AS source_id,
                    action, points, rule_id::text AS rule_id, reverses_reference, reason, actor_id, correlation_id,
-                   created_at, status, status_changed_at, paid_at, coin_reference
+                   created_at, status, status_changed_at, paid_at, coin_reference, verification, verified_at,
+                   verification_reason
             FROM scoring_points_ledger WHERE reference = ${reference}`);
         return toEntry(row);
     }
@@ -105,7 +109,8 @@ public isolated class PgLedgerRepository {
         LedgerRow|error row = self.db->queryRow(`
             SELECT reference, employee_id, campaign_id::text AS campaign_id, source_type, source_id::text AS source_id,
                    action, points, rule_id::text AS rule_id, reverses_reference, reason, actor_id, correlation_id,
-                   created_at, status, status_changed_at, paid_at, coin_reference
+                   created_at, status, status_changed_at, paid_at, coin_reference, verification, verified_at,
+                   verification_reason
             FROM scoring_points_ledger WHERE reverses_reference = ${reference}`);
         return toEntry(row);
     }
@@ -119,21 +124,37 @@ public isolated class PgLedgerRepository {
     private isolated function updateSettlementTx(types:LedgerReference reference, types:LedgerStatus? status,
             time:Utc changedAt) returns error? {
         transaction {
-            // Only the settlement columns: the V021 trigger refuses anything else. The old status is read and locked in the
-            // same statement that changes it (`RETURNING old.*` needs PostgreSQL 18).
+            // Only the settlement columns: the V021 trigger refuses anything else. The old status is read and locked
+            // first; a PAID row is final (V026), PAID itself comes only from the Coins conversion (it names the issue).
             record {|string? status;|}|error before = self.db->queryRow(`
-                WITH prev AS (
-                    SELECT reference, status AS old_status FROM scoring_points_ledger
-                    WHERE reference = ${reference} FOR UPDATE)
-                UPDATE scoring_points_ledger SET status = ${status}, status_changed_at = CAST(${store:ts(changedAt)} AS timestamptz)
-                FROM prev
-                WHERE scoring_points_ledger.reference = prev.reference
-                RETURNING prev.old_status AS status`);
+                SELECT status FROM scoring_points_ledger WHERE reference = ${reference} FOR UPDATE`);
             if before is error {
                 fail store:isNoRows(before) ? types:domainError(types:ERR_NOT_FOUND, "Ledger entry not found") : before;
             }
+            if before.status == types:PAID {
+                fail types:domainError(types:ERR_ALREADY_PAID, "These points became Coins and can't change");
+            }
+            if status == types:PAID {
+                fail types:domainError(types:ERR_PAID_NOT_ALLOWED, "Points become PAID only through the Coins conversion");
+            }
+            // A PO setting an action-required row HELD again clears it for the Coins conversion: the row converts
+            // without another LinkedIn check (V027 PO_CLEARED). Setting a row action required leaves its verification.
+            boolean cleared = before.status is () && status == types:HELD;
+            if cleared {
+                _ = check self.db->execute(`
+                    UPDATE scoring_points_ledger
+                       SET status = ${status}, status_changed_at = CAST(${store:ts(changedAt)} AS timestamptz),
+                           verification = ${types:PO_CLEARED}, verified_at = CAST(${store:ts(changedAt)} AS timestamptz),
+                           verification_reason = NULL
+                     WHERE reference = ${reference}`);
+            } else {
+                _ = check self.db->execute(`
+                    UPDATE scoring_points_ledger SET status = ${status}, status_changed_at = CAST(${store:ts(changedAt)} AS timestamptz)
+                    WHERE reference = ${reference}`);
+            }
             check store:writeAudit(self.db, store:auditOf(self.actor, "PointsSettlementChanged", LEDGER_TABLE,
-                    reference, {status}, (), {status: before.status}));
+                    reference, cleared ? {status, verification: types:PO_CLEARED} : {status}, (),
+                    {status: before.status}));
             check commit;
         }
     }
@@ -196,6 +217,7 @@ isolated function toEntry(LedgerRow|error row) returns types:LedgerEntry|error? 
     }
     string? action = row.action;
     string? status = row.status;
+    string? verification = row.verification;
     return {
         reference: row.reference,
         employeeId: row.employee_id,
@@ -213,7 +235,10 @@ isolated function toEntry(LedgerRow|error row) returns types:LedgerEntry|error? 
         status: status is () ? () : check status.ensureType(),
         statusChangedAt: row.status_changed_at,
         paidAt: row.paid_at,
-        coinReference: row.coin_reference
+        coinReference: row.coin_reference,
+        verification: verification is () ? () : check verification.ensureType(),
+        verifiedAt: row.verified_at,
+        verificationReason: row.verification_reason
     };
 }
 

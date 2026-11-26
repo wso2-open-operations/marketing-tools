@@ -49,17 +49,30 @@ public type LedgerSourceType ENGAGEMENT|EXTERNAL_SHARE|ADJUSTMENT|REVERSAL;
 
 # Valid points waiting for Coin issue. Phase 1 default for awards.
 public const HELD = "HELD";
-# Converted to Coins (phase 2; blocked by a `CHECK` in phase 1).
+# Converted to Coins by the automatic conversion (phase 2, ADR-048); final once set.
 public const PAID = "PAID";
 
 # Settlement status. `()` means action required.
 public type LedgerStatus HELD|PAID;
 
+# Pre-coin verification (V027): the LinkedIn activity behind the row was still there at `verifiedAt`.
+public const VERIFIED = "VERIFIED";
+# The activity was gone; the row was reversed ("No longer on LinkedIn").
+public const REMOVED = "REMOVED";
+# The activity could not be checked (no usable token, no URN to read); the row waits for the PO team.
+public const UNVERIFIABLE = "UNVERIFIABLE";
+# A PO cleared the row by hand; it converts without another check.
+public const PO_CLEARED = "PO_CLEARED";
+
+# Pre-coin verification state of a ledger row (`verification`); `()` = never checked.
+public type LedgerVerification VERIFIED|REMOVED|UNVERIFIABLE|PO_CLEARED;
+
 # Actor id written on rows the system produces.
 public const string SYSTEM_ACTOR = "system";
 
 # One append-only ledger row. Only the settlement fields (`status`, `statusChangedAt`, `paidAt`,
-# `coinReference`) may change after insert.
+# `coinReference`) and the pre-coin verification fields (`verification`, `verifiedAt`, `verificationReason`, V027) may
+# change after insert.
 public type LedgerEntry record {|
     # Primary key
     LedgerReference reference;
@@ -95,6 +108,12 @@ public type LedgerEntry record {|
     time:Utc? paidAt;
     # Coin transaction reference (phase 2)
     string? coinReference;
+    # Pre-coin verification, `()` = never checked (V027)
+    LedgerVerification? verification = ();
+    # When `verification` was last set
+    time:Utc? verifiedAt = ();
+    # Why the row could not be checked (`UNVERIFIABLE` only): `NO_TOKEN`, `TOKEN_EXPIRED`, `NOT_PERMITTED`, ...
+    string? verificationReason = ();
 |};
 
 # Deterministic award reference (C1): `AMP-` + unpadded base64url of

@@ -160,6 +160,35 @@ service http:InterceptableService / on apiListener {
         return deletePost(ctx, postUrn, "DELETE /rest/posts/{postUrn}");
     }
 
+    # Read a post (`GET /rest/posts/{urn}`): one created through `/rest/posts` or `/v2/ugcPosts`, or a reshare injected
+    # through `/mock/engagement`. With a member token (`w_member_social`) or the page token
+    # (`r_organization_social_feed`). Only the id, author and state are returned; the mock serves no post text here.
+    #
+    # + ctx - Request context
+    # + postUrn - URN of the post
+    # + return - The post, 404 when deleted or unknown, or an error
+    isolated resource function get rest/posts/[string postUrn](http:RequestContext ctx)
+            returns json|ErrorNotFound|ErrorUnauthorized|ErrorForbidden {
+        store:AccessToken|ErrorUnauthorized|ErrorForbidden token = authorize(ctx, [], "GET /rest/posts/{postUrn}");
+        if token !is store:AccessToken {
+            return token;
+        }
+        if token.scopes.indexOf(SCOPE_W_MEMBER_SOCIAL) is () && token.scopes.indexOf(SCOPE_R_ORGANIZATION_SOCIAL_FEED) is () {
+            return forbidden("Not enough permissions to access: GET /rest/posts/{postUrn}");
+        }
+        string urn = decoded(postUrn);
+        store:Post? post = store:getPost(urn);
+        if post is store:Post {
+            return {id: post.urn, author: post.authorUrn, lifecycleState: post.lifecycleState};
+        }
+        foreach store:Engagement e in store:listEngagements(ENGAGEMENT_RESHARE) {
+            if e.activityUrn == urn {
+                return {id: urn, author: e.actorUrn, lifecycleState: "PUBLISHED"};
+            }
+        }
+        return notFound(string `Post ${urn} not found`);
+    }
+
     # Register an image upload.
     #
     # + ctx - Request context
@@ -286,6 +315,186 @@ service http:InterceptableService / on apiListener {
                 }
             }
         };
+    }
+
+    // ---- Community Management (page connection and engagement reads) -------------------------------
+
+    # Reactions on a post (`q=entity`). Newest first unless `sort=(value:CHRONOLOGICAL)`.
+    #
+    # + ctx - Request context
+    # + key - `(entity:{urn})`
+    # + q - Must be `entity`
+    # + sort - `(value:CHRONOLOGICAL)` or `(value:REVERSE_CHRONOLOGICAL)` (default)
+    # + 'start - Offset
+    # + count - Page size
+    # + return - The reactions, or an error
+    isolated resource function get rest/reactions/[string key](http:RequestContext ctx, "entity"? q, string? sort,
+            int 'start = 0, int count = 10) returns json|ErrorBadRequest|ErrorUnauthorized|ErrorForbidden|ErrorNotFound {
+        store:AccessToken|ErrorUnauthorized|ErrorForbidden token =
+            authorize(ctx, [SCOPE_R_ORGANIZATION_SOCIAL_FEED], "GET /rest/reactions");
+        if token !is store:AccessToken {
+            return token;
+        }
+        [string, string]? single = actorEntityOfKey(key);
+        if single is [string, string] {
+            // One member's reaction (`(actor:{urn},entity:{urn})`), as the pre-coin verification reads it.
+            foreach store:Engagement e in store:listEngagements(ENGAGEMENT_REACTION, single[1]) {
+                if e.actorUrn == single[0] {
+                    int time = epochMillis(e.createdAt);
+                    return {id: string `urn:li:reaction:(${e.actorUrn},${e.targetUrn})`, reactionType: "LIKE",
+                        root: e.targetUrn, created: {actor: e.actorUrn, time}, lastModified: {actor: e.actorUrn, time}};
+                }
+            }
+            return notFound("Reaction not found");
+        }
+        string? entity = entityOfKey(key);
+        if entity is () || q is () {
+            return badRequest("The key must be (entity:{urn}) with q=entity, or (actor:{urn},entity:{urn})");
+        }
+        store:Engagement[] all = store:listEngagements(ENGAGEMENT_REACTION, entity);
+        if sort != "(value:CHRONOLOGICAL)" {
+            all = all.reverse();
+        }
+        json[] elements = from store:Engagement e in pageOf(all, 'start, count)
+            let int time = epochMillis(e.createdAt)
+            select {
+                id: string `urn:li:reaction:(${e.actorUrn},${e.targetUrn})`,
+                reactionType: "LIKE",
+                root: e.targetUrn,
+                created: {actor: e.actorUrn, time},
+                lastModified: {actor: e.actorUrn, time}
+            };
+        return collection(elements, 'start, count, all.length());
+    }
+
+    # Top-level comments on a post, oldest first. The mock keeps no comment text.
+    #
+    # + ctx - Request context
+    # + socialActionUrn - Post URN
+    # + 'start - Offset
+    # + count - Page size
+    # + return - The comments, or an error
+    isolated resource function get rest/socialActions/[string socialActionUrn]/comments(http:RequestContext ctx,
+            int 'start = 0, int count = 10) returns json|ErrorUnauthorized|ErrorForbidden {
+        store:AccessToken|ErrorUnauthorized|ErrorForbidden token =
+            authorize(ctx, [SCOPE_R_ORGANIZATION_SOCIAL_FEED], "GET /rest/socialActions/{urn}/comments");
+        if token !is store:AccessToken {
+            return token;
+        }
+        string target = decoded(socialActionUrn);
+        store:Engagement[] all = store:listEngagements(ENGAGEMENT_COMMENT, target);
+        json[] elements = from store:Engagement e in pageOf(all, 'start, count)
+            let int time = epochMillis(e.createdAt), string id = e.activityUrn ?: "0"
+            select {
+                actor: e.actorUrn,
+                agent: e.actorUrn,
+                id,
+                commentUrn: string `urn:li:comment:(${target},${id})`,
+                'object: target,
+                created: {actor: e.actorUrn, time},
+                lastModified: {actor: e.actorUrn, time},
+                message: {attributes: [], text: "(mock comment)"}
+            };
+        return collection(elements, 'start, count, all.length());
+    }
+
+    # One comment on a post (`GET /rest/socialActions/{urn}/comments/{id}`), as the pre-coin verification reads it.
+    #
+    # + ctx - Request context
+    # + socialActionUrn - Post URN
+    # + commentId - Comment id
+    # + return - The comment, 404 when deleted or unknown, or an error
+    isolated resource function get rest/socialActions/[string socialActionUrn]/comments/[string commentId](
+            http:RequestContext ctx) returns json|ErrorUnauthorized|ErrorForbidden|ErrorNotFound {
+        store:AccessToken|ErrorUnauthorized|ErrorForbidden token =
+            authorize(ctx, [SCOPE_R_ORGANIZATION_SOCIAL_FEED], "GET /rest/socialActions/{urn}/comments/{id}");
+        if token !is store:AccessToken {
+            return token;
+        }
+        string target = decoded(socialActionUrn);
+        string id = decoded(commentId);
+        foreach store:Engagement e in store:listEngagements(ENGAGEMENT_COMMENT, target) {
+            if e.activityUrn == id {
+                int time = epochMillis(e.createdAt);
+                return {actor: e.actorUrn, agent: e.actorUrn, id, commentUrn: string `urn:li:comment:(${target},${id})`,
+                    'object: target, created: {actor: e.actorUrn, time}, lastModified: {actor: e.actorUrn, time},
+                    message: {attributes: [], text: "(mock comment)"}};
+            }
+        }
+        return notFound("Comment not found");
+    }
+
+    # The page's share notifications (`q=criteria`): reshares of its posts in a time range.
+    #
+    # + ctx - Request context
+    # + q - Must be `criteria`
+    # + actions - `List(SHARE,...)` (the listener splits a query value on commas, so it arrives in parts)
+    # + organizationalEntity - The page URN
+    # + timeRange - `(start:{ms},end:{ms})`, in parts like `actions`
+    # + 'start - Offset
+    # + count - Page size
+    # + return - The notifications, or an error
+    isolated resource function get rest/organizationalEntityNotifications(http:RequestContext ctx, "criteria" q,
+            string[] actions, string organizationalEntity, string[] timeRange, int 'start = 0, int count = 10)
+            returns json|ErrorBadRequest|ErrorUnauthorized|ErrorForbidden {
+        store:AccessToken|ErrorUnauthorized|ErrorForbidden token =
+            authorize(ctx, [SCOPE_R_ORGANIZATION_SOCIAL_FEED], "GET /rest/organizationalEntityNotifications");
+        if token !is store:AccessToken {
+            return token;
+        }
+        string org = decoded(organizationalEntity);
+        if org != organizationUrn {
+            return forbidden(string `Member is not an administrator of ${org}`);
+        }
+        [int, int]? range = parseTimeRange(decoded(string:'join(",", ...timeRange)));
+        if range is () {
+            return badRequest("timeRange must be (start:{ms},end:{ms})");
+        }
+        if !decoded(string:'join(",", ...actions)).includes(NOTIFICATION_SHARE) {
+            return collection([], 'start, count, 0);
+        }
+        store:Engagement[] all = from store:Engagement e in store:listEngagements(ENGAGEMENT_RESHARE)
+            let int at = epochMillis(e.createdAt)
+            where at >= range[0] && at <= range[1]
+            select e;
+        json[] elements = from store:Engagement e in pageOf(all, 'start, count)
+            let string activity = e.activityUrn ?: ""
+            select {
+                action: NOTIFICATION_SHARE,
+                organizationalEntity: org,
+                sourcePost: e.targetUrn,
+                generatedActivity: activity,
+                lastModifiedAt: epochMillis(e.createdAt),
+                decoratedGeneratedActivity: {
+                    share: e.hasCommentary
+                        ? {owner: e.actorUrn, entity: activity, text: "(mock commentary)"}
+                        : {owner: e.actorUrn, entity: activity}
+                }
+            };
+        return collection(elements, 'start, count, all.length());
+    }
+
+    # The signed-in member's roles on organizations (`q=roleAssignee`). The configured member is an approved
+    # administrator of `organizationUrn`.
+    #
+    # + ctx - Request context
+    # + q - `roleAssignee`
+    # + role - Only this role
+    # + state - Only this state
+    # + return - The ACLs, or an error
+    isolated resource function get rest/organizationAcls(http:RequestContext ctx, "roleAssignee" q, string? role,
+            string? state) returns json|ErrorUnauthorized|ErrorForbidden {
+        store:AccessToken|ErrorUnauthorized|ErrorForbidden token =
+            authorize(ctx, [SCOPE_RW_ORGANIZATION_ADMIN], "GET /rest/organizationAcls");
+        if token !is store:AccessToken {
+            return token;
+        }
+        json[] elements = [];
+        if (role is () || role == ROLE_ADMINISTRATOR) && (state is () || state == STATE_APPROVED) {
+            elements.push({roleAssignee: personUrn(token.memberSub), role: ROLE_ADMINISTRATOR, state: STATE_APPROVED,
+                organization: organizationUrn});
+        }
+        return collection(elements, 0, 10, elements.length());
     }
 }
 

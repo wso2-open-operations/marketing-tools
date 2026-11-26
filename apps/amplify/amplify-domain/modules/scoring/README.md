@@ -1,6 +1,6 @@
 # amplify_domain.scoring
 
-Core context: point rules and the append-only points ledger. Tables: `scoring_point_rule`, `scoring_points_ledger`. Points are `HELD`; phase 1 issues no Coins.
+Core context: point rules, the append-only points ledger and the automatic Coins conversion (ADR-048). Tables: `scoring_point_rule`, `scoring_points_ledger`, `scoring_coin_wallet`, `scoring_coin_run`, `scoring_coin_issue` (V026). Points are `HELD` until a conversion pays them (`PAID`, final).
 
 ## Types and ports
 
@@ -15,8 +15,27 @@ File: `modules/scoring/types.bal`.
 
 File: `modules/scoring/service.bal`.
 
-- Pure rules: `ruleInForce` (latest `effectiveFrom` not after the time), `newRuleVersion` (cannot be backdated, cannot repeat `(action, effectiveFrom)`), `awardForEngagement`, `awardForExternalShare`, `ownPostNet`, `amplifiedTopUp` (`OWN_POST_AMPLIFIED` points minus the net `OWN_POST` points on the ledger), `reversal` (a reason is required, a row is reversed once, a reversal cannot be reversed), `adjustment`, `changeSettlement` (`PAID` is refused in phase 1).
+- Pure rules: `ruleInForce` (latest `effectiveFrom` not after the time), `newRuleVersion` (cannot be backdated, cannot repeat `(action, effectiveFrom)`), `awardForEngagement`, `awardForExternalShare`, `ownPostNet`, `amplifiedTopUp` (`OWN_POST_AMPLIFIED` points minus the net `OWN_POST` points on the ledger), `reversal` (a reason is required, a row is reversed once, a reversal cannot be reversed), `adjustment`.
 - Use cases: `setPointRule`, `appendAward` (re-running the same fact is a no-op), `reverseEntry`, `adjustPoints`.
+
+## Coins conversion
+
+File: `modules/scoring/coins.bal` (rules, port, use cases) and `modules/scoring/coin_repository.bal` (PostgreSQL).
+
+- Pure rules: `coinPeriod` (`2026-12` monthly, ISO week `2026-W49` weekly, `2026-12-01` daily, UTC), `planConversion` (carry in + the HELD rows not yet taken, reversals negative, in whole blocks within the person cap and what is left of the run cap; the rest carries out), `retryAt` (15 min doubling, at most a day), `isConvertible` (HELD and untaken, and for an engagement row verified within `coin.verify_max_age_hours` or cleared by a PO, V027), `changeSettlement` (`PAID` only to a HELD row and naming its `CNV-` reference; a PAID row is final, `ALREADY_PAID`), `maskWallet`, `sameAmount`.
+- Ports: `CoinRepository` (`openRun`, `openIssues`, `issuesOf`, `candidates(verifiedSince)` (`isConvertible`, plus a reversed engagement row goes with its reversal and a reversal waits while its original is action required), `committedCoins`, `transferTaken`, `begin`, `skipNoWallet`, `markSent`, `markFailed`, `markUnknown`, `finishRun`) and `CoinWalletRepository` (`walletOf`, `saveWallet`). PostgreSQL: `PgCoinRepository`, `PgCoinWalletRepository`; each multi-statement write runs through `store:inTransaction` with an audit row (`CoinsIssued`, `CoinIssueFailed`, `CoinIssueUnknown`, `CoinWalletCaptured` with the masked address).
+- Use cases: `convertCoins(repo, port, settings, options, now)` (the jobs' `POST /coins/convert`): reconcile open issues of earlier runs (search the Coins ledger by master wallet, recipient, amount and time; one match SENT, none FAILED, more UNKNOWN `RECONCILE_AMBIGUOUS`), plan, check the master balance covers the whole run (else `STOPPED INSUFFICIENT_BALANCE`, nothing sent), record wallet-less employees `SKIPPED_NO_WALLET`, then per employee `begin` (issue PENDING + rows tagged) -> transfer -> `markSent` (rows PAID). A refusal is `markFailed` (rows untagged, retried in the period after `retryAt`, or by the next period); no clear answer is `markUnknown` and stops the run. `captureWallet(repo, port, employeeId, userAssertion, ...)`: the default wallet, else the first.
+- Queries: `coinSummaryOf` (Coins received, carry, captured wallet) for `GET /me/points`; `timelineOf` (ledger rows and SENT / in-progress conversions, `CoinConversion`, in one paged newest-first list) for the history.
+
+## Pre-coin verification (V027, ADR-048 amendment)
+
+File: `modules/scoring/verification.bal` (rules, ports, use cases) and `modules/scoring/verification_repository.bal` (PostgreSQL).
+
+- Ledger columns `verification` (`VERIFIED`, `REMOVED`, `UNVERIFIABLE`, `PO_CLEARED`), `verified_at`, `verification_reason` on `types:LedgerEntry`.
+- Pure rules: `verificationCurrent(entry, since)`, `verifiedSince(settings, now)` (now - `coin.verify_max_age_hours`), `recheckBefore(maxAge, now)` (half the max age).
+- Ports: `EngagementChecker` (`verify(candidate, now)`: `PRESENT`, `GONE`, `UNVERIFIABLE` with a reason, or `VerifyStop` to end the run; amplify-jobs builds it from sharing, connection and LinkedIn, so scoring never reads sharing tables, ADR-005) and `VerificationRepository` (`dueForCheck`, `markVerified`, `markUnverifiable` (status NULL = action required), `reverseRemoved` (REMOVED + the system reversal "No longer on LinkedIn" in one transaction, with recognition)). `PgVerificationRepository(db, actor, topN)`; every write has an audit row (`PointsVerified`, `PointsSettlementChanged`, `PointsReversed`).
+- Use cases: `verifyForCoins(repo, checker, options, now)` (the jobs' `POST /coins/verify`: batches until nothing is due, `PARTIAL` at the time limit, `STOPPED` on a budget, 429 or outage) and `settleEntry(repo, reference, status, actor, now)` (`POST /po/points/{reference}/settlement`: a PO clears or holds back a row; not their own; PAID final). `PgLedgerRepository.updateSettlement` records `PO_CLEARED` when a row goes from action required to HELD.
+- Query: `actionRequiredOf(db, page, size)` (rows with status NULL, oldest first) for `GET /po/points/action-required`.
 
 ## Events
 
@@ -39,14 +58,14 @@ None. `scoring.bal` holds `MODULE`.
 
 ## Depends on
 
-`amplify_common.types`, `amplify_common.events`, `amplify_domain.store`.
+`amplify_common.types`, `amplify_common.events`, `amplify_common.coins` (the Coins port), `amplify_common.resilience` (log hygiene), `amplify_domain.store`.
 
 ## Does not do
 
 - No reads of the sharing or external-sharing tables. Facts come in as `EngagementFact` and `ExternalShareFact`.
-- No Coin issue and no payment (phase 2).
+- No HTTP: the Coins service is reached only through `coins:CoinsPort`, which the caller passes in.
 - No update or delete of a ledger fact. Corrections are new `ADJ-` and `REV-` rows.
 
 ## Tests
 
-`modules/scoring/tests/scoring_test.bal` (in-memory ledger). The package `tests/lock_order_test.bal` checks the recognition lock order. Integration tests are in the package `tests/` directory (see the component README).
+`modules/scoring/tests/scoring_test.bal` (in-memory ledger), `modules/scoring/tests/coins_test.bal` (the conversion on an in-memory repository and Coins service). `tests/integration_coins_test.bal` runs the Coins repositories against PostgreSQL. The package `tests/lock_order_test.bal` checks the recognition lock order. Integration tests are in the package `tests/` directory (see the component README).

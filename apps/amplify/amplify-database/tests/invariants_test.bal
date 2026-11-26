@@ -141,14 +141,14 @@ function testConstraintsRejectBadRows() returns error? {
             VALUES (uuidv7(), 'e1', 'linkedin', 'SHARE_ON_LINKEDIN', 'urn:li:share:1', 'REPOST', 0)`),
             "share_request_attempts_check");
 
-    // Ledger (C1, ADR-010, phase 1 has no PAID).
+    // Ledger (C1, ADR-010; a PAID row names the conversion that paid it, V026).
     assertViolates(failure(api, `INSERT INTO scoring_points_ledger (reference, employee_id, source_type, points, actor_id)
             VALUES ('ADJ-it-no-reason', 'e1', 'ADJUSTMENT', 5, 'po-1')`), "points_ledger_reason_ck");
     assertViolates(failure(api, `INSERT INTO scoring_points_ledger (reference, employee_id, source_type, points, actor_id)
             VALUES ('AMP-it-no-rule', 'e1', 'ENGAGEMENT', 5, 'system')`), "points_ledger_award_ck");
     assertViolates(failure(api, `INSERT INTO scoring_points_ledger (reference, employee_id, source_type, points, actor_id,
             reason, status, paid_at)
-            VALUES ('ADJ-it-paid', 'e1', 'ADJUSTMENT', 5, 'po-1', 'x', 'PAID', now())`), "points_ledger_no_paid_phase1_ck");
+            VALUES ('ADJ-it-paid', 'e1', 'ADJUSTMENT', 5, 'po-1', 'x', 'PAID', now())`), "points_ledger_paid_coin_ck");
     assertViolates(failure(api, `INSERT INTO scoring_points_ledger (reference, employee_id, source_type, points, actor_id, reason)
             VALUES ('XYZ-it', 'e1', 'ADJUSTMENT', 5, 'po-1', 'x')`), "points_ledger_reference_check");
     assertViolates(failure(api, `INSERT INTO scoring_points_ledger (reference, employee_id, source_type, points, actor_id, reason)
