@@ -407,6 +407,58 @@ service http:InterceptableService / on apiListener {
         return collection(elements, 'start, count, all.length());
     }
 
+    # Lifetime analytics of a post the signed-in member authored (`q=entity`, member post analytics). The mock answers
+    # stable counts from the post's engagement: impressions 100 + 25 per reaction, comment or reshare, members reached
+    # 60 + 15 per engagement. Only `TOTAL` aggregation; `MEMBERS_REACHED` supports nothing else at LinkedIn either.
+    #
+    # + ctx - Request context
+    # + q - Must be `entity`
+    # + entity - `(share:{urn})` or `(ugc:{urn})`, the URN encoded
+    # + queryType - `IMPRESSION`, `MEMBERS_REACHED`, `REACTION`, `COMMENT` or `RESHARE`
+    # + aggregation - `TOTAL` (default) or `DAILY`
+    # + return - One element with the count, or an error (404 unknown post, 403 another member's post)
+    isolated resource function get rest/memberCreatorPostAnalytics(http:RequestContext ctx, "entity" q, string entity,
+            string queryType, string? aggregation) returns json|ErrorBadRequest|ErrorUnauthorized|ErrorForbidden|ErrorNotFound {
+        store:AccessToken|ErrorUnauthorized|ErrorForbidden token =
+            authorize(ctx, [SCOPE_R_MEMBER_POST_ANALYTICS], "GET /rest/memberCreatorPostAnalytics");
+        if token !is store:AccessToken {
+            return token;
+        }
+        string value = decoded(entity);
+        string? urn = analyticsEntityUrn(value);
+        if urn is () {
+            return badRequest("entity must be (share:{urn}) or (ugc:{urn})");
+        }
+        if ["IMPRESSION", "MEMBERS_REACHED", "REACTION", "COMMENT", "RESHARE"].indexOf(queryType) is () {
+            return badRequest("Unknown queryType");
+        }
+        if aggregation is string && aggregation != "TOTAL" && (aggregation != "DAILY" || queryType == "MEMBERS_REACHED") {
+            return badRequest("Unsupported aggregation");
+        }
+        store:Post? post = store:getPost(urn);
+        if post is () {
+            return notFound(string `Post ${urn} not found`);
+        }
+        if post.authorUrn != personUrn(token.memberSub) {
+            return forbidden("Analytics are only available for the member's own posts");
+        }
+        int reactions = store:listEngagements(ENGAGEMENT_REACTION, urn).length();
+        int comments = store:listEngagements(ENGAGEMENT_COMMENT, urn).length();
+        int reshares = (from store:Engagement e in store:listEngagements(ENGAGEMENT_RESHARE)
+            where e.targetUrn == urn
+            select e).length();
+        int engagement = reactions + comments + reshares;
+        int count = queryType == "IMPRESSION" ? 100 + 25 * engagement
+            : queryType == "MEMBERS_REACHED" ? 60 + 15 * engagement
+            : queryType == "REACTION" ? reactions : queryType == "COMMENT" ? comments : reshares;
+        string key = urn.startsWith("urn:li:ugcPost:") ? "ugc" : "share";
+        return collection([{
+            count,
+            metricType: {"com.linkedin.adsexternalapi.memberanalytics.v1.CreatorPostAnalyticsMetricTypeV1": queryType},
+            targetEntity: {[key]: urn}
+        }], 0, 10, 1);
+    }
+
     # The signed-in member's roles on organizations (`q=roleAssignee`). The configured member is an approved
     # administrator of `organizationUrn`.
     #

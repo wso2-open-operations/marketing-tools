@@ -73,6 +73,14 @@ type Settings record {|
     string engagementSchedule = "0 */2 * * *";
     # `engagement.daily_call_budget`: Community Management calls per UTC day
     int engagementDailyBudget = 450;
+    # `reach.enabled`: the scheduler's reach refresh job fires (and amplify-jobs reads post analytics) only when true
+    boolean reachEnabled = false;
+    # `reach.schedule`: when the scheduler calls amplify-jobs `POST /reach/refresh`
+    string reachSchedule = "30 3 * * *";
+    # `reach.window_days`: in-app shares of the last N days are measured
+    int reachWindowDays = 30;
+    # `dashboards.min_group_size`: a report group (location) with fewer people is merged into "Other"
+    int minGroupSize = 5;
 |};
 
 # One editable key: its kind and allowed range.
@@ -112,7 +120,11 @@ final readonly & map<SettingRule> EDITABLE_SETTINGS = {
     [SETTING_COIN_MAX_PER_RUN]: {kind: "int", min: 1, max: 100000000},
     [SETTING_ENGAGEMENT_SYNC_ENABLED]: {kind: "boolean"},
     [SETTING_ENGAGEMENT_SCHEDULE]: {kind: "schedule", min: 900},
-    [SETTING_ENGAGEMENT_DAILY_BUDGET]: {kind: "int", min: 0, max: 100000}
+    [SETTING_ENGAGEMENT_DAILY_BUDGET]: {kind: "int", min: 0, max: 100000},
+    [SETTING_REACH_ENABLED]: {kind: "boolean"},
+    [SETTING_REACH_SCHEDULE]: {kind: "schedule", min: 3600},
+    [SETTING_REACH_WINDOW_DAYS]: {kind: "int", min: 1, max: 90},
+    [SETTING_MIN_GROUP_SIZE]: {kind: "int", min: 1, max: 100}
 };
 
 # The business numbers the PO team changes on Amplify Admin (`GET/PUT /po/settings`). Switches and schedules stay
@@ -122,7 +134,8 @@ final readonly & string[] PO_SETTINGS = [SETTING_COIN_BLOCK_POINTS, SETTING_COIN
 
 # Keys whose change is pushed to the scheduler.
 final readonly & string[] SCHEDULE_SETTINGS = [SETTING_RUN_SCHEDULE, SETTING_RUN_ENABLED, SETTING_MAINTENANCE_SCHEDULE,
-    SETTING_ENGAGEMENT_SYNC_ENABLED, SETTING_ENGAGEMENT_SCHEDULE, SETTING_COIN_SCHEDULE, SETTING_COIN_WALLETS_ENABLED];
+    SETTING_ENGAGEMENT_SYNC_ENABLED, SETTING_ENGAGEMENT_SCHEDULE, SETTING_COIN_SCHEDULE, SETTING_COIN_WALLETS_ENABLED,
+    SETTING_REACH_ENABLED, SETTING_REACH_SCHEDULE];
 
 # Whether a key is listed: every editable key, plus the read-only ones the admin screen shows. Seeded keys nobody
 # reads yet (an old `coin.*` placeholder, for example) stay out.
@@ -269,6 +282,18 @@ isolated function settingsOf(store:Setting[] rows) returns Settings {
             }
             SETTING_ENGAGEMENT_DAILY_BUDGET => {
                 s.engagementDailyBudget = v is int && v >= 0 ? v : s.engagementDailyBudget;
+            }
+            SETTING_REACH_ENABLED => {
+                s.reachEnabled = v == true;
+            }
+            SETTING_REACH_SCHEDULE => {
+                s.reachSchedule = v is string && scheduler:checkSchedule(v) is () ? v : s.reachSchedule;
+            }
+            SETTING_REACH_WINDOW_DAYS => {
+                s.reachWindowDays = v is int && v > 0 && v <= 90 ? v : s.reachWindowDays;
+            }
+            SETTING_MIN_GROUP_SIZE => {
+                s.minGroupSize = v is int && v > 0 ? v : s.minGroupSize;
             }
         }
     }

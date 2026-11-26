@@ -383,6 +383,81 @@ paths:
         "404": {$ref: "#/components/responses/Problem"}
         "409": {$ref: "#/components/responses/Problem"}
         "503": {$ref: "#/components/responses/Problem"}
+  /me/connections/reach:
+    get:
+      tags: [S2 Connection]
+      operationId: getReachConnection
+      x-access: EMPLOYEE
+      description: The caller's Reach connection (#1781), their consent to Amplify reading the analytics of their own posts through the Community Management app.
+      parameters: [{$ref: "#/components/parameters/CorrelationId"}]
+      responses:
+        "200":
+          description: Reach status
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ReachConnection"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+    delete:
+      tags: [S2 Connection]
+      operationId: disconnectReach
+      x-access: EMPLOYEE
+      description: Revokes the Reach token at LinkedIn (while it still works), then deletes the connection and its tokens (audited). 503 when LinkedIn couldn't confirm; the connection is kept. Readings already taken stay.
+      parameters: [{$ref: "#/components/parameters/CorrelationId"}]
+      responses:
+        "204": {description: Disconnected (or never connected)}
+        "401": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /me/connections/reach/start:
+    post:
+      tags: [S2 Connection]
+      operationId: startReachConnect
+      x-access: EMPLOYEE
+      description: >-
+        Starts the Reach OAuth flow with the Community Management app and the scope `r_member_postAnalytics` only.
+        The redirect is the member callback page (`/amplify/connect/callback`, `linkedinRedirectUri`); the state starts
+        `reach-`, so the page posts it to `/me/connections/reach/complete`. Single use, valid for 10 minutes. 503 when
+        the Community Management app or the redirect URI is not configured.
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      responses:
+        "200":
+          description: Redirect the browser to `authorizationUrl`
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ConnectAuthorization"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /me/connections/reach/complete:
+    post:
+      tags: [S2 Connection]
+      operationId: completeReachConnect
+      x-access: EMPLOYEE
+      description: >-
+        Completes the Reach flow. The state must be the caller's Reach state, unused and unexpired (409
+        `OAUTH_STATE_INVALID` otherwise, also for a member or page state); `redirectUri` the member callback page (422
+        `OAUTH_REDIRECT_MISMATCH`). A grant without `r_member_postAnalytics` is revoked (422 `REACH_SCOPE_MISSING`).
+        Seals the tokens as MEMBER_ANALYTICS and upserts the connection (audited).
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ConnectComplete"}
+      responses:
+        "200":
+          description: Connected
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ReachConnection"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
   /me/native-intents:
     get:
       tags: [C1 Sharing]
@@ -933,7 +1008,7 @@ paths:
       tags: [S6 Dashboards]
       operationId: getDashboardExport
       x-access: CAN_EXPORT
-      description: "The raw rows behind every board for a date range as a CSV download (UTC days, both ends inclusive, at most 366 days). One row per engagement, share attempt, points ledger row, campaign opened and connection made, in one set of columns told apart by record_type. Not cached."
+      description: "The raw rows behind every board for a date range as a CSV download (UTC days, both ends inclusive, at most 366 days). One row per engagement, share attempt, points ledger row, campaign opened and connection made, in one set of columns told apart by record_type. Columns: record_type, occurred_at, campaign_id, campaign_title, category, is_priority, employee_id, employee_name, employee_email, action, status, points, detail, location (the employee's work location from the people directory, empty when unknown), reactions and comments (CAMPAIGN rows: on the campaign post), reach (members reached, approximate: an in-app share's latest reading on ENGAGEMENT rows, the campaign's reposts summed on CAMPAIGN rows). Not cached."
       parameters:
         - {$ref: "#/components/parameters/CorrelationId"}
         - {name: from, in: query, required: true, schema: {type: string, format: date}}
@@ -973,7 +1048,7 @@ paths:
       tags: [S6 Dashboards]
       operationId: getDashboardParticipation
       x-access: CAN_DASHBOARD
-      description: "Participation funnel numbers: employees, connected, reposted at least once, active in the last 30 days, expired connections. The team and BU boards come from /leaderboard/groups. Cached 60 s."
+      description: "Participation funnel numbers: employees, connected, reposted at least once, active in the last 30 days, expired connections; and the same by work location (people directory), with points this month and reach. A location with fewer than `dashboards.min_group_size` people (default 5) is merged into Other, as are people without a location. Reposts never include the reactions and comments the engagement sync records. The team and BU boards come from /leaderboard/groups. Cached 60 s."
       parameters:
         - {$ref: "#/components/parameters/CorrelationId"}
       responses:
@@ -1246,7 +1321,7 @@ paths:
       tags: [S5 Admin]
       operationId: syncScheduler
       x-access: CAN_ADMIN
-      description: Converges the scheduler's jobs (`amplify-run`, `amplify-maintenance-partitions`, `amplify-engagement-sync`) to the schedule settings (ADR-026). Safe to repeat. 503 `SCHEDULER_UNAVAILABLE` when the scheduler can't be reached.
+      description: Converges the scheduler's jobs (`amplify-run`, `amplify-maintenance-partitions`, `amplify-engagement-sync`, `amplify-coins-convert`, `amplify-reach-refresh`) to the schedule settings (ADR-026). Safe to repeat. 503 `SCHEDULER_UNAVAILABLE` when the scheduler can't be reached.
       parameters:
         - {$ref: "#/components/parameters/CorrelationId"}
         - {$ref: "#/components/parameters/IdempotencyKey"}
@@ -1338,7 +1413,7 @@ components:
             ANNOUNCEMENT_NOT_FAILED, UNKNOWN_SETTING, INVALID_SETTING, SCHEDULER_UNAVAILABLE, INVALID_EMPLOYEE_ID,
             INVALID_EMAIL, INVALID_MEMBER_URN, INVALID_POST_URN, INVALID_UUID, SHARE_NOT_QUEUED, PAID_NOT_ALLOWED,
             ALREADY_ANNOUNCED, ANNOUNCEMENT_NOT_QUEUED, COMMENTARY_NOT_OWN_WORDS, DAILY_LIMIT_REACHED, NOTE_TOO_LONG,
-            NOT_PAGE_ADMIN, ALREADY_PAID, NO_WALLET, COINS_UNAVAILABLE]
+            NOT_PAGE_ADMIN, ALREADY_PAID, NO_WALLET, COINS_UNAVAILABLE, REACH_SCOPE_MISSING]
         detail: {type: string, nullable: true}
         correlationId: {type: string, nullable: true}
     CoinWallet:
@@ -1594,6 +1669,14 @@ components:
       required: [items]
       properties:
         items: {type: array, items: {$ref: "#/components/schemas/NativeIntent"}}
+    ReachConnection:
+      type: object
+      required: [connected, status, connectedAt, accessExpiresAt]
+      properties:
+        connected: {type: boolean}
+        status: {type: string, enum: [NOT_CONNECTED, CONNECTED, EXPIRED], description: "EXPIRED: the token lapsed and can't be renewed; connect again"}
+        connectedAt: {type: string, format: date-time, nullable: true}
+        accessExpiresAt: {type: string, format: date-time, nullable: true}
     LinkedInPage:
       type: object
       required: [connected, connectedByName, connectedAt, accessExpiresAt, callsToday, dailyBudget]
@@ -2018,9 +2101,21 @@ components:
         status: {type: string, enum: [SCHEDULED, OPEN, CLOSED, ARCHIVED]}
         opensAt: {type: string, format: date-time}
         closesAt: {type: string, format: date-time}
-        reposts: {type: integer, description: "Active engagements recorded against the campaign"}
+        reposts: {type: integer, description: "Active reposts recorded against the campaign (share actions only; synced reactions and comments are not reposts)"}
         repostsWithCommentary: {type: integer, description: "Of those, reposts with the employee's own commentary"}
+        reactions: {type: integer, description: "Employees' reactions on the campaign post (engagement sync)"}
+        comments: {type: integer, description: "Employees' comments on the campaign post (engagement sync)"}
+        reach: {$ref: "#/components/schemas/DashboardReach"}
         announcement: {$ref: "#/components/schemas/DashboardAnnouncement"}
+    DashboardReach:
+      type: object
+      required: [impressions, membersReached, measuredReposts, approximate]
+      description: "Reach of the employees' reposts from LinkedIn's member post analytics, latest reading of each. Approximate: only reposts of employees who connected Reach are measured, and a member reached by two reposts counts twice"
+      properties:
+        impressions: {type: integer}
+        membersReached: {type: integer}
+        measuredReposts: {type: integer}
+        approximate: {type: boolean, enum: [true]}
     DashboardOperations:
       type: object
       required: [asOf, kpis, campaigns, shareHealth, connections]
@@ -2112,6 +2207,17 @@ components:
         asOf: {type: string, format: date-time}
         windowDays: {type: integer}
         peopleConnected: {type: integer}
+        monthTotals:
+          type: object
+          description: "This calendar month (UTC): reposts, reactions and comments recorded, and the reach of the month's reposts"
+          required: [month, reposts, reactions, comments, reach, reachConsenting]
+          properties:
+            month: {type: string, description: "YYYY-MM"}
+            reposts: {type: integer}
+            reactions: {type: integer}
+            comments: {type: integer}
+            reach: {$ref: "#/components/schemas/DashboardReach"}
+            reachConsenting: {type: integer, description: "Employees with a Reach connection (reach is measured for them only)"}
         campaigns: {type: array, items: {$ref: "#/components/schemas/DashboardCampaignRow"}}
         selected:
           type: object
@@ -2138,6 +2244,9 @@ components:
             closesAt: {type: string, format: date-time}
             reposts: {type: integer}
             repostsWithCommentary: {type: integer}
+            reactions: {type: integer}
+            comments: {type: integer}
+            reach: {$ref: "#/components/schemas/DashboardReach"}
             shareOfConnected: {type: number, nullable: true, description: "reposts / people connected, 3 decimals"}
             first24Hours: {type: integer}
             announcement: {$ref: "#/components/schemas/DashboardAnnouncement"}
@@ -2174,6 +2283,28 @@ components:
             reposted: {type: integer, description: "People with at least one active engagement"}
             active30Days: {type: integer, description: "People with an engagement in the last 30 days"}
             expired: {type: integer, description: "Connections past their expiry"}
+        byLocation:
+          type: array
+          description: "Largest first, Other last"
+          items:
+            type: object
+            required: [location, size, connected, reposted, active30Days, pointsThisMonth, reach]
+            properties:
+              location: {type: string, description: "Work location from the people directory, or Other"}
+              size: {type: integer, description: "Directory headcount (the people counted when the directory is unavailable); at least minGroupSize except Other"}
+              employees: {type: integer, nullable: true}
+              connected: {type: integer}
+              reposted: {type: integer}
+              active30Days: {type: integer}
+              pointsThisMonth: {type: integer}
+              reach:
+                type: object
+                required: [membersReached, approximate]
+                properties:
+                  membersReached: {type: integer}
+                  approximate: {type: boolean, enum: [true]}
+        minGroupSize: {type: integer, description: "dashboards.min_group_size"}
+        reachConsenting: {type: integer}
     DashboardGlance:
       type: object
       required: [asOf, month, reposts, monthly, participants, campaignsLive, campaignsReachingTarget, shareSuccess]

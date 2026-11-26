@@ -14,8 +14,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// SchedulerSync (ADR-026): the database settings are the source of truth; the scheduler holds a copy as four
-// jobs with stable ids (run, partition maintenance, engagement sync, Coins conversion). After a settings commit, at startup and on
+// SchedulerSync (ADR-026): the database settings are the source of truth; the scheduler holds a copy as five
+// jobs with stable ids (run, partition maintenance, engagement sync, Coins conversion, reach refresh). After a settings commit, at startup and on
 // `POST /admin/scheduler/sync`, amplify-api reads the settings and upserts them. The scheduler being down never fails a settings save: the
 // answer says `PENDING` and the next reconcile converges.
 
@@ -46,6 +46,8 @@ configurable int runDeadlineSeconds = 300;
 configurable int maintenanceDeadlineSeconds = 180;
 # Deadline for `POST /engagement/sync`, seconds.
 configurable int engagementDeadlineSeconds = 240;
+# Deadline for `POST /reach/refresh`, seconds.
+configurable int reachDeadlineSeconds = 240;
 # Deadline for `POST /coins/convert`, seconds. Longer than amplify-jobs `coinsMaxSeconds` (540), so the scheduler never
 # cancels a healthy conversion.
 configurable int coinsDeadlineSeconds = 600;
@@ -172,6 +174,19 @@ isolated function desiredJobs(Settings s) returns scheduler:JobSpec[] {
             retryCount: 1,
             retryIntervalSeconds: 900,
             deadlineSeconds: coinsDeadlineSeconds,
+            headers: schedulerKeyHeaders()
+        },
+        {
+            id: JOB_REACH_REFRESH,
+            name: "Amplify reach refresh",
+            schedule: s.reachSchedule,
+            // Off until an admin turns reach on; amplify-jobs checks the setting again.
+            enabled: s.reachEnabled,
+            uri: base + "/reach/refresh",
+            // A reading replaces the day's earlier one, so a repeat is harmless; the next day picks up a failure.
+            retryCount: 0,
+            retryIntervalSeconds: 60,
+            deadlineSeconds: reachDeadlineSeconds,
             headers: schedulerKeyHeaders()
         }
     ];

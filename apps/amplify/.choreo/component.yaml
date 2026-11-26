@@ -242,6 +242,13 @@ configurations:
           displayName: HR Entity client secret
           type: secret
           required: false
+    # The HR Entity employee field holding the work location (SLT reports by location). Default workLocation.
+    - name: BAL_CONFIG_VAR_HRENTITYLOCATIONFIELD
+      valueFrom:
+        configForm:
+          displayName: HR Entity work location field (GraphQL name, default workLocation)
+          type: string
+          required: false
     - name: BAL_CONFIG_VAR_LINKEDINCLIENTID
       valueFrom:
         configForm:

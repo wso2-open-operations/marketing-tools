@@ -875,6 +875,49 @@ service http:InterceptableService / on apiListener {
     resource function delete admin/linkedin\-page(http:RequestContext ctx) returns http:NoContent|ProblemResponse|error =>
         disconnectPage(check principalOf(ctx), cid(ctx));
 
+    # The caller's Reach connection (post analytics through the Community Management app).
+    #
+    # + ctx - Request context
+    # + return - The status, or problem details
+    resource function get me/connections/reach(http:RequestContext ctx) returns http:Response|ProblemResponse|error =>
+        okJson(reachStatusOf(check principalOf(ctx), cid(ctx)));
+
+    # Starts the caller's Reach OAuth flow (scope `r_member_postAnalytics` only).
+    #
+    # + ctx - Request context
+    # + req - Request
+    # + return - Authorization URL and state, or problem details
+    resource function post me/connections/reach/'start(http:RequestContext ctx, http:Request req)
+            returns http:Response|error {
+        final auth:Principal & readonly p = (check principalOf(ctx)).cloneReadOnly();
+        final string? c = cid(ctx);
+        return idempotent(ctx, req, p, "/me/connections/reach/start", (),
+                isolated function() returns http:StatusCodeResponse => startReachConnect(p, c));
+    }
+
+    # Completes the caller's Reach OAuth flow.
+    #
+    # + ctx - Request context
+    # + req - Request
+    # + body - Code, state and the callback page
+    # + return - The Reach status, or problem details
+    resource function post me/connections/reach/complete(http:RequestContext ctx, http:Request req,
+            @http:Payload ConnectCompleteBody body) returns http:Response|error {
+        final auth:Principal & readonly p = (check principalOf(ctx)).cloneReadOnly();
+        final string? c = cid(ctx);
+        final readonly & ConnectCompleteBody b = body.cloneReadOnly();
+        // The code is a one-time secret: fingerprint the state only.
+        return idempotent(ctx, req, p, "/me/connections/reach/complete", {state: b.state},
+                isolated function() returns http:StatusCodeResponse => completeReachConnect(p, c, b));
+    }
+
+    # Disconnects the caller's Reach connection: revokes the token at LinkedIn and deletes it.
+    #
+    # + ctx - Request context
+    # + return - 204, or problem details
+    resource function delete me/connections/reach(http:RequestContext ctx) returns http:NoContent|ProblemResponse|error =>
+        disconnectReach(check principalOf(ctx), cid(ctx));
+
     # Converges the scheduler jobs to the schedule settings (ADR-026).
     #
     # + ctx - Request context

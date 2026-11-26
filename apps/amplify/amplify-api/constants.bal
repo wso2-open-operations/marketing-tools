@@ -93,6 +93,8 @@ const string METHOD_NOT_ALLOWED = "METHOD_NOT_ALLOWED";
 const string TEAM_SCOPE = "TEAM_SCOPE";
 # The admin who connected the company page is not an approved administrator of it on LinkedIn.
 const string NOT_PAGE_ADMIN = "NOT_PAGE_ADMIN";
+# The Reach grant came back without `r_member_postAnalytics` (the token is revoked).
+const string REACH_SCOPE_MISSING = "REACH_SCOPE_MISSING";
 # Setting key not editable.
 const string UNKNOWN_SETTING = "UNKNOWN_SETTING";
 # Setting value out of range.
@@ -138,9 +140,15 @@ const string JOB_RUN = "amplify-run";
 const string JOB_MAINTENANCE = "amplify-maintenance-partitions";
 const string JOB_ENGAGEMENT_SYNC = "amplify-engagement-sync";
 const string JOB_COINS_CONVERT = "amplify-coins-convert";
+const string JOB_REACH_REFRESH = "amplify-reach-refresh";
 // ---- Community Management engagement sync (V025, S013) ---------------------------------------------
 const string SETTING_ENGAGEMENT_SYNC_ENABLED = "engagement.sync_enabled";
 const string SETTING_ENGAGEMENT_SCHEDULE = "engagement.schedule";
 const string SETTING_ENGAGEMENT_DAILY_BUDGET = "engagement.daily_call_budget";
+// ---- Post reach and the reports (V028, S016) -------------------------------------------------------
+const string SETTING_REACH_ENABLED = "reach.enabled";
+const string SETTING_REACH_SCHEDULE = "reach.schedule";
+const string SETTING_REACH_WINDOW_DAYS = "reach.window_days";
+const string SETTING_MIN_GROUP_SIZE = "dashboards.min_group_size";
 # Scheduler unreachable on an explicit sync.
 const string SCHEDULER_UNAVAILABLE = "SCHEDULER_UNAVAILABLE";

@@ -191,6 +191,9 @@ isolated function oauthStateRepository() returns connection:OAuthStateRepository
 isolated function orgConnectionRepository(store:Actor actor) returns connection:OrgConnectionRepository|error =>
     new connection:PgOrgConnectionRepository(check db(), actor);
 
+isolated function reachConnectionRepository(store:Actor actor) returns connection:ReachConnectionRepository|error =>
+    new connection:PgReachConnectionRepository(check db(), actor);
+
 isolated function nativeIntentRepository() returns sharing:NativeIntentRepository|error =>
     new sharing:PgNativeIntentRepository(check db());
 

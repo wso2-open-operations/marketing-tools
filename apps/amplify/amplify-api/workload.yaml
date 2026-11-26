@@ -106,6 +106,8 @@ configurations:
         secretRef:
           name: amplify-api-secrets
           key: BAL_CONFIG_VAR_HRENTITYCLIENTSECRET
+    - name: BAL_CONFIG_VAR_HRENTITYLOCATIONFIELD
+      value: "workLocation"
     - name: BAL_CONFIG_VAR_LINKEDINCLIENTID
       value: ""
     - name: BAL_CONFIG_VAR_LINKEDINCLIENTSECRET

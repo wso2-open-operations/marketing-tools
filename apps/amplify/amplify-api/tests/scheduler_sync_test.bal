@@ -206,7 +206,8 @@ function testScheduleChangeCommitsThenPushes() returns error? {
     json body = check res.getJsonPayload();
     test:assertEquals(check body.schedulerSync, "SYNCED");
     test:assertEquals(takeEvents(), ["commit", "push:amplify-run=*/10 * * * *", "push:amplify-maintenance-partitions=0 2 * * *",
-        "push:amplify-engagement-sync=0 */2 * * *", "push:amplify-coins-convert=0 2 1 * *"]);
+        "push:amplify-engagement-sync=0 */2 * * *", "push:amplify-coins-convert=0 2 1 * *",
+        "push:amplify-reach-refresh=30 3 * * *"]);
     scheduler:JobSpec run = check fakeScheduler.job(JOB_RUN).ensureType();
     test:assertEquals(run.uri, "http://amplify-jobs:9598/runs");
     test:assertEquals(run.deadlineSeconds, 300, "deadline outlives runMaxSeconds (240)");
@@ -239,10 +240,10 @@ function testSchedulerDownSaveStillSucceeds() returns error? {
     fakeScheduler.setUp(true);
     SchedulerSyncResult first = syncScheduler((), "test");
     test:assertEquals(first.status, "SYNCED");
-    test:assertEquals(first.jobs.map(j => j.result), ["CREATED", "CREATED", "CREATED", "CREATED"]);
+    test:assertEquals(first.jobs.map(j => j.result), ["CREATED", "CREATED", "CREATED", "CREATED", "CREATED"]);
     test:assertEquals((check fakeScheduler.job(JOB_MAINTENANCE).ensureType(scheduler:JobSpec)).schedule, "30 3 * * *");
     SchedulerSyncResult again = syncScheduler((), "test");
-    test:assertEquals(again.jobs.map(j => j.result), ["UNCHANGED", "UNCHANGED", "UNCHANGED", "UNCHANGED"]);
+    test:assertEquals(again.jobs.map(j => j.result), ["UNCHANGED", "UNCHANGED", "UNCHANGED", "UNCHANGED", "UNCHANGED"]);
 }
 
 @test:Config {groups: ["scheduler"]}
@@ -253,7 +254,7 @@ function testReconcileFixesDriftedJob() returns error? {
     drifted.schedule = "@every 1m";
     fakeScheduler.put(drifted);
     SchedulerSyncResult result = syncScheduler((), "test");
-    test:assertEquals(result.jobs.map(j => j.result), ["UPDATED", "CREATED", "CREATED", "CREATED"]);
+    test:assertEquals(result.jobs.map(j => j.result), ["UPDATED", "CREATED", "CREATED", "CREATED", "CREATED"]);
     test:assertEquals((check fakeScheduler.job(JOB_RUN).ensureType(scheduler:JobSpec)).schedule, "@every 5m");
 }
 
@@ -302,7 +303,7 @@ function testAdminSyncEndpoint() returns error? {
     test:assertEquals(ok.statusCode, 200);
     json body = check ok.getJsonPayload();
     test:assertEquals(check body.schedulerSync, "SYNCED");
-    test:assertEquals((<json[]>check body.jobs).length(), 4);
+    test:assertEquals((<json[]>check body.jobs).length(), 5);
 
     fakeScheduler.setUp(false);
     http:Response down = check send("POST", "/admin/scheduler/sync", {}, token);
@@ -432,6 +433,25 @@ function testCoinsConversionJobFollowsTheCoinSettings() returns error? {
     test:assertEquals(weekly.statusCode, 200);
     scheduler:JobSpec moved = check fakeScheduler.job(JOB_COINS_CONVERT).ensureType();
     test:assertEquals(moved.schedule, "0 2 * * 1");
+}
+
+@test:Config {groups: ["scheduler"]}
+function testReachRefreshJobFollowsTheReachSettings() returns error? {
+    resetSync();
+    scheduler:JobSpec off = desiredJobs({})[4];
+    test:assertEquals(off.id, JOB_REACH_REFRESH);
+    test:assertEquals(off.uri, "http://amplify-jobs:9598/reach/refresh");
+    test:assertFalse(off.enabled, "off until an admin turns reach on");
+    test:assertEquals(off.schedule, "30 3 * * *");
+    test:assertEquals(off.retryCount, 0);
+    http:Response res = check putSetting("reach.enabled", true);
+    test:assertEquals(res.statusCode, 200);
+    test:assertEquals(check (check res.getJsonPayload()).schedulerSync, "SYNCED", "reach.enabled is a schedule key");
+    scheduler:JobSpec turnedOn = check fakeScheduler.job(JOB_REACH_REFRESH).ensureType();
+    test:assertTrue(turnedOn.enabled);
+    test:assertEquals((check putSetting("reach.schedule", "@every 5m")).statusCode, 422, "no faster than hourly");
+    test:assertEquals((check putSetting("reach.window_days", 0)).statusCode, 422);
+    test:assertEquals((check putSetting("dashboards.min_group_size", 3)).statusCode, 200);
 }
 
 @test:Config

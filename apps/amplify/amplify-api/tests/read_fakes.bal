@@ -153,6 +153,10 @@ service /people/graphql on jwksListener {
         if mode == "nohouse" && asksHouse {
             return ok({errors: [{message: "Cannot query field \"houseId\" on type \"Employee\"."}], data: ()});
         }
+        // An HR Entity without the configured location field refuses a query that names it.
+        if mode == "nolocation" && query is string && query.includes("workLocation") {
+            return ok({errors: [{message: "Cannot query field \"workLocation\" on type \"Employee\"."}], data: ()});
+        }
         if mode == "nohouse400" && asksHouse {
             http:Response res = new;
             res.statusCode = 400;
@@ -167,7 +171,8 @@ service /people/graphql on jwksListener {
             offset = o is int ? o : 0;
         }
         json[] rows = from string m in RIVERS
-            select {workEmail: m.toUpperAscii(), firstName: "R", lastName: m.substring(0, 4), department: "Rivers", subTeam: (), businessUnit: "Water"};
+            select {workEmail: m.toUpperAscii(), firstName: "R", lastName: m.substring(0, 4), department: "Rivers", subTeam: (), businessUnit: "Water",
+                workLocation: "Colombo"};
         rows.push({workEmail: "rv-noteam@wso2.com", firstName: "N", department: (), subTeam: (), businessUnit: "Land"});
         int end = int:min(offset + 'limit, rows.length());
         json[] page = offset >= rows.length() ? [] : rows.slice(offset, end);
@@ -686,7 +691,12 @@ isolated function dashPost(string id, string title, string cat, boolean priority
     opensAt: time:utcAddSeconds(DASH_NOW, <decimal>(-86400 * openedDaysAgo)),
     closesAt: time:utcAddSeconds(DASH_NOW, <decimal>(86400 * (30 - openedDaysAgo))),
     reposts,
-    repostsWithCommentary: withCommentary
+    repostsWithCommentary: withCommentary,
+    reactions: id == "p-launch" ? 7 : 0,
+    comments: id == "p-launch" ? 2 : 0,
+    impressions: id == "p-launch" ? 5000 : 0,
+    membersReached: id == "p-launch" ? 1800 : 0,
+    measuredReposts: id == "p-launch" ? 4 : 0
 };
 
 isolated Snapshot? fakeSnapshot = ();
@@ -715,7 +725,9 @@ isolated function fixedSnapshot() returns Snapshot => {
         "p-event": {status: "QUEUED", attempts: 3, sentAt: ()}
     },
     shares: {queued: 1, published: 57, failed: 3, failedByReason: {NEEDS_RECONNECT: 2, PROVIDER_REJECTED: 1, RETRIES_EXHAUSTED: 0}},
-    cards: {total: 3, sent: 2, queued: 1, failed: 0, retrying: 1}
+    cards: {total: 3, sent: 2, queued: 1, failed: 0, retrying: 1},
+    engagementThisMonth: {reactions: 11, comments: 3, impressions: 9000, membersReached: 3100, measuredReposts: 6},
+    reachConsenting: 12
 };
 
 # Replaces the snapshot the fake database answers with, and drops the cached one.
@@ -778,10 +790,19 @@ isolated function mockExportRows(time:Utc 'from, time:Utc to) returns reporting:
     return [
         {recordType: "ENGAGEMENT", occurredAt: "2025-10-20T10:00:00Z", campaignId: "p-launch", campaignTitle: "Launch, big", category: "Product",
             isPriority: true, employeeId: "e1", employeeName: "=Ada \"AL\" Lovelace", employeeEmail: "ada@example.com",
-            action: "REPOST", status: "ACTIVE", points: (), detail: ()},
+            action: "REPOST", status: "ACTIVE", points: (), detail: (), reach: 420},
         {recordType: "POINTS", occurredAt: "2025-10-20T10:00:01Z", campaignId: (), campaignTitle: (), category: (), isPriority: (),
             employeeId: "e1", employeeName: (), employeeEmail: (), action: "REPOST", status: "HELD", points: 5, detail: "ENGAGEMENT"}
     ];
+}
+
+@test:Mock {functionName: "participationPeople"}
+isolated function mockParticipationPeople() returns reporting:PersonParticipation[]|error {
+    check dbGate();
+    return [{email: "nile@wso2.com", connected: true, reposted: true, active30Days: true, pointsThisMonth: 30,
+            membersReached: 200},
+        {email: "someone@elsewhere.com", connected: true, reposted: false, active30Days: false, pointsThisMonth: 0,
+            membersReached: 0}];
 }
 
 @test:Mock {functionName: "personPosts"}

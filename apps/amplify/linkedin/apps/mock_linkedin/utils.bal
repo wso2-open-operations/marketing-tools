@@ -305,3 +305,17 @@ isolated function collection(json[] elements, int 'start, int count, int total) 
 # + seconds - Epoch seconds with fraction
 # + return - Milliseconds
 isolated function epochMillis(decimal seconds) returns int => <int>(seconds * 1000d);
+
+# The post URN of a member post analytics `entity`: `(share:{urn})` or `(ugc:{urn})`, already decoded.
+#
+# + value - Decoded `entity`
+# + return - The URN, or `()` when the value has another shape
+isolated function analyticsEntityUrn(string value) returns string? {
+    foreach [string, string] [prefix, kind] in [["(share:", "urn:li:share:"], ["(ugc:", "urn:li:ugcPost:"]] {
+        if value.startsWith(prefix) && value.endsWith(")") {
+            string urn = value.substring(prefix.length(), value.length() - 1);
+            return urn.startsWith(kind) ? urn : ();
+        }
+    }
+    return ();
+}

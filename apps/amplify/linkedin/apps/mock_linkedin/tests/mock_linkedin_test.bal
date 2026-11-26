@@ -15,6 +15,7 @@
 // under the License.
 import ballerina/http;
 import ballerina/test;
+import ballerina/url;
 import ballerina/uuid;
 
 const TEST_CLIENT_ID = "test-client-id";
@@ -620,4 +621,52 @@ function testInjectedEngagementIsServedByTheFinders() returns error? {
     http:Response otherPage = check apiClient->get(string `/rest/organizationalEntityNotifications?q=criteria&actions=List(SHARE)&organizationalEntity=urn%3Ali%3Aorganization%3A9&timeRange=(start:0,end:1000)`,
             restliHeaders(token));
     test:assertEquals(otherPage.statusCode, http:STATUS_FORBIDDEN);
+}
+
+// Member post analytics (the Reach connection, #1781)
+
+@test:Config
+function testMemberPostAnalyticsForTheMembersOwnPost() returns error? {
+    http:Response created = check createPost(check accessToken("w_member_social"), uniqueText());
+    test:assertEquals(created.statusCode, http:STATUS_CREATED);
+    string urn = check created.getHeader(HEADER_RESTLI_ID);
+    http:Response added = check apiClient->post("/mock/engagement", {kind: "REACTION", targetUrn: urn,
+        actorUrn: "urn:li:person:reader"}, adminHeaders());
+    test:assertEquals(added.statusCode, http:STATUS_CREATED);
+
+    string reach = check accessToken("r_member_postAnalytics");
+    string entity = string `(share:${check url:encode(urn, "UTF-8")})`;
+    http:Response impressions = check apiClient->get(string `/rest/memberCreatorPostAnalytics?q=entity&entity=${entity}&queryType=IMPRESSION&aggregation=TOTAL`,
+            restliHeaders(reach));
+    test:assertEquals(impressions.statusCode, http:STATUS_OK, check impressions.getTextPayload());
+    json[] elements = check (check (check impressions.getJsonPayload()).elements).ensureType();
+    test:assertEquals(check elements[0].count, 125, "100 + 25 for the one reaction");
+    http:Response reached = check apiClient->get(string `/rest/memberCreatorPostAnalytics?q=entity&entity=${entity}&queryType=MEMBERS_REACHED`,
+            restliHeaders(reach));
+    json[] r = check (check (check reached.getJsonPayload()).elements).ensureType();
+    test:assertEquals(check r[0].count, 75);
+
+    http:Response daily = check apiClient->get(string `/rest/memberCreatorPostAnalytics?q=entity&entity=${entity}&queryType=MEMBERS_REACHED&aggregation=DAILY`,
+            restliHeaders(reach));
+    test:assertEquals(daily.statusCode, http:STATUS_BAD_REQUEST, "members reached is TOTAL only");
+    http:Response unknown = check apiClient->get(
+            "/rest/memberCreatorPostAnalytics?q=entity&entity=(share:urn%3Ali%3Ashare%3A1)&queryType=IMPRESSION",
+            restliHeaders(reach));
+    test:assertEquals(unknown.statusCode, http:STATUS_NOT_FOUND);
+    http:Response badEntity = check apiClient->get(
+            "/rest/memberCreatorPostAnalytics?q=entity&entity=urn%3Ali%3Ashare%3A1&queryType=IMPRESSION",
+            restliHeaders(reach));
+    test:assertEquals(badEntity.statusCode, http:STATUS_BAD_REQUEST);
+    // Last: a new token for the member replaces the Reach one.
+    http:Response noScope = check apiClient->get(string `/rest/memberCreatorPostAnalytics?q=entity&entity=${entity}&queryType=IMPRESSION`,
+            restliHeaders(check accessToken("w_member_social")));
+    test:assertEquals(noScope.statusCode, http:STATUS_FORBIDDEN, "the share token can't read analytics");
+}
+
+@test:Config
+function testAnalyticsEntityShapes() {
+    test:assertEquals(analyticsEntityUrn("(share:urn:li:share:7)"), "urn:li:share:7");
+    test:assertEquals(analyticsEntityUrn("(ugc:urn:li:ugcPost:9)"), "urn:li:ugcPost:9");
+    test:assertEquals(analyticsEntityUrn("(share:urn:li:ugcPost:9)"), ());
+    test:assertEquals(analyticsEntityUrn("urn:li:share:7"), ());
 }

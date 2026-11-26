@@ -22,9 +22,14 @@ const SCOPE_EMAIL = "email";
 // Community Management (the company page connection and the engagement reads).
 const SCOPE_R_ORGANIZATION_SOCIAL_FEED = "r_organization_social_feed";
 const SCOPE_RW_ORGANIZATION_ADMIN = "rw_organization_admin";
+// Member post analytics (Community Management app): the Reach connection.
+const SCOPE_R_MEMBER_POST_ANALYTICS = "r_member_postAnalytics";
 final readonly & string[] SUPPORTED_SCOPES = [SCOPE_W_MEMBER_SOCIAL, SCOPE_OPENID, SCOPE_PROFILE, SCOPE_EMAIL,
-    SCOPE_R_ORGANIZATION_SOCIAL_FEED, SCOPE_RW_ORGANIZATION_ADMIN];
-final readonly & string[] ORGANIZATION_SCOPES = [SCOPE_R_ORGANIZATION_SOCIAL_FEED, SCOPE_RW_ORGANIZATION_ADMIN];
+    SCOPE_R_ORGANIZATION_SOCIAL_FEED, SCOPE_RW_ORGANIZATION_ADMIN, SCOPE_R_MEMBER_POST_ANALYTICS];
+// Scopes of the Community Management app (page scopes and member post analytics): its grants get a refresh token and
+// never revoke a Share on LinkedIn token (a separate app at LinkedIn).
+final readonly & string[] ORGANIZATION_SCOPES = [SCOPE_R_ORGANIZATION_SOCIAL_FEED, SCOPE_RW_ORGANIZATION_ADMIN,
+    SCOPE_R_MEMBER_POST_ANALYTICS];
 
 // OAuth 2.0 protocol values.
 const RESPONSE_TYPE_CODE = "code";

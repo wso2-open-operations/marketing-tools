@@ -44,6 +44,10 @@ Enforced twice: API proxy scopes per resource, then the Ballerina request interc
 | S2 | `POST /connections/linkedin/complete` | `EMPLOYEE` | U own | U own | U own | U own | U own | `state` must match, be unused and unexpired; same employee who started |
 | S2 | `POST /connections/linkedin/decline` | `EMPLOYEE` | U own | U own | U own | U own | U own | Records "I don't consent" with an optional LinkedIn profile URL; no token |
 | S2 | `DELETE /connections/linkedin` | `EMPLOYEE` | D own | D own | D own | D own | D own | Revokes the token at LinkedIn first (kept and 503 if LinkedIn is down), then deletes the token row; points kept or reversed per plan D6 (open) |
+| S2 | `GET /me/connections/reach` | `EMPLOYEE` | R own | R own | R own | R own | R own | Reach connection status (post analytics, #1781) |
+| S2 | `POST /me/connections/reach/start` | `EMPLOYEE` | C own | C own | C own | C own | C own | Community Management app, `r_member_postAnalytics` only; state starts `reach-` and comes back to `/amplify/connect/callback` |
+| S2 | `POST /me/connections/reach/complete` | `EMPLOYEE` | U own | U own | U own | U own | U own | The caller's REACH state only; tokens sealed as MEMBER_ANALYTICS; audited |
+| S2 | `DELETE /me/connections/reach` | `EMPLOYEE` | D own | D own | D own | D own | D own | Revokes at LinkedIn (kept and 503 if LinkedIn is down), deletes the row and its tokens; audited |
 | C1 Sharing | `POST /campaigns/{id}/shares` | `EMPLOYEE` | C own | C own | C own | C own | C own | Campaign `open`; connection active (not `NEEDS_RECONNECT`); one per campaign per employee. After `FAILED` the same row is retried (ADR-015). `sharing.enabled` kill switch |
 | C1 | `GET /me/shares` | `EMPLOYEE` | R own | R own | R own | R own | R own | |
 | C1 | `POST /campaigns/{id}/native-intent` | `EMPLOYEE` | X own | X own | X own | X own | X own | Campaign OPEN, else 404; a later click restarts the 24 h look unless detected |

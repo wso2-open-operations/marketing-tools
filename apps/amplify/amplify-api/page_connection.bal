@@ -15,8 +15,8 @@
 // under the License.
 
 // The company page connection (Amplify Admin, `CAN_ADMIN`) and the native repost intent (employees). The page flow
-// reuses the member flow's OAuth state table: a state issued here carries `COMMUNITY_MANAGEMENT` and the member
-// flow refuses it (and the other way round). Tokens are sealed as ORG and never logged or audited.
+// reuses the member flow's OAuth state table: a state issued here carries `COMMUNITY_MANAGEMENT` and purpose PAGE; the
+// member and Reach flows refuse it (and the other way round). Tokens are sealed as ORG and never logged or audited.
 
 import amplify_api.auth;
 import amplify_common.linkedin;
@@ -77,7 +77,7 @@ isolated function completePageConnect(auth:Principal p, string? correlationId, C
         }
         time:Utc now = time:utcNow();
         connection:OAuthState? state = check (check oauthStateRepository()).consume(body.state, p.employeeId, now);
-        if state is () || state.providerApi != types:COMMUNITY_MANAGEMENT {
+        if state is () || state.providerApi != types:COMMUNITY_MANAGEMENT || state.purpose != connection:PAGE {
             return conflicted(OAUTH_STATE_INVALID, "This sign-in link expired or was already used; start again",
                     correlationId);
         }
