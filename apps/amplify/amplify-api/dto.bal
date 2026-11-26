@@ -117,6 +117,14 @@ type AdjustmentBody record {|
     string? campaignId = ();
 |};
 
+# `POST /po/points/{reference}/remove` body.
+type RemoveActivityBody record {|
+    # `DUPLICATE`, `NOT_A_REAL_REPOST`, `SPAM` or `OTHER`
+    string reasonCode;
+    # Required for `OTHER`, up to 1000 characters
+    string? note = ();
+|};
+
 # `PUT /admin/settings` change.
 type SettingChangeBody record {|
     string key;
@@ -202,6 +210,8 @@ type LedgerEntryDto record {|
     string? paidAt;
     # The `CNV-` reference of the conversion that took (or paid) the row
     string? coinReference;
+    # Why a PO removed the activity (removal rows only; the PO team's view, `()` for everyone else)
+    string? removalReason;
 |};
 
 type PointRuleDto record {|
@@ -306,11 +316,16 @@ isolated function ledgerDto(types:LedgerEntry e) returns LedgerEntryDto => {
     createdAt: ts(e.createdAt),
     status: e.status,
     paidAt: tsOpt(e.paidAt),
-    coinReference: e.coinReference
+    coinReference: e.coinReference,
+    removalReason: e.removalReason
 };
 
 # Label shown in place of a PO's free-text reason on adjustment and reversal rows.
 const string PO_ADJUSTMENT_LABEL = "Adjusted by the PO team";
+
+# Label shown in place of the reason code and note on a removed activity, to the employee and their team: neutral, so
+# it never says "spam" or "not a real repost" about a person.
+const string REMOVED_ACTIVITY_LABEL = "Removed after review by the PO team";
 
 # A ledger row for someone who is not a PO. The PO's free-text reason and employee id stay internal (threat model
 # 5.4): adjustment and reversal rows carry a fixed label and no `actorId`.
@@ -321,18 +336,25 @@ isolated function ledgerDtoForTeammate(types:LedgerEntry e) returns json {
     map<json> row = <map<json>>ledgerDto(e).toJson();
     _ = row.remove("actorId");
     boolean byPo = e.sourceType == types:ADJUSTMENT || e.sourceType == types:REVERSAL;
-    row["reason"] = byPo ? PO_ADJUSTMENT_LABEL : ();
+    row["reason"] = e.removalReason !is () ? REMOVED_ACTIVITY_LABEL : byPo ? PO_ADJUSTMENT_LABEL : ();
+    row["removalReason"] = ();
     return row;
 }
 
 # A ledger row for the person it belongs to: the PO's id stays internal, but the reason a PO gave is theirs to
-# read ("When points are removed, the reason is shown on the row", screens 4 and 6).
+# read ("When points are removed, the reason is shown on the row", screens 4 and 6). A removed invalid activity is the
+# exception: it reads as a neutral label.
 #
 # + e - Ledger row
 # + return - The row as JSON without `actorId`
 isolated function ledgerDtoForSelf(types:LedgerEntry e) returns json {
     map<json> row = <map<json>>ledgerDto(e).toJson();
     _ = row.remove("actorId");
+    if e.removalReason !is () {
+        // A removed activity: the reason code and the PO's note stay with the PO team; the person sees a neutral label.
+        row["reason"] = REMOVED_ACTIVITY_LABEL;
+        row["removalReason"] = ();
+    }
     return row;
 }
 

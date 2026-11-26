@@ -16,6 +16,7 @@ File: `modules/sharing/service.bal`.
 
 - Pure rules: `shareStatus`, `newShareRequest` (campaign open, connection usable), `retryShare` (only a `FAILED` request, same row, bumps `attempts` and `version`), `ensurePublishable` (guard before calling LinkedIn: a rerun after a failed record write does not post again; a lost LinkedIn answer is retried by the outbox and can post twice, see the amplify-jobs README), `markPublished` (clears commentary, builds the engagement fact), `asDuplicatePublish`, `markFailed`, `failForLostConnection` (reaction to `ConnectionRevoked` / `ConnectionRemoved`).
 - Use case: `requestShare`.
+- Invalid activity (`invalid_activity.bal`, ADR-010 amendment 2026-11-26): `InvalidActivityRepository` port and `PgInvalidActivityRepository` (`markInvalid`: sets `sharing_engagement.invalidated_at` and `invalid_reason` once, audits `EngagementInvalidated`, `NOT_FOUND` for an unknown engagement) and `markEngagementInvalid` (from an `ActivityRemoved` event; amplify-api right after the removal, amplify-jobs as the backstop). `engagement_v` then reads `INVALID`.
 
 ## Engagement sync (Community Management, phase 4)
 

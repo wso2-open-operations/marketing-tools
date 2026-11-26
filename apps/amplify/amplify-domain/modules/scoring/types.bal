@@ -77,6 +77,16 @@ public type LedgerAppend record {|
     types:LedgerEntry entry;
     # `PointsAwarded`, `PointsAdjusted` or `PointsReversed`
     events:OutboxEvent event;
+    # Further events written in the same transaction (`ActivityRemoved` for a removal)
+    events:OutboxEvent[] extraEvents = [];
+|};
+
+# What `removeInvalidActivity` did.
+public type Removal record {|
+    # The removal row (`REV-`, with its reason code)
+    types:LedgerEntry entry;
+    # The event C1 acts on
+    events:ActivityRemoved removed;
 |};
 
 # Persistence port for `scoring_points_ledger`. Append-only: there is no update of facts, only `append`

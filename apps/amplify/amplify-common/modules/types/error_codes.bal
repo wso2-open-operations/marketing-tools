@@ -80,6 +80,8 @@ public const ERR_TOP_UP_NOT_POSITIVE = "TOP_UP_NOT_POSITIVE";
 public const ERR_ALREADY_REVERSED = "ALREADY_REVERSED";
 public const ERR_CANNOT_REVERSE_REVERSAL = "CANNOT_REVERSE_REVERSAL";
 public const ERR_PAID_NOT_ALLOWED = "PAID_NOT_ALLOWED";
+# Only an engagement award (`AMP-`, source `ENGAGEMENT`) can be removed as invalid activity; adjust or reverse the rest.
+public const ERR_NOT_REMOVABLE = "NOT_REMOVABLE";
 # A PAID row became Coins: its settlement never changes again (V026, ADR-048).
 public const ERR_ALREADY_PAID = "ALREADY_PAID";
 

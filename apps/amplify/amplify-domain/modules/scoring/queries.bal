@@ -66,7 +66,8 @@ public isolated function historyOf(postgresql:Client db, types:EmployeeId employ
     stream<PagedLedgerRow, error?> rows = db->query(`
         SELECT reference, employee_id, campaign_id::text AS campaign_id, source_type, source_id::text AS source_id,
                action, points, rule_id::text AS rule_id, reverses_reference, reason, actor_id, correlation_id,
-               created_at, status, status_changed_at, paid_at, coin_reference, (count(*) OVER ())::int AS total
+               created_at, status, status_changed_at, paid_at, coin_reference, removal_reason,
+               (count(*) OVER ())::int AS total
         FROM scoring_points_ledger WHERE employee_id = ${employeeId}
         ORDER BY created_at DESC, reference LIMIT ${'limit} OFFSET ${offset}`);
     int total = 0;
@@ -79,7 +80,8 @@ public isolated function historyOf(postgresql:Client db, types:EmployeeId employ
                 source_type: r.source_type, source_id: r.source_id, action: r.action, points: r.points,
                 rule_id: r.rule_id, reverses_reference: r.reverses_reference, reason: r.reason, actor_id: r.actor_id,
                 correlation_id: r.correlation_id, created_at: r.created_at, status: r.status,
-                status_changed_at: r.status_changed_at, paid_at: r.paid_at, coin_reference: r.coin_reference
+                status_changed_at: r.status_changed_at, paid_at: r.paid_at, coin_reference: r.coin_reference,
+                removal_reason: r.removal_reason
             });
             if entry is types:LedgerEntry {
                 items.push(entry);
@@ -136,7 +138,7 @@ public isolated function recentCorrections(postgresql:Client db, int 'limit = 10
     stream<LedgerRow, error?> rows = db->query(`
         SELECT reference, employee_id, campaign_id::text AS campaign_id, source_type, source_id::text AS source_id,
                action, points, rule_id::text AS rule_id, reverses_reference, reason, actor_id, correlation_id,
-               created_at, status, status_changed_at, paid_at, coin_reference
+               created_at, status, status_changed_at, paid_at, coin_reference, removal_reason
         FROM scoring_points_ledger WHERE source_type IN ('ADJUSTMENT', 'REVERSAL')
         ORDER BY created_at DESC, reference LIMIT ${'limit}`);
     types:LedgerEntry[] entries = [];
@@ -310,7 +312,7 @@ public isolated function timelineOf(postgresql:Client db, types:EmployeeId emplo
         stream<LedgerRow, error?> rows = db->query(sql:queryConcat(`
             SELECT reference, employee_id, campaign_id::text AS campaign_id, source_type, source_id::text AS source_id,
                    action, points, rule_id::text AS rule_id, reverses_reference, reason, actor_id, correlation_id,
-                   created_at, status, status_changed_at, paid_at, coin_reference
+                   created_at, status, status_changed_at, paid_at, coin_reference, removal_reason
             FROM scoring_points_ledger WHERE reference IN (`, sql:arrayFlattenQuery(ledgerRefs), `)`));
         check from LedgerRow r in rows
             do {

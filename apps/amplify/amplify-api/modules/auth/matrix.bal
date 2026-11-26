@@ -69,6 +69,7 @@ public final Rule[] & readonly ACTIVITY_MATRIX = [
     {method: "POST", path: "/po/point-rules", requires: CAN_POINT_RULES, capability: "point_rules.manage", useCase: "New version; past awards keep their value"},
     {method: "POST", path: "/po/points/adjustments", requires: CAN_ADJUST_POINTS, capability: "points.adjust", useCase: "Reason required; recognition in the same transaction (B12)"},
     {method: "POST", path: "/po/points/{reference}/reverse", requires: CAN_ADJUST_POINTS, capability: "points.adjust", useCase: "Reason required; not already reversed"},
+    {method: "POST", path: "/po/points/{reference}/remove", requires: CAN_ADJUST_POINTS, capability: "points.adjust", useCase: "Remove invalid activity: engagement award only, reason code (note for OTHER), not own, not already reversed; engagement flagged invalid"},
     {method: "GET", path: "/point-values", requires: EMPLOYEE, capability: "point_values.read", useCase: "Current points per action (screens show what each activity earns)"},
     {method: "GET", path: "/po/people", requires: CAN_ADJUST_POINTS, capability: "points.adjust", useCase: "Find a person by name or email for Points & corrections; erased people left out"},
     // S4 Recognition

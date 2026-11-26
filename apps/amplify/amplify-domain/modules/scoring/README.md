@@ -15,8 +15,8 @@ File: `modules/scoring/types.bal`.
 
 File: `modules/scoring/service.bal`.
 
-- Pure rules: `ruleInForce` (latest `effectiveFrom` not after the time), `newRuleVersion` (cannot be backdated, cannot repeat `(action, effectiveFrom)`), `awardForEngagement`, `awardForExternalShare`, `ownPostNet`, `amplifiedTopUp` (`OWN_POST_AMPLIFIED` points minus the net `OWN_POST` points on the ledger), `reversal` (a reason is required, a row is reversed once, a reversal cannot be reversed), `adjustment`.
-- Use cases: `setPointRule`, `appendAward` (re-running the same fact is a no-op), `reverseEntry`, `adjustPoints`.
+- Pure rules: `ruleInForce` (latest `effectiveFrom` not after the time), `newRuleVersion` (cannot be backdated, cannot repeat `(action, effectiveFrom)`), `awardForEngagement`, `awardForExternalShare`, `ownPostNet`, `amplifiedTopUp` (`OWN_POST_AMPLIFIED` points minus the net `OWN_POST` points on the ledger), `reversal` (a reason is required, a row is reversed once, a reversal cannot be reversed), `removal` (an engagement award only, reason code, note for `OTHER`, not own; writes `ActivityRemoved` with the row), `adjustment`.
+- Use cases: `setPointRule`, `appendAward` (re-running the same fact is a no-op), `reverseEntry`, `removeInvalidActivity` (ADR-010 amendment 2026-11-26; C1 flags the engagement from `ActivityRemoved`), `adjustPoints`.
 
 ## Coins conversion
 

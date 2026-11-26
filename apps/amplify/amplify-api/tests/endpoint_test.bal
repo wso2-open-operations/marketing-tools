@@ -19,6 +19,7 @@
 // idempotent replay, validation, and response shapes against openapi.yaml.
 
 import amplify_common.types;
+import amplify_domain.scoring;
 
 import ballerina/http;
 import ballerina/http.httpscerr;
@@ -249,6 +250,87 @@ function testAdjustAndReverse() returns error? {
     http:Response asEmployee = check send("POST", "/po/points/adjustments",
             {employeeId: "emp-adj-1", points: 10, reason: "x"}, check employee("emp-adj-2"));
     test:assertEquals(asEmployee.statusCode, 403);
+}
+
+# An engagement award for `employeeId` on the fake ledger, as amplify-jobs would have written it.
+function engagementAward(string employeeId, string engagementId) returns types:LedgerEntry|error {
+    scoring:PointRule rule = {id: "01900000-0000-7000-8000-0000000000r1", action: types:REPOST, points: 10,
+        effectiveFrom: [1700000000, 0], createdBy: "seed", createdAt: [1700000000, 0]};
+    scoring:LedgerAppend award = check scoring:awardForEngagement([rule], {engagementId, provider: types:LINKEDIN,
+        targetResourceUrn: "urn:li:share:7000000000000000001", employeeId, action: types:REPOST, campaignId: ()},
+        (), time:utcNow());
+    _ = check fakeLedger.append(award);
+    return award.entry;
+}
+
+@test:Config
+function testRemoveInvalidActivity() returns error? {
+    string token = check po();
+    string engagementId = types:newUuidV7();
+    types:LedgerEntry award = check engagementAward("emp-rm-1", engagementId);
+    string path = string `/po/points/${award.reference}/remove`;
+
+    http:Response asEmployee = check send("POST", path, {reasonCode: "SPAM"}, check employee("emp-rm-2"));
+    test:assertEquals(asEmployee.statusCode, 403, "CAN_ADJUST_POINTS only");
+    http:Response noNote = check send("POST", path, {reasonCode: "OTHER", note: "  "}, token);
+    test:assertEquals(noNote.statusCode, 422);
+    test:assertEquals(check codeIn(noNote), "REASON_REQUIRED");
+
+    http:Response removed = check send("POST", path, {reasonCode: "DUPLICATE", note: "Counted twice"}, token,
+            {"Idempotency-Key": "rm-1"});
+    test:assertEquals(removed.statusCode, 201);
+    check assertShape(removed, "LedgerEntry");
+    json body = check removed.getJsonPayload();
+    test:assertEquals(check body.points, -10);
+    test:assertEquals(check body.sourceType, "REVERSAL");
+    test:assertEquals(check body.removalReason, "DUPLICATE");
+    test:assertEquals(check body.reason, "Duplicate: Counted twice");
+    test:assertEquals(check body.reversesReference, award.reference);
+    test:assertEquals(fakeInvalidActivity.reasonOf(engagementId), types:REMOVAL_DUPLICATE, "the engagement is flagged");
+
+    http:Response replay = check send("POST", path, {reasonCode: "DUPLICATE", note: "Counted twice"}, token,
+            {"Idempotency-Key": "rm-1"});
+    test:assertEquals(replay.statusCode, 201, "the same key replays");
+    http:Response twice = check send("POST", path, {reasonCode: "SPAM"}, token);
+    test:assertEquals(twice.statusCode, 409);
+    test:assertEquals(check codeIn(twice), "ALREADY_REVERSED");
+    http:Response reverseAfter = check send("POST", string `/po/points/${award.reference}/reverse`, {reason: "x"}, token);
+    test:assertEquals(check codeIn(reverseAfter), "ALREADY_REVERSED");
+
+    // An adjustment is not an activity: reverse it instead.
+    _ = check send("GET", "/me", (), check employee("emp-rm-1"));
+    http:Response adjusted = check send("POST", "/po/points/adjustments",
+            {employeeId: "emp-rm-1", points: 5, reason: "Bonus"}, token);
+    string adjRef = (check (check adjusted.getJsonPayload()).reference).toString();
+    http:Response notRemovable = check send("POST", string `/po/points/${adjRef}/remove`, {reasonCode: "SPAM"}, token);
+    test:assertEquals(notRemovable.statusCode, 409);
+    test:assertEquals(check codeIn(notRemovable), "NOT_REMOVABLE");
+
+    http:Response unknown = check send("POST", "/po/points/REV-01900000-0000-7000-8000-0000000000ff/remove",
+            {reasonCode: "SPAM"}, token);
+    test:assertEquals(unknown.statusCode, 404);
+}
+
+@test:Config
+function testAPoCannotRemoveTheirOwnActivity() returns error? {
+    types:LedgerEntry own = check engagementAward("po-0001", types:newUuidV7());
+    http:Response self = check send("POST", string `/po/points/${own.reference}/remove`, {reasonCode: "SPAM"},
+            check po());
+    test:assertEquals(self.statusCode, 403);
+    test:assertEquals(check codeIn(self), "SELF_REVIEW");
+}
+
+@test:Config
+function testRemovalSucceedsWhenTheFlagIsDeferredToJobs() returns error? {
+    string engagementId = types:newUuidV7();
+    types:LedgerEntry award = check engagementAward("emp-rm-3", engagementId);
+    fakeInvalidActivity.setFailing(true);
+    http:Response removed = check send("POST", string `/po/points/${award.reference}/remove`, {reasonCode: "SPAM"},
+            check po());
+    fakeInvalidActivity.setFailing(false);
+    test:assertEquals(removed.statusCode, 201, "the reversal stands; the ActivityRemoved outbox row flags it later");
+    test:assertEquals(check (check removed.getJsonPayload()).reason, "Spam or abuse");
+    test:assertEquals(fakeInvalidActivity.reasonOf(engagementId), ());
 }
 
 @test:Config

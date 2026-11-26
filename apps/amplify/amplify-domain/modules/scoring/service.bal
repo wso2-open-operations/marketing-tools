@@ -14,6 +14,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
+import amplify_common.events;
 import amplify_common.types;
 
 import ballerina/time;
@@ -194,6 +195,87 @@ public isolated function reversal(types:LedgerEntry original, types:LedgerEntry?
     });
 }
 
+# What a removal reason code reads as on the ledger row's `reason` (internal: the PO team sees it, the employee a
+# neutral label).
+#
+# + reason - Reason code
+# + return - The label
+public isolated function removalReasonLabel(types:RemovalReason reason) returns string {
+    match reason {
+        types:REMOVAL_DUPLICATE => {
+            return "Duplicate";
+        }
+        types:REMOVAL_NOT_A_REAL_REPOST => {
+            return "Not a real repost";
+        }
+        types:REMOVAL_SPAM => {
+            return "Spam or abuse";
+        }
+    }
+    return "Other";
+}
+
+# Removal row: cancels an engagement award that was not a valid activity (`POST /po/points/{reference}/remove`). A
+# reversal that carries a reason code, plus `ActivityRemoved` so C1 flags the engagement invalid (ADR-010 amendment
+# 2026-11-26). Only an engagement award (`AMP-`, `ENGAGEMENT`) can be removed; the self-correction rule and "reversed at
+# most once" apply as for any reversal. A PAID award is removed the same way: the original stays PAID (V026) and the
+# negative HELD row reduces the next Coins conversion.
+#
+# + original - Award to remove
+# + existingReversal - Its reversal, if one exists
+# + removalReason - Reason code
+# + note - PO's note; required for `OTHER`
+# + actorId - PO
+# + id - New UUIDv7
+# + correlationId - Request correlation id
+# + now - Insert time
+# + return - Row and events, or a domain error
+public isolated function removal(types:LedgerEntry original, types:LedgerEntry? existingReversal,
+        types:RemovalReason removalReason, string? note, types:EmployeeId actorId, string id, string? correlationId,
+        time:Utc now) returns LedgerAppend|types:DomainError {
+    if original.employeeId == actorId {
+        return types:domainError(types:ERR_SELF_REVIEW, "You can't remove your own activity");
+    }
+    string? engagementId = original.sourceId;
+    if original.sourceType != types:ENGAGEMENT || engagementId is () {
+        return types:domainError(types:ERR_NOT_REMOVABLE,
+                "Only a repost or share award can be removed as invalid activity; adjust or reverse this entry");
+    }
+    if existingReversal !is () {
+        return types:domainError(types:ERR_ALREADY_REVERSED, "This entry is already reversed");
+    }
+    string? trimmedNote = note is string ? types:trimToNil(note) : ();
+    if removalReason == types:REMOVAL_OTHER && trimmedNote is () {
+        return types:domainError(types:ERR_REASON_REQUIRED, "Say why the activity is invalid");
+    }
+    string label = removalReasonLabel(removalReason);
+    types:LedgerEntry entry = {
+        reference: check types:reversalReference(id),
+        employeeId: original.employeeId,
+        campaignId: original.campaignId,
+        sourceType: types:REVERSAL,
+        sourceId: (),
+        action: original.action,
+        points: -original.points,
+        ruleId: (),
+        reversesReference: original.reference,
+        reason: trimmedNote is string ? label + ": " + trimmedNote : label,
+        actorId,
+        correlationId,
+        createdAt: now,
+        status: types:HELD,
+        statusChangedAt: (),
+        paidAt: (),
+        coinReference: (),
+        removalReason
+    };
+    return {
+        entry,
+        event: pointsChangedEvent(entry),
+        extraEvents: [activityRemovedEvent(entry, engagementId, removalReason)]
+    };
+}
+
 # Adjustment row: PO adds or removes points with a reason (ADR-010).
 #
 # + employeeId - Who
@@ -285,6 +367,34 @@ public isolated function reverseEntry(LedgerRepository repo, string reference, s
         return types:domainError(types:ERR_ALREADY_REVERSED, "This entry is already reversed");
     }
     return append.entry;
+}
+
+# Removes an invalid activity (`POST /po/points/{reference}/remove`): appends the removal row with `ActivityRemoved` in
+# one transaction. The engagement is flagged in C1 from that event (`sharing:markEngagementInvalid`), never here.
+#
+# + repo - Ledger repository
+# + reference - Award to remove
+# + removalReason - Reason code
+# + note - PO's note; required for `OTHER`
+# + actorId - PO
+# + correlationId - Request correlation id
+# + now - Current time
+# + return - The removal row and its `ActivityRemoved` payload, a domain error, or a repository error
+public isolated function removeInvalidActivity(LedgerRepository repo, string reference,
+        types:RemovalReason removalReason, string? note, types:EmployeeId actorId, string? correlationId, time:Utc now)
+        returns Removal|error {
+    types:LedgerReference ref = check types:parseLedgerReference(reference);
+    types:LedgerEntry? original = check repo.findByReference(ref);
+    if original is () {
+        return types:domainError(types:ERR_NOT_FOUND, "Ledger entry not found");
+    }
+    LedgerAppend append = check removal(original, check repo.findReversalOf(ref), removalReason, note, actorId,
+            types:newUuidV7(), correlationId, now);
+    if !check repo.append(append) {
+        return types:domainError(types:ERR_ALREADY_REVERSED, "This entry is already reversed");
+    }
+    events:ActivityRemoved removed = check append.extraEvents[0].payload.cloneWithType();
+    return {entry: append.entry, removed};
 }
 
 # Adjusts an employee's points (`POST /po/points/adjustments`).

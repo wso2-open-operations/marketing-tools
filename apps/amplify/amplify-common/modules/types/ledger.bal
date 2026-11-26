@@ -47,6 +47,18 @@ public const REVERSAL = "REVERSAL";
 # What produced a ledger row (`source_type`).
 public type LedgerSourceType ENGAGEMENT|EXTERNAL_SHARE|ADJUSTMENT|REVERSAL;
 
+# Removal reason: the activity was already counted (a second record of the same repost).
+public const REMOVAL_DUPLICATE = "DUPLICATE";
+# Removal reason: what was recorded is not a real repost of the post.
+public const REMOVAL_NOT_A_REAL_REPOST = "NOT_A_REAL_REPOST";
+# Removal reason: spam or abuse.
+public const REMOVAL_SPAM = "SPAM";
+# Removal reason: anything else; the PO's note says what.
+public const REMOVAL_OTHER = "OTHER";
+
+# Why a PO removed an activity as invalid (`points_ledger.removal_reason`, `engagement.invalid_reason`).
+public type RemovalReason REMOVAL_DUPLICATE|REMOVAL_NOT_A_REAL_REPOST|REMOVAL_SPAM|REMOVAL_OTHER;
+
 # Valid points waiting for Coin issue. Phase 1 default for awards.
 public const HELD = "HELD";
 # Converted to Coins by the automatic conversion (phase 2, ADR-048); final once set.
@@ -95,6 +107,8 @@ public type LedgerEntry record {|
     time:Utc? paidAt;
     # Coin transaction reference (phase 2)
     string? coinReference;
+    # Set on the reversal that removed an invalid activity (`POST /po/points/{reference}/remove`), else `()`
+    RemovalReason? removalReason = ();
 |};
 
 # Deterministic award reference (C1): `AMP-` + unpadded base64url of

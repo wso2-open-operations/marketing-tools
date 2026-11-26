@@ -749,6 +749,7 @@ erDiagram
 | `ExternalShareRejected` | S3 (api, `amplify_po`) | `external_share.decision`, `decision_reason` | — | — | `external_share.id` |
 | `ExternalShareAmplified` | S3 (api, `amplify_po`, approved claims only, C4) | `external_share.amplified_at` | C2 (same transaction in api) | `points_ledger` top-up (`AMP-…`, `OWN_POST_AMPLIFIED`, difference) | `external_share.id` + `AMPLIFIED` |
 | `PointsAwarded` / `PointsAdjusted` / `PointsReversed` | C2 (jobs or api) | `scoring.points_ledger` | S4 | `recognition.*` (same transaction, B12) | ledger `reference` |
+| `ActivityRemoved` | C2 (api, with the removal row) | `scoring.points_ledger` (`removal_reason`) | C1 | `sharing.engagement` (`invalidated_at`, `invalid_reason`; api right after, jobs as the backstop; ADR-010 amendment 2026-11-26) | `engagement.id` |
 | `EngagementDeleted` *(future phase, ADR-018)* | C1 verification pass | `engagement.deleted_at`, `engagement_verification` | C2 | `points_ledger` (`REV-…`, reason `ENGAGEMENT_DELETED`) | `engagement.id` |
 
 The stored `messaging.outbox.idempotency_key` is `<event_type>:` + the key parts above, joined by `:` (for example `RepostRequested:{id}:2`). The prefix keeps two events of one aggregate that share key parts (`RepostRequested` / `RepostFailed`, or the three `ExternalShare*` events) from colliding on the unique key.

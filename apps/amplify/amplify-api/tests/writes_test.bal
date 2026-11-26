@@ -170,6 +170,11 @@ function testScoringValidation() returns error? {
         ["POST", "/po/points/adjustments", {employeeId: "bad id", points: 5, reason: "r"}, 422, "INVALID_EMPLOYEE_ID"],
         ["POST", "/po/points/not-a-reference/reverse", {reason: "r"}, 422, "INVALID_LEDGER_REFERENCE"],
         ["POST", "/po/points/ADJ:x:1/reverse", {reason: "r".padEnd(1001, "r")}, 400, "VALIDATION_FAILED"],
+        ["POST", "/po/points/not-a-reference/remove", {reasonCode: "SPAM"}, 422, "INVALID_LEDGER_REFERENCE"],
+        ["POST", "/po/points/AMP-x/remove", {reasonCode: "BORING"}, 400, "VALIDATION_FAILED"],
+        ["POST", "/po/points/AMP-x/remove", {reasonCode: "OTHER", note: "n".padEnd(1001, "n")}, 400,
+            "VALIDATION_FAILED"],
+        ["POST", "/po/points/AMP-x/remove", {note: "no code"}, 400, "VALIDATION_FAILED"],
         ["POST", "/po/external-shares/nope/approve", (), 400, "VALIDATION_FAILED"],
         ["POST", "/po/external-shares/" + SAMPLE_UUID + "/approve", (), 404, "NOT_FOUND"]
     ];

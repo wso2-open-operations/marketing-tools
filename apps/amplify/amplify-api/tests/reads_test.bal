@@ -582,6 +582,32 @@ function testHistoryHidesPoReasonAndIdFromTeammates() returns error? {
 }
 
 @test:Config {groups: ["reads"]}
+function testARemovedActivityReadsNeutrallyToEveryoneButThePo() {
+    types:LedgerEntry removal = {
+        reference: "REV-1", employeeId: "rv-c", campaignId: (), sourceType: types:REVERSAL, sourceId: (),
+        action: types:REPOST, points: -10, ruleId: (), reversesReference: "AMP-1", reason: "Spam or abuse: bot ring",
+        actorId: "po-0001", correlationId: (), createdAt: [1760000000, 0], status: types:HELD, statusChangedAt: (),
+        paidAt: (), coinReference: (), removalReason: types:REMOVAL_SPAM
+    };
+    map<json> forPo = <map<json>>ledgerDto(removal).toJson();
+    test:assertEquals(forPo["removalReason"], "SPAM", "the PO team sees the reason code");
+    test:assertEquals(forPo["reason"], "Spam or abuse: bot ring");
+    map<json> forSelf = <map<json>>ledgerDtoForSelf(removal);
+    test:assertEquals(forSelf["reason"], REMOVED_ACTIVITY_LABEL, "the person sees a neutral label");
+    test:assertEquals(forSelf["removalReason"], ());
+    test:assertFalse(forSelf.hasKey("actorId"));
+    test:assertEquals(forSelf["points"], -10);
+    map<json> forTeammate = <map<json>>ledgerDtoForTeammate(removal);
+    test:assertEquals(forTeammate["reason"], REMOVED_ACTIVITY_LABEL);
+    test:assertEquals(forTeammate["removalReason"], ());
+
+    types:LedgerEntry plain = removal.clone();
+    plain.removalReason = ();
+    plain.reason = "Wrong campaign";
+    test:assertEquals((<map<json>>ledgerDtoForSelf(plain))["reason"], "Wrong campaign", "a plain reversal is unchanged");
+}
+
+@test:Config {groups: ["reads"]}
 function testOwnHistoryShowsTheReasonAndWhereItStands() returns error? {
     // A plain employee reading their own history: the PO's reason is theirs to read, the PO's id is not.
     http:Response own = check send("GET", "/team/history-self/history", (), check employee("history-self"));

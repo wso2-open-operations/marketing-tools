@@ -1,6 +1,6 @@
 # Migrations
 
-Forward-only, versioned: `V001__schema_and_extensions.sql` … `V026__coins.sql`. Lowercase snake_case
+Forward-only, versioned: `V001__schema_and_extensions.sql` … `V030__remove_invalid_activity.sql`. Lowercase snake_case
 after `__`. The runner is `../main.bal`; see `../README.md` for settings and how a run works. Never edit an applied script (the runner compares checksums and stops); add a new version. One exception, once: V001-V020 and S001-S010 were rewritten for ADR-043 on 2026-11-02 and the dev database reinstalled.
 
 ## Scripts
@@ -32,6 +32,7 @@ after `__`. The runner is `../main.bal`; see `../README.md` for settings and how
 | V024 | `external_sharing_external_share.note` (nullable, 1 to 500 characters): the employee's note for the reviewer. Recreates the view (it expanded `es.*` at creation) and redefines `identity_erase_employee` so erasure clears the note. V023 is left for open PR #271 |
 | V025 | The page connection and the engagement sync: `connection_org_connection` (token pointers into `connection_provider_token` with `owner_type` ORG, `revoked_at` keeps no token), `sharing_sync_cursor` (per post and endpoint, or per page for share notifications), `sharing_api_usage` (Community Management calls per UTC day), `sharing_native_intent` (a "Repost on LinkedIn" click and when the sync saw the reshare). Widens `sharing_engagement.action` to `REACTION` and `COMMENT`. `identity_erase_employee` unchanged: the new tables hold pseudonymous ids, URNs of posts and pages and counters only |
 | V026 | Automatic Coins conversion (ADR-048): drops V006's `points_ledger_no_paid_phase1_ck`, adds `points_ledger_paid_coin_ck` (a PAID row names its `coin_reference`) and makes a PAID row final in the V021 guard; `scoring_coin_wallet` (one captured wallet per employee), `scoring_coin_run` (one per period, unique), `scoring_coin_issue` (per employee per run: points and carry in, Coins, carry out, our `CNV-` reference, the service's transfer reference, `PENDING`/`SENT`/`FAILED`/`UNKNOWN`/`SKIPPED_NO_WALLET`; whole blocks enforced by a check). `identity_erase_employee` also deletes the captured wallet (`coinWallets`) |
+| V030 | Remove invalid activity (ADR-010 amendment 2026-11-26): `scoring_points_ledger.removal_reason` (reversal rows only, `DUPLICATE`/`NOT_A_REAL_REPOST`/`SPAM`/`OTHER`; fixed on insert by the V021/V026 guard), `sharing_engagement.invalidated_at` + `invalid_reason` (both or neither); `sharing_engagement_v` recreated with status `INVALID` first, so dashboards (`ACTIVE`) leave a removed engagement out. Erasure unchanged |
 
 ## Rules
 

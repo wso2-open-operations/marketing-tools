@@ -564,6 +564,23 @@ service http:InterceptableService / on apiListener {
                 isolated function() returns http:StatusCodeResponse => reverseEntry(p, c, referenceFinal, b.reason));
     }
 
+    # Removes an invalid activity: reverses an engagement award with a reason code and flags the engagement invalid.
+    #
+    # + ctx - Request context
+    # + req - Request
+    # + reference - Ledger reference of the award (`AMP-`)
+    # + body - Reason code and note
+    # + return - 201 with the removal row, or problem details
+    resource function post po/points/[string reference]/remove(http:RequestContext ctx, http:Request req,
+            @http:Payload RemoveActivityBody body) returns http:Response|error {
+        final auth:Principal & readonly p = (check principalOf(ctx)).cloneReadOnly();
+        final string? c = cid(ctx);
+        final readonly & RemoveActivityBody b = body.cloneReadOnly();
+        final string referenceFinal = reference;
+        return idempotent(ctx, req, p, "/po/points/" + reference + "/remove", b.toJson(),
+                isolated function() returns http:StatusCodeResponse => removeActivity(p, c, referenceFinal, b));
+    }
+
     # What each activity earns today (current point values), for every employee.
     #
     # + ctx - Request context

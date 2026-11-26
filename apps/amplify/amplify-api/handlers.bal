@@ -602,6 +602,37 @@ isolated function reverseEntry(auth:Principal p, string? correlationId, string r
     }
 }
 
+# "Remove invalid activity" (ADR-010 amendment 2026-11-26). Step 1, C2: the removal row and `ActivityRemoved` in one
+# gated transaction. Step 2, C1: the engagement flagged invalid right away. Step 2 is idempotent and the outbox row
+# repeats it in amplify-jobs, so a failure here only delays the flag (the run is triggered) and never undoes step 1.
+isolated function removeActivity(auth:Principal p, string? correlationId, string reference, RemoveActivityBody body)
+        returns http:StatusCodeResponse {
+    do {
+        types:RemovalReason|error reason = body.reasonCode.ensureType();
+        if reason is error {
+            return badRequest("reasonCode must be DUPLICATE, NOT_A_REAL_REPOST, SPAM or OTHER", correlationId);
+        }
+        string? note = body.note;
+        if note is string {
+            check maxLen(note, 1000, "note");
+        }
+        Settings settings = check loadSettings();
+        store:Actor actor = actorOf(p, correlationId);
+        scoring:Removal removal = check scoring:removeInvalidActivity(check ledgerRepository(actor, settings.topN),
+                reference, reason, note, p.employeeId, correlationId, time:utcNow());
+        boolean|error flagged = sharing:markEngagementInvalid(check invalidActivityRepository(actor), removal.removed);
+        if flagged is error {
+            log:printWarn("Remove invalid activity: engagement flag deferred to amplify-jobs",
+                    errorKind = errorKind(flagged), correlationId = correlationId);
+            _ = triggerJobs("/runs", correlationId);
+        }
+        dropSnapshot();
+        return <http:Created>{body: ledgerDto(removal.entry)};
+    } on fail error e {
+        return failure(e, correlationId, "Remove invalid activity");
+    }
+}
+
 // ---- S5 Admin ---------------------------------------------------------------------------------------
 
 # Admin send: queues the Novera announcement of an open post that has none yet (`Not announced`).

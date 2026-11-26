@@ -106,6 +106,9 @@ isolated function route(HandlerContext ctx) returns Outcome|error {
         events:ENGAGEMENT_RECORDED => {
             return handleEngagementRecorded(ctx, check ctx.row.payload.cloneWithType());
         }
+        events:ACTIVITY_REMOVED => {
+            return handleActivityRemoved(ctx, check ctx.row.payload.cloneWithType());
+        }
         events:EXTERNAL_SHARE_APPROVED|events:EXTERNAL_SHARE_AMPLIFIED => {
             // amplify-api already wrote the award in the decision's transaction (ADR-024 item 1). Scoring
             // again here would only hit `ON CONFLICT DO NOTHING`, so the row is acknowledged as is.
@@ -421,6 +424,20 @@ isolated function failShare(HandlerContext ctx, sharing:ShareRequest share, type
     sharing:ShareRequest failedShare = check sharing:markFailed(share, reason, code, ctx.now);
     check ctx.store.updateShare(failedShare, share.version, [sharing:repostFailedEvent(failedShare)]);
     return done(string `share failed: ${reason} (${note})`);
+}
+
+// ---- ActivityRemoved → engagement flagged invalid (C1) ----------------------------------------------
+//
+// The backstop of "Remove invalid activity" (ADR-010 amendment 2026-11-26): amplify-api flags the engagement right
+// after the reversal, so this is usually a no-op. When that flag failed, this one sets it. An engagement that no longer
+// exists (never expected: engagements are never deleted) fails the row for a person to look at.
+
+isolated function handleActivityRemoved(HandlerContext ctx, events:ActivityRemoved event) returns Outcome|error {
+    boolean|error flagged = ctx.store.markEngagementInvalid(event);
+    if flagged is types:DomainError {
+        return failed(string `engagement not flagged: ${flagged.message()}`);
+    }
+    return done(check flagged ? "engagement flagged invalid" : "engagement already flagged invalid");
 }
 
 // ---- EngagementRecorded → points (C2) + recognition (B12) -------------------------------------------

@@ -211,6 +211,9 @@ isolated function externalShareRepository(store:Actor actor, int topN) returns e
 isolated function ledgerRepository(store:Actor actor, int topN) returns scoring:LedgerRepository|error =>
     new scoring:PgLedgerRepository(check db(), actor, topN);
 
+isolated function invalidActivityRepository(store:Actor actor) returns sharing:InvalidActivityRepository|error =>
+    new sharing:PgInvalidActivityRepository(check db(), actor);
+
 isolated function coinWalletRepository(store:Actor actor) returns scoring:CoinWalletRepository|error =>
     new scoring:PgCoinWalletRepository(check db(), actor);
 

@@ -393,6 +393,45 @@ isolated function mockSearchPeople(string text, int 'limit) returns identity:Emp
 @test:Mock {functionName: "ledgerRepository"}
 isolated function mockLedgerRepository(store:Actor actor, int topN) returns scoring:LedgerRepository|error => fakeLedger;
 
+# Invalid-activity flags on engagements; `failing` makes the flag fail like a database blip.
+isolated class FakeInvalidActivity {
+    *sharing:InvalidActivityRepository;
+    private map<types:RemovalReason> flagged = {};
+    private boolean failing = false;
+
+    public isolated function markInvalid(string engagementId, types:RemovalReason reason,
+            types:LedgerReference reference, time:Utc at) returns boolean|error {
+        lock {
+            if self.failing {
+                return error("database down");
+            }
+            if self.flagged.hasKey(engagementId) {
+                return false;
+            }
+            self.flagged[engagementId] = reason;
+            return true;
+        }
+    }
+
+    isolated function reasonOf(string engagementId) returns types:RemovalReason? {
+        lock {
+            return self.flagged[engagementId];
+        }
+    }
+
+    isolated function setFailing(boolean failing) {
+        lock {
+            self.failing = failing;
+        }
+    }
+}
+
+final FakeInvalidActivity fakeInvalidActivity = new;
+
+@test:Mock {functionName: "invalidActivityRepository"}
+isolated function mockInvalidActivityRepository(store:Actor actor) returns sharing:InvalidActivityRepository|error =>
+    fakeInvalidActivity;
+
 @test:Mock {functionName: "pointRuleRepository"}
 isolated function mockPointRuleRepository(store:Actor actor) returns scoring:PointRuleRepository|error => fakeRules;
 

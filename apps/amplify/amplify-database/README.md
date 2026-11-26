@@ -516,7 +516,7 @@ erDiagram
 | connection | `member_connection.(provider, member_urn)` | sharing | `engagement.(provider, actor_member_urn)` |
 | campaign | `campaign.(provider, resource_urn)` | sharing | `sync_cursor.(provider, resource_urn)` *(future)* |
 
-**Derived status** (`sharing_share_request_v`): `PUBLISHED` if `published_at`; `FAILED` if `failed_at`; else `QUEUED`. `engagement_v` adds `ACTIVE` / `DELETED` from `deleted_at`. These are the share states every doc uses (B14); there is no `PENDING` share state.
+**Derived status** (`sharing_share_request_v`): `PUBLISHED` if `published_at`; `FAILED` if `failed_at`; else `QUEUED`. `engagement_v` adds `ACTIVE` / `DELETED` from `deleted_at`, and since V030 `INVALID` first from `invalidated_at` (a PO removed it as invalid activity, ADR-010 amendment 2026-11-26). These are the share states every doc uses (B14); there is no `PENDING` share state.
 
 **Kinds (B4):** `REPOST` / `REPOST_COMMENTARY` reshare the campaign post (`reshareContext.parent`). `SHARE` / `SHARE_COMMENTARY` create a new post that links to it, and are the fallback. The M0 D5 spike passed on 2026-10-20 (a member token can reshare an organization post), so the Amplify action is `REPOST` ([ADR-034](../architecture/decisions/ADR-034-share-is-a-repost.md)). All four are in the enums from the first migration, so the fallback needs no schema change.
 

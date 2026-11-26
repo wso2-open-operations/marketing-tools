@@ -44,6 +44,7 @@ type LedgerRow record {|
     time:Utc? status_changed_at;
     time:Utc? paid_at;
     string? coin_reference;
+    string? removal_reason;
 |};
 
 type RuleRow record {|
@@ -96,7 +97,7 @@ public isolated class PgLedgerRepository {
         LedgerRow|error row = self.db->queryRow(`
             SELECT reference, employee_id, campaign_id::text AS campaign_id, source_type, source_id::text AS source_id,
                    action, points, rule_id::text AS rule_id, reverses_reference, reason, actor_id, correlation_id,
-                   created_at, status, status_changed_at, paid_at, coin_reference
+                   created_at, status, status_changed_at, paid_at, coin_reference, removal_reason
             FROM scoring_points_ledger WHERE reference = ${reference}`);
         return toEntry(row);
     }
@@ -105,7 +106,7 @@ public isolated class PgLedgerRepository {
         LedgerRow|error row = self.db->queryRow(`
             SELECT reference, employee_id, campaign_id::text AS campaign_id, source_type, source_id::text AS source_id,
                    action, points, rule_id::text AS rule_id, reverses_reference, reason, actor_id, correlation_id,
-                   created_at, status, status_changed_at, paid_at, coin_reference
+                   created_at, status, status_changed_at, paid_at, coin_reference, removal_reason
             FROM scoring_points_ledger WHERE reverses_reference = ${reference}`);
         return toEntry(row);
     }
@@ -199,6 +200,7 @@ isolated function toEntry(LedgerRow|error row) returns types:LedgerEntry|error? 
     }
     string? action = row.action;
     string? status = row.status;
+    string? removalReason = row.removal_reason;
     return {
         reference: row.reference,
         employeeId: row.employee_id,
@@ -216,7 +218,8 @@ isolated function toEntry(LedgerRow|error row) returns types:LedgerEntry|error? 
         status: status is () ? () : check status.ensureType(),
         statusChangedAt: row.status_changed_at,
         paidAt: row.paid_at,
-        coinReference: row.coin_reference
+        coinReference: row.coin_reference,
+        removalReason: removalReason is () ? () : check removalReason.ensureType()
     };
 }
 
@@ -239,17 +242,22 @@ public isolated transactional function appendInTransaction(postgresql:Client db,
     var result = check db->execute(`
         INSERT INTO scoring_points_ledger (reference, employee_id, campaign_id, source_type, source_id, action,
             points, rule_id, reverses_reference, reason, actor_id, correlation_id, created_at, status,
-            status_changed_at, paid_at, coin_reference)
+            status_changed_at, paid_at, coin_reference, removal_reason)
         VALUES (${e.reference}, ${e.employeeId}, CAST(${e.campaignId} AS uuid), ${e.sourceType},
             CAST(${e.sourceId} AS uuid), ${e.action}, ${e.points}, CAST(${e.ruleId} AS uuid),
             ${e.reversesReference}, ${e.reason}, ${e.actorId}, ${e.correlationId}, CAST(${store:ts(e.createdAt)} AS timestamptz), ${e.status},
-            CAST(${store:ts(e.statusChangedAt)} AS timestamptz), CAST(${store:ts(e.paidAt)} AS timestamptz), ${e.coinReference})
+            CAST(${store:ts(e.statusChangedAt)} AS timestamptz), CAST(${store:ts(e.paidAt)} AS timestamptz), ${e.coinReference},
+            ${e.removalReason})
         ON CONFLICT (reference) DO NOTHING`);
     boolean inserted = result.affectedRowCount == 1;
     if inserted {
-        _ = check store:writeOutbox(db, [append.event], e.correlationId ?: actor.correlationId);
-        check store:writeAudit(db, store:auditOf(actor, append.event.eventType, LEDGER_TABLE,
-                e.reference, {employeeId: e.employeeId, points: e.points, action: e.action}, e.reason));
+        _ = check store:writeOutbox(db, [append.event, ...append.extraEvents], e.correlationId ?: actor.correlationId);
+        types:RemovalReason? removal = e.removalReason;
+        check store:writeAudit(db, store:auditOf(actor, removal is () ? append.event.eventType : "ActivityRemoved",
+                LEDGER_TABLE, e.reference, removal is ()
+                    ? {employeeId: e.employeeId, points: e.points, action: e.action}
+                    : {employeeId: e.employeeId, points: e.points, action: e.action, removalReason: removal,
+                        reversesReference: e.reversesReference}, e.reason));
         // Serialize the re-rank (R-01): without the lock two appends deadlock in the period-wide UPDATE,
         // or store ranks computed without each other's row. Lock order: this app-level lock (4242101)
         // first, then apply_ledger_entry takes the SQL-level one (1634561133). Called inside the transaction
