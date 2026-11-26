@@ -69,7 +69,7 @@ configurable string canDashboardGroups = "amplify_po,amplify_marketing,amplify_s
 # Groups that download the dashboard CSV export (names and emails).
 configurable string canExportGroups = "amplify_po,amplify_marketing,amplify_slt,amplify_admin";
 # Groups that review external shares.
-configurable string canReviewSharesGroups = "amplify_po";
+configurable string canReviewSharesGroups = "amplify_marketing";
 # Groups that manage point rules.
 configurable string canPointRulesGroups = "amplify_po";
 # Groups that adjust and reverse points and see anyone's team list and history.
