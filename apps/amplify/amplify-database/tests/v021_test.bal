@@ -36,7 +36,7 @@ function testV021LedgerIsAppendOnlyExceptSettlement() returns error? {
     assertViolates(failure(api, `UPDATE scoring_points_ledger SET points = 99 WHERE reference = 'ADJ-v021-1'`),
             "scoring_points_ledger is append-only");
     assertViolates(failure(api, `UPDATE scoring_points_ledger SET reason = 'rewritten' WHERE reference = 'ADJ-v021-1'`),
-            "only status, status_changed_at, paid_at and coin_reference may change");
+            "only the settlement and verification columns may change");
     assertViolates(failure(api, `UPDATE scoring_points_ledger SET employee_id = 'someone-else' WHERE reference = 'ADJ-v021-1'`),
             "scoring_points_ledger is append-only");
     assertViolates(failure(admin, `UPDATE scoring_points_ledger SET points = 0 WHERE reference = 'ADJ-v021-1'`),

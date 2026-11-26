@@ -564,6 +564,34 @@ service http:InterceptableService / on apiListener {
                 isolated function() returns http:StatusCodeResponse => reverseEntry(p, c, referenceFinal, b.reason));
     }
 
+    # Settles a ledger row: `HELD` clears an action-required row (it converts to Coins without another LinkedIn
+    # check), `ACTION_REQUIRED` holds a row back from the conversion.
+    #
+    # + ctx - Request context
+    # + req - Request
+    # + reference - Ledger reference
+    # + body - `{status}`
+    # + return - 200 with the row, or problem details
+    resource function post po/points/[string reference]/settlement(http:RequestContext ctx, http:Request req,
+            @http:Payload SettlementBody body) returns http:Response|error {
+        final auth:Principal & readonly p = (check principalOf(ctx)).cloneReadOnly();
+        final string? c = cid(ctx);
+        final readonly & SettlementBody b = body.cloneReadOnly();
+        final string referenceFinal = reference;
+        return idempotent(ctx, req, p, "/po/points/" + reference + "/settlement", b.toJson(),
+                isolated function() returns http:StatusCodeResponse => settleLedgerEntry(p, c, referenceFinal, b.status));
+    }
+
+    # Ledger rows waiting for the PO team, oldest first: held back by a PO, or not checkable on LinkedIn before Coins.
+    #
+    # + ctx - Request context
+    # + page - Zero-based page
+    # + size - Page size
+    # + return - The page, or problem details
+    resource function get po/points/action\-required(http:RequestContext ctx, int page = 0, int size = 25)
+            returns http:Response|ProblemResponse|error =>
+        okJson(actionRequiredList(cid(ctx), page, size));
+
     # What each activity earns today (current point values), for every employee.
     #
     # + ctx - Request context

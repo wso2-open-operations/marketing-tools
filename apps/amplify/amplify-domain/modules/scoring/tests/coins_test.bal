@@ -156,7 +156,7 @@ isolated class FakeCoinRepo {
         }
     }
 
-    public isolated function candidates() returns CoinCandidate[]|error {
+    public isolated function candidates(time:Utc verifiedSince) returns CoinCandidate[]|error {
         lock {
             map<CoinCandidate> byEmp = {};
             string[] arrival = [];

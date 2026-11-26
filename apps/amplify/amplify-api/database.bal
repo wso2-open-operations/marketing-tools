@@ -430,6 +430,17 @@ isolated function campaignTitles(string[] ids) returns map<string>|error {
     }
 }
 
+# Ledger rows waiting for the PO team, oldest first (a seam the tests replace).
+#
+# + page - Zero-based page
+# + size - Page size
+# + return - The page, or an error
+isolated function actionRequiredRows(int page, int size) returns scoring:LedgerPage|error {
+    retry<resilience:TransientDbRetry> (dbReadRetries) {
+        return check scoring:actionRequiredOf(check db(), page, size);
+    }
+}
+
 # Employees by id, for the review queue (a seam the tests replace).
 #
 # + ids - Employee ids

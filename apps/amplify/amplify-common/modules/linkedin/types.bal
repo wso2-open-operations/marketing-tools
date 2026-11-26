@@ -194,3 +194,48 @@ public type ProviderAdapter isolated object {
     # means the post may be live
     public isolated function publishShare(string accessToken, ShareCommand command) returns types:PostUrn|ProviderError;
 };
+
+# The activity is still on LinkedIn (pre-coin verification, V027).
+public const PRESENT = "PRESENT";
+# LinkedIn answered 404 or 410: the activity was deleted.
+public const GONE = "GONE";
+
+# Whether an activity still exists.
+public type Presence PRESENT|GONE;
+
+# Reads whether a post still exists (`GET /rest/posts/{urn}`). `LinkedInAdapter` reads with a member's token,
+# `CommunityAdapter` with the page token.
+public type PostPresencePort isolated object {
+    # Whether a post (an employee's share or reshare) still exists.
+    #
+    # + accessToken - Bearer token
+    # + postUrn - `urn:li:share:…`, `urn:li:ugcPost:…` or `urn:li:activity:…`
+    # + return - `PRESENT`, `GONE` (404/410), or a provider error (`FORBIDDEN` when the token may not read it)
+    public isolated function postPresence(string accessToken, string postUrn) returns Presence|ProviderError;
+};
+
+# Reads whether a reaction or a comment on a page post still exists, with the page token.
+public type CommunityPresencePort isolated object {
+    # Whether a post still exists, read with the page token (`PostPresencePort`).
+    #
+    # + accessToken - Page token
+    # + postUrn - Post URN
+    # + return - `PRESENT`, `GONE`, or a provider error (`FORBIDDEN` when the page may not read it)
+    public isolated function postPresence(string accessToken, string postUrn) returns Presence|ProviderError;
+
+    # Whether a member's reaction on a post still exists (`GET /rest/reactions/(actor:{actor},entity:{entity})`).
+    #
+    # + accessToken - Page token
+    # + actorUrn - Who reacted
+    # + entityUrn - Post reacted on
+    # + return - `PRESENT`, `GONE`, or a provider error
+    public isolated function reactionPresence(string accessToken, string actorUrn, string entityUrn)
+        returns Presence|ProviderError;
+
+    # Whether a comment still exists (`GET /rest/socialActions/{object}/comments/{id}`).
+    #
+    # + accessToken - Page token
+    # + commentUrn - `urn:li:comment:({object},{id})`
+    # + return - `PRESENT`, `GONE`, or a provider error (`BAD_RESPONSE` for a malformed comment URN)
+    public isolated function commentPresence(string accessToken, string commentUrn) returns Presence|ProviderError;
+};

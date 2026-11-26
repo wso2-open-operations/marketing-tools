@@ -29,8 +29,10 @@
 // The service takes no caller reference, so the reconcile matches master wallet -> employee wallet, amount, after the
 // attempt, and a transfer reference no other issue holds.
 //
-// Pre-coin verification (a later change) plugs in before step 1: a row it flags as action required (status NULL) is
-// not HELD, so `isConvertible` and the repository's candidate query leave it out. Nothing else here changes.
+// Pre-coin verification (verification.bal, V027) runs before: an engagement row converts only while its LinkedIn
+// activity was seen within `coin.verify_max_age_hours` (or a PO cleared it); a row it could not check is action
+// required (status NULL, not HELD); a row whose activity is gone is reversed, and the pair nets to zero. The candidate
+// query applies the same rule (`isConvertible`), with the cutoff `verifiedSince` the run passes.
 
 import amplify_common.coins;
 import amplify_common.resilience;
@@ -99,6 +101,8 @@ public type CoinSettings record {|
     int maxCoinsPerRun = 50000;
     # `coin.schedule`: `MONTHLY`, `WEEKLY` or `DAILY`; names the period
     string schedule = "MONTHLY";
+    # `coin.verify_max_age_hours`: an engagement row converts only when verified this recently (V027)
+    int verifyMaxAgeHours = DEFAULT_VERIFY_MAX_AGE_HOURS;
 |};
 
 # A ledger row the conversion may take.
@@ -269,10 +273,11 @@ public type CoinRepository isolated object {
     # + return - Employee -> issue, or an error
     public isolated function issuesOf(string runId) returns map<CoinIssue>|error;
 
-    # Employees with convertible rows or a carry, oldest waiting first.
+    # Employees with convertible rows (`isConvertible`) or a carry, oldest waiting first.
     #
+    # + verifiedSince - An engagement row counts only when verified at or after this (or cleared by a PO)
     # + return - Candidates, or an error
-    public isolated function candidates() returns CoinCandidate[]|error;
+    public isolated function candidates(time:Utc verifiedSince) returns CoinCandidate[]|error;
 
     # Coins already committed in the run (SENT, PENDING, UNKNOWN).
     #
@@ -361,13 +366,23 @@ public type CoinWalletRepository isolated object {
 
 // ---- Pure rules --------------------------------------------------------------------------------------------
 
-# Whether a ledger row may be converted: HELD (not action required, not PAID) and not taken by another conversion.
-# The seam for pre-coin verification: it flags a row by setting it action required.
+# Whether a ledger row may be converted: HELD (not action required, not PAID), not taken by another conversion, and
+# for an engagement row, verified at or after `verifiedSince` or cleared by a PO (V027). The repository's candidate
+# query adds what one row can't show: a reversed engagement row converts with its reversal (they net to zero), and a
+# reversal converts only while the row it reverses is not action required.
 #
 # + entry - Ledger row
+# + verifiedSince - Verification cutoff; `()` = verification not considered
 # + return - True when convertible
-public isolated function isConvertible(types:LedgerEntry entry) returns boolean =>
-    entry.status == types:HELD && entry.coinReference is ();
+public isolated function isConvertible(types:LedgerEntry entry, time:Utc? verifiedSince = ()) returns boolean {
+    if entry.status != types:HELD || entry.coinReference !is () {
+        return false;
+    }
+    if verifiedSince is () || entry.sourceType != types:ENGAGEMENT {
+        return true;
+    }
+    return verificationCurrent(entry, verifiedSince);
+}
 
 # The period a run at `now` belongs to: `2026-12` (MONTHLY), the ISO week `2026-W49` (WEEKLY) or `2026-12-01`
 # (DAILY), all UTC.
@@ -551,7 +566,7 @@ public isolated function convertCoins(CoinRepository repo, coins:CoinsPort port,
     int runRemaining = settings.maxCoinsPerRun - check repo.committedCoins(run.id);
     CoinPlan[] sends = [];
     CoinPlan[] noWallet = [];
-    foreach CoinCandidate c in check repo.candidates() {
+    foreach CoinCandidate c in check repo.candidates(verifiedSince(settings, now)) {
         CoinIssue? ex = existing[c.employeeId];
         if open.hasKey(c.employeeId) || (ex is CoinIssue && !retryDue(ex, now)) {
             report.passedOver += 1;

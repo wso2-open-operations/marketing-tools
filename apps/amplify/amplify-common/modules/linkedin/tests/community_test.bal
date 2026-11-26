@@ -29,9 +29,13 @@ listener http:Listener communityListener = new (COMMUNITY_STUB_PORT);
 
 service / on communityListener {
     resource function get rest/reactions/[string key](http:Request req, @http:Header string Authorization)
-            returns json|http:Unauthorized|http:TooManyRequests {
+            returns json|http:Unauthorized|http:TooManyRequests|http:NotFound {
         lock {
             lastCommunityPath = req.rawPath;
+        }
+        if req.rawPath.startsWith("/rest/reactions/(actor:") {
+            return req.rawPath.includes("person%3Agone") ? <http:NotFound>{body: {status: 404}}
+                : {id: "urn:li:reaction:(urn:li:person:abc,urn:li:share:1)", reactionType: "LIKE"};
         }
         if Authorization == "Bearer slow-down" {
             return <http:TooManyRequests>{body: {status: 429, serviceErrorCode: 101}};
@@ -52,6 +56,21 @@ service / on communityListener {
             lastCommunityPath = req.rawPath;
         }
         return {elements: []};
+    }
+
+    resource function get rest/socialActions/[string urn]/comments/[string id](http:Request req)
+            returns json|http:NotFound {
+        lock {
+            lastCommunityPath = req.rawPath;
+        }
+        return id == "1" ? {id, actor: "urn:li:person:abc"} : <http:NotFound>{body: {status: 404}};
+    }
+
+    resource function get rest/posts/[string urn](http:Request req) returns json|http:Forbidden {
+        lock {
+            lastCommunityPath = req.rawPath;
+        }
+        return <http:Forbidden>{body: {status: 403}};
     }
 
     resource function get rest/organizationalEntityNotifications(http:Request req) returns json {
@@ -204,4 +223,31 @@ function testCommunityWireContract() returns error? {
     TokenGrant refreshed = check adapter.refresh("r-1");
     test:assertEquals(refreshed.accessToken, "a-2");
     test:assertTrue(adapter.refresh("unknown") is ProviderError);
+}
+
+@test:Config {}
+function testCommunityPresence() returns error? {
+    CommunityAdapter adapter = check community();
+    test:assertEquals(check adapter.reactionPresence(PAGE_TOKEN, "urn:li:person:abc", "urn:li:share:1"), PRESENT);
+    test:assertEquals(lastPath(), "/rest/reactions/(actor:urn%3Ali%3Aperson%3Aabc,entity:urn%3Ali%3Ashare%3A1)");
+    test:assertEquals(check adapter.reactionPresence(PAGE_TOKEN, "urn:li:person:gone", "urn:li:share:1"), GONE);
+
+    test:assertEquals(check adapter.commentPresence(PAGE_TOKEN, "urn:li:comment:(urn:li:activity:75,1)"), PRESENT);
+    test:assertEquals(lastPath(), "/rest/socialActions/urn%3Ali%3Aactivity%3A75/comments/1");
+    test:assertEquals(check adapter.commentPresence(PAGE_TOKEN, "urn:li:comment:(urn:li:activity:75,2)"), GONE);
+    Presence|ProviderError bad = adapter.commentPresence(PAGE_TOKEN, "urn:li:share:1");
+    test:assertTrue(bad is ProviderError && bad.detail().code == BAD_RESPONSE);
+
+    Presence|ProviderError post = adapter.postPresence(PAGE_TOKEN, "urn:li:share:9");
+    test:assertTrue(post is ProviderError && post.detail().code == FORBIDDEN, "the page token may not read a member post");
+    test:assertEquals(lastPath(), "/rest/posts/urn%3Ali%3Ashare%3A9");
+}
+
+@test:Config {}
+function testCommentParts() {
+    test:assertEquals(commentParts("urn:li:comment:(urn:li:activity:75,6811)"), ["urn:li:activity:75", "6811"]);
+    test:assertEquals(commentParts("urn:li:comment:(urn:li:ugcPost:1,2)"), ["urn:li:ugcPost:1", "2"]);
+    test:assertEquals(commentParts("urn:li:comment:(x,2)"), ());
+    test:assertEquals(commentParts("urn:li:comment:(urn:li:activity:75,)"), ());
+    test:assertEquals(commentParts("urn:li:comment:urn:li:activity:75,1"), ());
 }

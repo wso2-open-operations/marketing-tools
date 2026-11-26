@@ -26,6 +26,8 @@ Every insert is `ON CONFLICT DO NOTHING`, so an admin's later change is never ov
 - `S013__engagement_sync_settings.sql`: the Community Management engagement sync (V025), `engagement.sync_enabled = false`, `engagement.schedule = "0 */2 * * *"` and `engagement.daily_call_budget = 450` (calls per UTC day across runs).
 - `S014__coin_caps.sql`: the Coins safety caps for the automatic conversion (V026, ADR-048), `coin.max_coins_per_person = 500` (one person in one run) and `coin.max_coins_per_run = 50000` (one period, everyone together); points above a cap carry over. Admins change them.
 
+- `S015__coin_verify_settings.sql`: pre-coin verification (V027, ADR-048 amendment), `coin.verify_max_age_hours = 48` (an engagement row converts only when its LinkedIn activity was seen this recently) and `coin.verify_member_daily_call_budget = 1000` (reads with employees' own tokens per UTC day). Admins change them.
+
 ## Rules
 
 - Never edit an applied seed: the runner compares checksums and stops. To change a seeded value, add a new seed (S011 and up) that sets it, and a migration when databases that already hold the old value need it too (S008 with V016 is the example).

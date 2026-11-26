@@ -22,6 +22,7 @@ Paths: `apps/…` = `apps/amplify/…`. Local commands run from `apps/amplify/`.
 | DB shell (local) | `docker compose exec postgres psql -U postgres -d amplify` |
 | Refresh team rosters now | Restart Amplify Backend (the people-directory index lives in memory, §13) |
 | Coins conversion now | `POST {jobs}/coins/convert` (either key); safe to repeat in a period (§15) |
+| Pre-coin verification now | `POST {jobs}/coins/verify` (either key); checks only what is still due (§15) |
 
 Alert list that pairs with these procedures: [choreo-deploy.md](choreo-deploy.md) §alerts (outbox `FAILED`, share failure rate, breaker `OPEN`, 5xx rate, scheduler job failures, `schedulerSync: PENDING`, partition-maintenance failures), plus **sessions idle in transaction > 30 s** (§11).
 
@@ -237,5 +238,11 @@ FROM scoring_coin_run ORDER BY started_at DESC LIMIT 5;
 **An issue stuck in `UNKNOWN` with `last_error_code = RECONCILE_AMBIGUOUS`.** The search found more than one possible transfer (or more than one page of them), so Amplify won't guess. Look the transfers up with the Coins team (by wallet and time), then settle the issue by hand in one transaction, with an audit row: for the transfer that is Amplify's, set the issue `SENT` with that `transfer_reference` and `sent_at`, and its ledger rows (`coin_reference` = the issue's `reference`) `PAID` with `paid_at`; if none is, set the issue `FAILED` and clear `coin_reference` on its rows (they convert next run). Never send Coins by hand for such an issue.
 
 **`FAILED` issues.** Nothing moved (`last_error_code`: `RECIPIENT_NOT_FOUND`, `REJECTED`, `NOT_SENT`). The points are HELD again; a re-run in the same period retries after `next_attempt_at`, and the next period takes them anyway. `RECIPIENT_NOT_FOUND` usually means the captured wallet was deleted at the Coins service: the employee captures it again.
+
+**Pre-coin verification (V027).** The `amplify-coins-verify` job calls `POST {jobs}/coins/verify` an hour before the conversion. The conversion takes an engagement row only when that check saw its LinkedIn activity within `coin.verify_max_age_hours` (48), so a row the verification never reached waits for the next period. The response (and the `Pre-coin verification` log line) gives `checked`, `verified`, `removed` (gone from LinkedIn, reversed "No longer on LinkedIn") and `actionRequired` with `unverifiableByReason`.
+- **`STOPPED BUDGET_REACHED`.** The day's calls are spent: page-token reads share `engagement.daily_call_budget` with the engagement sync, member-token reads have `coin.verify_member_daily_call_budget`. Call `POST {jobs}/coins/verify` again the next UTC day (before the conversion's retry, or raise the budget), or let the next period take the rows.
+- **`STOPPED RATE_LIMITED` / `UNAVAILABLE`.** LinkedIn answered 429 or was down; nothing was recorded for the row it stopped on. Call again later.
+- **Many `NOT_PERMITTED`.** LinkedIn refused to let either token read members' posts: the rows wait for the PO team on Points & corrections (`GET /po/points/action-required`), who clears them (`POST /po/points/{reference}/settlement` `HELD`) or reverses them. `NO_TOKEN` / `TOKEN_EXPIRED` mean the employee (or the page) is not connected.
+- **The page token.** The verification does not refresh it (the engagement sync does). A page that needs reconnecting makes every reaction and comment `TOKEN_EXPIRED`.
 
 **Turning it off.** `coin.wallets_enabled = false`: the job is disabled and the endpoint answers `SKIPPED WALLETS_OFF`; points keep counting and convert when it is back on. Open `UNKNOWN` issues are reconciled on the first run after that.

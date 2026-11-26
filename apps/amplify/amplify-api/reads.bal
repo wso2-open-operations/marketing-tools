@@ -650,6 +650,32 @@ isolated function reviewList(string? correlationId, string status, int page, int
     }
 }
 
+# Ledger rows waiting for the PO team (`GET /po/points/action-required`, CAN_ADJUST_POINTS): rows a PO held back and
+# rows the pre-coin verification could not check (V027), oldest first, with who they belong to and why. The PO clears
+# one with `POST /po/points/{reference}/settlement` or reverses it.
+#
+# + correlationId - Correlation id
+# + page - Zero-based page
+# + size - Page size
+# + return - `{items, page, size, total}`, or problem details
+isolated function actionRequiredList(string? correlationId, int page, int size) returns json|ProblemResponse {
+    do {
+        if page < 0 || page > 10000 || size < 1 || size > 100 {
+            return badRequest("page must be 0-10000 and size 1-100", correlationId);
+        }
+        scoring:LedgerPage result = check actionRequiredRows(page, size);
+        map<identity:EmployeeMatch> people = check employeesIn(from types:LedgerEntry e in result.items
+            select e.employeeId);
+        map<string> reversals = check reversalsAmong(from types:LedgerEntry e in result.items select e.reference);
+        map<string> titles = check campaignTitles(campaignIdsOf(result.items));
+        json[] items = from types:LedgerEntry e in result.items
+            select withClaimant(historyItem(ledgerDto(e).toJson(), e, reversals, titles), people[e.employeeId]);
+        return {items, page, size, total: result.total};
+    } on fail error e {
+        return failure(e, correlationId, "Action required list");
+    }
+}
+
 # People who have used Amplify, by name or work email (`GET /po/people`, CAN_ADJUST_POINTS).
 #
 # + correlationId - Correlation id

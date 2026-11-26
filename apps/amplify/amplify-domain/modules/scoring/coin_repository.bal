@@ -85,12 +85,23 @@ public isolated class PgCoinRepository {
         return map from CoinIssue i in rows select [i.employeeId, i];
     }
 
-    public isolated function candidates() returns CoinCandidate[]|error {
-        // Oldest waiting first: the run cap, when it bites, serves the people who have waited longest.
+    public isolated function candidates(time:Utc verifiedSince) returns CoinCandidate[]|error {
+        // Oldest waiting first: the run cap, when it bites, serves the people who have waited longest. `isConvertible`
+        // per row, plus the pairs (V027): a reversed engagement row goes with its reversal, which nets it to zero, and a
+        // reversal waits while the row it reverses is action required.
         stream<record {|string employee_id; string reference; int points;|}, error?> rows = self.db->query(`
-            SELECT employee_id, reference, points FROM scoring_points_ledger
-            WHERE status = 'HELD' AND coin_reference IS NULL
-            ORDER BY created_at, reference`);
+            SELECT l.employee_id, l.reference, l.points FROM scoring_points_ledger l
+            WHERE l.status = 'HELD' AND l.coin_reference IS NULL
+              AND (l.source_type IN ('EXTERNAL_SHARE', 'ADJUSTMENT')
+                   OR (l.source_type = 'REVERSAL'
+                       AND EXISTS (SELECT 1 FROM scoring_points_ledger o
+                                   WHERE o.reference = l.reverses_reference AND o.status IS NOT NULL))
+                   OR (l.source_type = 'ENGAGEMENT'
+                       AND (l.verification = 'PO_CLEARED'
+                            OR (l.verification = 'VERIFIED'
+                                AND l.verified_at >= CAST(${store:ts(verifiedSince)} AS timestamptz))
+                            OR EXISTS (SELECT 1 FROM scoring_points_ledger r WHERE r.reverses_reference = l.reference))))
+            ORDER BY l.created_at, l.reference`);
         map<CoinCandidate> byEmployee = {};
         string[] arrival = [];
         check from var r in rows

@@ -56,7 +56,7 @@ isolated class OneEmployeeRepo {
 
     public isolated function issuesOf(string runId) returns map<scoring:CoinIssue>|error => {};
 
-    public isolated function candidates() returns scoring:CoinCandidate[]|error =>
+    public isolated function candidates(time:Utc verifiedSince) returns scoring:CoinCandidate[]|error =>
         [{employeeId: "e1", carryIn: 0, rows: [{reference: "ADJ-1", points: 150}, {reference: "ADJ-2", points: 80}],
             walletAddress: "0xe1"}];
 
@@ -158,7 +158,7 @@ function testCoinSettingsFromRowsKeepDefaultsForBadValues() {
         {key: "other.key", value: 1, updatedBy: "system", updatedAt: COINS_T0, version: 1}
     ]);
     test:assertEquals(s, {walletsEnabled: true, blockPoints: 50, blockCoins: 10, maxCoinsPerPerson: 200,
-        maxCoinsPerRun: 50000, schedule: "WEEKLY"});
+        maxCoinsPerRun: 50000, schedule: "WEEKLY", verifyMaxAgeHours: 48});
     scoring:CoinSettings defaults = {};
     test:assertEquals(toCoinSettings([]), defaults, "off by default");
     test:assertEquals(toCoinSettings([{key: "coin.wallets_enabled", value: "true", updatedBy: "system", updatedAt: COINS_T0, version: 1},

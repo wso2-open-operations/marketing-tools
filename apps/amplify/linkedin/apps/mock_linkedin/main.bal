@@ -85,6 +85,27 @@ final http:Service mockAdminService = service object {
         return <http:Created>{body: stored.toJson()};
     }
 
+    # Removes an injected reaction, comment or reshare, as if the member deleted it: the finders stop listing it and
+    # the single reads (`GET /rest/reactions/(actor:…,entity:…)`, `GET …/comments/{id}`, `GET /rest/posts/{urn}`) answer
+    # 404 (pre-coin verification tests).
+    #
+    # + req - Request, carrying the internal key
+    # + payload - Which engagement (`commentary` is ignored)
+    # + return - 200 with how many were removed, 404 when none matched, or 401 without the key
+    isolated resource function post engagement/remove(http:Request req, @http:Payload MockEngagementRequest payload)
+            returns http:Ok|http:NotFound|http:Unauthorized {
+        http:Unauthorized? denied = requireAdminKey(req);
+        if denied is http:Unauthorized {
+            return denied;
+        }
+        int removed = store:removeEngagements(payload.kind, payload.targetUrn, payload.actorUrn);
+        if removed == 0 {
+            return <http:NotFound>{body: {message: "No such engagement"}};
+        }
+        log:printInfo("Mock engagement removed", kind = payload.kind, target = payload.targetUrn);
+        return <http:Ok>{body: {removed}};
+    }
+
     # Clears tokens, codes, posts, uploads and rate counters.
     #
     # + req - Request, carrying the internal key

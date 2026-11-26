@@ -15,6 +15,7 @@
 // under the License.
 import ballerina/http;
 import ballerina/test;
+import ballerina/url;
 import ballerina/uuid;
 
 const TEST_CLIENT_ID = "test-client-id";
@@ -620,4 +621,75 @@ function testInjectedEngagementIsServedByTheFinders() returns error? {
     http:Response otherPage = check apiClient->get(string `/rest/organizationalEntityNotifications?q=criteria&actions=List(SHARE)&organizationalEntity=urn%3Ali%3Aorganization%3A9&timeRange=(start:0,end:1000)`,
             restliHeaders(token));
     test:assertEquals(otherPage.statusCode, http:STATUS_FORBIDDEN);
+}
+
+// Pre-coin verification reads (Amplify V027): one reaction, one comment, one post; and a removed engagement is 404.
+
+@test:Config
+function testVerificationReadsSeeAnEngagementUntilItIsRemoved() returns error? {
+    string post = "urn:li:share:7200";
+    http:Response reacted = check apiClient->post("/mock/engagement",
+            {kind: "REACTION", targetUrn: post, actorUrn: TEST_AUTHOR}, adminHeaders());
+    test:assertEquals(reacted.statusCode, http:STATUS_CREATED);
+    http:Response commented = check apiClient->post("/mock/engagement",
+            {kind: "COMMENT", targetUrn: post, actorUrn: TEST_AUTHOR}, adminHeaders());
+    string commentId = check (check commented.getJsonPayload()).activityUrn;
+    http:Response reshared = check apiClient->post("/mock/engagement",
+            {kind: "RESHARE", targetUrn: post, actorUrn: TEST_AUTHOR}, adminHeaders());
+    string reshareUrn = check (check reshared.getJsonPayload()).activityUrn;
+
+    string page = check accessToken(PAGE_SCOPE);
+    string reactionPath = "/rest/reactions/(actor:urn%3Ali%3Aperson%3A782bbtaQ,entity:urn%3Ali%3Ashare%3A7200)";
+    string commentPath = "/rest/socialActions/urn%3Ali%3Ashare%3A7200/comments/" + commentId;
+    string resharePath = "/rest/posts/" + check url:encode(reshareUrn, "UTF-8");
+    http:Response reaction = check apiClient->get(reactionPath, restliHeaders(page));
+    test:assertEquals(reaction.statusCode, http:STATUS_OK);
+    test:assertEquals(check (check reaction.getJsonPayload()).root, post);
+    http:Response other = check apiClient->get(
+            "/rest/reactions/(actor:urn%3Ali%3Aperson%3Asomeone,entity:urn%3Ali%3Ashare%3A7200)", restliHeaders(page));
+    test:assertEquals(other.statusCode, http:STATUS_NOT_FOUND);
+    http:Response comment = check apiClient->get(commentPath, restliHeaders(page));
+    test:assertEquals(comment.statusCode, http:STATUS_OK);
+    http:Response reshare = check apiClient->get(resharePath, restliHeaders(page));
+    test:assertEquals(reshare.statusCode, http:STATUS_OK);
+    http:Response noQ = check apiClient->get("/rest/reactions/(entity:urn%3Ali%3Ashare%3A7200)", restliHeaders(page));
+    test:assertEquals(noQ.statusCode, http:STATUS_BAD_REQUEST, "the finder still needs q=entity");
+
+    foreach string kind in ["REACTION", "COMMENT", "RESHARE"] {
+        http:Response removed = check apiClient->post("/mock/engagement/remove",
+                {kind, targetUrn: post, actorUrn: TEST_AUTHOR}, adminHeaders());
+        test:assertEquals(removed.statusCode, http:STATUS_OK, kind);
+    }
+    foreach string path in [reactionPath, commentPath, resharePath] {
+        http:Response gone = check apiClient->get(path, restliHeaders(page));
+        test:assertEquals(gone.statusCode, http:STATUS_NOT_FOUND, path);
+    }
+    http:Response again = check apiClient->post("/mock/engagement/remove",
+            {kind: "REACTION", targetUrn: post, actorUrn: TEST_AUTHOR}, adminHeaders());
+    test:assertEquals(again.statusCode, http:STATUS_NOT_FOUND);
+    http:Response noKey = check apiClient->post("/mock/engagement/remove",
+            {kind: "REACTION", targetUrn: post, actorUrn: TEST_AUTHOR});
+    test:assertEquals(noKey.statusCode, http:STATUS_UNAUTHORIZED);
+}
+
+@test:Config
+function testReadPostWithTheMemberTokenUntilDeleted() returns error? {
+    string token = check accessToken("openid profile w_member_social");
+    http:Response created = check createPost(token, uniqueText());
+    string urn = check created.getHeader(HEADER_RESTLI_ID);
+    string path = "/rest/posts/" + check url:encode(urn, "UTF-8");
+    http:Response read = check apiClient->get(path, restliHeaders(token));
+    test:assertEquals(read.statusCode, http:STATUS_OK);
+    json body = check read.getJsonPayload();
+    test:assertEquals(check body.id, urn);
+    test:assertEquals(check body.author, TEST_AUTHOR);
+    http:Response deleted = check apiClient->delete(path, headers = restliHeaders(token));
+    test:assertEquals(deleted.statusCode, http:STATUS_NO_CONTENT);
+    http:Response gone = check apiClient->get(path, restliHeaders(token));
+    test:assertEquals(gone.statusCode, http:STATUS_NOT_FOUND);
+    http:Response anonymous = check apiClient->get(path, restliHeaders(()));
+    test:assertEquals(anonymous.statusCode, http:STATUS_UNAUTHORIZED);
+    // Last: a new scope set revokes the member's earlier token.
+    http:Response noScope = check apiClient->get(path, restliHeaders(check accessToken("openid profile")));
+    test:assertEquals(noScope.statusCode, http:STATUS_FORBIDDEN);
 }

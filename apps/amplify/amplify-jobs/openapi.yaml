@@ -115,6 +115,41 @@ paths:
                   reason: {type: string, enum: [SYNC_IN_PROGRESS]}
         "503": {description: Database unavailable}
         "500": {description: Sync failed}
+  /coins/verify:
+    post:
+      operationId: verifyCoins
+      description: >-
+        Pre-coin verification (V027, ADR-048 amendment), run by the scheduler an hour before the conversion. Off unless
+        `coin.wallets_enabled` is true (202 `WALLETS_OFF`). Checks every HELD engagement ledger row the conversion could
+        take that was never checked, or was verified more than half of `coin.verify_max_age_hours` ago, on LinkedIn:
+        an in-app share or native reshare with the employee's own token (the page token when they have none or it may
+        not read the post), a reaction or comment with the page token. Still there: VERIFIED (the conversion takes a row
+        only while that is within `coin.verify_max_age_hours`). Gone: the row is reversed by the system, reason "No
+        longer on LinkedIn". Can't be checked (no usable token, 403, no URN): the row becomes action required for the PO
+        team. Own posts, adjustments and reversals are never checked. Calls count against `engagement.daily_call_budget`
+        (page token, shared with the engagement sync) and `coin.verify_member_daily_call_budget` (member tokens) per UTC
+        day; a spent budget, a 429 or LinkedIn being down stops the run (STOPPED) and later runs carry on. Takes the
+        Coins lock on its own connection, so it never runs beside a conversion. The scheduler key may call it.
+      parameters:
+        - {name: X-Correlation-ID, in: header, required: false, schema: {type: string}}
+      responses:
+        "200":
+          description: The run (DONE, PARTIAL at the time limit, or STOPPED with a reason)
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/VerifyReport"}
+        "202":
+          description: Not run (not a failure)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, reason]
+                properties:
+                  status: {type: string, enum: [SKIPPED]}
+                  reason: {type: string, enum: [COINS_IN_PROGRESS, WALLETS_OFF, NOT_CONFIGURED]}
+        "503": {description: Database unavailable}
+        "500": {description: Verification failed (rows already checked keep their outcome; the next call carries on)}
   /coins/convert:
     post:
       operationId: convertCoins
@@ -188,7 +223,8 @@ components:
       description: >-
         Two secrets (each at least 32 characters, different values). The internal key, held by amplify-api, opens
         every route. The scheduler key, held by the scheduler's jobs, opens only POST /runs,
-        POST /maintenance/partitions, POST /engagement/sync and POST /coins/convert; on any other route it is 403. Every call except the two probes needs one;
+        POST /maintenance/partitions, POST /engagement/sync, POST /coins/verify and POST /coins/convert; on any other
+        route it is 403. Every call except the two probes needs one;
         a missing or wrong key is 401. ADR-039.
   schemas:
     HealthStatus:
@@ -251,6 +287,20 @@ components:
             reposts: {type: integer}
             alreadyRecorded: {type: integer}
             dropped: {type: integer}
+    VerifyReport:
+      type: object
+      required: [status, checked, verified, removed, actionRequired, unverifiableByReason]
+      properties:
+        status: {type: string, enum: [DONE, PARTIAL, STOPPED]}
+        stopReason: {type: string, nullable: true, enum: [BUDGET_REACHED, RATE_LIMITED, UNAVAILABLE, null]}
+        checked: {type: integer}
+        verified: {type: integer}
+        removed: {type: integer, description: Gone from LinkedIn and reversed}
+        actionRequired: {type: integer, description: Could not be checked; now action required}
+        unverifiableByReason:
+          type: object
+          description: NO_TOKEN, TOKEN_EXPIRED, NOT_PERMITTED, NO_ACTIVITY, SOURCE_NOT_FOUND, MEMBER_ERASED
+          additionalProperties: {type: integer}
     CoinRunReport:
       type: object
       required: [status, reconciledSent, reconciledNotSent, stillOpen, sent, coinsSent, failed, unknown, skippedNoWallet,

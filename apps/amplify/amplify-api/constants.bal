@@ -123,6 +123,10 @@ const string SETTING_COIN_WALLETS_ENABLED = "coin.wallets_enabled";
 # Safety caps of the automatic conversion (S014, ADR-048): Coins one person gets in one run, Coins one period's run sends
 const string SETTING_COIN_MAX_PER_PERSON = "coin.max_coins_per_person";
 const string SETTING_COIN_MAX_PER_RUN = "coin.max_coins_per_run";
+# Pre-coin verification (V027, S015): an engagement row converts only when verified this many hours before, and the
+# member-token reads the verification may make per UTC day
+const string SETTING_COIN_VERIFY_MAX_AGE = "coin.verify_max_age_hours";
+const string SETTING_COIN_VERIFY_MEMBER_BUDGET = "coin.verify_member_daily_call_budget";
 # The WSO2 Coins service lists no wallet for the caller (`POST /me/coins/wallet`, 404).
 const string NO_WALLET = "NO_WALLET";
 # The WSO2 Coins service is not configured or did not answer (503).
@@ -138,6 +142,7 @@ const string JOB_RUN = "amplify-run";
 const string JOB_MAINTENANCE = "amplify-maintenance-partitions";
 const string JOB_ENGAGEMENT_SYNC = "amplify-engagement-sync";
 const string JOB_COINS_CONVERT = "amplify-coins-convert";
+const string JOB_COINS_VERIFY = "amplify-coins-verify";
 // ---- Community Management engagement sync (V025, S013) ---------------------------------------------
 const string SETTING_ENGAGEMENT_SYNC_ENABLED = "engagement.sync_enabled";
 const string SETTING_ENGAGEMENT_SCHEDULE = "engagement.schedule";

@@ -113,6 +113,9 @@ Every response on both hosts carries an `x-li-uuid` correlation id that also app
 | `GET /rest/organizationAcls?q=roleAssignee&role=ADMINISTRATOR&state=APPROVED` | `rw_organization_admin` | The configured member is an approved `ADMINISTRATOR` of `organizationUrn` (default `urn:li:organization:1477`). |
 | `GET /rest/reactions/(entity:{urn})?q=entity` | `r_organization_social_feed` | Reactions injected on that post, newest first, oldest first with `sort=(value:CHRONOLOGICAL)`; `start`/`count` paging. |
 | `GET /rest/socialActions/{urn}/comments` | `r_organization_social_feed` | Comments injected on that post, oldest first. The text is a placeholder: the mock keeps none. |
+| `GET /rest/reactions/(actor:{urn},entity:{urn})` | `r_organization_social_feed` | One member's reaction on a post, 404 when there is none (Amplify's pre-coin verification). |
+| `GET /rest/socialActions/{urn}/comments/{id}` | `r_organization_social_feed` | One comment, 404 when removed or unknown. |
+| `GET /rest/posts/{urn}` | `w_member_social` or `r_organization_social_feed` | A post created through `/rest/posts` or `/v2/ugcPosts`, or an injected reshare (by its `urn:li:activity:` URN): id, author and state only. 404 once deleted or removed. |
 | `GET /rest/organizationalEntityNotifications?q=criteria&actions=List(SHARE,...)&organizationalEntity={org}&timeRange=(start:{ms},end:{ms})` | `r_organization_social_feed` | Reshares injected in the time range, as `SHARE` notifications (`sourcePost`, `generatedActivity`, `decoratedGeneratedActivity.share.owner`). 403 for another page. |
 
 ## Admin endpoints (local only)
@@ -123,6 +126,8 @@ listener also serves:
 - `GET /mock/posts` lists every post the mock holds.
 - `POST /mock/engagement` `{kind: REACTION|COMMENT|RESHARE, targetUrn, actorUrn, commentary?}` stores an engagement
   the Community Management finders above return. `commentary` only marks a reshare as having words.
+- `POST /mock/engagement/remove` `{kind, targetUrn, actorUrn}` removes the matching engagements, as if the member
+  deleted them: the finders stop listing them and the single reads above answer 404 (`404` when none matched).
 - `POST /mock/reset` clears tokens, codes, posts, uploads, engagements and rate counters.
 
 Every call must carry the key in `X-Amplify-Internal-Key`, the same header amplify-jobs uses for its own

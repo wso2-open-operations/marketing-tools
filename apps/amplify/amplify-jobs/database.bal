@@ -245,3 +245,25 @@ isolated function coinsDb() returns postgresql:Client|error {
         return created;
     }
 }
+
+isolated postgresql:Client? coinsVerifyClientDb = ();
+
+# Dedicated single-connection client for the pre-coin verification (V027). Its own session, so the Coins lock it takes
+# (`COINS_LOCK_KEY`, shared with the conversion) excludes a conversion running at the same time: a session advisory
+# lock is re-entrant within one session.
+#
+# + return - The client, or an error when not configured
+isolated function coinsVerifyDb() returns postgresql:Client|error {
+    lock {
+        postgresql:Client? existing = coinsVerifyClientDb;
+        if existing is postgresql:Client {
+            return existing;
+        }
+        if dbHost == "" {
+            return error("Database is not configured");
+        }
+        postgresql:Client created = check store:newClient(dbConfig(maxOpenConnections = 1, maxConnectionLifeTime = 0));
+        coinsVerifyClientDb = created;
+        return created;
+    }
+}

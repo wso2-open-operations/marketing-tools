@@ -160,6 +160,35 @@ service http:InterceptableService / on apiListener {
         return deletePost(ctx, postUrn, "DELETE /rest/posts/{postUrn}");
     }
 
+    # Read a post (`GET /rest/posts/{urn}`): one created through `/rest/posts` or `/v2/ugcPosts`, or a reshare injected
+    # through `/mock/engagement`. With a member token (`w_member_social`) or the page token
+    # (`r_organization_social_feed`). Only the id, author and state are returned; the mock serves no post text here.
+    #
+    # + ctx - Request context
+    # + postUrn - URN of the post
+    # + return - The post, 404 when deleted or unknown, or an error
+    isolated resource function get rest/posts/[string postUrn](http:RequestContext ctx)
+            returns json|ErrorNotFound|ErrorUnauthorized|ErrorForbidden {
+        store:AccessToken|ErrorUnauthorized|ErrorForbidden token = authorize(ctx, [], "GET /rest/posts/{postUrn}");
+        if token !is store:AccessToken {
+            return token;
+        }
+        if token.scopes.indexOf(SCOPE_W_MEMBER_SOCIAL) is () && token.scopes.indexOf(SCOPE_R_ORGANIZATION_SOCIAL_FEED) is () {
+            return forbidden("Not enough permissions to access: GET /rest/posts/{postUrn}");
+        }
+        string urn = decoded(postUrn);
+        store:Post? post = store:getPost(urn);
+        if post is store:Post {
+            return {id: post.urn, author: post.authorUrn, lifecycleState: post.lifecycleState};
+        }
+        foreach store:Engagement e in store:listEngagements(ENGAGEMENT_RESHARE) {
+            if e.activityUrn == urn {
+                return {id: urn, author: e.actorUrn, lifecycleState: "PUBLISHED"};
+            }
+        }
+        return notFound(string `Post ${urn} not found`);
+    }
+
     # Register an image upload.
     #
     # + ctx - Request context
@@ -299,16 +328,28 @@ service http:InterceptableService / on apiListener {
     # + 'start - Offset
     # + count - Page size
     # + return - The reactions, or an error
-    isolated resource function get rest/reactions/[string key](http:RequestContext ctx, "entity" q, string? sort,
-            int 'start = 0, int count = 10) returns json|ErrorBadRequest|ErrorUnauthorized|ErrorForbidden {
+    isolated resource function get rest/reactions/[string key](http:RequestContext ctx, "entity"? q, string? sort,
+            int 'start = 0, int count = 10) returns json|ErrorBadRequest|ErrorUnauthorized|ErrorForbidden|ErrorNotFound {
         store:AccessToken|ErrorUnauthorized|ErrorForbidden token =
             authorize(ctx, [SCOPE_R_ORGANIZATION_SOCIAL_FEED], "GET /rest/reactions");
         if token !is store:AccessToken {
             return token;
         }
+        [string, string]? single = actorEntityOfKey(key);
+        if single is [string, string] {
+            // One member's reaction (`(actor:{urn},entity:{urn})`), as the pre-coin verification reads it.
+            foreach store:Engagement e in store:listEngagements(ENGAGEMENT_REACTION, single[1]) {
+                if e.actorUrn == single[0] {
+                    int time = epochMillis(e.createdAt);
+                    return {id: string `urn:li:reaction:(${e.actorUrn},${e.targetUrn})`, reactionType: "LIKE",
+                        root: e.targetUrn, created: {actor: e.actorUrn, time}, lastModified: {actor: e.actorUrn, time}};
+                }
+            }
+            return notFound("Reaction not found");
+        }
         string? entity = entityOfKey(key);
-        if entity is () {
-            return badRequest("The key must be (entity:{urn})");
+        if entity is () || q is () {
+            return badRequest("The key must be (entity:{urn}) with q=entity, or (actor:{urn},entity:{urn})");
         }
         store:Engagement[] all = store:listEngagements(ENGAGEMENT_REACTION, entity);
         if sort != "(value:CHRONOLOGICAL)" {
@@ -355,6 +396,32 @@ service http:InterceptableService / on apiListener {
                 message: {attributes: [], text: "(mock comment)"}
             };
         return collection(elements, 'start, count, all.length());
+    }
+
+    # One comment on a post (`GET /rest/socialActions/{urn}/comments/{id}`), as the pre-coin verification reads it.
+    #
+    # + ctx - Request context
+    # + socialActionUrn - Post URN
+    # + commentId - Comment id
+    # + return - The comment, 404 when deleted or unknown, or an error
+    isolated resource function get rest/socialActions/[string socialActionUrn]/comments/[string commentId](
+            http:RequestContext ctx) returns json|ErrorUnauthorized|ErrorForbidden|ErrorNotFound {
+        store:AccessToken|ErrorUnauthorized|ErrorForbidden token =
+            authorize(ctx, [SCOPE_R_ORGANIZATION_SOCIAL_FEED], "GET /rest/socialActions/{urn}/comments/{id}");
+        if token !is store:AccessToken {
+            return token;
+        }
+        string target = decoded(socialActionUrn);
+        string id = decoded(commentId);
+        foreach store:Engagement e in store:listEngagements(ENGAGEMENT_COMMENT, target) {
+            if e.activityUrn == id {
+                int time = epochMillis(e.createdAt);
+                return {actor: e.actorUrn, agent: e.actorUrn, id, commentUrn: string `urn:li:comment:(${target},${id})`,
+                    'object: target, created: {actor: e.actorUrn, time}, lastModified: {actor: e.actorUrn, time},
+                    message: {attributes: [], text: "(mock comment)"}};
+            }
+        }
+        return notFound("Comment not found");
     }
 
     # The page's share notifications (`q=criteria`): reshares of its posts in a time range.

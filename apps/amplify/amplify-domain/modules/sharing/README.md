@@ -23,6 +23,8 @@ File: `modules/sharing/engagement_sync.bal`. Ports: `EngagementSource` (reaction
 
 File: `modules/sharing/sync_repository.bal`. `PgEngagementSyncRepository`: `cursor`, `saveCursor`, `takeCall` (one statement against `sharing_api_usage`), `recordSynced` (engagement, `EngagementRecorded` and audit in one transaction, `ON CONFLICT DO NOTHING`; a reshare is skipped when the employee already has a share of the post, and marks the native intent detected). `apiCallsOn(db, day)`.
 
+File: `modules/sharing/verification.bal` (pre-coin verification, V027). `verifyTarget(engagement)`: which LinkedIn read can still see it (`MEMBER_POST` for in-app shares and native reshares, `REACTION`, `COMMENT`), or why none can (`NO_ACTIVITY`, `MEMBER_ERASED`). `PgEngagementVerificationRepository`: `find(id)`, `recordCheck` (a `sharing_engagement_verification` row, then `last_verified_at` or `deleted_at`, and an audit row, in one transaction), `takeCall(providerApi, ...)` (`sharing_api_usage` now also counts `SHARE_ON_LINKEDIN` member-token reads).
+
 File: `modules/sharing/native_intent.bal`. `NativeIntent`, `NativeStatus` (`LOOKING` under 24 h, `DETECTED`, `NOT_FOUND`), `nativeStatus`, `NativeIntentRepository` and `PgNativeIntentRepository` (`open`, `ofEmployee`).
 
 ## Events

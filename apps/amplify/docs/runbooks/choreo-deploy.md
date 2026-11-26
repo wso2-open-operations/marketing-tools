@@ -170,7 +170,7 @@ Same names in two components (`DBHOST`, `DBPORT`, `DBNAME`, `DBUSER`, `DBPASSWOR
 | `AMPLIFYONNOVERA` | cfg | O | `false` locally (default `true`) | TBD, the open item in `prod-deploy-handoff.md` |
 | `AMPLIFYONWEBHOOK` | cfg | O | `true` locally (default `false`) | TBD, same open item |
 | `INTERNALAPIKEY` | secret | R | | Ops-generated, at least 32 characters, the same value as the Backend (C5) |
-| `SCHEDULERAPIKEY` | secret | R | | Ops-generated, at least 32 characters, different from the internal key; accepted only for `POST /runs`, `POST /maintenance/partitions`, `POST /engagement/sync` and `POST /coins/convert`; the same value as the Backend |
+| `SCHEDULERAPIKEY` | secret | R | | Ops-generated, at least 32 characters, different from the internal key; accepted only for `POST /runs`, `POST /maintenance/partitions`, `POST /engagement/sync`, `POST /coins/verify` and `POST /coins/convert`; the same value as the Backend |
 | `LEAVERSWEEPMODE` | cfg | O | `OFF` | `OFF`, `DRY_RUN` or `ERASE`. Start with `DRY_RUN` (ADR-040) |
 | `HRENTITYBASEURL` | cfg | O | | HR Entity GraphQL URL for the leaver sweep |
 | `HRENTITYTOKENURL` | cfg | O | | HR Entity OAuth token URL |

@@ -602,6 +602,33 @@ isolated function reverseEntry(auth:Principal p, string? correlationId, string r
     }
 }
 
+# Settlement a PO sets to hold a ledger row back from the Coins conversion (`status` NULL in the ledger). Not a problem
+# code, so not in constants.bal.
+const string SETTLEMENT_ACTION_REQUIRED = "ACTION_REQUIRED";
+
+# A PO settles a ledger row (`POST /po/points/{reference}/settlement`): `HELD` clears an action-required row for the
+# Coins conversion (V027 `PO_CLEARED`), `ACTION_REQUIRED` holds a row back. Audited in the repository.
+#
+# + p - The PO
+# + correlationId - Correlation id
+# + reference - Ledger reference
+# + status - `HELD` or `ACTION_REQUIRED`
+# + return - 200 with the row, or problem details
+isolated function settleLedgerEntry(auth:Principal p, string? correlationId, string reference, string status)
+        returns http:StatusCodeResponse {
+    do {
+        if status != types:HELD && status != SETTLEMENT_ACTION_REQUIRED {
+            return unprocessable(VALIDATION_FAILED, "status must be HELD or ACTION_REQUIRED", correlationId);
+        }
+        Settings settings = check loadSettings();
+        types:LedgerEntry entry = check scoring:settleEntry(check ledgerRepository(actorOf(p, correlationId),
+                settings.topN), reference, status == types:HELD ? types:HELD : (), p.employeeId, time:utcNow());
+        return <http:Ok>{body: ledgerDto(entry)};
+    } on fail error e {
+        return failure(e, correlationId, "Settle ledger entry");
+    }
+}
+
 // ---- S5 Admin ---------------------------------------------------------------------------------------
 
 # Admin send: queues the Novera announcement of an open post that has none yet (`Not announced`).

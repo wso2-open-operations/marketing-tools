@@ -194,6 +194,7 @@ public type CommunityPort isolated object {
 # breaker, separate from the Share on LinkedIn adapter's.
 public isolated class CommunityAdapter {
     *CommunityPort;
+    *CommunityPresencePort;
 
     private final http:Client api;
     private final http:Client auth;
@@ -286,6 +287,28 @@ public isolated class CommunityAdapter {
         json body = check self.getJson(accessToken, string `/rest/organizationalEntityNotifications?q=criteria&actions=List(SHARE,SHARE_MENTION)&organizationalEntity=${org}&timeRange=(start:${startMs},end:${endMs})&start=${'start}&count=${pageSize(count)}`,
                 "share notifications");
         return parseShareNotifications(body);
+    }
+
+    public isolated function postPresence(string accessToken, string postUrn) returns Presence|ProviderError =>
+        postPresenceOf(self.api, self.apiVersion, accessToken, postUrn);
+
+    public isolated function reactionPresence(string accessToken, string actorUrn, string entityUrn)
+            returns Presence|ProviderError {
+        string actor = check encodeUrn(actorUrn);
+        string entity = check encodeUrn(entityUrn);
+        return presenceOf(self.api, self.apiVersion, accessToken, string `/rest/reactions/(actor:${actor},entity:${entity})`,
+                "read reaction");
+    }
+
+    public isolated function commentPresence(string accessToken, string commentUrn) returns Presence|ProviderError {
+        [string, string]? parts = commentParts(commentUrn);
+        if parts is () {
+            return providerError(BAD_RESPONSE, "Not a comment URN", (), (), false);
+        }
+        string objectUrn = check encodeUrn(parts[0]);
+        string id = check encodeUrn(parts[1]);
+        return presenceOf(self.api, self.apiVersion, accessToken, string `/rest/socialActions/${objectUrn}/comments/${id}`,
+                "read comment");
     }
 
     # Breaker states of the REST API and OAuth clients.
@@ -525,3 +548,24 @@ isolated function encodeUrn(string urn) returns string|ProviderError {
 }
 
 isolated function pageSize(int count) returns int => count < 1 ? 1 : count > MAX_PAGE_SIZE ? MAX_PAGE_SIZE : count;
+
+# The post and the id of a comment URN, `urn:li:comment:({object},{id})`.
+#
+# + commentUrn - Comment URN
+# + return - `[object, id]`, or `()` when malformed
+public isolated function commentParts(string commentUrn) returns [string, string]? {
+    string prefix = "urn:li:comment:(";
+    if !commentUrn.startsWith(prefix) || !commentUrn.endsWith(")") {
+        return ();
+    }
+    string inner = commentUrn.substring(prefix.length(), commentUrn.length() - 1);
+    int? comma = inner.lastIndexOf(",");
+    if comma is () || comma == 0 || comma == inner.length() - 1 {
+        return ();
+    }
+    string objectUrn = inner.substring(0, comma);
+    if !objectUrn.startsWith("urn:li:") {
+        return ();
+    }
+    return [objectUrn, inner.substring(comma + 1)];
+}

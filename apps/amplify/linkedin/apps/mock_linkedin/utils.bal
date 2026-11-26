@@ -231,6 +231,26 @@ isolated function entityOfKey(string key) returns string? {
     return k.substring(8, k.length() - 1);
 }
 
+# The actor and entity of a `(actor:{urn},entity:{urn})` key.
+#
+# + key - Path key
+# + return - `[actor, entity]`, or `()` when the key is not that shape
+isolated function actorEntityOfKey(string key) returns [string, string]? {
+    string k = decoded(key);
+    string prefix = "(actor:";
+    string middle = ",entity:";
+    if !k.startsWith(prefix) || !k.endsWith(")") {
+        return ();
+    }
+    int? at = k.indexOf(middle);
+    if at is () || at <= prefix.length() {
+        return ();
+    }
+    string actor = k.substring(prefix.length(), at);
+    string entity = k.substring(at + middle.length(), k.length() - 1);
+    return entity == "" ? () : [actor, entity];
+}
+
 # Percent-decodes a Rest.li value (the listener may already have decoded it).
 #
 # + value - Value

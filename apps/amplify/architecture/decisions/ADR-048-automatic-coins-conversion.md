@@ -1,6 +1,6 @@
 # ADR-048: Automatic Coins conversion via the WSO2 Coins transaction service
 
-Status: Proposed (2026-11-26)
+Status: Proposed (2026-11-26); amended 2026-11-26 (pre-coin verification, below)
 
 ## Context
 
@@ -72,3 +72,42 @@ a calling application, from its code:
 - **Approval step per conversion:** S012 already fixed the conversion as automatic; the PO team changes the rate.
 - **Mapping employees to wallets with `GET /wallets`:** it carries no email.
 - **Retrying a timed-out transfer at once:** without a caller reference it can pay twice.
+
+## Amendment 2026-11-26: verify engagement before Coins are issued (Task #1767, V027, S015)
+
+Points from LinkedIn activity can outlive the activity: an employee can delete a repost, a reaction or a comment after
+it was scored. Before Coins are paid, the activity behind every engagement row the conversion could take is checked
+again.
+
+1. **A separate scheduler job, an hour before the conversion.** `amplify-coins-verify` calls amplify-jobs
+   `POST /coins/verify` at 01:00 UTC on the conversion day (`coin.schedule`: the 1st, Mondays or daily), only while
+   `coin.wallets_enabled` is true. Chosen over the conversion calling verification first: the LinkedIn calls (budgets,
+   429s, an outage) never eat the conversion's time limit or block it, and the conversion stays one thing. Both take
+   the Coins advisory lock (`COINS_LOCK_KEY`) on their own connections, so a verification never reverses a row under a
+   conversion that already planned it.
+2. **The conversion takes only recently verified engagement rows.** An ENGAGEMENT row converts while its LinkedIn
+   activity was seen within `coin.verify_max_age_hours` (default 48, at least 2), or after a PO cleared it. Own posts
+   (EXTERNAL_SHARE: a PO approved the evidence), adjustments and reversals are never checked. A reversed row converts
+   with its reversal (they net to zero); a reversal waits while the row it reverses is action required. A row no run
+   reached is simply left for the next conversion.
+3. **Outcomes** (ledger columns `verification`, `verified_at`, `verification_reason`; the V021/V026 guard allows them):
+   still there → `VERIFIED`; gone (404/410) → `REMOVED`, and the system appends the reversal with the reason "No longer
+   on LinkedIn" in the same transaction (recognition updates, B12); can't be checked → `UNVERIFIABLE` with a reason
+   (`NO_TOKEN`, `TOKEN_EXPIRED`, `NOT_PERMITTED`, `NO_ACTIVITY`, `SOURCE_NOT_FOUND`, `MEMBER_ERASED`) and the row
+   becomes action required (status NULL). The PO clears it on Points & corrections (`POST /po/points/{reference}/settlement`
+   `HELD`, recorded as `PO_CLEARED`, never re-checked) or reverses it; `GET /po/points/action-required` lists them.
+   A row verified more than half the max age ago is checked again.
+4. **Which read.** An in-app share or a native reshare: `GET /rest/posts/{urn}` with the employee's own Share on
+   LinkedIn token, else (no usable token, or 401/403) with the page token. A reaction: `GET /rest/reactions/(actor,entity)`
+   with the page token. A comment: `GET /rest/socialActions/{post}/comments/{id}` with the page token. A 429 or LinkedIn
+   being down stops the run without recording anything for the row.
+5. **Budgets.** Page-token reads count against `engagement.daily_call_budget` with the engagement sync; member-token
+   reads against `coin.verify_member_daily_call_budget` (default 1000), both in `sharing_api_usage` per UTC day. A spent
+   budget stops the run (`BUDGET_REACHED`); a manual re-run later carries on with what is still due.
+6. **Contexts (ADR-005).** Scoring owns the ledger side (`verifyForCoins`, `PgVerificationRepository`) and never reads
+   sharing tables. The check is a port (`EngagementChecker`) that amplify-jobs builds from sharing (the engagement, the
+   record of each answer in `sharing_engagement_verification` / `last_verified_at` / `deleted_at`, the budgets),
+   connection (the tokens) and LinkedIn, like the engagement sync.
+
+Consequence: until the page connection or an employee's own connection can read a member's post (LinkedIn may answer
+403 for both), such rows land with the PO team as `NOT_PERMITTED`, which is the designed fallback, not an outage.

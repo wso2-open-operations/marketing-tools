@@ -73,11 +73,11 @@ function testCoinRepositoryRoundTrip() returns error? {
     scoring:CoinRun reopened = check repo.openRun(period, now);
     test:assertEquals(reopened.id, run.id, "one run per period");
 
-    scoring:CoinCandidate ca = <scoring:CoinCandidate>find(check repo.candidates(), alice);
+    scoring:CoinCandidate ca = <scoring:CoinCandidate>find(check repo.candidates(now), alice);
     test:assertEquals(ca.walletAddress, "0xalice1111bbbb");
     test:assertEquals(ca.carryIn, 0);
     test:assertEquals(from scoring:ConvertibleRow r in ca.rows select r.reference, [a1.reference, a2.reference]);
-    scoring:CoinCandidate cb = <scoring:CoinCandidate>find(check repo.candidates(), bob);
+    scoring:CoinCandidate cb = <scoring:CoinCandidate>find(check repo.candidates(now), bob);
     test:assertEquals(cb.walletAddress, ());
 
     scoring:CoinSettings settings = {walletsEnabled: true};
@@ -86,7 +86,7 @@ function testCoinRepositoryRoundTrip() returns error? {
     test:assertEquals([ia.status, ia.attempts, ia.coins, ia.carryOut], [scoring:COIN_PENDING, 1, 20, 30]);
     test:assertEquals(check ledgerStatus(db, a1.reference), ["HELD", ia.reference], "tagged, still HELD");
     test:assertEquals(check repo.committedCoins(run.id), 20);
-    test:assertTrue(find(check repo.candidates(), alice) is (), "tagged rows are no longer convertible");
+    test:assertTrue(find(check repo.candidates(now), alice) is (), "tagged rows are no longer convertible");
     test:assertTrue(repo.begin(pa, run.id, now) is error, "an open issue is never overwritten");
     boolean openFound = false;
     foreach scoring:CoinIssue i in check repo.openIssues() {
@@ -129,7 +129,7 @@ function testCoinRepositoryRoundTrip() returns error? {
     test:assertTrue(repo.finishRun(run.id, scoring:RUN_STOPPED, (), now) is error, "STOPPED needs a reason");
 
     // The carry feeds the next run; the summary shows what the person got.
-    scoring:CoinCandidate? carryOnly = find(check repo.candidates(), alice);
+    scoring:CoinCandidate? carryOnly = find(check repo.candidates(now), alice);
     test:assertEquals(carryOnly, {employeeId: alice, carryIn: 30, rows: [], walletAddress: "0xalice1111bbbb"});
     scoring:CoinSummary summary = check scoring:coinSummaryOf(db, alice);
     test:assertEquals([summary.coinsReceived, summary.carryPoints], [20, 30]);

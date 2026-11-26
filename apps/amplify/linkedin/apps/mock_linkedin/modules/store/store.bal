@@ -225,6 +225,28 @@ public isolated function listEngagements(string kind, string? targetUrn = ()) re
     return matching;
 }
 
+# Removes injected engagements: what a member deleting a reaction, comment or reshare looks like to the API.
+#
+# + kind - `REACTION`, `COMMENT` or `RESHARE`
+# + targetUrn - Post acted on
+# + actorUrn - Who did it
+# + return - How many were removed
+public isolated function removeEngagements(string kind, string targetUrn, string actorUrn) returns int {
+    int removed = 0;
+    lock {
+        int i = engagements.length() - 1;
+        while i >= 0 {
+            Engagement e = engagements[i];
+            if e.kind == kind && e.targetUrn == targetUrn && e.actorUrn == actorUrn {
+                _ = engagements.remove(i);
+                removed += 1;
+            }
+            i -= 1;
+        }
+    }
+    return removed;
+}
+
 # Adds one to a request counter and returns the new count.
 #
 # + key - Counter key, for example the member and UTC day

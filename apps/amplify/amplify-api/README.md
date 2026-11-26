@@ -39,6 +39,7 @@ Route groups follow the tags in `openapi.yaml`. `EMPLOYEE` means any signed-in e
 | | `/po/external-shares` and its `approve`, `reject`, `amplified` actions | Review those claims | `CAN_REVIEW_SHARES` | `handlers.bal`, `reads.bal` |
 | C2 Scoring | `/po/point-rules` | List and add point rules | `CAN_POINT_RULES` | `handlers.bal`, `reads.bal` |
 | | `POST /po/points/adjustments`, `POST /po/points/{reference}/reverse` | Adjust points; reverse a ledger entry | `CAN_ADJUST_POINTS` | `handlers.bal` |
+| | `POST /po/points/{reference}/settlement`, `GET /po/points/action-required` | Clear an action-required row for the Coins conversion (`HELD`, PO_CLEARED) or hold one back; list the rows waiting for the PO team (V027) | `CAN_ADJUST_POINTS` | `handlers.bal`, `reads.bal` |
 | S4 Recognition | `/leaderboard`, `/leaderboard/people`, `/leaderboard/groups`, `/headcount`, `/me/points`, `/team`, `/team/{employeeId}/history` | Leaderboards, the viewer's points, My Team and the employee count | `EMPLOYEE` | `reads.bal`, `groups.bal` |
 | | `POST /me/coins/wallet` | Capture the caller's WSO2 Coins wallet for the automatic Coins conversion (ADR-048); `GET /me/points` shows it masked | `EMPLOYEE` | `coins.bal` |
 | | `/leaderboard/top` | Celebrate top three and the caller's position (ADR-037) | `EMPLOYEE` | `topboard.bal` |

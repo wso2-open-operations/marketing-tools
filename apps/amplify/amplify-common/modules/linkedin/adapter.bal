@@ -51,6 +51,7 @@ type ErrorBody record {
 # `POST /rest/posts` (Share on LinkedIn).
 public isolated class LinkedInAdapter {
     *ProviderAdapter;
+    *PostPresencePort;
 
     private final http:Client api;
     private final http:Client auth;
@@ -157,6 +158,14 @@ public isolated class LinkedInAdapter {
     public isolated function breakers() returns map<resilience:BreakerState> =>
         {api: resilience:breakerState(self.api), auth: resilience:breakerState(self.auth)};
 
+    # Whether a post still exists, read with the member's token (`PostPresencePort`, pre-coin verification).
+    #
+    # + accessToken - Member token
+    # + postUrn - Post URN
+    # + return - `PRESENT`, `GONE`, or a provider error
+    public isolated function postPresence(string accessToken, string postUrn) returns Presence|ProviderError =>
+        postPresenceOf(self.api, self.apiVersion, accessToken, postUrn);
+
     public isolated function publishShare(string accessToken, ShareCommand command) returns types:PostUrn|ProviderError {
         json payload = buildPostPayload(command);
         map<string> headers = {
@@ -180,6 +189,43 @@ public isolated class LinkedInAdapter {
         }
         return urn;
     }
+}
+
+# `GET /rest/posts/{urn}` on a client: the post's presence.
+#
+# + api - REST API client
+# + apiVersion - `LinkedIn-Version`
+# + accessToken - Bearer token
+# + postUrn - Post URN
+# + return - `PRESENT`, `GONE`, or a provider error
+isolated function postPresenceOf(http:Client api, string apiVersion, string accessToken, string postUrn)
+        returns Presence|ProviderError {
+    string urn = check encodeUrn(postUrn);
+    return presenceOf(api, apiVersion, accessToken, string `/rest/posts/${urn}`, "read post");
+}
+
+# A GET whose only question is "does it exist": 2xx is `PRESENT`, 404 or 410 is `GONE`, anything else the
+# `expectStatus` error. The body is never read (it may carry post text).
+#
+# + api - REST API client
+# + apiVersion - `LinkedIn-Version`
+# + accessToken - Bearer token
+# + path - Encoded path
+# + operation - For the error text
+# + return - The presence, or a provider error
+isolated function presenceOf(http:Client api, string apiVersion, string accessToken, string path, string operation)
+        returns Presence|ProviderError {
+    http:Response|http:ClientError response = api->get(path, {
+        [HEADER_AUTHORIZATION]: bearer(accessToken),
+        [HEADER_LINKEDIN_VERSION]: apiVersion,
+        [HEADER_RESTLI_PROTOCOL]: RESTLI_PROTOCOL_VERSION
+    });
+    if response is http:Response
+            && (response.statusCode == http:STATUS_NOT_FOUND || response.statusCode == http:STATUS_GONE) {
+        return GONE;
+    }
+    _ = check expectStatus(response, operation);
+    return PRESENT;
 }
 
 # Builds the `POST /rest/posts` body for a share command (B4).

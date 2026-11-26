@@ -22,12 +22,17 @@ The schedules come from `config_app_setting` (seeded by `amplify-database/seed/S
 | `amplify-maintenance-partitions` | Amplify partition maintenance | `0 2 * * *`, daily 02:00 UTC (`maintenance.schedule`) | `amplify-jobs POST /maintenance/partitions` | 2 retries, 60 s apart | 180 s (`maintenanceDeadlineSeconds`) |
 | `amplify-engagement-sync` | Amplify engagement sync | `0 */2 * * *` (`engagement.schedule`; fires only while `engagement.sync_enabled`) | `amplify-jobs POST /engagement/sync` | none | 240 s (`engagementDeadlineSeconds`) |
 | `amplify-coins-convert` | Amplify Coins conversion | `0 2 1 * *`, the 1st of the month 02:00 UTC (`coin.schedule`: `MONTHLY`; `WEEKLY` = `0 2 * * 1`, `DAILY` = `0 2 * * *`; fires only while `coin.wallets_enabled`) | `amplify-jobs POST /coins/convert` | 1 retry, 900 s apart | 600 s (`coinsDeadlineSeconds`) |
+| `amplify-coins-verify` | Amplify pre-coin verification | `0 1 1 * *`, an hour before the conversion (`WEEKLY` = `0 1 * * 1`, `DAILY` = `0 1 * * *`; fires only while `coin.wallets_enabled`) | `amplify-jobs POST /coins/verify` | 1 retry, 600 s apart | 600 s (`coinsVerifyDeadlineSeconds`) |
 
 Every job sends the scheduler key in `X-Amplify-Internal-Key`. That key opens only these routes on amplify-jobs (ADR-039).
 
 ### amplify-coins-convert
 
 The automatic Coins conversion (ADR-048). Once per period it turns every employee's HELD points (plus the carry of their last conversion) into Coins in whole blocks and sends them from Amplify's master wallet to the wallet each employee captured, through the WSO2 Coins transaction service. A re-run of the same period sends nothing for employees already paid in it, and a transfer whose outcome was unknown is reconciled against the Coins service before anything is sent again, so the one retry after a 5xx is safe. `202 SKIPPED` (`WALLETS_OFF`, `COINS_NOT_CONFIGURED`, `CONVERSION_IN_PROGRESS`) counts as success. Changing `coin.schedule` or `coin.wallets_enabled` pushes the job again.
+
+### amplify-coins-verify
+
+The pre-coin verification (ADR-048 amendment, V027). An hour before the conversion it checks on LinkedIn that the activity behind every HELD engagement row the conversion could take still exists: still there marks it verified (the conversion takes a row only while `coin.verify_max_age_hours` allows), gone reverses it ("No longer on LinkedIn"), can't be checked sets it action required for the PO team. A re-run checks only what is still due. `202 SKIPPED` (`WALLETS_OFF`, `NOT_CONFIGURED`, `COINS_IN_PROGRESS`) counts as success. It follows `coin.schedule` and `coin.wallets_enabled` like the conversion.
 
 ### amplify-run
 

@@ -76,22 +76,8 @@ public isolated class PgEngagementSyncRepository {
     # + now - Current time
     # + budget - Calls allowed per UTC day
     # + return - False when the budget is spent, or an error
-    public isolated function takeCall(time:Utc now, int budget) returns boolean|error {
-        if budget <= 0 {
-            return false;
-        }
-        string day = time:utcToString(now).substring(0, 10);
-        int|error calls = self.db->queryRow(`
-            INSERT INTO sharing_api_usage (provider_api, day, calls)
-            VALUES (${types:COMMUNITY_MANAGEMENT}, CAST(${day} AS date), 1)
-            ON CONFLICT (provider_api, day) DO UPDATE SET calls = sharing_api_usage.calls + 1
-            WHERE sharing_api_usage.calls < ${budget}
-            RETURNING calls`);
-        if calls is error {
-            return store:isNoRows(calls) ? false : calls;
-        }
-        return true;
-    }
+    public isolated function takeCall(time:Utc now, int budget) returns boolean|error =>
+        takeApiCall(self.db, types:COMMUNITY_MANAGEMENT, now, budget);
 
     # Records a synced engagement with `EngagementRecorded` and an audit row in one transaction. A reshare is
     # skipped when the employee already has a share of that post (in app or synced earlier), and either way marks

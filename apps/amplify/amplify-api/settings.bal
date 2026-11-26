@@ -67,6 +67,10 @@ type Settings record {|
     int coinMaxPerPerson = 500;
     # `coin.max_coins_per_run`: Coins one period's conversion sends in all
     int coinMaxPerRun = 50000;
+    # `coin.verify_max_age_hours`: an engagement row converts only when its LinkedIn activity was seen this recently
+    int coinVerifyMaxAgeHours = 48;
+    # `coin.verify_member_daily_call_budget`: reads with employees' own tokens the verification may make per UTC day
+    int coinVerifyMemberBudget = 1000;
     # `engagement.sync_enabled`: the scheduler's engagement sync job fires (and amplify-jobs syncs) only when true
     boolean engagementSyncEnabled = false;
     # `engagement.schedule`: when the scheduler calls amplify-jobs `POST /engagement/sync`
@@ -110,6 +114,8 @@ final readonly & map<SettingRule> EDITABLE_SETTINGS = {
     [SETTING_COIN_WALLETS_ENABLED]: {kind: "boolean"},
     [SETTING_COIN_MAX_PER_PERSON]: {kind: "int", min: 1, max: 1000000},
     [SETTING_COIN_MAX_PER_RUN]: {kind: "int", min: 1, max: 100000000},
+    [SETTING_COIN_VERIFY_MAX_AGE]: {kind: "int", min: 2, max: 720},
+    [SETTING_COIN_VERIFY_MEMBER_BUDGET]: {kind: "int", min: 0, max: 100000},
     [SETTING_ENGAGEMENT_SYNC_ENABLED]: {kind: "boolean"},
     [SETTING_ENGAGEMENT_SCHEDULE]: {kind: "schedule", min: 900},
     [SETTING_ENGAGEMENT_DAILY_BUDGET]: {kind: "int", min: 0, max: 100000}
@@ -251,6 +257,12 @@ isolated function settingsOf(store:Setting[] rows) returns Settings {
             }
             SETTING_COIN_MAX_PER_RUN => {
                 s.coinMaxPerRun = v is int && v > 0 ? v : s.coinMaxPerRun;
+            }
+            SETTING_COIN_VERIFY_MAX_AGE => {
+                s.coinVerifyMaxAgeHours = v is int && v > 0 ? v : s.coinVerifyMaxAgeHours;
+            }
+            SETTING_COIN_VERIFY_MEMBER_BUDGET => {
+                s.coinVerifyMemberBudget = v is int && v >= 0 ? v : s.coinVerifyMemberBudget;
             }
             SETTING_RUN_SCHEDULE => {
                 s.runSchedule = v is string && scheduler:checkSchedule(v) is () ? v : s.runSchedule;

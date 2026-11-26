@@ -14,8 +14,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// SchedulerSync (ADR-026): the database settings are the source of truth; the scheduler holds a copy as four
-// jobs with stable ids (run, partition maintenance, engagement sync, Coins conversion). After a settings commit, at startup and on
+// SchedulerSync (ADR-026): the database settings are the source of truth; the scheduler holds a copy as five
+// jobs with stable ids (run, partition maintenance, engagement sync, Coins conversion, pre-coin verification). After a settings commit, at startup and on
 // `POST /admin/scheduler/sync`, amplify-api reads the settings and upserts them. The scheduler being down never fails a settings save: the
 // answer says `PENDING` and the next reconcile converges.
 
@@ -49,6 +49,8 @@ configurable int engagementDeadlineSeconds = 240;
 # Deadline for `POST /coins/convert`, seconds. Longer than amplify-jobs `coinsMaxSeconds` (540), so the scheduler never
 # cancels a healthy conversion.
 configurable int coinsDeadlineSeconds = 600;
+# Deadline for `POST /coins/verify`, seconds. Longer than amplify-jobs `coinsVerifyMaxSeconds` (540).
+configurable int coinsVerifyDeadlineSeconds = 600;
 # Shortest `@every` interval an admin may set for `run.schedule`, seconds.
 configurable int minRunIntervalSeconds = 60;
 # Startup reconcile attempts (the scheduler or the database may start after amplify-api).
@@ -173,9 +175,31 @@ isolated function desiredJobs(Settings s) returns scheduler:JobSpec[] {
             retryIntervalSeconds: 900,
             deadlineSeconds: coinsDeadlineSeconds,
             headers: schedulerKeyHeaders()
+        },
+        {
+            id: JOB_COINS_VERIFY,
+            name: "Amplify pre-coin verification",
+            // An hour before the conversion (V027, ADR-048 amendment): the conversion takes an engagement row only when
+            // this run, or one within `coin.verify_max_age_hours`, saw its LinkedIn activity.
+            schedule: coinVerifyCron(s.coinSchedule),
+            enabled: s.coinWalletsEnabled,
+            uri: base + "/coins/verify",
+            // A re-run only checks what is still due; 202 SKIPPED is a success. One retry after a 5xx, well before the
+            // conversion.
+            retryCount: 1,
+            retryIntervalSeconds: 600,
+            deadlineSeconds: coinsVerifyDeadlineSeconds,
+            headers: schedulerKeyHeaders()
         }
     ];
 }
+
+# The scheduler expression of the pre-coin verification: an hour before `coinCron`, 01:00 UTC on the same day.
+#
+# + schedule - `coin.schedule`
+# + return - Cron expression (UTC)
+isolated function coinVerifyCron(string schedule) returns string =>
+    schedule == "DAILY" ? "0 1 * * *" : schedule == "WEEKLY" ? "0 1 * * 1" : "0 1 1 * *";
 
 # The scheduler expression for `coin.schedule`, 02:00 UTC like the daily maintenance: `MONTHLY` the 1st of the month,
 # `WEEKLY` Mondays, `DAILY` every day.

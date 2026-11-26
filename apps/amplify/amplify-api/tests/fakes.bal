@@ -336,6 +336,19 @@ isolated class FakeLedger {
 
     public isolated function updateSettlement(types:LedgerReference reference, types:LedgerStatus? status,
             time:Utc changedAt) returns error? {
+        lock {
+            types:LedgerEntry? row = self.rows[reference];
+            if row is types:LedgerEntry {
+                // As the repository: a PO setting an action-required row HELD clears it for the conversion (V027).
+                if row.status is () && status == types:HELD {
+                    row.verification = types:PO_CLEARED;
+                    row.verifiedAt = changedAt.clone();
+                    row.verificationReason = ();
+                }
+                row.status = status;
+                row.statusChangedAt = changedAt.clone();
+            }
+        }
     }
 }
 

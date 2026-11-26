@@ -116,7 +116,8 @@ isolated function runCoinConversion(CoinConversionStore st, coins:CoinsPort? por
             {maxSeconds: coinsMaxSeconds, reconcileAfterSeconds: coinsReconcileAfterSeconds, correlationId}, now);
 }
 
-# The conversion settings from rows; missing or malformed values keep the defaults (off, 100 = 10, caps 500 / 50000).
+# The conversion settings from rows; missing or malformed values keep the defaults (off, 100 = 10, caps 500 / 50000,
+# verified within 48 hours).
 #
 # + rows - Setting rows
 # + return - Settings
@@ -142,6 +143,9 @@ isolated function toCoinSettings(store:Setting[] rows) returns scoring:CoinSetti
             }
             "coin.schedule" => {
                 s.schedule = v == "WEEKLY" ? "WEEKLY" : v == "DAILY" ? "DAILY" : "MONTHLY";
+            }
+            "coin.verify_max_age_hours" => {
+                s.verifyMaxAgeHours = v is int && v > 0 ? v : s.verifyMaxAgeHours;
             }
         }
     }

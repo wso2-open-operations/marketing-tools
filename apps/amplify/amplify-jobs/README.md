@@ -6,7 +6,7 @@ The Amplify worker (Ballerina). It does the background work: announcements, Link
 
 amplify-jobs has no timer of its own (ADR-003). Two callers start its work:
 
-- The scheduler (the pinned `akorn/scheduler` image, ADR-026) calls `POST /runs`, `POST /maintenance/partitions`, `POST /engagement/sync` and `POST /coins/convert` on the schedules in `config_app_setting`. amplify-api registers those jobs (`amplify-api/scheduler_sync.bal`).
+- The scheduler (the pinned `akorn/scheduler` image, ADR-026) calls `POST /runs`, `POST /maintenance/partitions`, `POST /engagement/sync`, `POST /coins/verify` and `POST /coins/convert` on the schedules in `config_app_setting`. amplify-api registers those jobs (`amplify-api/scheduler_sync.bal`).
 - amplify-api calls it right away for "Save & Share Now".
 
 It is reachable inside the Amplify project only and is never published (`workload.yaml`: `visibility: project`, port 9091).
@@ -16,7 +16,7 @@ Every route except `GET /health` and `GET /ready` needs the header `X-Amplify-In
 | Key | Setting | What it opens |
 | --- | --- | --- |
 | Internal key | `internalApiKey` | Every route. Used by amplify-api |
-| Scheduler key | `schedulerApiKey` | Only `POST /runs`, `POST /maintenance/partitions`, `POST /engagement/sync` and `POST /coins/convert`. Any other route answers 403 |
+| Scheduler key | `schedulerApiKey` | Only `POST /runs`, `POST /maintenance/partitions`, `POST /engagement/sync`, `POST /coins/verify` and `POST /coins/convert`. Any other route answers 403 |
 
 A missing or wrong key answers 401. The worker refuses to start without both keys, or when they are equal (`checkKeys` in `auth.bal`). Keys are compared in constant time.
 
@@ -150,6 +150,7 @@ The HR Entity client has a timeout and an optional OAuth2 client-credentials tok
 | `ports.bal` | Ports (`RunStore`, `Store`, `RunLock`) and their Postgres implementations |
 | `novera.bal` | `NoveraPort` and the client for Novera's notifications endpoint |
 | `coins.bal` | `POST /coins/convert` wiring: the Coins client (`amplify_common.coins`), the `coin.*` settings, `PgCoinConversionStore` over its own single-connection client (`coinsDb`) and lock (`COINS_LOCK_KEY` in `ports.bal`) |
+| `verify.bal` | `POST /coins/verify` wiring (V027, ADR-048 amendment): `LinkedInChecker` (the `scoring:EngagementChecker`: which token and which LinkedIn read per engagement, the page-token fallback, budgets, what a failure means), `PgVerifyStore` composed from sharing, connection and scoring over its own single-connection client (`coinsVerifyDb`), under the Coins lock (`COINS_LOCK_KEY`) so it never runs beside a conversion |
 | `outbound.bal`, `config.bal` | LinkedIn adapter, Novera client set-up, token cipher, run tuning |
 | `leavers.bal` | The leaver sweep and its HR Entity reader |
 | `partitions.bal` | Start-up partitions and the token partition runway |
