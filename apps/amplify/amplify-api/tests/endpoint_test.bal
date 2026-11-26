@@ -183,12 +183,48 @@ function testExternalShareAcceptsJustThePostNumber() returns error? {
     test:assertEquals(check codeIn(letters), "INVALID_EVIDENCE_URL");
 }
 
+@test:Mock {functionName: "shortLinkLocation"}
+isolated function fakeShortLinkLocation(string path) returns string?|error {
+    match path {
+        "/p/grXV-CRX" => {
+            return "https://www.linkedin.com/posts/acme-ugcPost-7513593788980899840-mbGZ/?highlightedUpdateUrn="
+                + "urn%3Ali%3Aactivity%3A7513593790297747456&utm_source=share&rcm=ACoAAPersonOne";
+        }
+        "/p/elsewhere" => {
+            return "https://evil.example.com/posts/x-activity-1-y";
+        }
+        "/p/profile" => {
+            return "https://www.linkedin.com/in/someone";
+        }
+        "/p/down" => {
+            return error("connection refused");
+        }
+    }
+    return ();
+}
+
 @test:Config
-function testExternalShareRefusesLnkdInShortLinks() returns error? {
+function testExternalShareExpandsLnkdInShortLinksToThePost() returns error? {
     http:Response res = check send("POST", "/external-shares",
-            {evidenceUrl: "https://lnkd.in/eAbCdEf", certified: true}, check employee("emp-ext-lnkd"));
-    test:assertEquals(res.statusCode, 422);
-    test:assertEquals(check codeIn(res), "INVALID_EVIDENCE_URL");
+            {evidenceUrl: "https://lnkd.in/p/grXV-CRX", certified: true}, check employee("emp-ext-lnkd"));
+    test:assertEquals(res.statusCode, 201);
+    json body = check res.getJsonPayload();
+    test:assertEquals(check body.evidenceUrl, "https://www.linkedin.com/feed/update/urn:li:activity:7513593790297747456");
+    // The same post through its full link is the same claim.
+    http:Response again = check send("POST", "/external-shares",
+            {evidenceUrl: "https://www.linkedin.com/feed/update/urn:li:activity:7513593790297747456", certified: true},
+            check employee("emp-ext-lnkd-2"));
+    test:assertEquals(again.statusCode, 409);
+}
+
+@test:Config
+function testExternalShareRefusesShortLinksThatDoNotLeadToAPost() returns error? {
+    foreach string code in ["elsewhere", "profile", "down", "unknown"] {
+        http:Response res = check send("POST", "/external-shares",
+                {evidenceUrl: string `https://lnkd.in/p/${code}`, certified: true}, check employee("emp-ext-lnkd-" + code));
+        test:assertEquals(res.statusCode, 422, code);
+        test:assertEquals(check codeIn(res), "INVALID_EVIDENCE_URL", code);
+    }
 }
 
 @test:Config

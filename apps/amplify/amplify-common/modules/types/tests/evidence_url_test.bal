@@ -229,3 +229,46 @@ function evidenceUrlPortAndHostEdges() returns error? {
         test:assertTrue(parseEvidenceUrl(bad) is DomainError, bad);
     }
 }
+
+// LinkedIn's "Copy link to post" (after the lnkd.in redirect) names the post by its share id in the slug and
+// the activity id in `highlightedUpdateUrn`, plus a per-person `rcm` value. Two people copying the same post
+// must still land on one claim key: the activity URN.
+@test:Config {}
+function copyLinkToPostFormClaimsTheActivity() returns error? {
+    string expected = "https://www.linkedin.com/feed/update/urn:li:activity:7531418531557605376";
+    foreach string raw in [
+        "https://www.linkedin.com/posts/acme-apidays-share-7531418530160869377-4yPo/?highlightedUpdateUrn=urn%3Ali%3Aactivity%3A7531418531557605376&highlightedUpdateType=SOCIAL_SHARE&origin=SOCIAL_SHARE&utm_source=share&utm_medium=member_desktop&rcm=ACoAAPersonOne",
+        "https://www.linkedin.com/posts/acme-apidays-share-7531418530160869377-4yPo/?highlightedUpdateUrn=urn:li:activity:7531418531557605376&rcm=ACoAAPersonTwo",
+        "https://www.linkedin.com/feed/update/urn:li:activity:7531418531557605376"
+    ] {
+        EvidenceUrl url = check parseEvidenceUrl(raw);
+        test:assertEquals(url.normalized, expected, raw);
+        test:assertEquals(url.resourceUrn, "urn:li:activity:7531418531557605376", raw);
+    }
+}
+
+@test:Config {}
+function shareAndUgcPostSlugsWithoutActivityNameTheirOwnUrn() returns error? {
+    EvidenceUrl share = check parseEvidenceUrl("https://www.linkedin.com/posts/acme-x-share-7531418530160869377-4yPo/?rcm=ACoAAPersonOne");
+    test:assertEquals(share.normalized, "https://www.linkedin.com/feed/update/urn:li:share:7531418530160869377");
+    EvidenceUrl ugc = check parseEvidenceUrl("https://www.linkedin.com/posts/acme-x-ugcPost-7531418530160869377-4yPo");
+    test:assertEquals(ugc.resourceUrn, "urn:li:ugcPost:7531418530160869377");
+}
+
+@test:Config {}
+function highlightedUpdateUrnOnlyCountsOnPostPaths() returns error? {
+    EvidenceUrl url = check parseEvidenceUrl("https://www.linkedin.com/company/acme/?highlightedUpdateUrn=urn:li:activity:42");
+    test:assertEquals(url.resourceUrn, ());
+}
+
+@test:Config {}
+function shortLinkPathKeepsOnlyTheCode() {
+    test:assertEquals(linkedInShortLinkPath("https://lnkd.in/p/grXV-CRX"), "/p/grXV-CRX");
+    test:assertEquals(linkedInShortLinkPath(" https://LNKD.IN/p/g7EhrS-A/?utm_source=x "), "/p/g7EhrS-A");
+    test:assertEquals(linkedInShortLinkPath("https://lnkd.in/eAbCdEf"), "/eAbCdEf");
+    foreach string raw in ["http://lnkd.in/p/abc", "https://lnkd.in.evil.com/p/abc", "https://lnkd.in/p/abc/../x",
+            "https://lnkd.in/p/a%2Fb", "https://user@lnkd.in/p/abc", "https://lnkd.in/", "https://www.linkedin.com/feed/update/urn:li:activity:1",
+            "https://lnkd.in:8443/p/abc"] {
+        test:assertEquals(linkedInShortLinkPath(raw), (), raw);
+    }
+}
