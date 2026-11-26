@@ -61,8 +61,12 @@ type Settings record {|
     int coinBlockCoins = 10;
     # `coin.schedule`: how often points convert, `MONTHLY` (the 1st), `WEEKLY` (Mondays) or `DAILY`
     string coinSchedule = "MONTHLY";
-    # `coin.wallets_enabled`: send Coins to wallets; off until the WSO2 Coins API exists (points keep counting)
+    # `coin.wallets_enabled`: the automatic conversion sends Coins to captured wallets; off = points keep counting
     boolean coinWalletsEnabled = false;
+    # `coin.max_coins_per_person`: Coins one person gets in one conversion run
+    int coinMaxPerPerson = 500;
+    # `coin.max_coins_per_run`: Coins one period's conversion sends in all
+    int coinMaxPerRun = 50000;
     # `engagement.sync_enabled`: the scheduler's engagement sync job fires (and amplify-jobs syncs) only when true
     boolean engagementSyncEnabled = false;
     # `engagement.schedule`: when the scheduler calls amplify-jobs `POST /engagement/sync`
@@ -104,6 +108,8 @@ final readonly & map<SettingRule> EDITABLE_SETTINGS = {
     [SETTING_COIN_BLOCK_COINS]: {kind: "int", min: 1, max: 100000},
     [SETTING_COIN_SCHEDULE]: {kind: "enum", values: ["MONTHLY", "WEEKLY", "DAILY"]},
     [SETTING_COIN_WALLETS_ENABLED]: {kind: "boolean"},
+    [SETTING_COIN_MAX_PER_PERSON]: {kind: "int", min: 1, max: 1000000},
+    [SETTING_COIN_MAX_PER_RUN]: {kind: "int", min: 1, max: 100000000},
     [SETTING_ENGAGEMENT_SYNC_ENABLED]: {kind: "boolean"},
     [SETTING_ENGAGEMENT_SCHEDULE]: {kind: "schedule", min: 900},
     [SETTING_ENGAGEMENT_DAILY_BUDGET]: {kind: "int", min: 0, max: 100000}
@@ -116,7 +122,7 @@ final readonly & string[] PO_SETTINGS = [SETTING_COIN_BLOCK_POINTS, SETTING_COIN
 
 # Keys whose change is pushed to the scheduler.
 final readonly & string[] SCHEDULE_SETTINGS = [SETTING_RUN_SCHEDULE, SETTING_RUN_ENABLED, SETTING_MAINTENANCE_SCHEDULE,
-    SETTING_ENGAGEMENT_SYNC_ENABLED, SETTING_ENGAGEMENT_SCHEDULE];
+    SETTING_ENGAGEMENT_SYNC_ENABLED, SETTING_ENGAGEMENT_SCHEDULE, SETTING_COIN_SCHEDULE, SETTING_COIN_WALLETS_ENABLED];
 
 # Whether a key is listed: every editable key, plus the read-only ones the admin screen shows. Seeded keys nobody
 # reads yet (an old `coin.*` placeholder, for example) stay out.
@@ -239,6 +245,12 @@ isolated function settingsOf(store:Setting[] rows) returns Settings {
             }
             SETTING_COIN_WALLETS_ENABLED => {
                 s.coinWalletsEnabled = v == true;
+            }
+            SETTING_COIN_MAX_PER_PERSON => {
+                s.coinMaxPerPerson = v is int && v > 0 ? v : s.coinMaxPerPerson;
+            }
+            SETTING_COIN_MAX_PER_RUN => {
+                s.coinMaxPerRun = v is int && v > 0 ? v : s.coinMaxPerRun;
             }
             SETTING_RUN_SCHEDULE => {
                 s.runSchedule = v is string && scheduler:checkSchedule(v) is () ? v : s.runSchedule;

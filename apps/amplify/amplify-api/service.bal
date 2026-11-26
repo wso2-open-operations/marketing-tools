@@ -706,6 +706,21 @@ service http:InterceptableService / on apiListener {
             returns http:Response|ProblemResponse|error =>
         okJson(myPoints(check principalOf(ctx), cid(ctx), period));
 
+    # Captures the caller's WSO2 Coins wallet (ADR-048): their default wallet at the Coins service, else the first. The
+    # caller's own backend JWT is forwarded to the Coins service so it lists only their wallets.
+    #
+    # + ctx - Request context
+    # + req - Request (its backend JWT is forwarded)
+    # + return - The masked wallet, 404 `NO_WALLET`, 503 `COINS_UNAVAILABLE`, or problem details
+    resource function post me/coins/wallet(http:RequestContext ctx, http:Request req) returns http:Response|error {
+        final auth:Principal & readonly p = (check principalOf(ctx)).cloneReadOnly();
+        final string? c = cid(ctx);
+        string|http:HeaderNotFoundError header = req.getHeader(jwtHeader);
+        final string? assertion = header is string && header.trim() != "" ? header.trim() : ();
+        return idempotent(ctx, req, p, "/me/coins/wallet", (),
+                isolated function() returns http:StatusCodeResponse => captureCoinsWallet(p, assertion, c));
+    }
+
     # Team page.
     #
     # + ctx - Request context

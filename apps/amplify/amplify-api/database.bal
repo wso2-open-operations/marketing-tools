@@ -211,6 +211,19 @@ isolated function externalShareRepository(store:Actor actor, int topN) returns e
 isolated function ledgerRepository(store:Actor actor, int topN) returns scoring:LedgerRepository|error =>
     new scoring:PgLedgerRepository(check db(), actor, topN);
 
+isolated function coinWalletRepository(store:Actor actor) returns scoring:CoinWalletRepository|error =>
+    new scoring:PgCoinWalletRepository(check db(), actor);
+
+# The caller's Coins: received, carry, captured wallet (a seam the tests replace).
+#
+# + employeeId - Employee
+# + return - The summary, or an error
+isolated function coinSummary(types:EmployeeId employeeId) returns scoring:CoinSummary|error {
+    retry<resilience:TransientDbRetry> (dbReadRetries) {
+        return check scoring:coinSummaryOf(check db(), employeeId);
+    }
+}
+
 isolated function pointRuleRepository(store:Actor actor) returns scoring:PointRuleRepository|error =>
     new scoring:PgPointRuleRepository(check db(), actor);
 

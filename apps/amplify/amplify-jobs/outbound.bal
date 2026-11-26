@@ -15,8 +15,8 @@
 // under the License.
 
 // Egress from amplify-jobs (declared Choreo connections only): LinkedIn REST API (shares, and the Community Management
-// reads of the engagement sync) and Novera (its token endpoint
-// and `POST /internal/notifications`). Each has its own pool, breaker and timeout (M9 bulkheads); neither retries
+// reads of the engagement sync), Novera (its token endpoint and `POST /internal/notifications`) and the WSO2 Coins
+// transaction service (its token endpoint and the master-wallet transfers, coins.bal). Each has its own pool, breaker and timeout (M9 bulkheads); neither retries
 // at the HTTP level, the outbox does (ADR-025).
 
 import amplify_common.crypto;
@@ -103,7 +103,8 @@ isolated function breakerStates() returns map<string> {
         database: dbBreaker.state(),
         linkedinApi: li is () ? "NOT_CONFIGURED" : li.breakers()["api"] ?: "CLOSED",
         linkedinCommunity: communityBreaker(),
-        novera: novera is () ? "NOT_CONFIGURED" : novera.breaker()
+        novera: novera is () ? "NOT_CONFIGURED" : novera.breaker(),
+        coins: coinsBreaker()
     };
 }
 

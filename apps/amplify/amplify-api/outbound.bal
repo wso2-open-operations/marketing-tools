@@ -16,7 +16,8 @@
 
 
 // Egress from amplify-api (declared Choreo connections only): the amplify-jobs trigger, the people
-// directory for team rosters (D13) and LinkedIn OAuth (S2). Each HTTP client has a timeout and a circuit breaker; the
+// directory for team rosters (D13), LinkedIn OAuth (S2) and the WSO2 Coins transaction service (wallet capture,
+// coins.bal). Each HTTP client has a timeout and a circuit breaker; the
 // jobs trigger and the roster are non-fatal, so their failures degrade the response instead of failing it.
 
 import amplify_api.scheduler;
@@ -372,7 +373,9 @@ isolated function breakerStates(BreakerReport jwks) returns map<BreakerReport> {
         linkedinOAuth: liStates["auth"] ?: "NOT_CONFIGURED",
         linkedinApi: liStates["api"] ?: "NOT_CONFIGURED",
         // Reported, not gating (like linkedinOAuth): only the connect flow needs it.
-        linkedinIdTokenJwks: idv is () ? "NOT_CONFIGURED" : idv.breaker()
+        linkedinIdTokenJwks: idv is () ? "NOT_CONFIGURED" : idv.breaker(),
+        // Reported, not gating: only the wallet capture needs it.
+        coins: coinsBreaker()
     };
 }
 

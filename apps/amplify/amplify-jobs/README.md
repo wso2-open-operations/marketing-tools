@@ -6,7 +6,7 @@ The Amplify worker (Ballerina). It does the background work: announcements, Link
 
 amplify-jobs has no timer of its own (ADR-003). Two callers start its work:
 
-- The scheduler (the pinned `akorn/scheduler` image, ADR-026) calls `POST /runs`, `POST /maintenance/partitions` and `POST /engagement/sync` on the schedules in `config_app_setting`. amplify-api registers those jobs (`amplify-api/scheduler_sync.bal`).
+- The scheduler (the pinned `akorn/scheduler` image, ADR-026) calls `POST /runs`, `POST /maintenance/partitions`, `POST /engagement/sync` and `POST /coins/convert` on the schedules in `config_app_setting`. amplify-api registers those jobs (`amplify-api/scheduler_sync.bal`).
 - amplify-api calls it right away for "Save & Share Now".
 
 It is reachable inside the Amplify project only and is never published (`workload.yaml`: `visibility: project`, port 9091).
@@ -16,7 +16,7 @@ Every route except `GET /health` and `GET /ready` needs the header `X-Amplify-In
 | Key | Setting | What it opens |
 | --- | --- | --- |
 | Internal key | `internalApiKey` | Every route. Used by amplify-api |
-| Scheduler key | `schedulerApiKey` | Only `POST /runs`, `POST /maintenance/partitions` and `POST /engagement/sync`. Any other route answers 403 |
+| Scheduler key | `schedulerApiKey` | Only `POST /runs`, `POST /maintenance/partitions`, `POST /engagement/sync` and `POST /coins/convert`. Any other route answers 403 |
 
 A missing or wrong key answers 401. The worker refuses to start without both keys, or when they are equal (`checkKeys` in `auth.bal`). Keys are compared in constant time.
 
@@ -31,6 +31,7 @@ Defined in `service.bal`; the contract is `openapi.yaml`.
 | `POST /runs` | The Run. Synchronous. Returns the run log. `202 SKIPPED` while another run holds the lock, `503` when the database is not reachable. Optional `X-Correlation-ID` header |
 | `POST /maintenance/partitions` | Daily upkeep (see Maintenance). `202 SKIPPED` when another pass is running |
 | `POST /engagement/sync` | Community Management engagement sync (`engagement.bal`): off unless `engagement.sync_enabled`; reactions, comments and native reshares on the page's open posts become engagements with `EngagementRecorded`, within `engagement.daily_call_budget`. `202 SKIPPED` when another sync is running. Refreshing the page token needs `linkedinPageClientSecret` |
+| `POST /coins/convert` | Automatic Coins conversion (`coins.bal`, rules in `amplify_domain.scoring`, ADR-048): off unless `coin.wallets_enabled` (`202 SKIPPED WALLETS_OFF`). Reconciles open issues of earlier runs first, plans whole blocks within `coin.max_coins_per_person` / `coin.max_coins_per_run`, stops before sending anything when the master wallet can't cover the run, then per employee: issue PENDING + rows tagged (one transaction), transfer, rows PAID + issue SENT (one transaction). A refusal is FAILED (rows back to HELD), no clear answer is UNKNOWN (the run stops; the next run reconciles). Employees without a captured wallet are `SKIPPED_NO_WALLET`. Re-running a period sends nothing for its SENT issues. `202 SKIPPED` when another conversion is running |
 | `POST /maintenance/leavers` | Runs only the leaver sweep (the daily upkeep includes it) |
 | `POST /maintenance/rebuild-recognition` | Rebuilds every leaderboard and standing table from the ledger and returns the new standing version. The ledger is the source of truth, so this is always safe |
 
@@ -118,6 +119,7 @@ All are `configurable`. In Choreo they arrive as `BAL_CONFIG_VAR_*` (see `worklo
 | LinkedIn | `linkedinApiBaseUrl`, `linkedinAuthBaseUrl`, `linkedinClientId` (empty defers sharing), `linkedinApiVersion`, `linkedinTimeoutSeconds`, `linkedinApiResilience`, `linkedinMaxPostsPerRun` (50), `linkedinMaxPostsPerDay` (1000) | `config.bal` |
 | Card | `noveraButtonUrl` (env `NOVERABUTTONURL`): URL template for the card button, must contain `{campaignId}`, https only (http only with `noveraAllowInsecureHttp` on the local stack), no default; empty defers announcements. Plus the card icon and default image URLs (names in `config.bal`) | `config.bal` |
 | Novera | `amplifyOnNovera`, `noveraNotifyUrl`, `noveraTokenUrl`, `noveraClientId`, `noveraClientSecret` (secret), `noveraScopes`, `noveraTimeoutSeconds`, `noveraAllowInsecureHttp` | `config.bal` |
+| WSO2 Coins | `coinsBaseUrl` (empty = not configured), `coinsTokenUrl`, `coinsClientId`, `coinsClientSecret` (secret), `coinsScopes`, `coinsTimeoutSeconds`, `coinsResilience`, `coinsMaxSeconds` (540; below the scheduler's 600 s deadline), `coinsReconcileAfterSeconds` (600) | `coins.bal` |
 | Token keys | `tokenKeys` (secret), `tokenCurrentKeyId` | `config.bal` |
 | Alerts | `outboxAlertSeconds`, `outboxBacklogCacheSeconds`, `outboxAlertLogIntervalSeconds`, `tokenPartitionAlertDays` | `backlog.bal`, `partitions.bal` |
 | Leaver sweep | `leaverSweepMode`, `leaverGraceDays`, `leaverMinDirectorySize`, `leaverMaxPerRun`, `leaverMaxPercent` | `leavers.bal` |
@@ -147,6 +149,7 @@ The HR Entity client has a timeout and an optional OAuth2 client-credentials tok
 | `outcome.bal` | The four outcomes and the backoff |
 | `ports.bal` | Ports (`RunStore`, `Store`, `RunLock`) and their Postgres implementations |
 | `novera.bal` | `NoveraPort` and the client for Novera's notifications endpoint |
+| `coins.bal` | `POST /coins/convert` wiring: the Coins client (`amplify_common.coins`), the `coin.*` settings, `PgCoinConversionStore` over its own single-connection client (`coinsDb`) and lock (`COINS_LOCK_KEY` in `ports.bal`) |
 | `outbound.bal`, `config.bal` | LinkedIn adapter, Novera client set-up, token cipher, run tuning |
 | `leavers.bal` | The leaver sweep and its HR Entity reader |
 | `partitions.bal` | Start-up partitions and the token partition runway |

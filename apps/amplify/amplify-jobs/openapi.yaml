@@ -115,6 +115,42 @@ paths:
                   reason: {type: string, enum: [SYNC_IN_PROGRESS]}
         "503": {description: Database unavailable}
         "500": {description: Sync failed}
+  /coins/convert:
+    post:
+      operationId: convertCoins
+      description: >-
+        Automatic Coins conversion (phase 2, ADR-048). Off unless `coin.wallets_enabled` is true (202 `WALLETS_OFF`;
+        points keep counting). For the period of `coin.schedule` (`2026-12`, `2026-W49` or `2026-12-01`, UTC): first
+        reconciles every PENDING/UNKNOWN issue of earlier runs against the Coins service's ledger (search by master
+        wallet, recipient, amount and time; one match is SENT, none is FAILED and converts again, more than one waits
+        for an operator); then plans every employee's HELD points not yet taken plus their carry in whole blocks
+        (`coin.block_points` = `coin.block_coins`) within `coin.max_coins_per_person` and `coin.max_coins_per_run`; stops
+        before sending anything when the master wallet can't cover the run; then, per employee, writes the issue
+        PENDING and tags the rows, transfers outside the transaction, and marks the rows PAID and the issue SENT.
+        A refusal marks the issue FAILED and gives the rows back; no clear answer marks it UNKNOWN and stops the run.
+        Employees without a captured wallet are SKIPPED_NO_WALLET (points stay HELD). Re-running a period sends
+        nothing for its SENT issues. One conversion at a time across replicas (own lock and connection). The scheduler
+        key may call it.
+      parameters:
+        - {name: X-Correlation-ID, in: header, required: false, schema: {type: string}}
+      responses:
+        "200":
+          description: The run (DONE, PARTIAL at the time limit, or STOPPED with a reason)
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CoinRunReport"}
+        "202":
+          description: Not run (not a failure)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, reason]
+                properties:
+                  status: {type: string, enum: [SKIPPED]}
+                  reason: {type: string, enum: [CONVERSION_IN_PROGRESS, WALLETS_OFF, COINS_NOT_CONFIGURED]}
+        "503": {description: Database unavailable}
+        "500": {description: Conversion failed (the run row stays RUNNING; the next call reopens it)}
   /maintenance/leavers:
     post:
       operationId: sweepLeavers
@@ -152,7 +188,7 @@ components:
       description: >-
         Two secrets (each at least 32 characters, different values). The internal key, held by amplify-api, opens
         every route. The scheduler key, held by the scheduler's jobs, opens only POST /runs,
-        POST /maintenance/partitions and POST /engagement/sync; on any other route it is 403. Every call except the two probes needs one;
+        POST /maintenance/partitions, POST /engagement/sync and POST /coins/convert; on any other route it is 403. Every call except the two probes needs one;
         a missing or wrong key is 401. ADR-039.
   schemas:
     HealthStatus:
@@ -215,6 +251,33 @@ components:
             reposts: {type: integer}
             alreadyRecorded: {type: integer}
             dropped: {type: integer}
+    CoinRunReport:
+      type: object
+      required: [status, reconciledSent, reconciledNotSent, stillOpen, sent, coinsSent, failed, unknown, skippedNoWallet,
+        passedOver]
+      properties:
+        status: {type: string, enum: [DONE, PARTIAL, STOPPED]}
+        stopReason: {type: string, nullable: true, enum: [INSUFFICIENT_BALANCE, COINS_UNAVAILABLE, OUTCOME_UNKNOWN]}
+        period: {type: string, nullable: true}
+        reconciledSent: {type: integer, description: Open issues of earlier runs found at the Coins service}
+        reconciledNotSent: {type: integer, description: Open issues the Coins service never recorded (they convert again)}
+        stillOpen: {type: integer, description: Open issues not settled (too recent, ambiguous, or the search failed)}
+        sent: {type: integer}
+        coinsSent: {type: integer}
+        failed: {type: integer}
+        unknown: {type: integer}
+        skippedNoWallet: {type: integer}
+        passedOver: {type: integer, description: "Already SENT this period, an issue still open, or a retry not due"}
+        totals:
+          type: object
+          nullable: true
+          description: The period's totals over every run of it
+          properties:
+            issuesSent: {type: integer}
+            coinsSent: {type: integer}
+            issuesFailed: {type: integer}
+            issuesUnknown: {type: integer}
+            issuesSkipped: {type: integer}
     MaintenanceReport:
       type: object
       properties:

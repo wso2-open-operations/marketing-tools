@@ -114,12 +114,19 @@ const string SETTING_SHARING_ENABLED = "sharing.enabled";
 const string SETTING_ANNOUNCEMENTS_ENABLED = "announcements.enabled";
 # Own posts one employee may submit per UTC day; 0 = no limit
 const string SETTING_EXTERNAL_SHARE_DAILY_LIMIT = "external_share.daily_limit";
-# Coins (phase 2): points per block and Coins per block (only whole blocks convert), how often points convert,
-# and whether Coins are sent to wallets (off until the WSO2 Coins API exists)
+# Coins (phase 2, ADR-048): points per block and Coins per block (only whole blocks convert), how often points convert,
+# and whether Coins are sent to wallets (the automatic conversion runs only when true)
 const string SETTING_COIN_BLOCK_POINTS = "coin.block_points";
 const string SETTING_COIN_BLOCK_COINS = "coin.block_coins";
 const string SETTING_COIN_SCHEDULE = "coin.schedule";
 const string SETTING_COIN_WALLETS_ENABLED = "coin.wallets_enabled";
+# Safety caps of the automatic conversion (S014, ADR-048): Coins one person gets in one run, Coins one period's run sends
+const string SETTING_COIN_MAX_PER_PERSON = "coin.max_coins_per_person";
+const string SETTING_COIN_MAX_PER_RUN = "coin.max_coins_per_run";
+# The WSO2 Coins service lists no wallet for the caller (`POST /me/coins/wallet`, 404).
+const string NO_WALLET = "NO_WALLET";
+# The WSO2 Coins service is not configured or did not answer (503).
+const string COINS_UNAVAILABLE = "COINS_UNAVAILABLE";
 
 // ---- M6b: schedule settings pushed to the scheduler (ADR-026) -------------------------------------
 
@@ -130,6 +137,7 @@ const string SETTING_MAINTENANCE_SCHEDULE = "maintenance.schedule";
 const string JOB_RUN = "amplify-run";
 const string JOB_MAINTENANCE = "amplify-maintenance-partitions";
 const string JOB_ENGAGEMENT_SYNC = "amplify-engagement-sync";
+const string JOB_COINS_CONVERT = "amplify-coins-convert";
 // ---- Community Management engagement sync (V025, S013) ---------------------------------------------
 const string SETTING_ENGAGEMENT_SYNC_ENABLED = "engagement.sync_enabled";
 const string SETTING_ENGAGEMENT_SCHEDULE = "engagement.schedule";

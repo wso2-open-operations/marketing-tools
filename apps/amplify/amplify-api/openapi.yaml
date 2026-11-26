@@ -786,7 +786,7 @@ paths:
       tags: [S4 Recognition]
       operationId: getMyPoints
       x-access: EMPLOYEE
-      description: Own total, rank and monthly history. Points only, no Coin value (A11).
+      description: Own total, rank and monthly history, and the Coins block (rate, progress, Coins received, the captured wallet masked).
       parameters:
         - {$ref: "#/components/parameters/CorrelationId"}
         - {$ref: "#/components/parameters/Period"}
@@ -798,6 +798,31 @@ paths:
               schema: {$ref: "#/components/schemas/MyPoints"}
         "400": {$ref: "#/components/responses/Problem"}
         "401": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
+  /me/coins/wallet:
+    post:
+      tags: [S4 Recognition]
+      operationId: captureMyCoinsWallet
+      x-access: EMPLOYEE
+      description: >-
+        Captures the caller's WSO2 Coins wallet for the automatic Coins conversion (ADR-048). amplify-api asks the WSO2
+        Coins transaction service for the caller's wallets (`GET /wallets/me`) with its own service token and the
+        caller's backend JWT forwarded as `X-User-Assertion`, takes the default wallet (else the first) and stores it.
+        Calling it again refreshes the wallet. 404 `NO_WALLET` when the Coins service lists none for the caller; 503
+        `COINS_UNAVAILABLE` when the Coins service is not configured or did not answer. The address is answered masked.
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      responses:
+        "200":
+          description: Captured
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CoinWallet"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
         "503": {$ref: "#/components/responses/Problem"}
   /team:
     get:
@@ -1313,9 +1338,15 @@ components:
             ANNOUNCEMENT_NOT_FAILED, UNKNOWN_SETTING, INVALID_SETTING, SCHEDULER_UNAVAILABLE, INVALID_EMPLOYEE_ID,
             INVALID_EMAIL, INVALID_MEMBER_URN, INVALID_POST_URN, INVALID_UUID, SHARE_NOT_QUEUED, PAID_NOT_ALLOWED,
             ALREADY_ANNOUNCED, ANNOUNCEMENT_NOT_QUEUED, COMMENTARY_NOT_OWN_WORDS, DAILY_LIMIT_REACHED, NOTE_TOO_LONG,
-            NOT_PAGE_ADMIN]
+            NOT_PAGE_ADMIN, ALREADY_PAID, NO_WALLET, COINS_UNAVAILABLE]
         detail: {type: string, nullable: true}
         correlationId: {type: string, nullable: true}
+    CoinWallet:
+      type: object
+      required: [walletAddress, capturedAt]
+      properties:
+        walletAddress: {type: string, description: "Masked: the first 6 and last 4 characters (0x12ab…9f3c)"}
+        capturedAt: {type: string, format: date-time}
     HealthStatus:
       type: object
       required: [component, status]
@@ -1331,7 +1362,7 @@ components:
         database: {type: string, enum: [UP, DOWN]}
         breakers:
           type: object
-          required: [database, jwks, jobs, roster, linkedinOAuth, linkedinApi, linkedinIdTokenJwks]
+          required: [database, jwks, jobs, roster, linkedinOAuth, linkedinApi, linkedinIdTokenJwks, coins]
           properties:
             database: {$ref: "#/components/schemas/BreakerState"}
             jwks: {$ref: "#/components/schemas/BreakerState"}
@@ -1342,6 +1373,9 @@ components:
             linkedinIdTokenJwks:
               allOf: [{$ref: "#/components/schemas/BreakerState"}]
               description: LinkedIn OIDC JWKS (ID-token validation on connect). Reported, never gates readiness; NOT_CONFIGURED while linkedinIdTokenValidation is off
+            coins:
+              allOf: [{$ref: "#/components/schemas/BreakerState"}]
+              description: WSO2 Coins transaction service (wallet capture, ADR-048). Reported, never gates readiness
     BreakerState:
       type: string
       enum: [CLOSED, HALF_OPEN, OPEN, NOT_CONFIGURED]
@@ -1779,16 +1813,22 @@ components:
         standing: {$ref: "#/components/schemas/PersonalStanding"}
         coins:
           type: object
-          description: Coins for points. Points convert automatically, only in whole blocks; the rest carries over.
-          required: [walletsEnabled, blockPoints, blockCoins, schedule, heldPoints, pointsTowardNext, coinsReceived]
+          description: Coins for points. Points convert automatically, only in whole blocks; the rest carries over (ADR-048).
+          required: [walletsEnabled, blockPoints, blockCoins, schedule, heldPoints, carryPoints, pointsTowardNext,
+            coinsReceived, wallet]
           properties:
-            walletsEnabled: {type: boolean, description: "Coins are sent to wallets (false until the WSO2 Coins API exists; points keep counting)"}
+            walletsEnabled: {type: boolean, description: "The automatic conversion sends Coins to captured wallets (false: points keep counting)"}
             blockPoints: {type: integer}
             blockCoins: {type: integer}
             schedule: {type: string, enum: [MONTHLY, WEEKLY, DAILY]}
             heldPoints: {type: integer, description: "Points not yet paid out"}
-            pointsTowardNext: {type: integer, description: "Progress to the next block"}
-            coinsReceived: {type: integer}
+            carryPoints: {type: integer, description: "What the last conversion carried over; counts toward the next block"}
+            pointsTowardNext: {type: integer, description: "Progress to the next block (held plus carry)"}
+            coinsReceived: {type: integer, description: "Coins the conversion has sent to the caller"}
+            wallet:
+              allOf: [{$ref: "#/components/schemas/CoinWallet"}]
+              nullable: true
+              description: The captured wallet (masked), null until `POST /me/coins/wallet`
         monthly:
           type: array
           items:

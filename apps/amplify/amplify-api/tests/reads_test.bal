@@ -19,6 +19,7 @@
 // `jsonBody` encoding of every large read (M11b), the PO dashboard cache, list validation, `/ready`.
 
 import amplify_common.types;
+import amplify_domain.scoring;
 import amplify_domain.store;
 
 import ballerina/http;
@@ -648,8 +649,16 @@ function testReviewItemsAndHistoryRowsCarryWhatTheScreensShow() {
 @test:Config
 function testCoinsProgressIsTheRestOfTheBlock() {
     Settings s = {coinBlockPoints: 100, coinBlockCoins: 10};
-    json coins = coinsOf(s, {total: 1240, held: 1240, paid: 0, actionRequired: 0});
+    scoring:CoinSummary none = {coinsReceived: 0, carryPoints: 0, walletAddress: (), walletCapturedAt: ()};
+    json coins = coinsOf(s, {total: 1240, held: 1240, paid: 0, actionRequired: 0}, none);
     test:assertEquals((<map<json>>coins)["pointsTowardNext"], 40, "1,240 points: 12 blocks and 40 toward the next");
-    json negative = coinsOf(s, {total: -5, held: -5, paid: 0, actionRequired: 0});
+    test:assertEquals((<map<json>>coins)["wallet"], (), "no wallet captured");
+    json negative = coinsOf(s, {total: -5, held: -5, paid: 0, actionRequired: 0}, none);
     test:assertEquals((<map<json>>negative)["pointsTowardNext"], 0, "a reversal can't make progress negative");
+    json carried = coinsOf(s, {total: 300, held: 70, paid: 230, actionRequired: 0},
+        {coinsReceived: 20, carryPoints: 30, walletAddress: "0x12ab34cd56ef9f3c", walletCapturedAt: [1796090400, 0]});
+    map<json> c = <map<json>>carried;
+    test:assertEquals([c["carryPoints"], c["pointsTowardNext"], c["coinsReceived"]], [30, 0, 20],
+            "held 70 + carry 30 is a whole block: progress starts again");
+    test:assertEquals(c["wallet"], {walletAddress: "0x12ab…9f3c", capturedAt: "2026-12-01T02:00:00Z"});
 }

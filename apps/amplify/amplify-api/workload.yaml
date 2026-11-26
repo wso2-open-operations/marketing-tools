@@ -124,6 +124,19 @@ configurations:
           key: BAL_CONFIG_VAR_LINKEDINPAGECLIENTSECRET
     - name: BAL_CONFIG_VAR_LINKEDINPAGEREDIRECTURI
       value: ""
+    - name: BAL_CONFIG_VAR_COINSBASEURL
+      value: ""
+    - name: BAL_CONFIG_VAR_COINSTOKENURL
+      value: ""
+    - name: BAL_CONFIG_VAR_COINSCLIENTID
+      value: ""
+    - name: BAL_CONFIG_VAR_COINSCLIENTSECRET
+      valueFrom:
+        secretRef:
+          name: amplify-api-secrets
+          key: BAL_CONFIG_VAR_COINSCLIENTSECRET
+    - name: BAL_CONFIG_VAR_COINSSCOPES
+      value: ""
     - name: BAL_CONFIG_VAR_LINKEDINAPIBASEURL
       value: ""
     - name: BAL_CONFIG_VAR_LINKEDINAUTHBASEURL

@@ -258,8 +258,9 @@ isolated function myPoints(auth:Principal p, string? correlationId, string perio
         recognition:Standing? mine = check standingOf(p.employeeId, period);
         recognition:MonthPoints[] monthly = check monthlyPoints(p.employeeId);
         scoring:PointsSummary summary = check pointsSummary(p.employeeId);
+        scoring:CoinSummary coinSummaryRow = check coinSummary(p.employeeId);
         return {period, standing: personal(p.employeeId, mine, settings.topN).toJson(), monthly: monthly.toJson(),
-            coins: coinsOf(settings, summary)};
+            coins: coinsOf(settings, summary, coinSummaryRow)};
     } on fail error e {
         return failure(e, correlationId, "My points");
     }
@@ -705,23 +706,28 @@ isolated function withClaimant(json base, identity:EmployeeMatch? person) return
     return row;
 }
 
-# The Coins block of `GET /me/points`: the rate, the schedule, whether wallets are on, and progress to the next
-# Coins. Only whole blocks of not-yet-paid points convert. Coins received come from the conversion records,
-# which the Coin conversion adds; until then they are 0.
+# The Coins block of `GET /me/points`: the rate, the schedule, whether wallets are on, progress to the next Coins,
+# what the conversion has sent and the captured wallet (masked). Only whole blocks convert; the rest of a conversion
+# carries over (`carryPoints`) and counts toward the next block with the HELD points.
 #
 # + settings - Settings
 # + summary - The caller's points summary
+# + coinRow - The caller's conversions and wallet
 # + return - The block
-isolated function coinsOf(Settings settings, scoring:PointsSummary summary) returns json {
+isolated function coinsOf(Settings settings, scoring:PointsSummary summary, scoring:CoinSummary coinRow) returns json {
     int held = summary.held < 0 ? 0 : summary.held;
+    string? address = coinRow.walletAddress;
+    time:Utc? capturedAt = coinRow.walletCapturedAt;
     return {
         walletsEnabled: settings.coinWalletsEnabled,
         blockPoints: settings.coinBlockPoints,
         blockCoins: settings.coinBlockCoins,
         schedule: settings.coinSchedule,
         heldPoints: summary.held,
-        pointsTowardNext: held % settings.coinBlockPoints,
-        coinsReceived: 0
+        carryPoints: coinRow.carryPoints,
+        pointsTowardNext: (held + coinRow.carryPoints) % settings.coinBlockPoints,
+        coinsReceived: coinRow.coinsReceived,
+        wallet: address is string && capturedAt is time:Utc ? walletDto(address, capturedAt) : ()
     };
 }
 

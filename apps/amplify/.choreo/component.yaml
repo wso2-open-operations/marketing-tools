@@ -276,6 +276,39 @@ configurations:
           displayName: LinkedIn page connection redirect URI (One WSO2 admin callback)
           type: string
           required: false
+    # WSO2 Coins transaction service (wallet capture, POST /me/coins/wallet, ADR-048): its gateway URL, token endpoint
+    # and a client-credentials application subscribed to the Coins API (the same application as amplify-jobs is fine).
+    # Secret as a secret. Empty URL = not configured (the wallet capture answers 503 COINS_UNAVAILABLE).
+    - name: BAL_CONFIG_VAR_COINSBASEURL
+      valueFrom:
+        configForm:
+          displayName: WSO2 Coins transaction service URL (gateway URL, https). Empty = wallet capture off
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_COINSTOKENURL
+      valueFrom:
+        configForm:
+          displayName: WSO2 Coins token endpoint (client-credentials grant)
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_COINSCLIENTID
+      valueFrom:
+        configForm:
+          displayName: WSO2 Coins application client id
+          type: string
+          required: false
+    - name: BAL_CONFIG_VAR_COINSCLIENTSECRET
+      valueFrom:
+        configForm:
+          displayName: WSO2 Coins application client secret
+          type: secret
+          required: false
+    - name: BAL_CONFIG_VAR_COINSSCOPES
+      valueFrom:
+        configForm:
+          displayName: WSO2 Coins token scopes (comma-separated, optional)
+          type: string
+          required: false
     - name: BAL_CONFIG_VAR_LINKEDINAPIBASEURL
       valueFrom:
         configForm:

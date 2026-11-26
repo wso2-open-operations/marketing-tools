@@ -224,3 +224,24 @@ isolated function dbConfig(int maxOpenConnections = 10, decimal maxConnectionLif
     loginTimeoutSeconds: dbConnectTimeoutSeconds,
     poolAcquireTimeoutSeconds: dbPoolAcquireTimeoutSeconds
 };
+
+isolated postgresql:Client? coinsClientDb = ();
+
+# Dedicated single-connection client for the Coins conversion: its session lock and its work on one connection, never
+# retired, apart from the run's pool (a long conversion never takes a connection a run needs).
+#
+# + return - The client, or an error when not configured
+isolated function coinsDb() returns postgresql:Client|error {
+    lock {
+        postgresql:Client? existing = coinsClientDb;
+        if existing is postgresql:Client {
+            return existing;
+        }
+        if dbHost == "" {
+            return error("Database is not configured");
+        }
+        postgresql:Client created = check store:newClient(dbConfig(maxOpenConnections = 1, maxConnectionLifeTime = 0));
+        coinsClientDb = created;
+        return created;
+    }
+}
