@@ -152,7 +152,7 @@ public isolated function parseEvidenceUrl(string raw) returns EvidenceUrl|Domain
     string sortedQuery = string:'join("&", ...kept.sort());
 
     string provider = detectProvider(host);
-    PostUrn? resourceUrn = provider == EVIDENCE_PROVIDER_LINKEDIN ? linkedInResourceUrn(path) : ();
+    PostUrn? resourceUrn = provider == EVIDENCE_PROVIDER_LINKEDIN ? linkedInResourceUrn(path, query) : ();
     // One claim per post (ADR-017): LinkedIn serves a post under both `/feed/update/urn:li:activity:N`
     // and `/posts/<slug>-activity-N-xyz`, so a URL that names a post URN claims it through the one
     // canonical feed URL of that URN. The URL as typed is kept in `submitted`.
@@ -217,25 +217,46 @@ isolated function detectProvider(string host) returns string {
     return EVIDENCE_PROVIDER_OTHER;
 }
 
-// `/feed/update/urn:li:activity:123` or `/posts/name_slug-activity-123-abcd`.
-isolated function linkedInResourceUrn(string path) returns PostUrn? {
+// `/feed/update/urn:li:activity:123`, `/posts/name_slug-activity-123-abcd`, or the form LinkedIn's
+// "Copy link to post" gives today: `/posts/name_slug-share-456-abcd/?highlightedUpdateUrn=urn:li:activity:123`.
+// The activity id wins when the URL carries one, so the newer form claims the same post as the older ones.
+isolated function linkedInResourceUrn(string path, string query) returns PostUrn? {
     string decoded = re `%3[Aa]`.replaceAll(path, ":");
     regexp:Groups? feed = re `/feed/update/(urn:li:[A-Za-z]+:[A-Za-z0-9_\-]+)`.findGroups(decoded);
     if feed is regexp:Groups {
-        regexp:Span? span = feed[1];
-        if span is regexp:Span {
-            PostUrn|DomainError urn = parsePostUrn(span.substring());
+        return urnOf(feed, "");
+    }
+    if !decoded.startsWith("/posts/") {
+        return ();
+    }
+    regexp:Groups? activity = re `-activity-([0-9]+)`.findGroups(decoded);
+    if activity is regexp:Groups {
+        return urnOf(activity, "urn:li:activity:");
+    }
+    string decodedQuery = re `%3[Aa]`.replaceAll(query, ":");
+    regexp:Groups? highlighted = re `(?:^|&)highlightedUpdateUrn=urn:li:activity:([0-9]+)(?:&|$)`.findGroups(decodedQuery);
+    if highlighted is regexp:Groups {
+        return urnOf(highlighted, "urn:li:activity:");
+    }
+    regexp:Groups? share = re `-(share|ugcPost)-([0-9]+)`.findGroups(decoded);
+    if share is regexp:Groups {
+        regexp:Span? kind = share[1];
+        regexp:Span? id = share[2];
+        if kind is regexp:Span && id is regexp:Span {
+            PostUrn|DomainError urn = parsePostUrn(string `urn:li:${kind.substring()}:${id.substring()}`);
             return urn is PostUrn ? urn : ();
         }
     }
-    regexp:Groups? post = re `/posts/.*-activity-([0-9]+)`.findGroups(decoded);
-    if post is regexp:Groups {
-        regexp:Span? span = post[1];
-        if span is regexp:Span {
-            // Same invariant as every other PostUrn (URN_MAX_LENGTH, 100-character id).
-            PostUrn|DomainError urn = parsePostUrn(string `urn:li:activity:${span.substring()}`);
-            return urn is PostUrn ? urn : ();
-        }
+    return ();
+}
+
+// The URN in the first group, behind `prefix`. Same invariant as every other PostUrn (URN_MAX_LENGTH,
+// 100-character id).
+isolated function urnOf(regexp:Groups groups, string prefix) returns PostUrn? {
+    regexp:Span? span = groups[1];
+    if span is regexp:Span {
+        PostUrn|DomainError urn = parsePostUrn(prefix + span.substring());
+        return urn is PostUrn ? urn : ();
     }
     return ();
 }
