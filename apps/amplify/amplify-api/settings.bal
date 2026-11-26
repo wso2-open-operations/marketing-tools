@@ -112,7 +112,12 @@ final readonly & map<SettingRule> EDITABLE_SETTINGS = {
     [SETTING_COIN_MAX_PER_RUN]: {kind: "int", min: 1, max: 100000000},
     [SETTING_ENGAGEMENT_SYNC_ENABLED]: {kind: "boolean"},
     [SETTING_ENGAGEMENT_SCHEDULE]: {kind: "schedule", min: 900},
-    [SETTING_ENGAGEMENT_DAILY_BUDGET]: {kind: "int", min: 0, max: 100000}
+    [SETTING_ENGAGEMENT_DAILY_BUDGET]: {kind: "int", min: 0, max: 100000},
+    // Housekeeping (V029, read by amplify-jobs): the same ranges the SQL functions accept.
+    [SETTING_HOUSEKEEPING_NATIVE_INTENT_DAYS]: {kind: "int", min: 2, max: 365},
+    [SETTING_HOUSEKEEPING_API_USAGE_DAYS]: {kind: "int", min: 30, max: 730},
+    [SETTING_HOUSEKEEPING_SYNC_CURSOR_DAYS]: {kind: "int", min: 30, max: 730},
+    [SETTING_HOUSEKEEPING_BATCH_ROWS]: {kind: "int", min: 100, max: 50000}
 };
 
 # The business numbers the PO team changes on Amplify Admin (`GET/PUT /po/settings`). Switches and schedules stay

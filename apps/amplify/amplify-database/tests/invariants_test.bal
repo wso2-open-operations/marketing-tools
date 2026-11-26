@@ -209,7 +209,8 @@ function testDefinerFunctionsArePinnedOwnedAndPrivate() returns error? {
     int definers = check db->queryRow(`
         SELECT count(*)::int FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
         WHERE p.prosecdef AND n.nspname IN (${itLoginUser}, 'public')`);
-    test:assertEquals(definers, 9, "the V009 upkeep functions and V018's erase_employee are the only SECURITY DEFINER functions");
+    test:assertEquals(definers, 12,
+            "the V009 upkeep functions, V018's erase_employee and V029's three prunes are the only SECURITY DEFINER functions");
     int unpinned = check db->queryRow(`
         SELECT count(*)::int FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
         WHERE p.prosecdef AND NOT EXISTS (

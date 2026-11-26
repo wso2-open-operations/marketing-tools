@@ -142,5 +142,13 @@ const string JOB_COINS_CONVERT = "amplify-coins-convert";
 const string SETTING_ENGAGEMENT_SYNC_ENABLED = "engagement.sync_enabled";
 const string SETTING_ENGAGEMENT_SCHEDULE = "engagement.schedule";
 const string SETTING_ENGAGEMENT_DAILY_BUDGET = "engagement.daily_call_budget";
+# Days a detected (or never-found) native repost intent is kept (V029, amplify-jobs housekeeping).
+const string SETTING_HOUSEKEEPING_NATIVE_INTENT_DAYS = "housekeeping.native_intent_days";
+# Days of Community Management call counters kept (V029).
+const string SETTING_HOUSEKEEPING_API_USAGE_DAYS = "housekeeping.api_usage_days";
+# Days a post's sync cursor may stand still before it is pruned (V029).
+const string SETTING_HOUSEKEEPING_SYNC_CURSOR_DAYS = "housekeeping.sync_cursor_days";
+# Most rows one housekeeping delete removes (V029).
+const string SETTING_HOUSEKEEPING_BATCH_ROWS = "housekeeping.batch_rows";
 # Scheduler unreachable on an explicit sync.
 const string SCHEDULER_UNAVAILABLE = "SCHEDULER_UNAVAILABLE";

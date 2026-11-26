@@ -245,3 +245,26 @@ isolated function coinsDb() returns postgresql:Client|error {
         return created;
     }
 }
+
+# Writes a run-level audit row (an engagement sync, a Coins conversion) in its own transaction. A failed write is
+# logged, not returned: the run already happened.
+#
+# + dbc - The run's client
+# + entry - Audit row, `()` when the run changed nothing worth a row
+isolated function recordRunAudit(postgresql:Client dbc, store:AuditEntry? entry) {
+    if entry is () {
+        return;
+    }
+    error? written = store:recordAudit(dbc, entry);
+    if written is error {
+        log:printError("Run audit not written", resilience:loggable(written), action = entry.action,
+                correlationId = entry.correlationId);
+    }
+}
+
+# The jobs' system actor with a run's correlation id.
+#
+# + correlationId - Correlation id
+# + return - The actor
+isolated function systemActor(string? correlationId) returns store:Actor =>
+    {actorId: store:SYSTEM.actorId, roles: store:SYSTEM.roles, correlationId};

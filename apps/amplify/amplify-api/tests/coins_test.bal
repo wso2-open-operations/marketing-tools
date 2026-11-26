@@ -261,3 +261,19 @@ function testAdminSettingsSayWhetherTheCoinsServiceIsConnected() returns error? 
     http:Response poView = check send("GET", "/po/settings", (), check po());
     test:assertFalse((check poView.getJsonPayload()).coins is json, "the PO view has no connection block");
 }
+
+@test:Config {groups: ["coins"]}
+function testHousekeepingSettingsAreAdminSettingsInTheV029Ranges() {
+    test:assertEquals(checkSettingChange("housekeeping.native_intent_days", 1), [INVALID_SETTING,
+        "housekeeping.native_intent_days must be a whole number from 2 to 365"]);
+    test:assertEquals(checkSettingChange("housekeeping.native_intent_days", 7), ());
+    test:assertEquals(checkSettingChange("housekeeping.api_usage_days", 29), [INVALID_SETTING,
+        "housekeeping.api_usage_days must be a whole number from 30 to 730"]);
+    test:assertEquals(checkSettingChange("housekeeping.sync_cursor_days", 731), [INVALID_SETTING,
+        "housekeeping.sync_cursor_days must be a whole number from 30 to 730"]);
+    test:assertEquals(checkSettingChange("housekeeping.batch_rows", 99), [INVALID_SETTING,
+        "housekeeping.batch_rows must be a whole number from 100 to 50000"]);
+    test:assertEquals(checkSettingChange("housekeeping.batch_rows", 50000), ());
+    test:assertTrue(isVisibleSetting("housekeeping.batch_rows"));
+    test:assertTrue(PO_SETTINGS.indexOf("housekeeping.batch_rows") is (), "housekeeping stays with admins");
+}

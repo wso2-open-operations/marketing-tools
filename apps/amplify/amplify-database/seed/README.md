@@ -25,6 +25,7 @@ Every insert is `ON CONFLICT DO NOTHING`, so an admin's later change is never ov
 - `S012__coin_settings.sql`: the Coins settings, `coin.block_points = 100`, `coin.block_coins = 10`, `coin.schedule = "MONTHLY"` and `coin.wallets_enabled = false` (phase 2: automatic conversion, wallets off until the WSO2 Coins API exists); the PO team changes the rate and schedule, an admin the switch.
 - `S013__engagement_sync_settings.sql`: the Community Management engagement sync (V025), `engagement.sync_enabled = false`, `engagement.schedule = "0 */2 * * *"` and `engagement.daily_call_budget = 450` (calls per UTC day across runs).
 - `S014__coin_caps.sql`: the Coins safety caps for the automatic conversion (V026, ADR-048), `coin.max_coins_per_person = 500` (one person in one run) and `coin.max_coins_per_run = 50000` (one period, everyone together); points above a cap carry over. Admins change them.
+- `S017__housekeeping_settings.sql`: the housekeeping ages and batch (V029), `housekeeping.native_intent_days = 7`, `housekeeping.api_usage_days = 90`, `housekeeping.sync_cursor_days = 180`, `housekeeping.batch_rows = 5000`; admins change them (amplify-api validates the V029 ranges). S015/S016 are left for other open branches.
 
 ## Rules
 

@@ -117,8 +117,9 @@ service http:InterceptableService / on jobsListener {
     # Daily upkeep (B10): token and audit partitions ahead, expired token days and audit months past
     # retention dropped (each audited), DONE outbox rows purged, expired OAuth states swept.
     #
-    # Also purges expired `Idempotency-Key` records (ADR-024 item 3) and re-seals token rows written under
-    # an older key with the active one (key rotation; the result is in `token_rotation`, never fatal).
+    # Also purges expired `Idempotency-Key` records (ADR-024 item 3), re-seals token rows written under
+    # an older key with the active one (key rotation; the result is in `token_rotation`, never fatal), and
+    # prunes the phase 2-4 working tables in batches (`housekeeping`, V029, never fatal, one audit row).
     #
     # One pass at a time across replicas: a pass that outlives the scheduler's deadline is not started again
     # by its retry (a second 10k-row reseal sweep, a second partition drop); the retry gets 202 `SKIPPED`.
@@ -195,6 +196,7 @@ service http:InterceptableService / on jobsListener {
             return <http:InternalServerError>{body: {message: "Engagement sync failed"}};
         }
         logEngagementSync(result, correlationId);
+        recordRunAudit(dbc, engagementSyncAudit(result, correlationId));
         return result;
     }
 
@@ -237,6 +239,7 @@ service http:InterceptableService / on jobsListener {
             return <http:InternalServerError>{body: {message: "Coins conversion failed"}};
         }
         logCoinConversion(result, correlationId);
+        recordRunAudit(dbc, coinRunAudit(result, correlationId));
         if result is CoinsSkipped {
             return <http:Accepted>{body: result};
         }
@@ -293,5 +296,8 @@ isolated function runMaintenance(postgresql:Client dbc) returns MaintenanceRepor
     TokenRotation rotation = rotateTokenKeys(tokenCipher, new connection:PgTokenRepository(dbc));
     // Never fatal and off by default: the sweep reports what it did (or why it did nothing).
     LeaverSweepReport leavers = runConfiguredSweep(dbc);
-    return {...result, idempotency_keys_purged: purged, token_rotation: rotation, leaver_sweep: leavers};
+    // Never fatal: prunes the phase 2-4 working tables in batches and audits the counts (V029).
+    HousekeepingReport housekeeping = runHousekeeping(new PgHousekeepingStore(dbc));
+    return {...result, idempotency_keys_purged: purged, token_rotation: rotation, leaver_sweep: leavers,
+        housekeeping};
 }

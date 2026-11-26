@@ -356,3 +356,21 @@ isolated function communityBreaker() returns string {
     linkedin:CommunityAdapter? c = communityAdapter;
     return c is () ? "NOT_CONFIGURED" : c.breakers()["api"] ?: "CLOSED";
 }
+
+# The audit row of a sync run (`EngagementSyncRun`): the status and counts. Only a run that read LinkedIn writes one
+# (`OFF`, `NOT_CONFIGURED`, `NOT_CONNECTED` and `NEEDS_RECONNECT` change nothing; a token refresh audits itself).
+# Each recorded engagement has its own `EngagementSynced` row as well.
+#
+# + result - The result
+# + correlationId - Trigger correlation id
+# + return - The entry, or `()` when the sync didn't run
+isolated function engagementSyncAudit(EngagementSyncResult result, string? correlationId) returns store:AuditEntry? {
+    sharing:SyncReport? r = result.sync;
+    if r is () {
+        return ();
+    }
+    return store:auditOf(systemActor(correlationId), "EngagementSyncRun", "sharing_engagement",
+            types:COMMUNITY_MANAGEMENT, {status: result.status, tokenRefreshed: result.tokenRefreshed, campaigns: r.campaigns,
+                calls: r.calls, reactions: r.reactions, comments: r.comments, reposts: r.reposts,
+                alreadyRecorded: r.alreadyRecorded, dropped: r.dropped});
+}

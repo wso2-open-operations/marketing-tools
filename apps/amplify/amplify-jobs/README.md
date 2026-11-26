@@ -30,8 +30,8 @@ Defined in `service.bal`; the contract is `openapi.yaml`.
 | `GET /ready` | Readiness. Reports the database, each breaker, the outbox backlog and the token partition runway. Answers 200 unless the database is not configured (`dbHost` empty), because Choreo stops routing on any non-2xx |
 | `POST /runs` | The Run. Synchronous. Returns the run log. `202 SKIPPED` while another run holds the lock, `503` when the database is not reachable. Optional `X-Correlation-ID` header |
 | `POST /maintenance/partitions` | Daily upkeep (see Maintenance). `202 SKIPPED` when another pass is running |
-| `POST /engagement/sync` | Community Management engagement sync (`engagement.bal`): off unless `engagement.sync_enabled`; reactions, comments and native reshares on the page's open posts become engagements with `EngagementRecorded`, within `engagement.daily_call_budget`. `202 SKIPPED` when another sync is running. Refreshing the page token needs `linkedinPageClientSecret` |
-| `POST /coins/convert` | Automatic Coins conversion (`coins.bal`, rules in `amplify_domain.scoring`, ADR-048): off unless `coin.wallets_enabled` (`202 SKIPPED WALLETS_OFF`). Reconciles open issues of earlier runs first, plans whole blocks within `coin.max_coins_per_person` / `coin.max_coins_per_run`, stops before sending anything when the master wallet can't cover the run, then per employee: issue PENDING + rows tagged (one transaction), transfer, rows PAID + issue SENT (one transaction). A refusal is FAILED (rows back to HELD), no clear answer is UNKNOWN (the run stops; the next run reconciles). Employees without a captured wallet are `SKIPPED_NO_WALLET`. Re-running a period sends nothing for its SENT issues. `202 SKIPPED` when another conversion is running |
+| `POST /engagement/sync` | Community Management engagement sync (`engagement.bal`): off unless `engagement.sync_enabled`; reactions, comments and native reshares on the page's open posts become engagements with `EngagementRecorded`, within `engagement.daily_call_budget`. One `EngagementSyncRun` audit row with the counts per sync that read LinkedIn. `202 SKIPPED` when another sync is running. Refreshing the page token needs `linkedinPageClientSecret` |
+| `POST /coins/convert` | Automatic Coins conversion (`coins.bal`, rules in `amplify_domain.scoring`, ADR-048): off unless `coin.wallets_enabled` (`202 SKIPPED WALLETS_OFF`). Reconciles open issues of earlier runs first, plans whole blocks within `coin.max_coins_per_person` / `coin.max_coins_per_run`, stops before sending anything when the master wallet can't cover the run, then per employee: issue PENDING + rows tagged (one transaction), transfer, rows PAID + issue SENT (one transaction). A refusal is FAILED (rows back to HELD), no clear answer is UNKNOWN (the run stops; the next run reconciles). Employees without a captured wallet are `SKIPPED_NO_WALLET`. Re-running a period sends nothing for its SENT issues. One `CoinRunCompleted` audit row per run (status, period, counts). `202 SKIPPED` when another conversion is running |
 | `POST /maintenance/leavers` | Runs only the leaver sweep (the daily upkeep includes it) |
 | `POST /maintenance/rebuild-recognition` | Rebuilds every leaderboard and standing table from the ledger and returns the new standing version. The ledger is the source of truth, so this is always safe |
 
@@ -92,6 +92,7 @@ Files: `run.bal`, `handlers.bal`, `outcome.bal`, `ports.bal`, `novera.bal`, `out
 - Purges expired `Idempotency-Key` records.
 - Re-seals token rows written under an older key with the active one (`token_rotation` in the report, never fatal).
 - Runs the leaver sweep (`leaver_sweep` in the report).
+- Housekeeping (`housekeeping.bal`, V029, never fatal): prunes `sharing_native_intent`, `sharing_api_usage` and the post rows of `sharing_sync_cursor` past their `housekeeping.*` ages (S017), at most `housekeeping.batch_rows` rows per statement and 20 statements per table (`PARTIAL` when rows are left), and writes one `HousekeepingRun` audit row with the counts (`housekeeping` in the report). Retention per table: `architecture/solution/Phase 1/phase1-data-model.md`, "Growth, retention and housekeeping".
 
 One pass at a time across replicas. At start-up the worker also creates the next 14 days of token partitions in the background (`partitions.bal`).
 
@@ -149,6 +150,7 @@ The HR Entity client has a timeout and an optional OAuth2 client-credentials tok
 | `outcome.bal` | The four outcomes and the backoff |
 | `ports.bal` | Ports (`RunStore`, `Store`, `RunLock`) and their Postgres implementations |
 | `novera.bal` | `NoveraPort` and the client for Novera's notifications endpoint |
+| `housekeeping.bal` | The maintenance pass's housekeeping step: `housekeeping.*` settings, batched prunes through `amplify_domain.sharing` (V029), the `HousekeepingRun` audit row |
 | `coins.bal` | `POST /coins/convert` wiring: the Coins client (`amplify_common.coins`), the `coin.*` settings, `PgCoinConversionStore` over its own single-connection client (`coinsDb`) and lock (`COINS_LOCK_KEY` in `ports.bal`) |
 | `outbound.bal`, `config.bal` | LinkedIn adapter, Novera client set-up, token cipher, run tuning |
 | `leavers.bal` | The leaver sweep and its HR Entity reader |

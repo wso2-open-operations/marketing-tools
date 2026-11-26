@@ -188,3 +188,18 @@ isolated class PgCoinConversionStore {
 
     isolated function repository() returns scoring:CoinRepository => new scoring:PgCoinRepository(self.db);
 }
+
+# The audit row of a conversion run (`CoinRunCompleted`): status, period and counts, no wallet addresses. Each issue
+# has its own `CoinsIssued` / `CoinIssueFailed` / `CoinIssueUnknown` row as well. A skip changes nothing: no row.
+#
+# + result - The result
+# + correlationId - Trigger correlation id
+# + return - The entry, or `()` for a skip
+isolated function coinRunAudit(scoring:CoinRunReport|CoinsSkipped result, string? correlationId)
+        returns store:AuditEntry? {
+    if result is CoinsSkipped {
+        return ();
+    }
+    return store:auditOf(systemActor(correlationId), "CoinRunCompleted", "scoring_coin_run",
+            result.period ?: result.status, result.toJson());
+}

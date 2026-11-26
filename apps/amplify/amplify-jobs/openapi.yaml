@@ -65,7 +65,7 @@ paths:
     post:
       operationId: runPartitionMaintenance
       description: >-
-        Daily upkeep (B10) plus expired Idempotency-Key purge (ADR-024). One pass at a time across replicas: a pass
+        Daily upkeep (B10) plus expired Idempotency-Key purge (ADR-024) and the phase 2-4 housekeeping (V029). One pass at a time across replicas: a pass
         that outlives the scheduler's 180 s deadline is not started again by its retry, which gets 202 `SKIPPED`
         instead of a second pass.
       responses:
@@ -297,3 +297,15 @@ components:
             resealed: {type: integer}
             skipped: {type: integer}
             failed: {type: integer}
+        housekeeping:
+          type: object
+          description: >-
+            Prunes the phase 2-4 working tables in batches (V029): native repost intents, Community Management call
+            counters and post sync cursors past their `housekeeping.*` ages. Writes one `HousekeepingRun` audit row.
+            Never fails the call.
+          required: [status, native_intents_deleted, api_usage_deleted, sync_cursors_deleted]
+          properties:
+            status: {type: string, enum: [DONE, PARTIAL, FAILED]}
+            native_intents_deleted: {type: integer}
+            api_usage_deleted: {type: integer}
+            sync_cursors_deleted: {type: integer}
