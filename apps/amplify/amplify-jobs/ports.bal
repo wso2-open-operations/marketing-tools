@@ -41,6 +41,9 @@ const int MAINTENANCE_LOCK_KEY = 1835755886;
 # Advisory lock key for "one Coins conversion at a time" across replicas ("coin", ADR-048).
 const int COINS_LOCK_KEY = 1668247918;
 
+# Advisory lock key for "one reach refresh at a time" across replicas ("rech").
+const int REACH_LOCK_KEY = 1919247208;
+
 # Run settings from config.
 type RunConfig record {|
     int batchSize;

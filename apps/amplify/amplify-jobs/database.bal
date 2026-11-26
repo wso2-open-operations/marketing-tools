@@ -245,3 +245,24 @@ isolated function coinsDb() returns postgresql:Client|error {
         return created;
     }
 }
+
+isolated postgresql:Client? reachClientDb = ();
+
+# Dedicated single-connection client for the reach refresh: its session lock and its work on one connection, never
+# retired, apart from the run's pool.
+#
+# + return - The client, or an error when not configured
+isolated function reachDb() returns postgresql:Client|error {
+    lock {
+        postgresql:Client? existing = reachClientDb;
+        if existing is postgresql:Client {
+            return existing;
+        }
+        if dbHost == "" {
+            return error("Database is not configured");
+        }
+        postgresql:Client created = check store:newClient(dbConfig(maxOpenConnections = 1, maxConnectionLifeTime = 0));
+        reachClientDb = created;
+        return created;
+    }
+}

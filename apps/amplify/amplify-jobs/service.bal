@@ -243,6 +243,47 @@ service http:InterceptableService / on jobsListener {
         return result;
     }
 
+    # Post reach refresh (#1781): impressions and members reached of the in-app shares of employees who connected
+    # Reach, read with each employee's own token, the latest value per post per UTC day. Within the daily Community
+    # Management budget it shares with the engagement sync. Off unless `reach.enabled` is true (answers `OFF`). One
+    # refresh at a time across replicas, on its own connection and lock. The scheduler calls it (`reach.schedule`).
+    #
+    # + correlationId - Trigger correlation id (`X-Correlation-ID`), logged with the refresh
+    # + return - What was done, 202 when another refresh is in progress, 503 when the database isn't reachable, or 500
+    resource function post reach/refresh(@http:Header {name: "X-Correlation-ID"} string? correlationId)
+            returns ReachRefreshResult|http:Accepted|http:ServiceUnavailable|http:InternalServerError {
+        postgresql:Client|error dbc = reachDb();
+        if dbc is error {
+            log:printError("Reach refresh: database unavailable", resilience:loggable(dbc));
+            return <http:ServiceUnavailable>{body: {message: "Database unavailable"}};
+        }
+        PgRunLock guard = new (dbc, REACH_LOCK_KEY);
+        boolean|error acquired = guard.tryAcquire();
+        if acquired is error {
+            recordDbFailure(acquired);
+            log:printError("Reach refresh: could not take the lock", resilience:loggable(acquired));
+            return <http:ServiceUnavailable>{body: {message: "Database unavailable"}};
+        }
+        if !acquired {
+            log:printInfo("Reach refresh skipped: another refresh is in progress", correlationId = correlationId);
+            return <http:Accepted>{body: <ReachSkipped>{}};
+        }
+        // `trap`: however the refresh ends (error or panic), the session lock is released below.
+        ReachRefreshResult|error result = trap runReachRefresh(new PgReachJobStore(dbc), communityAdapter, tokenCipher,
+                reachMaxPostsPerRun, time:utcNow());
+        error? released = guard.release();
+        if released is error {
+            log:printError("Reach refresh lock release failed (the session drop releases it)", released);
+        }
+        if result is error {
+            recordDbFailure(result);
+            log:printError("Reach refresh failed", resilience:loggable(result), correlationId = correlationId);
+            return <http:InternalServerError>{body: {message: "Reach refresh failed"}};
+        }
+        logReachRefresh(result, correlationId);
+        return result;
+    }
+
     # Runs only the leaver sweep (the daily maintenance run includes it). With `leaverSweepMode = DRY_RUN` it
     # reports who would be erased; with `OFF` it does nothing.
     #

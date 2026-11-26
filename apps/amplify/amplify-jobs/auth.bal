@@ -21,8 +21,8 @@
 // operations Amplify has. Every call except the two probes must carry a key (ADR-039, amended 2026-11-01):
 //
 // - `internalApiKey` opens every route. amplify-api uses it for its own triggers ("Save & Share Now").
-// - `schedulerApiKey` opens only `POST /runs`, `POST /maintenance/partitions`, `POST /engagement/sync` and
-//   `POST /coins/convert`. It is
+// - `schedulerApiKey` opens only `POST /runs`, `POST /maintenance/partitions`, `POST /engagement/sync`,
+//   `POST /coins/convert` and `POST /reach/refresh`. It is
 //   the key the scheduler holds (a static header on each registered job, and so also in the scheduler's own
 //   database), so a leak of it cannot reach the rebuild or the leaver sweep.
 
@@ -39,7 +39,7 @@ const string INTERNAL_KEY_HEADER = "X-Amplify-Internal-Key";
 configurable string internalApiKey = ?;
 
 # Secret the scheduler's jobs carry (a Choreo secret; locally `AMPLIFY_SCHEDULER_API_KEY`). Opens only
-# `POST /runs`, `POST /maintenance/partitions`, `POST /engagement/sync` and `POST /coins/convert`. Required, and must
+# `POST /runs`, `POST /maintenance/partitions`, `POST /engagement/sync`, `POST /coins/convert` and `POST /reach/refresh`. Required, and must
 # differ from
 # `internalApiKey`.
 configurable string schedulerApiKey = ?;
@@ -108,7 +108,7 @@ isolated function decideAccess(string presented, string internal, string schedul
 #
 # + method - HTTP method
 # + path - Request path segments
-# + return - True for `POST /runs`, `POST /maintenance/partitions`, `POST /engagement/sync` and `POST /coins/convert`
+# + return - True for `POST /runs`, `POST /maintenance/partitions`, `POST /engagement/sync`, `POST /coins/convert` and `POST /reach/refresh`
 isolated function schedulerMayCall(string method, string[] path) returns boolean {
     if method != http:POST {
         return false;
@@ -116,7 +116,8 @@ isolated function schedulerMayCall(string method, string[] path) returns boolean
     return (path.length() == 1 && path[0] == "runs")
         || (path.length() == 2 && path[0] == "maintenance" && path[1] == "partitions")
         || (path.length() == 2 && path[0] == "engagement" && path[1] == "sync")
-        || (path.length() == 2 && path[0] == "coins" && path[1] == "convert");
+        || (path.length() == 2 && path[0] == "coins" && path[1] == "convert")
+        || (path.length() == 2 && path[0] == "reach" && path[1] == "refresh");
 }
 
 # Whether a presented key is the configured one. Both sides are trimmed: amplify-api and the scheduler send the

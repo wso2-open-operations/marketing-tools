@@ -169,7 +169,8 @@ public isolated function connectReach(ReachConnection? existing, types:EmployeeI
 # + return - The change
 public isolated function refreshReach(ReachConnection existing, StoredToken access, StoredToken? refresh)
         returns ReachChange {
-    ReachConnection next = existing.clone();
+    // A new record, so a read-only connection (as the jobs keep them) can be refreshed too.
+    ReachConnection next = {...existing};
     next.accessToken = tokenRef(access);
     next.accessExpiresAt = access.expiresAt;
     TokenRef[] old = [existing.accessToken];
@@ -269,25 +270,20 @@ public isolated class PgReachConnectionRepository {
         return toReachConnection(row);
     }
 
-    # Every Reach connection of these employees (the refresh job's consenting employees).
+    # Every Reach connection (the refresh job's consenting employees), oldest connect first.
     #
-    # + employeeIds - Employees
-    # + return - Connection by employee id, or an error
-    public isolated function ofEmployees(types:EmployeeId[] employeeIds) returns map<ReachConnection>|error {
-        map<ReachConnection> found = {};
-        if employeeIds.length() == 0 {
-            return found;
-        }
-        string ids = store:arrayLiteral(employeeIds);
+    # + return - Connections, or an error
+    public isolated function allConnections() returns ReachConnection[]|error {
         stream<ReachRow, error?> rows = self.db->query(`
             SELECT employee_id, array_to_json(scopes)::text AS scopes, access_token_id::text AS access_token_id,
                    access_token_issued_on::text AS access_token_issued_on, refresh_token_id::text AS refresh_token_id,
                    refresh_token_issued_on::text AS refresh_token_issued_on, access_expires_at, refresh_expires_at,
                    connected_at, version
-            FROM connection_member_analytics WHERE employee_id = ANY(CAST(${ids} AS text[]))`);
+            FROM connection_member_analytics ORDER BY connected_at, employee_id`);
         ReachRow[] list = check from ReachRow r in rows select r;
+        ReachConnection[] found = [];
         foreach ReachRow r in list {
-            found[r.employee_id] = check toReachConnection(r);
+            found.push(check toReachConnection(r));
         }
         return found;
     }
