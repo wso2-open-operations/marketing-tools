@@ -109,11 +109,21 @@ service http:InterceptableService /oauth/v2 on wwwListener {
                     reason = form.message());
             return oauthBadRequest(OAUTH_INVALID_REQUEST, "Request body must be application/x-www-form-urlencoded");
         }
-        if form["grant_type"] != GRANT_TYPE_AUTHORIZATION_CODE {
-            return oauthBadRequest(OAUTH_UNSUPPORTED_GRANT_TYPE, "grant_type must be authorization_code");
+        string? grantType = form["grant_type"];
+        if grantType != GRANT_TYPE_AUTHORIZATION_CODE && grantType != GRANT_TYPE_REFRESH_TOKEN {
+            return oauthBadRequest(OAUTH_UNSUPPORTED_GRANT_TYPE, "grant_type must be authorization_code or refresh_token");
         }
         if form["client_id"] != clientId || form["client_secret"] != clientSecret {
             return <OAuthErrorUnauthorized>{body: {'error: OAUTH_INVALID_CLIENT, error_description: "Client authentication failed"}};
+        }
+        if grantType == GRANT_TYPE_REFRESH_TOKEN {
+            // Programmatic refresh (Community Management): a new access token, the same refresh token.
+            string? refreshValue = form["refresh_token"];
+            store:RefreshToken? refresh = refreshValue is string ? store:getRefreshToken(refreshValue) : ();
+            if refresh is () || refresh.expiresAt <= nowSeconds() || refresh.clientId != clientId {
+                return oauthBadRequest(OAUTH_INVALID_REQUEST, "The refresh token is invalid or expired");
+            }
+            return issueTokens(ctx, refresh.memberSub, refresh.scopes, refresh);
         }
         string? codeValue = form["code"];
         store:AuthorizationCode? code = codeValue is string ? store:takeAuthorizationCode(codeValue) : ();
@@ -121,24 +131,7 @@ service http:InterceptableService /oauth/v2 on wwwListener {
                 || code.redirectUri != form["redirect_uri"] {
             return oauthBadRequest(OAUTH_INVALID_REQUEST, MSG_TOKEN_EXCHANGE_FAILED);
         }
-
-        string accessToken = randomOpaqueValue() + randomOpaqueValue();
-        int revoked = store:issueAccessToken({
-            value: accessToken,
-            clientId,
-            memberSub: code.memberSub,
-            scopes: code.scopes,
-            expiresAt: nowSeconds() + <decimal>tokenTtlSeconds
-        });
-        log:printInfo("Access token issued", correlationId = correlationId(ctx), scopes = code.scopes, revokedTokens = revoked);
-        return <AccessTokenResponseOk>{
-            body: {
-                access_token: accessToken,
-                expires_in: tokenTtlSeconds,
-                scope: string:'join(",", ...code.scopes),
-                token_type: TOKEN_TYPE_BEARER
-            }
-        };
+        return issueTokens(ctx, code.memberSub, code.scopes, ());
     }
 
     # Revokes an access token (RFC 7009): client credentials in the form, then the token is forgotten.
@@ -164,6 +157,48 @@ service http:InterceptableService /oauth/v2 on wwwListener {
         log:printInfo("Access token revoke", correlationId = correlationId(ctx), removed = removed);
         return http:OK;
     }
+}
+
+# Issues an access token, and with Community Management scopes a refresh token (a refresh keeps the one it used,
+# as LinkedIn does until the refresh token's own expiry).
+#
+# + ctx - Request context
+# + memberSub - Member
+# + scopes - Granted scopes
+# + refresh - The refresh token being used, `()` on a code exchange
+# + return - The token response
+isolated function issueTokens(http:RequestContext ctx, string memberSub, readonly & string[] scopes,
+        store:RefreshToken? refresh) returns AccessTokenResponseOk {
+    string accessToken = randomOpaqueValue() + randomOpaqueValue();
+    int revoked = store:issueAccessToken({
+        value: accessToken,
+        clientId,
+        memberSub,
+        scopes,
+        expiresAt: nowSeconds() + <decimal>tokenTtlSeconds
+    }, ORGANIZATION_SCOPES);
+    AccessTokenResponse body = {
+        access_token: accessToken,
+        expires_in: tokenTtlSeconds,
+        scope: string:'join(",", ...scopes),
+        token_type: TOKEN_TYPE_BEARER
+    };
+    boolean organization = scopes.some(scope => ORGANIZATION_SCOPES.indexOf(scope) !is ());
+    if organization {
+        store:RefreshToken issued = refresh ?: {
+            value: randomOpaqueValue() + randomOpaqueValue(),
+            clientId,
+            memberSub,
+            scopes,
+            expiresAt: nowSeconds() + <decimal>refreshTokenTtlSeconds
+        };
+        store:putRefreshToken(issued);
+        body.refresh_token = issued.value;
+        body.refresh_token_expires_in = <int>(issued.expiresAt - nowSeconds());
+    }
+    log:printInfo("Access token issued", correlationId = correlationId(ctx), scopes = scopes, revokedTokens = revoked,
+            refreshed = refresh !is ());
+    return {body};
 }
 
 # Parses the `scope` parameter and checks every scope is one the mock supports.

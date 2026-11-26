@@ -19,6 +19,7 @@ Audit mitigations applied 2026-10-16 ([requirements-map.md](requirements-map.md)
 - [recognition — S4 Recognition (read models)](#recognition--s4-recognition-read-models)
 - [announcement — S5 Announcements](#announcement--s5-announcements)
 - [messaging, audit, config — infrastructure](#messaging-audit-config--infrastructure)
+- [Growth, retention and housekeeping (phases 1–4)](#growth-retention-and-housekeeping-phases-14)
 - [Domain events → which table changes](#domain-events--which-table-changes)
 - [Database users and grants](#database-users-and-grants)
 - [Decisions from review (2026-10-16)](#decisions-from-review-2026-10-16)
@@ -546,7 +547,7 @@ erDiagram
 | Value | Meaning | Set by |
 | --- | --- | --- |
 | `HELD` | Valid points, waiting for Coin issue. **Phase 1 default** for awards | jobs on award; PO when clearing an action |
-| `PAID` | Converted to Coins; `paid_at` and `coin_reference` set | Coin issuer (**phase 2**) |
+| `PAID` | Converted to Coins; `paid_at` and `coin_reference` set; final (V026 guard) | jobs, the automatic Coins conversion (**phase 2**, ADR-048) |
 | `null` | **Action required** before it can be paid: verification couldn't run (token expired, LinkedIn down), or PO flagged it | verification pass; PO |
 
 - **Facts never change.** The only updatable columns are `status`, `status_changed_at`, `paid_at`, `coin_reference`, through **column-level grants** (`GRANT UPDATE (status, status_changed_at, paid_at, coin_reference)`). `points`, `employee_id`, `reference` and the rest are physically immutable to app roles. A correction is still a new `ADJ-`/`REV-` row.
@@ -559,10 +560,14 @@ erDiagram
 | A row is reversed at most once | `UNIQUE (reverses_reference)` |
 | ADJ/REV carry a reason and a PO actor | `CHECK (source_type IN ('ENGAGEMENT','EXTERNAL_SHARE') OR reason IS NOT NULL)`; API role `amplify_po` (ADR-010) |
 | PAID has a paid time | `CHECK (status IS DISTINCT FROM 'PAID' OR paid_at IS NOT NULL)` |
-| No PAID in phase 1 | `CHECK (status IS DISTINCT FROM 'PAID')`, dropped by the phase 2 migration |
+| ~~No PAID in phase 1~~ | dropped by V026 (phase 2) |
+| PAID names its conversion | `CHECK (status IS DISTINCT FROM 'PAID' OR coin_reference IS NOT NULL)` (V026) |
+| A PAID row is final | the ledger guard trigger (V021, tightened by V026) |
 | One rule per action per effective time | `UNIQUE (action, effective_from)` |
 
 Indexes: `(employee_id, created_at)`; `(campaign_id)`; `(created_at) WHERE status IS NULL` for the PO "action required" list.
+
+**Coins conversion (phase 2, V026, ADR-048).** `scoring_coin_wallet` (PK `employee_id`: the captured wallet address, `captured_at`, `updated_at`; erasure deletes it), `scoring_coin_run` (one per `period`, unique: `RUNNING` / `DONE` / `PARTIAL` / `STOPPED` with `stop_reason`, the period's totals) and `scoring_coin_issue` (per employee per run, unique `(run_id, employee_id)`: `points_in`, `carry_in`, `coins`, `carry_out`, the rate used, `wallet_address`, our `CNV-` `reference` (unique, set on the ledger rows as `coin_reference`), the service's `transfer_reference` (unique), `status` `PENDING` / `SENT` / `FAILED` / `UNKNOWN` / `SKIPPED_NO_WALLET`, `attempts`, `last_error_code`, `next_attempt_at`, `attempted_at`, `sent_at`). A check keeps whole blocks: `carry_in + points_in = (coins / block_coins) × block_points + carry_out`. Convertible rows: `status = 'HELD' AND coin_reference IS NULL` (partial index).
 
 ## recognition — S4 Recognition (read models)
 
@@ -725,6 +730,60 @@ erDiagram
 - **Settings seed:** `leaderboard.top_n = 3`, `team.visibility = TEAM` ([leaderboards.md](leaderboards.md)), `campaign.default_window_days = 30` (C7), `po.review_sla_hours = 48` ([po-dashboard.md](po-dashboard.md)), `posts.window_days = 14`, `connection.reminder_days = 7`, `connection.token_grace_days = 1`, `audit.retention_months = 60`, `sharing.enabled = true`, `announcements.enabled = true`.
 
 ---
+
+## Growth, retention and housekeeping (phases 1–4)
+
+Every table, how it grows and what removes rows (review 2026-11-26, V029). Growth figures assume the pilot scale:
+~1,000 employees, tens of campaigns a month, a run every 5 minutes, the engagement sync every 2 hours. Two daily
+mechanisms remove rows, both in the one `amplify-jobs POST /maintenance/partitions` pass (`maintenance.schedule`,
+02:00 UTC, one pass at a time across replicas):
+
+- **Partition upkeep and purges** (`messaging_run_partition_maintenance()`, V009/V012): token days dropped once their
+  last token expired + `connection.token_grace_days`; audit months dropped after `audit.retention_months` (≥ 60, B17);
+  `DONE` outbox rows older than 30 days purged; expired `oauth_state` rows swept. Each drop and purge is audited.
+  Then `store:purgeExpiredIdempotencyKeys` deletes expired `Idempotency-Key` rows (24 h lifetime, ADR-024).
+- **Housekeeping** (V029, `amplify-jobs/housekeeping.bal`, never fails the pass): `sharing_prune_native_intent`,
+  `sharing_prune_api_usage` and `sharing_prune_sync_cursor` each delete at most `housekeeping.batch_rows` rows per call
+  (rows picked `FOR UPDATE SKIP LOCKED`, `lock_timeout` 5 s, one short statement each); jobs repeats a call while it
+  deletes a full batch, at most 20 calls per table (`PARTIAL` when rows are left; the next day carries on). One
+  `HousekeepingRun` audit row per pass holds the counts and the settings used (`FAILED` outcome when a prune failed).
+
+| Table | Added | Grows with | Expected size | Cleanup | Retention |
+| --- | --- | --- | --- | --- | --- |
+| `identity_employee`, `identity_employee_alias` | V002, V020 | people who sign in | ~1 row per person | none; erasure (V018) pseudonymizes | kept (pseudonymous key of the ledger) |
+| `campaign`, `campaign_tag`, `campaign_category` | V002 | campaigns | tens a month | none (archived, not deleted) | kept: business data |
+| `connection_member_connection`, `connection_linkedin_consent` | V003, V015 | connected people | ~1 row per person | Remove Connection, erasure | while connected / until erasure |
+| `connection_provider_token` (daily partitions) | V003 | connects and refreshes (member and page tokens) | a few rows per person per refresh | partition drop by expiry + `connection.token_grace_days` (B11) | until the last token of the day expired + 1 day |
+| `connection_oauth_state` | V003 | OAuth starts | short-lived | daily sweep of expired rows | minutes |
+| `connection_org_connection` | V025 | company pages | 1 row (the WSO2 page) | none; a disconnect keeps the row with `revoked_at` | kept |
+| `sharing_share_request`, `sharing_engagement` | V004 | shares, and from V025 synced reactions, comments and native reposts | thousands a month in phase 4 | none (erasure clears commentary and member URN) | kept: business data (the ledger's source) |
+| `sharing_engagement_verification` | V004 | verification pass (future phase, ADR-018) | empty today | none yet | decide with ADR-018 |
+| `sharing_native_intent` | V025 | "Repost on LinkedIn" clicks, 1 row per employee per campaign | up to employees × open campaigns | V029: `COALESCE(detected_at, opened_at)` older than `housekeeping.native_intent_days` | **7 days** after detection, or after the click when never found (the screen says NOT_FOUND after 24 h) |
+| `sharing_api_usage` | V025 | 1 row per UTC day | 365 rows a year | V029: days older than `housekeeping.api_usage_days` | **90 days** (today's row is the call budget) |
+| `sharing_sync_cursor` | V025 | 2 rows per synced post (REACTIONS, COMMENTS) + 1 per page (SHARE_NOTIFICATIONS) | 2 × campaigns | V029: post cursors not moved for `housekeeping.sync_cursor_days`; the page cursor is never pruned | **180 days** without movement. A pruned cursor of a post still open only means a re-read from the start (the engagement unique keys make it harmless) |
+| `external_sharing_external_share` | V005, V024 | own-post claims | tens a month | none (erasure clears the note) | kept: business data (PO decisions) |
+| `scoring_point_rule` | V006 | rule versions | a handful | none | kept: awards reference them |
+| `scoring_points_ledger` | V006 | awards, adjustments, reversals | thousands a month in phase 4 | **never** (V021 guard: append-only) | kept: the source of truth, needed for reconciliation and the Coins conversion |
+| `scoring_coin_wallet` | V026 | captured wallets | ~1 row per person | erasure deletes it | while employed |
+| `scoring_coin_run`, `scoring_coin_issue` | V026 | 1 run per period; 1 issue per employee per run | ~1,000 issues a month (monthly schedule) | **never** | kept: reconciliation with the Coins service (a transfer whose outcome is unknown is matched by these rows) |
+| `recognition_*` | V007 | standings per period × employee, monthly points per employee × month | employees × periods | rebuild removes rows with no ledger left | kept: read models, rebuildable from the ledger |
+| `announcement` | V008 | campaigns announced | tens a month | none | kept |
+| `messaging_outbox` | V008 | every event | hundreds to thousands a day | `DONE` older than 30 days purged daily; `FAILED` rows stay for an operator | 30 days after processing |
+| `messaging_idempotency_key` | V008 | `Idempotency-Key` requests | hundreds a day | expired rows deleted daily | 24 hours |
+| `audit_log` (monthly partitions) | V008 | every state change, plus one row per sync run, Coins run and housekeeping pass | the largest table: ~10k–50k rows a month in phase 4 | partition drop after `audit.retention_months` | **≥ 60 months** (B17); never row-deleted (V021 guard) |
+| `config_app_setting` | V008 | settings | tens of rows | none | kept |
+
+**Business data is not pruned**: the ledger, engagements, share requests, external shares, coin runs and issues and the
+audit log. Settings (S017, admin-editable, validated in amplify-api `settings.bal`, the same ranges the V029 functions
+enforce): `housekeeping.native_intent_days` 7 (2–365), `housekeeping.api_usage_days` 90 (30–730),
+`housekeeping.sync_cursor_days` 180 (30–730), `housekeeping.batch_rows` 5000 (100–50000).
+
+**Run-level audit** (2026-11-26): besides the per-row audit of each change, `POST /engagement/sync` writes one
+`EngagementSyncRun` row per sync that read LinkedIn (status and counts; each recorded engagement also has its own
+`EngagementSynced` row), and `POST /coins/convert` one `CoinRunCompleted` row per conversion run (`entity_id` the
+period; each issue also has `CoinsIssued` / `CoinIssueFailed` / `CoinIssueUnknown`). Skipped or switched-off calls
+change nothing and write no row. `POST /runs` (every 5 minutes) writes no run row: each event it handles is audited
+by its own writer (ledger, share, announcement).
 
 ## Domain events → which table changes
 

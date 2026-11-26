@@ -93,6 +93,8 @@ type ExternalShareBody record {|
     string? activityId = ();
     boolean certified;
     string? campaignId = ();
+    # Optional note for the reviewer, at most 500 characters
+    string? note = ();
 |};
 
 # Reason body (reject, reverse).
@@ -180,6 +182,8 @@ type ExternalShareDto record {|
     string? amplifiedAt;
     string createdAt;
     int version;
+    # The employee's note for the reviewer
+    string? note;
 |};
 
 type LedgerEntryDto record {|
@@ -194,6 +198,10 @@ type LedgerEntryDto record {|
     string actorId;
     string createdAt;
     string? status;
+    # When the row became Coins (PAID only)
+    string? paidAt;
+    # The `CNV-` reference of the conversion that took (or paid) the row
+    string? coinReference;
 |};
 
 type PointRuleDto record {|
@@ -281,7 +289,8 @@ isolated function externalShareDto(external_sharing:ExternalShare c) returns Ext
     decisionReason: c.decisionReason,
     amplifiedAt: tsOpt(c.amplifiedAt),
     createdAt: ts(c.createdAt),
-    version: c.version
+    version: c.version,
+    note: c.note
 };
 
 isolated function ledgerDto(types:LedgerEntry e) returns LedgerEntryDto => {
@@ -295,7 +304,9 @@ isolated function ledgerDto(types:LedgerEntry e) returns LedgerEntryDto => {
     reversesReference: e.reversesReference,
     actorId: e.actorId,
     createdAt: ts(e.createdAt),
-    status: e.status
+    status: e.status,
+    paidAt: tsOpt(e.paidAt),
+    coinReference: e.coinReference
 };
 
 # Label shown in place of a PO's free-text reason on adjustment and reversal rows.
@@ -311,6 +322,17 @@ isolated function ledgerDtoForTeammate(types:LedgerEntry e) returns json {
     _ = row.remove("actorId");
     boolean byPo = e.sourceType == types:ADJUSTMENT || e.sourceType == types:REVERSAL;
     row["reason"] = byPo ? PO_ADJUSTMENT_LABEL : ();
+    return row;
+}
+
+# A ledger row for the person it belongs to: the PO's id stays internal, but the reason a PO gave is theirs to
+# read ("When points are removed, the reason is shown on the row", screens 4 and 6).
+#
+# + e - Ledger row
+# + return - The row as JSON without `actorId`
+isolated function ledgerDtoForSelf(types:LedgerEntry e) returns json {
+    map<json> row = <map<json>>ledgerDto(e).toJson();
+    _ = row.remove("actorId");
     return row;
 }
 

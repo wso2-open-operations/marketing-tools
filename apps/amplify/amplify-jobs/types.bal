@@ -30,6 +30,8 @@ type MaintenanceReport record {|
     TokenRotation token_rotation;
     # Leaver sweep: employees gone from the directory (`OFF` unless `leaverSweepMode` is set)
     LeaverSweepReport leaver_sweep;
+    # Housekeeping of the phase 2-4 working tables (V029)
+    HousekeepingReport housekeeping;
 |};
 
 # What the key-rotation step of `POST /maintenance/partitions` did.

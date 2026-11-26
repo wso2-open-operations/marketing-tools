@@ -17,10 +17,12 @@ import amplify_common.resilience;
 import amplify_common.types;
 import amplify_domain.connection;
 import amplify_domain.recognition;
+import amplify_domain.scoring;
 import amplify_domain.store;
 
 import ballerina/http;
 import ballerina/log;
+import ballerina/time;
 import ballerinax/postgresql;
 
 # Port the worker listens on (Project visibility only, never published).
@@ -115,8 +117,9 @@ service http:InterceptableService / on jobsListener {
     # Daily upkeep (B10): token and audit partitions ahead, expired token days and audit months past
     # retention dropped (each audited), DONE outbox rows purged, expired OAuth states swept.
     #
-    # Also purges expired `Idempotency-Key` records (ADR-024 item 3) and re-seals token rows written under
-    # an older key with the active one (key rotation; the result is in `token_rotation`, never fatal).
+    # Also purges expired `Idempotency-Key` records (ADR-024 item 3), re-seals token rows written under
+    # an older key with the active one (key rotation; the result is in `token_rotation`, never fatal), and
+    # prunes the phase 2-4 working tables in batches (`housekeeping`, V029, never fatal, one audit row).
     #
     # One pass at a time across replicas: a pass that outlives the scheduler's deadline is not started again
     # by its retry (a second 10k-row reseal sweep, a second partition drop); the retry gets 202 `SKIPPED`.
@@ -152,6 +155,94 @@ service http:InterceptableService / on jobsListener {
             return <http:InternalServerError>{body: {message: "Partition maintenance failed"}};
         }
         log:printInfo(string `Partition maintenance done: ${result.toString()}`);
+        return result;
+    }
+
+    # Community Management engagement sync (phase 4): reactions, comments and native reshares on the page's open
+    # campaign posts become engagements with their `EngagementRecorded` event, scored by the next `POST /runs`.
+    # Off unless `engagement.sync_enabled` is true (answers `OFF`). One sync at a time across replicas, on its own
+    # connection and lock: a second caller gets 202 `SKIPPED`. The scheduler calls it (`engagement.schedule`).
+    #
+    # + correlationId - Trigger correlation id (`X-Correlation-ID`), logged with the sync
+    # + return - What was done, 202 when another sync is in progress, 503 when the database isn't reachable, or 500
+    resource function post engagement/sync(@http:Header {name: "X-Correlation-ID"} string? correlationId)
+            returns EngagementSyncResult|http:Accepted|http:ServiceUnavailable|http:InternalServerError {
+        postgresql:Client|error dbc = engagementDb();
+        if dbc is error {
+            log:printError("Engagement sync: database unavailable", resilience:loggable(dbc));
+            return <http:ServiceUnavailable>{body: {message: "Database unavailable"}};
+        }
+        PgRunLock guard = new (dbc, ENGAGEMENT_SYNC_LOCK_KEY);
+        boolean|error acquired = guard.tryAcquire();
+        if acquired is error {
+            recordDbFailure(acquired);
+            log:printError("Engagement sync: could not take the sync lock", resilience:loggable(acquired));
+            return <http:ServiceUnavailable>{body: {message: "Database unavailable"}};
+        }
+        if !acquired {
+            log:printInfo("Engagement sync skipped: another sync is in progress", correlationId = correlationId);
+            return <http:Accepted>{body: <EngagementSyncSkipped>{}};
+        }
+        // `trap`: however the sync ends (error or panic), the session lock is released below.
+        EngagementSyncResult|error result = trap runEngagementSync(new PgEngagementStore(dbc), communityAdapter,
+                tokenCipher, time:utcNow());
+        error? released = guard.release();
+        if released is error {
+            log:printError("Engagement sync lock release failed (the session drop releases it)", released);
+        }
+        if result is error {
+            recordDbFailure(result);
+            log:printError("Engagement sync failed", resilience:loggable(result), correlationId = correlationId);
+            return <http:InternalServerError>{body: {message: "Engagement sync failed"}};
+        }
+        logEngagementSync(result, correlationId);
+        recordRunAudit(dbc, engagementSyncAudit(result, correlationId));
+        return result;
+    }
+
+    # Automatic Coins conversion (phase 2, ADR-048): whole blocks of HELD points become Coins in each employee's captured
+    # wallet, sent from Amplify's master wallet through the WSO2 Coins transaction service. Open issues of earlier runs
+    # are reconciled first; nothing is sent when the master wallet can't cover the run; re-running a period sends
+    # nothing for its SENT issues. Off unless `coin.wallets_enabled` is true (202 `SKIPPED` `WALLETS_OFF`). One
+    # conversion at a time across replicas, on its own connection and lock. The scheduler calls it (`coin.schedule`).
+    #
+    # + correlationId - Trigger correlation id (`X-Correlation-ID`), logged and sent to the Coins service
+    # + return - What was done, 202 when skipped, 503 when the database isn't reachable, or 500
+    resource function post coins/convert(@http:Header {name: "X-Correlation-ID"} string? correlationId)
+            returns scoring:CoinRunReport|http:Accepted|http:ServiceUnavailable|http:InternalServerError {
+        postgresql:Client|error dbc = coinsDb();
+        if dbc is error {
+            log:printError("Coins conversion: database unavailable", resilience:loggable(dbc));
+            return <http:ServiceUnavailable>{body: {message: "Database unavailable"}};
+        }
+        PgRunLock guard = new (dbc, COINS_LOCK_KEY);
+        boolean|error acquired = guard.tryAcquire();
+        if acquired is error {
+            recordDbFailure(acquired);
+            log:printError("Coins conversion: could not take the lock", resilience:loggable(acquired));
+            return <http:ServiceUnavailable>{body: {message: "Database unavailable"}};
+        }
+        if !acquired {
+            log:printInfo("Coins conversion skipped: another conversion is in progress", correlationId = correlationId);
+            return <http:Accepted>{body: <CoinsSkipped>{reason: "CONVERSION_IN_PROGRESS"}};
+        }
+        // `trap`: however the conversion ends (error or panic), the session lock is released below.
+        scoring:CoinRunReport|CoinsSkipped|error result = trap runCoinConversion(new PgCoinConversionStore(dbc),
+                coinsPort(), correlationId, time:utcNow());
+        error? released = guard.release();
+        if released is error {
+            log:printError("Coins conversion lock release failed (the session drop releases it)", released);
+        }
+        if result is error {
+            recordDbFailure(result);
+            log:printError("Coins conversion failed", resilience:loggable(result), correlationId = correlationId);
+            return <http:InternalServerError>{body: {message: "Coins conversion failed"}};
+        }
+        logCoinConversion(result, correlationId);
+        recordRunAudit(dbc, coinRunAudit(result, correlationId));
+        if result is CoinsSkipped {
+            return <http:Accepted>{body: result};
+        }
         return result;
     }
 
@@ -205,5 +296,8 @@ isolated function runMaintenance(postgresql:Client dbc) returns MaintenanceRepor
     TokenRotation rotation = rotateTokenKeys(tokenCipher, new connection:PgTokenRepository(dbc));
     // Never fatal and off by default: the sweep reports what it did (or why it did nothing).
     LeaverSweepReport leavers = runConfiguredSweep(dbc);
-    return {...result, idempotency_keys_purged: purged, token_rotation: rotation, leaver_sweep: leavers};
+    // Never fatal: prunes the phase 2-4 working tables in batches and audits the counts (V029).
+    HousekeepingReport housekeeping = runHousekeeping(new PgHousekeepingStore(dbc));
+    return {...result, idempotency_keys_purged: purged, token_rotation: rotation, leaver_sweep: leavers,
+        housekeeping};
 }

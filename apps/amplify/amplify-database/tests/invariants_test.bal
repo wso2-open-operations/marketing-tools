@@ -141,14 +141,14 @@ function testConstraintsRejectBadRows() returns error? {
             VALUES (uuidv7(), 'e1', 'linkedin', 'SHARE_ON_LINKEDIN', 'urn:li:share:1', 'REPOST', 0)`),
             "share_request_attempts_check");
 
-    // Ledger (C1, ADR-010, phase 1 has no PAID).
+    // Ledger (C1, ADR-010; a PAID row names the conversion that paid it, V026).
     assertViolates(failure(api, `INSERT INTO scoring_points_ledger (reference, employee_id, source_type, points, actor_id)
             VALUES ('ADJ-it-no-reason', 'e1', 'ADJUSTMENT', 5, 'po-1')`), "points_ledger_reason_ck");
     assertViolates(failure(api, `INSERT INTO scoring_points_ledger (reference, employee_id, source_type, points, actor_id)
             VALUES ('AMP-it-no-rule', 'e1', 'ENGAGEMENT', 5, 'system')`), "points_ledger_award_ck");
     assertViolates(failure(api, `INSERT INTO scoring_points_ledger (reference, employee_id, source_type, points, actor_id,
             reason, status, paid_at)
-            VALUES ('ADJ-it-paid', 'e1', 'ADJUSTMENT', 5, 'po-1', 'x', 'PAID', now())`), "points_ledger_no_paid_phase1_ck");
+            VALUES ('ADJ-it-paid', 'e1', 'ADJUSTMENT', 5, 'po-1', 'x', 'PAID', now())`), "points_ledger_paid_coin_ck");
     assertViolates(failure(api, `INSERT INTO scoring_points_ledger (reference, employee_id, source_type, points, actor_id, reason)
             VALUES ('XYZ-it', 'e1', 'ADJUSTMENT', 5, 'po-1', 'x')`), "points_ledger_reference_check");
     assertViolates(failure(api, `INSERT INTO scoring_points_ledger (reference, employee_id, source_type, points, actor_id, reason)
@@ -209,7 +209,8 @@ function testDefinerFunctionsArePinnedOwnedAndPrivate() returns error? {
     int definers = check db->queryRow(`
         SELECT count(*)::int FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
         WHERE p.prosecdef AND n.nspname IN (${itLoginUser}, 'public')`);
-    test:assertEquals(definers, 9, "the V009 upkeep functions and V018's erase_employee are the only SECURITY DEFINER functions");
+    test:assertEquals(definers, 12,
+            "the V009 upkeep functions, V018's erase_employee and V029's three prunes are the only SECURITY DEFINER functions");
     int unpinned = check db->queryRow(`
         SELECT count(*)::int FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
         WHERE p.prosecdef AND NOT EXISTS (

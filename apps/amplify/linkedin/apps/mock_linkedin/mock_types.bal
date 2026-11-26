@@ -93,6 +93,10 @@ type AccessTokenResponse record {|
     string scope;
     # Always `Bearer`
     string token_type;
+    # Refresh token, with Community Management scopes only
+    string refresh_token?;
+    # Seconds until the refresh token expires
+    int refresh_token_expires_in?;
 |};
 
 # OAuth 2.0 error body.
@@ -126,4 +130,16 @@ type ErrorMethodNotAllowed record {|
 type ErrorInternalServerError record {|
     *http:InternalServerError;
     Error body;
+|};
+
+# `POST /mock/engagement` body.
+type MockEngagementRequest record {|
+    # `REACTION`, `COMMENT` or `RESHARE`
+    "REACTION"|"COMMENT"|"RESHARE" kind;
+    # Post acted on
+    string targetUrn;
+    # Who did it (`urn:li:person:{id}`, or the page)
+    string actorUrn;
+    # A reshare's words; only whether there are any is kept
+    string? commentary = ();
 |};

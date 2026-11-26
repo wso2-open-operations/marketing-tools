@@ -78,6 +78,11 @@ public type TokenGrant record {|
     # OIDC ID token (compact JWT) when LinkedIn returns one (scope `openid`). Check it with
     # `IdTokenValidator.validate` before trusting any claim in it; never log it
     string? idToken = ();
+    # Refresh token, when LinkedIn returns one (Community Management apps: programmatic refresh tokens).
+    # Plaintext here only, like the access token; never log it
+    string? refreshToken = ();
+    # Seconds until the refresh token expires (about 365 days), when LinkedIn says
+    int? refreshExpiresInSeconds = ();
 |};
 
 # The signed-in member, from OIDC userinfo.

@@ -49,7 +49,7 @@ public type Provider LINKEDIN;
 
 # Share on LinkedIn (member token, `w_member_social`).
 public const SHARE_ON_LINKEDIN = "SHARE_ON_LINKEDIN";
-# Community Management API (future phase).
+# Community Management API (the page connection and the engagement sync).
 public const COMMUNITY_MANAGEMENT = "COMMUNITY_MANAGEMENT";
 # Provider webhook (future phase).
 public const WEBHOOK = "WEBHOOK";
@@ -102,8 +102,10 @@ public const CHALLENGE_WINNER = "CHALLENGE_WINNER";
 # What an in-app share does on LinkedIn. The kind sets the tier.
 public type ShareKind REPOST|REPOST_COMMENTARY|SHARE|SHARE_COMMENTARY;
 
-# Engagement action. Phase 1 records only in-app share kinds (comments and reactions are a future phase).
-public type EngagementAction ShareKind;
+# Engagement action: the in-app share kinds, plus a reaction or a comment on an Amplify post that the
+# Community Management sync reads (phase 4). A native reshare the sync detects is a `REPOST` or
+# `REPOST_COMMENTARY`.
+public type EngagementAction ShareKind|REACTION|COMMENT;
 
 # External share action. Phase 1 has only `OWN_POST`.
 public type ExternalAction OWN_POST;
@@ -134,7 +136,7 @@ public type FailureReason NEEDS_RECONNECT|PROVIDER_REJECTED|RETRIES_EXHAUSTED;
 
 # Recorded by Amplify's own share flow.
 public const IN_APP = "IN_APP";
-# Recorded by a provider sync (future phase).
+# Recorded by a provider sync (the Community Management engagement sync).
 public const API_SYNC = "API_SYNC";
 
 # Where an engagement fact came from. `WEBHOOK` is the shared constant above.

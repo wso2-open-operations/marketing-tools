@@ -521,3 +521,103 @@ function createPost(string token, string commentary) returns http:Response|error
 }
 
 function uniqueText() returns string => "Mock post " + uuid:createType4AsString();
+
+// Community Management: page connection, refresh grant and the engagement finders
+
+const PAGE_SCOPE = "r_organization_social_feed rw_organization_admin";
+const TEST_ORG = "urn:li:organization:1477";
+
+@test:Config
+function testPageGrantHasARefreshTokenAndKeepsTheShareToken() returns error? {
+    string shareToken = check accessToken("openid profile w_member_social");
+    http:Response res = check tokenRequest(check authorizationCode(PAGE_SCOPE), TEST_CLIENT_SECRET);
+    json body = check res.getJsonPayload();
+    string refresh = check body.refresh_token;
+    int refreshTtl = check body.refresh_token_expires_in;
+    test:assertTrue(refreshTtl > 30000000);
+    // The page grant is another product: the member's share token still works.
+    http:Response me = check apiClient->get("/v2/userinfo", bearer(shareToken));
+    test:assertEquals(me.statusCode, http:STATUS_OK);
+
+    http:Response refreshed = check wwwClient->post("/oauth/v2/accessToken",
+            string `grant_type=refresh_token&refresh_token=${refresh}&client_id=${TEST_CLIENT_ID}&client_secret=${TEST_CLIENT_SECRET}`,
+            mediaType = "application/x-www-form-urlencoded");
+    test:assertEquals(refreshed.statusCode, http:STATUS_OK);
+    json again = check refreshed.getJsonPayload();
+    test:assertEquals(check again.refresh_token, refresh, "the same refresh token");
+    test:assertNotEquals(check again.access_token, check body.access_token);
+    http:Response unknown = check wwwClient->post("/oauth/v2/accessToken",
+            string `grant_type=refresh_token&refresh_token=nope&client_id=${TEST_CLIENT_ID}&client_secret=${TEST_CLIENT_SECRET}`,
+            mediaType = "application/x-www-form-urlencoded");
+    test:assertEquals(unknown.statusCode, http:STATUS_BAD_REQUEST);
+}
+
+@test:Config
+function testOrganizationAclSaysTheMemberIsAdministrator() returns error? {
+    string token = check accessToken(PAGE_SCOPE);
+    http:Response res = check apiClient->get("/rest/organizationAcls?q=roleAssignee&role=ADMINISTRATOR&state=APPROVED",
+            restliHeaders(token));
+    test:assertEquals(res.statusCode, http:STATUS_OK);
+    json body = check res.getJsonPayload();
+    json[] elements = check (check body.elements).ensureType();
+    test:assertEquals(check elements[0].organization, TEST_ORG);
+    test:assertEquals(check elements[0].roleAssignee, TEST_AUTHOR);
+    // The share token can't read ACLs.
+    http:Response denied = check apiClient->get("/rest/organizationAcls?q=roleAssignee",
+            restliHeaders(check accessToken("openid profile w_member_social")));
+    test:assertEquals(denied.statusCode, http:STATUS_FORBIDDEN);
+}
+
+@test:Config
+function testInjectedEngagementIsServedByTheFinders() returns error? {
+    string post = "urn:li:share:7100";
+    foreach json e in [
+        {kind: "REACTION", targetUrn: post, actorUrn: TEST_AUTHOR},
+        {kind: "COMMENT", targetUrn: post, actorUrn: TEST_AUTHOR, commentary: "kept nowhere"},
+        {kind: "RESHARE", targetUrn: post, actorUrn: TEST_AUTHOR, commentary: "my words"}
+    ] {
+        http:Response added = check apiClient->post("/mock/engagement", e, adminHeaders());
+        test:assertEquals(added.statusCode, http:STATUS_CREATED);
+    }
+    http:Response noKey = check apiClient->post("/mock/engagement", {kind: "REACTION", targetUrn: post,
+        actorUrn: TEST_AUTHOR});
+    test:assertEquals(noKey.statusCode, http:STATUS_UNAUTHORIZED);
+
+    string token = check accessToken(PAGE_SCOPE);
+    http:Response reactions = check apiClient->get(
+            "/rest/reactions/(entity:urn%3Ali%3Ashare%3A7100)?q=entity&sort=(value:CHRONOLOGICAL)&start=0&count=10",
+            restliHeaders(token));
+    test:assertEquals(reactions.statusCode, http:STATUS_OK, (check reactions.getTextPayload()));
+    json r = check reactions.getJsonPayload();
+    json[] re = check (check r.elements).ensureType();
+    test:assertEquals(re.length(), 1);
+    test:assertEquals(check re[0].root, post);
+    test:assertEquals(check re[0].created.actor, TEST_AUTHOR);
+
+    http:Response comments = check apiClient->get("/rest/socialActions/urn%3Ali%3Ashare%3A7100/comments?start=0&count=10",
+            restliHeaders(token));
+    json c = check comments.getJsonPayload();
+    json[] ce = check (check c.elements).ensureType();
+    test:assertEquals(ce.length(), 1);
+    test:assertFalse(c.toJsonString().includes("kept nowhere"), "no comment text kept");
+
+    int now = <int>(nowSeconds() * 1000d);
+    http:Response shares = check apiClient->get(string `/rest/organizationalEntityNotifications?q=criteria&actions=List(SHARE,SHARE_MENTION)&organizationalEntity=urn%3Ali%3Aorganization%3A1477&timeRange=(start:${now - 60000},end:${now + 60000})`,
+            restliHeaders(token));
+    test:assertEquals(shares.statusCode, http:STATUS_OK);
+    json n = check shares.getJsonPayload();
+    json[] ne = check (check n.elements).ensureType();
+    test:assertEquals(ne.length(), 1);
+    test:assertEquals(check ne[0].sourcePost, post);
+    test:assertEquals(check ne[0].decoratedGeneratedActivity.share.owner, TEST_AUTHOR);
+    test:assertTrue((check ne[0].generatedActivity).toString().startsWith("urn:li:activity:"));
+
+    http:Response outside = check apiClient->get(string `/rest/organizationalEntityNotifications?q=criteria&actions=List(SHARE)&organizationalEntity=urn%3Ali%3Aorganization%3A1477&timeRange=(start:0,end:1000)`,
+            restliHeaders(token));
+    json o = check outside.getJsonPayload();
+    json[] oe = check (check o.elements).ensureType();
+    test:assertEquals(oe.length(), 0, "outside the time range");
+    http:Response otherPage = check apiClient->get(string `/rest/organizationalEntityNotifications?q=criteria&actions=List(SHARE)&organizationalEntity=urn%3Ali%3Aorganization%3A9&timeRange=(start:0,end:1000)`,
+            restliHeaders(token));
+    test:assertEquals(otherPage.statusCode, http:STATUS_FORBIDDEN);
+}

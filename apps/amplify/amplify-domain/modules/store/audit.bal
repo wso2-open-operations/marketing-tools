@@ -112,3 +112,21 @@ public isolated function auditOf(Actor actor, string action, string entityType, 
     reason,
     correlationId: actor.correlationId
 };
+
+# Writes one audit row in its own gated transaction (R-13): a run-level record (an engagement sync, a Coins
+# conversion, a housekeeping pass) that no other write's transaction carries.
+#
+# + db - Client
+# + entry - Audit row
+# + return - An error on failure
+public isolated function recordAudit(postgresql:Client db, AuditEntry entry) returns error? {
+    final readonly & AuditEntry row = entry.cloneReadOnly();
+    return inTransaction(() => recordAuditTx(db, row));
+}
+
+isolated function recordAuditTx(postgresql:Client db, AuditEntry entry) returns error? {
+    transaction {
+        check writeAudit(db, entry);
+        check commit;
+    }
+}

@@ -379,12 +379,13 @@ function testLedgerAppendUpdatesRecognitionInOneTransaction() returns error? {
                                     WHERE campaign_id = CAST(${campaignId} AS uuid)`);
     test:assertEquals(reposters, 1, "reversal takes the reposter back out");
 
-    // Settlement columns only; PAID is refused (a check constraint). There are no column grants any more (ADR-043),
+    // Settlement columns only; PAID without the conversion that paid it is refused (V026 points_ledger_paid_coin_ck).
+    // There are no column grants any more (ADR-043),
     // so the ledger's facts are protected by the code paths, not by the database.
     check apiLedger.updateSettlement(small.entry.reference, (), time:utcNow());
     sql:ExecutionResult|error paid = apiDb->execute(`UPDATE scoring_points_ledger SET status = 'PAID', paid_at = now()
                                                     WHERE reference = ${small.entry.reference}`);
-    test:assertTrue(paid is error, "no PAID in phase 1");
+    test:assertTrue(paid is error, "no PAID without a coin reference");
 
     // A full rebuild from the ledger gives the same totals.
     _ = check recognition:rebuild(jobsDb);

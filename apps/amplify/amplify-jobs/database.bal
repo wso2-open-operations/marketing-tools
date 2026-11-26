@@ -178,6 +178,27 @@ isolated function maintenanceDb() returns postgresql:Client|error {
     }
 }
 
+isolated postgresql:Client? engagementClient = ();
+
+# Dedicated single-connection client for the engagement sync: its session lock and its work on one connection, never
+# retired, apart from the run's pool (a long sync never takes a connection a run needs).
+#
+# + return - The client, or an error when not configured
+isolated function engagementDb() returns postgresql:Client|error {
+    lock {
+        postgresql:Client? existing = engagementClient;
+        if existing is postgresql:Client {
+            return existing;
+        }
+        if dbHost == "" {
+            return error("Database is not configured");
+        }
+        postgresql:Client created = check store:newClient(dbConfig(maxOpenConnections = 1, maxConnectionLifeTime = 0));
+        engagementClient = created;
+        return created;
+    }
+}
+
 # Connection settings from the configurables (the pool, the run-lock and the maintenance clients).
 #
 # + maxOpenConnections - Pool size
@@ -203,3 +224,47 @@ isolated function dbConfig(int maxOpenConnections = 10, decimal maxConnectionLif
     loginTimeoutSeconds: dbConnectTimeoutSeconds,
     poolAcquireTimeoutSeconds: dbPoolAcquireTimeoutSeconds
 };
+
+isolated postgresql:Client? coinsClientDb = ();
+
+# Dedicated single-connection client for the Coins conversion: its session lock and its work on one connection, never
+# retired, apart from the run's pool (a long conversion never takes a connection a run needs).
+#
+# + return - The client, or an error when not configured
+isolated function coinsDb() returns postgresql:Client|error {
+    lock {
+        postgresql:Client? existing = coinsClientDb;
+        if existing is postgresql:Client {
+            return existing;
+        }
+        if dbHost == "" {
+            return error("Database is not configured");
+        }
+        postgresql:Client created = check store:newClient(dbConfig(maxOpenConnections = 1, maxConnectionLifeTime = 0));
+        coinsClientDb = created;
+        return created;
+    }
+}
+
+# Writes a run-level audit row (an engagement sync, a Coins conversion) in its own transaction. A failed write is
+# logged, not returned: the run already happened.
+#
+# + dbc - The run's client
+# + entry - Audit row, `()` when the run changed nothing worth a row
+isolated function recordRunAudit(postgresql:Client dbc, store:AuditEntry? entry) {
+    if entry is () {
+        return;
+    }
+    error? written = store:recordAudit(dbc, entry);
+    if written is error {
+        log:printError("Run audit not written", resilience:loggable(written), action = entry.action,
+                correlationId = entry.correlationId);
+    }
+}
+
+# The jobs' system actor with a run's correlation id.
+#
+# + correlationId - Correlation id
+# + return - The actor
+isolated function systemActor(string? correlationId) returns store:Actor =>
+    {actorId: store:SYSTEM.actorId, roles: store:SYSTEM.roles, correlationId};

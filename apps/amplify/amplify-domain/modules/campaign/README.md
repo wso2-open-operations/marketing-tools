@@ -30,6 +30,8 @@ File: `modules/campaign/repository.bal`. `PgCampaignRepository(db, actor)` write
 
 File: `modules/campaign/queries.bal`. `listCampaigns(db, CampaignQuery, now)` returns a `CampaignPage` (`MAX_PAGE_SIZE` 50), `listTags`, `listCategories` (`Category`), `dashboardCampaigns`.
 
+`openCampaignsOf(db, ownerUrn, now)` (queries.bal): the page's open campaigns for the engagement sync.
+
 ## Config
 
 None. `campaign.bal` holds `MODULE`.
