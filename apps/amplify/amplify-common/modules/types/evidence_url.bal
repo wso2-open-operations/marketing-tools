@@ -26,7 +26,8 @@ public const string EVIDENCE_PROVIDER_MEDIUM = "medium";
 # Detected provider for any other host.
 public const string EVIDENCE_PROVIDER_OTHER = "other";
 
-// LinkedIn's URL shortener. Never accepted as evidence (see `parseEvidenceUrl`).
+// LinkedIn's URL shortener. Never accepted as evidence by `parseEvidenceUrl`; amplify-api resolves one first
+// (`linkedInShortLinkPath`).
 const string LINKEDIN_SHORT_HOST = "lnkd.in";
 
 // Query parameters dropped during normalization, compared lowercased. `utm_*` is handled by prefix.
@@ -257,6 +258,26 @@ isolated function urnOf(regexp:Groups groups, string prefix) returns PostUrn? {
     if span is regexp:Span {
         PostUrn|DomainError urn = parsePostUrn(prefix + span.substring());
         return urn is PostUrn ? urn : ();
+    }
+    return ();
+}
+
+# The path of a LinkedIn short link (`https://lnkd.in/p/<code>` or `https://lnkd.in/<code>`), the only part a
+# resolver may send to `lnkd.in`. Query and fragment are dropped and the code is checked, so nothing the employee
+# typed beyond the code ever reaches the request.
+#
+# + raw - URL as typed
+# + return - `/p/<code>` or `/<code>`, or `()` when it is not a LinkedIn short link
+public isolated function linkedInShortLinkPath(string raw) returns string? {
+    string url = raw.trim();
+    regexp:RegExp shape = re `(?i:https://lnkd\.in(?::443)?)(/(?:p/)?[A-Za-z0-9_\-]{1,64})/?(?:[?#].*)?`;
+    if !shape.isFullMatch(url) {
+        return ();
+    }
+    regexp:Groups? groups = shape.findGroups(url);
+    if groups is regexp:Groups {
+        regexp:Span? path = groups[1];
+        return path is regexp:Span ? path.substring() : ();
     }
     return ();
 }

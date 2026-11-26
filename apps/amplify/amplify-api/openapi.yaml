@@ -364,7 +364,7 @@ paths:
       tags: [S3 External Sharing]
       operationId: claimExternalShare
       x-access: EMPLOYEE
-      description: Claims promotion done outside Amplify (My Campaign). Any public HTTPS URL (not a `lnkd.in` short link), or just a LinkedIn post number; one claim per normalized URL across everyone (`EVIDENCE_ALREADY_CLAIMED`).
+      description: Claims promotion done outside Amplify (My Campaign). Any public HTTPS URL (a `lnkd.in` short link is expanded to its LinkedIn post first), or just a LinkedIn post number; one claim per normalized URL across everyone (`EVIDENCE_ALREADY_CLAIMED`).
       parameters:
         - {$ref: "#/components/parameters/CorrelationId"}
         - {$ref: "#/components/parameters/IdempotencyKey"}
@@ -1362,7 +1362,7 @@ components:
         - required: [evidenceUrl]
         - required: [activityId]
       properties:
-        evidenceUrl: {type: string, minLength: 1, maxLength: 2048, description: "Any public HTTPS URL; never fetched. `lnkd.in` short links are refused (`INVALID_EVIDENCE_URL`): one post could otherwise be claimed twice"}
+        evidenceUrl: {type: string, minLength: 1, maxLength: 2048, description: "Any public HTTPS URL; never fetched, except a `lnkd.in` short link, which is read once (no redirects followed) and replaced by the LinkedIn post it points to, or refused (`INVALID_EVIDENCE_URL`)"}
         activityId: {type: string, minLength: 1, maxLength: 100, pattern: "^[0-9]+$", description: "A LinkedIn post number (the activity id: the digits in `urn:li:activity:<number>` or `...-activity-<number>-...`). Amplify builds the canonical post URL from it, stores that as `evidenceUrl`, and so it collides with any other form of the same post (`EVIDENCE_ALREADY_CLAIMED`)"}
         certified: {type: boolean, enum: [true], description: "\"I certify this is related to Choreo Labs\" (must be true)"}
         campaignId: {type: string, format: uuid}

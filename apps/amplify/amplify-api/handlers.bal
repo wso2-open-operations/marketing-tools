@@ -472,8 +472,8 @@ isolated function requestShare(auth:Principal p, string? correlationId, string i
 
 // ---- S3 External Sharing ------------------------------------------------------------------------------
 
-# The evidence URL a claim body names: the URL as sent, or the canonical LinkedIn post URL built from a post
-# number. Exactly one of the two.
+# The evidence URL a claim body names: the URL as sent (a LinkedIn short link expanded to its post), or the
+# canonical LinkedIn post URL built from a post number. Exactly one of the two.
 #
 # + body - Claim body
 # + return - The URL to validate and store, or a domain error
@@ -487,7 +487,7 @@ isolated function evidenceUrlOf(ExternalShareBody body) returns string|types:Dom
         return types:linkedInPostEvidenceUrl(number);
     }
     if url is string {
-        return url;
+        return expandShortLink(url);
     }
     return types:domainError(VALIDATION_FAILED, "Send evidenceUrl or activityId");
 }

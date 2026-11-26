@@ -260,3 +260,15 @@ function highlightedUpdateUrnOnlyCountsOnPostPaths() returns error? {
     EvidenceUrl url = check parseEvidenceUrl("https://www.linkedin.com/company/acme/?highlightedUpdateUrn=urn:li:activity:42");
     test:assertEquals(url.resourceUrn, ());
 }
+
+@test:Config {}
+function shortLinkPathKeepsOnlyTheCode() {
+    test:assertEquals(linkedInShortLinkPath("https://lnkd.in/p/grXV-CRX"), "/p/grXV-CRX");
+    test:assertEquals(linkedInShortLinkPath(" https://LNKD.IN/p/g7EhrS-A/?utm_source=x "), "/p/g7EhrS-A");
+    test:assertEquals(linkedInShortLinkPath("https://lnkd.in/eAbCdEf"), "/eAbCdEf");
+    foreach string raw in ["http://lnkd.in/p/abc", "https://lnkd.in.evil.com/p/abc", "https://lnkd.in/p/abc/../x",
+            "https://lnkd.in/p/a%2Fb", "https://user@lnkd.in/p/abc", "https://lnkd.in/", "https://www.linkedin.com/feed/update/urn:li:activity:1",
+            "https://lnkd.in:8443/p/abc"] {
+        test:assertEquals(linkedInShortLinkPath(raw), (), raw);
+    }
+}
