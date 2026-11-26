@@ -361,3 +361,11 @@ isolated function completeIdempotency(types:EmployeeId employeeId, string key, i
 
 isolated function releaseIdempotency(types:EmployeeId employeeId, string key) returns error? =>
     store:releaseIdempotencyKey(check db(), employeeId, key);
+
+# People search over `identity_employee` (a seam the tests replace).
+#
+# + text - Search text
+# + 'limit - Most results
+# + return - Matches, or an error
+isolated function searchPeople(string text, int 'limit) returns identity:EmployeeMatch[]|error =>
+    identity:searchEmployees(check db(), text, 'limit);

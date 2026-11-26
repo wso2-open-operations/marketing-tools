@@ -496,14 +496,17 @@ isolated function claimExternalShare(auth:Principal p, string? correlationId, Ex
         returns http:StatusCodeResponse {
     do {
         string? campaignId = body.campaignId;
+        check maxLen(body.note, external_sharing:NOTE_MAX_LENGTH, "note");
         string evidenceUrl = check evidenceUrlOf(body);
+        Settings settings = check loadSettings();
         external_sharing:ExternalShare claim = check external_sharing:submitExternalShare(
                 check externalShareRepository(actorOf(p, correlationId), 3), {
             employeeId: p.employeeId,
             evidenceUrl,
             certified: body.certified,
-            campaignId: campaignId is string ? check uuidOf(campaignId, "campaignId") : ()
-        }, time:utcNow());
+            campaignId: campaignId is string ? check uuidOf(campaignId, "campaignId") : (),
+            note: body.note
+        }, time:utcNow(), settings.externalShareDailyLimit);
         return <http:Created>{body: externalShareDto(claim)};
     } on fail error e {
         return failure(e, correlationId, "Claim external share");

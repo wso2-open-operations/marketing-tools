@@ -67,6 +67,7 @@ public final Rule[] & readonly ACTIVITY_MATRIX = [
     {method: "POST", path: "/po/point-rules", requires: CAN_POINT_RULES, capability: "point_rules.manage", useCase: "New version; past awards keep their value"},
     {method: "POST", path: "/po/points/adjustments", requires: CAN_ADJUST_POINTS, capability: "points.adjust", useCase: "Reason required; recognition in the same transaction (B12)"},
     {method: "POST", path: "/po/points/{reference}/reverse", requires: CAN_ADJUST_POINTS, capability: "points.adjust", useCase: "Reason required; not already reversed"},
+    {method: "GET", path: "/po/people", requires: CAN_ADJUST_POINTS, capability: "points.adjust", useCase: "Find a person by name or email for Points & corrections; erased people left out"},
     // S4 Recognition
     {method: "GET", path: "/leaderboard", requires: EMPLOYEE, capability: "leaderboard.read", useCase: "Top N, personal, My Team (ADR-014)"},
     {method: "GET", path: "/leaderboard/top", requires: EMPLOYEE, capability: "leaderboard.top.read", useCase: "Celebrate top three and My position, this month by default, company wide, monthly totals cached 2 hours (ADR-037)"},

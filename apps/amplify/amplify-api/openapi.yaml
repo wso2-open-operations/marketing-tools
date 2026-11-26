@@ -364,7 +364,7 @@ paths:
       tags: [S3 External Sharing]
       operationId: claimExternalShare
       x-access: EMPLOYEE
-      description: Claims promotion done outside Amplify (My Campaign). Any public HTTPS URL (not a `lnkd.in` short link), or just a LinkedIn post number; one claim per normalized URL across everyone (`EVIDENCE_ALREADY_CLAIMED`).
+      description: Claims promotion done outside Amplify (My Campaign). Any public HTTPS URL (not a `lnkd.in` short link), or just a LinkedIn post number; one claim per normalized URL across everyone (`EVIDENCE_ALREADY_CLAIMED`), and at most `external_share.daily_limit` claims per employee per UTC day (429 `DAILY_LIMIT_REACHED`).
       parameters:
         - {$ref: "#/components/parameters/CorrelationId"}
         - {$ref: "#/components/parameters/IdempotencyKey"}
@@ -384,6 +384,7 @@ paths:
         "401": {$ref: "#/components/responses/Problem"}
         "409": {$ref: "#/components/responses/Problem"}
         "422": {$ref: "#/components/responses/Problem"}
+        "429": {$ref: "#/components/responses/Problem"}
         "503": {$ref: "#/components/responses/Problem"}
   /me/external-shares:
     get:
@@ -592,6 +593,26 @@ paths:
         "422": {$ref: "#/components/responses/Problem"}
         "503": {$ref: "#/components/responses/Problem"}
 
+  /po/people:
+    get:
+      tags: [C2 Scoring]
+      operationId: searchPeople
+      x-access: CAN_ADJUST_POINTS
+      description: People who have used Amplify whose name or work email contains `q` (case-insensitive), by name, for Points & corrections. Erased people are left out.
+      parameters:
+        - {$ref: "#/components/parameters/CorrelationId"}
+        - {name: q, in: query, required: true, schema: {type: string, minLength: 2, maxLength: 100}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 20, default: 10}}
+      responses:
+        "200":
+          description: Matches
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/PersonMatchList"}
+        "400": {$ref: "#/components/responses/Problem"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "503": {$ref: "#/components/responses/Problem"}
   /leaderboard:
     get:
       tags: [S4 Recognition]
@@ -1118,7 +1139,7 @@ components:
             ALREADY_REVERSED, CANNOT_REVERSE_REVERSAL, INVALID_LEDGER_REFERENCE, TEAM_SCOPE,
             ANNOUNCEMENT_NOT_FAILED, UNKNOWN_SETTING, INVALID_SETTING, SCHEDULER_UNAVAILABLE, INVALID_EMPLOYEE_ID,
             INVALID_EMAIL, INVALID_MEMBER_URN, INVALID_POST_URN, INVALID_UUID, SHARE_NOT_QUEUED, PAID_NOT_ALLOWED,
-            ALREADY_ANNOUNCED, ANNOUNCEMENT_NOT_QUEUED, COMMENTARY_NOT_OWN_WORDS]
+            ALREADY_ANNOUNCED, ANNOUNCEMENT_NOT_QUEUED, COMMENTARY_NOT_OWN_WORDS, DAILY_LIMIT_REACHED, NOTE_TOO_LONG]
         detail: {type: string, nullable: true}
         correlationId: {type: string, nullable: true}
     HealthStatus:
@@ -1366,6 +1387,7 @@ components:
         activityId: {type: string, minLength: 1, maxLength: 100, pattern: "^[0-9]+$", description: "A LinkedIn post number (the activity id: the digits in `urn:li:activity:<number>` or `...-activity-<number>-...`). Amplify builds the canonical post URL from it, stores that as `evidenceUrl`, and so it collides with any other form of the same post (`EVIDENCE_ALREADY_CLAIMED`)"}
         certified: {type: boolean, enum: [true], description: "\"I certify this is related to Choreo Labs\" (must be true)"}
         campaignId: {type: string, format: uuid}
+        note: {type: string, maxLength: 500, description: "Optional note for the reviewer; blank counts as none (`NOTE_TOO_LONG` past 500 characters)"}
     ExternalShare:
       type: object
       required: [id, employeeId, action, evidenceUrl, evidenceHost, evidenceProvider, status, createdAt, version]
@@ -1384,6 +1406,20 @@ components:
         amplifiedAt: {type: string, format: date-time, nullable: true}
         createdAt: {type: string, format: date-time}
         version: {type: integer}
+        note: {type: string, nullable: true, description: "The employee's note for the reviewer"}
+    PersonMatchList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [employeeId, displayName, email]
+            properties:
+              employeeId: {type: string}
+              displayName: {type: string}
+              email: {type: string}
     ExternalShareList:
       type: object
       required: [items]

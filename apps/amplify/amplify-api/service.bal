@@ -542,6 +542,16 @@ service http:InterceptableService / on apiListener {
                 isolated function() returns http:StatusCodeResponse => reverseEntry(p, c, referenceFinal, b.reason));
     }
 
+    # Finds people by name or work email, for Points & corrections.
+    #
+    # + ctx - Request context
+    # + q - Search text, 2 to 100 characters
+    # + 'limit - Most results, 1 to 20
+    # + return - The matches, or problem details
+    resource function get po/people(http:RequestContext ctx, string q = "", int 'limit = 10)
+            returns http:Response|ProblemResponse|error =>
+        okJson(peopleSearch(cid(ctx), q, 'limit));
+
     // ---- S4 Recognition ----------------------------------------------------------------------------
 
     # Company top N, personal and My Team.

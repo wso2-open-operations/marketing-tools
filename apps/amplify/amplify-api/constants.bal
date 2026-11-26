@@ -110,6 +110,8 @@ const string SETTING_TOKEN_GRACE_DAYS = "connection.token_grace_days";
 const string SETTING_AUDIT_RETENTION = "audit.retention_months";
 const string SETTING_SHARING_ENABLED = "sharing.enabled";
 const string SETTING_ANNOUNCEMENTS_ENABLED = "announcements.enabled";
+# Own posts one employee may submit per UTC day; 0 = no limit
+const string SETTING_EXTERNAL_SHARE_DAILY_LIMIT = "external_share.daily_limit";
 
 // ---- M6b: schedule settings pushed to the scheduler (ADR-026) -------------------------------------
 

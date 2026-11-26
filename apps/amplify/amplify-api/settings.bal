@@ -53,6 +53,8 @@ type Settings record {|
     boolean runEnabled = true;
     # `maintenance.schedule`: when the scheduler calls `POST /maintenance/partitions`
     string maintenanceSchedule = "0 2 * * *";
+    # `external_share.daily_limit`: own posts one employee may submit per UTC day; 0 = no limit
+    int externalShareDailyLimit = 3;
 |};
 
 # One editable key: its kind and allowed range.
@@ -82,7 +84,8 @@ final readonly & map<SettingRule> EDITABLE_SETTINGS = {
     [SETTING_ANNOUNCEMENTS_ENABLED]: {kind: "boolean"},
     [SETTING_RUN_SCHEDULE]: {kind: "schedule", min: minRunIntervalSeconds},
     [SETTING_RUN_ENABLED]: {kind: "boolean"},
-    [SETTING_MAINTENANCE_SCHEDULE]: {kind: "schedule", min: 3600}
+    [SETTING_MAINTENANCE_SCHEDULE]: {kind: "schedule", min: 3600},
+    [SETTING_EXTERNAL_SHARE_DAILY_LIMIT]: {kind: "int", min: 0, max: 50}
 };
 
 # Keys whose change is pushed to the scheduler.
@@ -192,6 +195,9 @@ isolated function settingsOf(store:Setting[] rows) returns Settings {
             }
             SETTING_ANNOUNCEMENTS_ENABLED => {
                 s.announcementsEnabled = v != false;
+            }
+            SETTING_EXTERNAL_SHARE_DAILY_LIMIT => {
+                s.externalShareDailyLimit = v is int && v >= 0 ? v : s.externalShareDailyLimit;
             }
             SETTING_RUN_SCHEDULE => {
                 s.runSchedule = v is string && scheduler:checkSchedule(v) is () ? v : s.runSchedule;

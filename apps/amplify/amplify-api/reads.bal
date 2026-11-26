@@ -25,6 +25,7 @@ import amplify_domain.announcements;
 import amplify_domain.campaign;
 import amplify_domain.connection;
 import amplify_domain.external_sharing;
+import amplify_domain.identity;
 import amplify_domain.recognition;
 import amplify_domain.scoring;
 import amplify_domain.sharing;
@@ -617,5 +618,27 @@ isolated function reviewList(string? correlationId, string status, int page, int
         return {items: from var c in result.items select externalShareDto(c).toJson(), page, size, total: result.total};
     } on fail error e {
         return failure(e, correlationId, "Review list");
+    }
+}
+
+# People who have used Amplify, by name or work email (`GET /po/people`, CAN_ADJUST_POINTS).
+#
+# + correlationId - Correlation id
+# + q - Search text
+# + 'limit - Most results
+# + return - `{items}`, or problem details
+isolated function peopleSearch(string? correlationId, string q, int 'limit) returns json|ProblemResponse {
+    do {
+        string text = q.trim();
+        if text.length() < identity:SEARCH_MIN_LENGTH || text.length() > 100 {
+            return badRequest("q must be 2 to 100 characters", correlationId);
+        }
+        if 'limit < 1 || 'limit > identity:SEARCH_MAX_RESULTS {
+            return badRequest(string `limit must be 1-${identity:SEARCH_MAX_RESULTS}`, correlationId);
+        }
+        identity:EmployeeMatch[] found = check searchPeople(text, 'limit);
+        return {items: found.toJson()};
+    } on fail error e {
+        return failure(e, correlationId, "Search people");
     }
 }

@@ -71,7 +71,7 @@ public isolated function claimsOf(postgresql:Client db, types:EmployeeId employe
     stream<ExternalShareRow, error?> rows = db->query(`
         SELECT id::text AS id, employee_id, campaign_id::text AS campaign_id, action, evidence_url,
                evidence_url_submitted, evidence_host, provider, resource_urn, certified_at, decision, decided_by,
-               decided_at, decision_reason, amplified_at, created_at, version
+               decided_at, decision_reason, amplified_at, created_at, version, note
         FROM external_sharing_external_share WHERE employee_id = ${employeeId}
         ORDER BY created_at DESC, id LIMIT ${'limit}`);
     ExternalShare[] claims = [];
@@ -99,7 +99,7 @@ public isolated function claimsForReview(postgresql:Client db, ExternalShareStat
     stream<PagedRow, error?> rows = db->query(sql:queryConcat(`
         SELECT id::text AS id, employee_id, campaign_id::text AS campaign_id, action, evidence_url,
                evidence_url_submitted, evidence_host, provider, resource_urn, certified_at, decision, decided_by,
-               decided_at, decision_reason, amplified_at, created_at, version, (count(*) OVER ())::int AS total
+               decided_at, decision_reason, amplified_at, created_at, version, note, (count(*) OVER ())::int AS total
         FROM external_sharing_external_share_v `, cond, `
         ORDER BY created_at, id LIMIT ${'limit} OFFSET ${offset}`));
     int total = 0;
@@ -113,7 +113,7 @@ public isolated function claimsForReview(postgresql:Client db, ExternalShareStat
                 evidence_host: r.evidence_host, provider: r.provider, resource_urn: r.resource_urn,
                 certified_at: r.certified_at, decision: r.decision, decided_by: r.decided_by,
                 decided_at: r.decided_at, decision_reason: r.decision_reason, amplified_at: r.amplified_at,
-                created_at: r.created_at, version: r.version
+                created_at: r.created_at, version: r.version, note: r.note
             });
             if claim is ExternalShare {
                 items.push(claim);

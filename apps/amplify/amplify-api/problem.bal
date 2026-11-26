@@ -44,7 +44,7 @@ public type Problem record {|
 
 # Every error response a resource can return.
 type ProblemResponse http:BadRequest|http:Unauthorized|http:Forbidden|http:NotFound|http:Conflict
-    |http:UnprocessableEntity|http:InternalServerError|http:ServiceUnavailable;
+    |http:UnprocessableEntity|http:TooManyRequests|http:InternalServerError|http:ServiceUnavailable;
 
 isolated function problem(int status, string title, string code, string? detail, string? correlationId) returns Problem => {
     'type: PROBLEM_TYPE_PREFIX + code,
@@ -92,6 +92,17 @@ isolated function notFound(string detail, string? correlationId) returns http:No
 isolated function unprocessable(string code, string detail, string? correlationId) returns http:UnprocessableEntity => {
     mediaType: PROBLEM_JSON,
     body: problem(422, "Unprocessable Content", code, detail, correlationId)
+};
+
+# 429 for a per-person quota a use case enforces (not the gateway's rate limit).
+#
+# + code - Domain code
+# + detail - Safe message
+# + correlationId - Correlation id
+# + return - The response
+isolated function tooMany(string code, string detail, string? correlationId) returns http:TooManyRequests => {
+    mediaType: PROBLEM_JSON,
+    body: problem(429, "Too Many Requests", code, detail, correlationId)
 };
 
 isolated function internalError(string? correlationId) returns http:InternalServerError => {
@@ -148,6 +159,9 @@ isolated function failure(error err, string? correlationId, string context) retu
         }
         if code == types:ERR_SELF_REVIEW {
             return forbidden(code, correlationId, detail);
+        }
+        if code == types:ERR_DAILY_LIMIT_REACHED {
+            return tooMany(code, detail, correlationId);
         }
         if CONFLICT_CODES.indexOf(code) !is () {
             return conflicted(code, detail, correlationId);
