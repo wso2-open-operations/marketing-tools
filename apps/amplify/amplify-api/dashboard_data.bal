@@ -120,6 +120,16 @@ isolated function exportRows(time:Utc 'from, time:Utc to) returns reporting:Expo
     }
 }
 
+# Every employee who connected, reposted or earned points this month, by email (the location breakdown).
+#
+# + return - Rows, or an error
+isolated function participationPeople() returns reporting:PersonParticipation[]|error {
+    retry<resilience:TransientDbRetry> (dbReadRetries) {
+        postgresql:Client pg = check db();
+        return reporting:participationByPerson(pg);
+    }
+}
+
 # One person and the posts they reposted, for the person popup.
 #
 # + employeeId - Employee id

@@ -18,7 +18,9 @@
 // The five boards for PO, Marketing, SLT and Admin (ADR-036): operations, campaign performance, participation,
 // at a glance and the scorecard. Each is a pure function of the snapshot (dashboard_data.bal), the employee
 // count (outbound.bal) and the targets (settings.bal), so every number can be checked without a database.
-// Only facts Amplify recorded; nothing from LinkedIn analytics.
+// Facts Amplify recorded, plus post reach from LinkedIn's member post analytics for employees who connected Reach
+// (#1781): reach is labelled approximate with the number of consenting employees. A repost is an engagement with a
+// share action; the reactions and comments the engagement sync records are counted on their own (#1780).
 
 import amplify_domain.recognition;
 import amplify_domain.reporting;
@@ -121,8 +123,37 @@ isolated function dashboardCampaignJson(reporting:CampaignRow p, map<reporting:D
     closesAt: ts(p.closesAt),
     reposts: p.reposts,
     repostsWithCommentary: p.repostsWithCommentary,
+    reactions: p.reactions,
+    comments: p.comments,
+    reach: reachJson(p.impressions, p.membersReached, p.measuredReposts),
     announcement: announcementOf(delivery, p.campaignId)
 };
+
+# Reach as the boards show it: always approximate (only Reach-connected employees' reposts are measured, and the same
+# person reached by two reposts counts twice).
+#
+# + impressions - Impressions
+# + membersReached - Members reached
+# + measuredReposts - Reposts with a reading
+# + return - The reach object
+isolated function reachJson(int impressions, int membersReached, int measuredReposts) returns json =>
+    {impressions, membersReached, measuredReposts, approximate: true};
+
+# The month's reposts, reactions, comments and reach, with how many employees consented to Reach.
+#
+# + s - Snapshot
+# + return - The totals object
+isolated function monthTotals(Snapshot s) returns json {
+    reporting:EngagementTotals t = s.engagementThisMonth;
+    return {
+        month: time:utcToString(s.asOf).substring(0, 7),
+        reposts: s.repostsThisMonth,
+        reactions: t.reactions,
+        comments: t.comments,
+        reach: reachJson(t.impressions, t.membersReached, t.measuredReposts),
+        reachConsenting: s.reachConsenting
+    };
+}
 
 # Operations board.
 #
@@ -209,6 +240,9 @@ isolated function campaignsBoard(Snapshot s, int days, reporting:CategoryCount[]
             closesAt: ts(p.closesAt),
             reposts: p.reposts,
             repostsWithCommentary: p.repostsWithCommentary,
+            reactions: p.reactions,
+            comments: p.comments,
+            reach: reachJson(p.impressions, p.membersReached, p.measuredReposts),
             shareOfConnected: ratio(p.reposts, connected),
             first24Hours: byDay[0],
             announcement: announcementOf(s.delivery, p.campaignId),
@@ -232,6 +266,7 @@ isolated function campaignsBoard(Snapshot s, int days, reporting:CategoryCount[]
         asOf: ts(s.asOf),
         windowDays: days,
         peopleConnected: connected,
+        monthTotals: monthTotals(s),
         campaigns: from reporting:CampaignRow p in campaigns
             select dashboardCampaignJson(p, s.delivery),
         selected: detail,
@@ -240,12 +275,101 @@ isolated function campaignsBoard(Snapshot s, int days, reporting:CategoryCount[]
     };
 }
 
-# Participation funnel numbers.
+# The group people without a location, people the directory doesn't know and every group smaller than
+# `dashboards.min_group_size` are merged into.
+const string OTHER_GROUP = "Other";
+
+# One location's numbers while they are added up.
+type LocationTally record {|
+    int headcount = 0;
+    int participants = 0;
+    int connected = 0;
+    int reposted = 0;
+    int active30Days = 0;
+    int pointsThisMonth = 0;
+    int membersReached = 0;
+|};
+
+# Participation by work location (#1780). A location's size is its directory headcount (the people counted when the
+# directory is unavailable); a location with fewer than `minGroupSize` people is merged into "Other", so no small
+# group can be singled out. Largest first, "Other" last.
+#
+# + people - Per-employee participation
+# + locationOf - Lowercase email to location, from the directory (`()` when it is unavailable)
+# + everyone - Everyone in the directory (headcounts), `[]` when it is unavailable
+# + minGroupSize - `dashboards.min_group_size`
+# + return - The groups
+isolated function locationBreakdown(reporting:PersonParticipation[] people, map<string>? locationOf, string[] everyone,
+        int minGroupSize) returns json[] {
+    map<LocationTally> tally = {};
+    foreach string email in everyone {
+        string loc = locationOf is map<string> ? locationOf[email] ?: OTHER_GROUP : OTHER_GROUP;
+        LocationTally t = tally[loc] ?: {};
+        t.headcount += 1;
+        tally[loc] = t;
+    }
+    foreach reporting:PersonParticipation p in people {
+        string loc = locationOf is map<string> ? locationOf[p.email] ?: OTHER_GROUP : OTHER_GROUP;
+        LocationTally t = tally[loc] ?: {};
+        t.participants += 1;
+        t.connected += p.connected ? 1 : 0;
+        t.reposted += p.reposted ? 1 : 0;
+        t.active30Days += p.active30Days ? 1 : 0;
+        t.pointsThisMonth += p.pointsThisMonth;
+        t.membersReached += p.membersReached;
+        tally[loc] = t;
+    }
+    LocationTally other = tally[OTHER_GROUP] ?: {};
+    _ = tally.removeIfHasKey(OTHER_GROUP);
+    json[] groups = [];
+    foreach var [loc, t] in tally.entries() {
+        int size = everyone.length() > 0 ? t.headcount : t.participants;
+        if size < minGroupSize {
+            other = addTally(other, t);
+        } else {
+            groups.push(locationJson(loc, t, everyone.length() > 0));
+        }
+    }
+    json[] sorted = from json g in groups
+        let int n = <int>(checkpanic g.size)
+        order by n descending, (checkpanic g.location).toString() ascending
+        select g;
+    if other.headcount > 0 || other.participants > 0 {
+        sorted.push(locationJson(OTHER_GROUP, other, everyone.length() > 0));
+    }
+    return sorted;
+}
+
+isolated function addTally(LocationTally a, LocationTally b) returns LocationTally => {
+    headcount: a.headcount + b.headcount,
+    participants: a.participants + b.participants,
+    connected: a.connected + b.connected,
+    reposted: a.reposted + b.reposted,
+    active30Days: a.active30Days + b.active30Days,
+    pointsThisMonth: a.pointsThisMonth + b.pointsThisMonth,
+    membersReached: a.membersReached + b.membersReached
+};
+
+isolated function locationJson(string location, LocationTally t, boolean haveHeadcount) returns json => {
+    location,
+    size: haveHeadcount ? t.headcount : t.participants,
+    employees: haveHeadcount ? t.headcount : (),
+    connected: t.connected,
+    reposted: t.reposted,
+    active30Days: t.active30Days,
+    pointsThisMonth: t.pointsThisMonth,
+    reach: {membersReached: t.membersReached, approximate: true}
+};
+
+# Participation funnel numbers and the location breakdown.
 #
 # + s - Snapshot
 # + headcount - Employee count or `()`
+# + byLocation - Location groups (`locationBreakdown`)
+# + minGroupSize - `dashboards.min_group_size`
 # + return - Body
-isolated function participationBoard(Snapshot s, int? headcount) returns json => {
+isolated function participationBoard(Snapshot s, int? headcount, json[] byLocation = [], int minGroupSize = 5)
+        returns json => {
     asOf: ts(s.asOf),
     funnel: {
         employees: headcount,
@@ -253,7 +377,10 @@ isolated function participationBoard(Snapshot s, int? headcount) returns json =>
         reposted: s.participation.reposted,
         active30Days: s.participation.active30Days,
         expired: s.participation.expired
-    }
+    },
+    byLocation,
+    minGroupSize,
+    reachConsenting: s.reachConsenting
 };
 
 # Live campaigns reposted by at least `thresholdPct` of connected people.
@@ -414,11 +541,36 @@ isolated function dashboardCampaigns(string? correlationId, int days, string? ca
 }
 
 isolated function dashboardParticipation(string? correlationId) returns http:Response|ProblemResponse|error {
-    Snapshot|error s = snapshot();
-    if s is error {
-        return failure(s, correlationId, "Participation board");
+    do {
+        Snapshot s = check snapshot();
+        Settings settings = check loadSettings();
+        reporting:PersonParticipation[] people = check participationPeople();
+        DirectoryIndex? index = directoryOrNil(correlationId);
+        map<string>? locations = ();
+        string[] everyone = [];
+        if index is DirectoryIndex {
+            locations = index.locationOf;
+            everyone = index.everyone;
+        }
+        json[] byLocation = locationBreakdown(people, locations, everyone, settings.minGroupSize);
+        return boardResponse(participationBoard(s, headcountOrNil(correlationId), byLocation, settings.minGroupSize));
+    } on fail error e {
+        return failure(e, correlationId, "Participation board");
     }
-    return boardResponse(participationBoard(s, headcountOrNil(correlationId)));
+}
+
+# The directory index for the location breakdown and the export, `()` when it has never loaded (the board still
+# renders, everyone in "Other").
+#
+# + correlationId - Correlation id
+# + return - The index or `()`
+isolated function directoryOrNil(string? correlationId) returns DirectoryIndex? {
+    DirectoryIndex|error index = directoryIndex(correlationId);
+    if index is error {
+        log:printWarn("Dashboard directory unavailable", reason = index.message(), correlationId = correlationId);
+        return ();
+    }
+    return index;
 }
 
 isolated function dashboardGlance(string? correlationId) returns http:Response|ProblemResponse|error {
@@ -444,7 +596,8 @@ isolated function dashboardScorecard(string? correlationId) returns http:Respons
 const int EXPORT_MAX_DAYS = 366;
 
 const string[] EXPORT_COLUMNS = ["record_type", "occurred_at", "campaign_id", "campaign_title", "category", "is_priority",
-    "employee_id", "employee_name", "employee_email", "action", "status", "points", "detail"];
+    "employee_id", "employee_name", "employee_email", "action", "status", "points", "detail", "location", "reactions",
+    "comments", "reach"];
 
 # One CSV cell: quoted when it holds a comma, quote or line break, and a leading `=`, `+`, `-`, `@`, tab or
 # return gets a single quote in front so a spreadsheet never runs a name or title as a formula.
@@ -466,11 +619,13 @@ isolated function csvCell(string? value) returns string {
     return v;
 }
 
-# The export rows as CSV text, header first, CRLF line ends.
+# The export rows as CSV text, header first, CRLF line ends. `location` is the employee's work location from the
+# directory (empty when unknown); `reach` is approximate (Reach-connected employees only).
 #
 # + rows - Rows
+# + locationOf - Lowercase email to location (empty when the directory is unavailable)
 # + return - CSV
-isolated function exportCsv(reporting:ExportRow[] rows) returns string {
+isolated function exportCsv(reporting:ExportRow[] rows, map<string> locationOf = {}) returns string {
     string[] lines = [string:'join(",", ...EXPORT_COLUMNS)];
     foreach reporting:ExportRow r in rows {
         boolean? priority = r.isPriority;
@@ -480,11 +635,17 @@ isolated function exportCsv(reporting:ExportRow[] rows) returns string {
         string[] cells = [csvCell(r.recordType), csvCell(r.occurredAt), csvCell(r.campaignId), csvCell(r.campaignTitle),
             csvCell(r.category), priority is boolean ? priority.toString() : "", csvCell(r.employeeId),
             csvCell(r.employeeName), csvCell(r.employeeEmail), csvCell(r.action), csvCell(r.status),
-            points is int ? points.toString() : "", csvCell(r.detail)];
+            points is int ? points.toString() : "", csvCell(r.detail), csvCell(locationFor(r.employeeEmail, locationOf)),
+            intCell(r.reactions), intCell(r.comments), intCell(r.reach)];
         lines.push(string:'join(",", ...cells));
     }
     return string:'join("\r\n", ...lines) + "\r\n";
 }
+
+isolated function intCell(int? n) returns string => n is int ? n.toString() : "";
+
+isolated function locationFor(string? email, map<string> locationOf) returns string? =>
+    email is string ? locationOf[email.trim().toLowerAscii()] : ();
 
 # A `YYYY-MM-DD` date as midnight UTC, `()` when it isn't a real date.
 #
@@ -516,7 +677,9 @@ isolated function dashboardExport(string? correlationId, string 'from, string to
         return failure(rows, correlationId, "Export");
     }
     http:Response res = new;
-    res.setTextPayload(exportCsv(rows), "text/csv; charset=utf-8");
+    DirectoryIndex? index = directoryOrNil(correlationId);
+    map<string> locations = index is DirectoryIndex ? index.locationOf : {};
+    res.setTextPayload(exportCsv(rows, locations), "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", string `attachment; filename="amplify-${'from}-to-${to}.csv"`);
     return res;
 }

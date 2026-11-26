@@ -16,7 +16,8 @@
 
 
 // Egress from amplify-api (declared Choreo connections only): the amplify-jobs trigger, the people
-// directory for team rosters (D13) and LinkedIn OAuth (S2). Each HTTP client has a timeout and a circuit breaker; the
+// directory for team rosters (D13), LinkedIn OAuth (S2) and the WSO2 Coins transaction service (wallet capture,
+// coins.bal). Each HTTP client has a timeout and a circuit breaker; the
 // jobs trigger and the roster are non-fatal, so their failures degrade the response instead of failing it.
 
 import amplify_api.scheduler;
@@ -103,6 +104,11 @@ configurable float hrEntityRetryBackOffFactor = 2.0;
 configurable decimal hrEntityRetryMaxWaitInterval = 20.0;
 # Rows asked for per page. The service answers a page at a time, so the whole company takes several calls.
 configurable int hrEntityPageSize = 1000;
+# The HR Entity employee field that holds the work location (the SLT reports' location breakdown). The people-app
+# directory query names it `workLocation` (`e.work_location AS workLocation`); the HR Entity GraphQL schema is not in
+# this repo, so it is configurable. Empty = no location (everyone lands in "Other"). A field the service refuses is
+# dropped for the rest of the read, like house.
+configurable string hrEntityLocationField = "workLocation";
 # Employee statuses the directory lists. `Marked leaver` stays in until the person is `Left`: they still work here.
 configurable string[] hrEntityStatuses = ["Active", "Marked leaver"];
 # How long the directory results (teams, names) are reused, seconds (default 24 hours). Memory
@@ -136,6 +142,13 @@ configurable string tokenKeys = "";
 # Key id used for new tokens.
 configurable string tokenCurrentKeyId = "";
 
+# Community Management app client id (the page connection; a separate LinkedIn app from Share on LinkedIn). Locally
+# the mock client. Empty = page connection unavailable (503).
+configurable string linkedinPageClientId = "";
+# Its client secret (Choreo secret).
+configurable string linkedinPageClientSecret = "";
+# Redirect URI registered on that app (the Amplify Admin page callback in One WSO2).
+configurable string linkedinPageRedirectUri = "";
 # Validate the OIDC ID token from the code exchange (common H1 / api H1): RS256 against LinkedIn's JWKS,
 # `iss`, `aud` = client id, `exp`/`iat`, and its `sub` must match userinfo. Off by default until a real
 # LinkedIn app has been seen to return the ID token for this flow. No PKCE: it is native-client-only at
@@ -154,6 +167,8 @@ configurable string linkedinJwksUrl = linkedin:LINKEDIN_JWKS_URL;
 configurable string linkedinOidcIssuer = linkedin:LINKEDIN_OIDC_ISSUER;
 
 final linkedin:ProviderAdapter? linkedInAdapter = check newLinkedInAdapter();
+final linkedin:CommunityPort? communityAdapter = check newCommunityAdapter();
+final linkedin:MemberAnalyticsPort? reachAdapter = check newReachAdapter();
 final crypto:TokenCipher? tokenCipher = check newTokenCipher();
 final linkedin:IdTokenValidator? idTokenValidator = check newIdTokenValidator();
 
@@ -270,6 +285,61 @@ isolated function checkPrivacyNoticeUrl(string url) returns error? {
     }
 }
 
+# The Community Management client for the page connection (admin connect, ACL check, revoke). Its own pools and
+# breakers. Empty `linkedinPageClientId` = page connection unavailable (503).
+#
+# + return - The adapter, `()` when not configured, or an error
+isolated function newCommunityAdapter() returns linkedin:CommunityPort?|error {
+    if linkedinPageClientId.trim() == "" {
+        return ();
+    }
+    check checkRedirectUri(linkedinPageRedirectUri, environment);
+    return check new linkedin:CommunityAdapter({
+        apiBaseUrl: linkedinApiBaseUrl,
+        authBaseUrl: linkedinAuthBaseUrl,
+        authorizeBaseUrl: linkedinAuthorizeBaseUrl,
+        clientId: linkedinPageClientId.trim(),
+        clientSecret: linkedinPageClientSecret,
+        redirectUri: linkedinPageRedirectUri
+    });
+}
+
+# The Community Management client for employees' Reach connections (post analytics). The same LinkedIn app as the page
+# connection (`linkedinPageClientId`), its own pools and breakers; Reach comes back to the member callback page
+# (`linkedinRedirectUri`, `/amplify/connect/callback`), which must also be registered on that app. Empty client id or
+# redirect URI = Reach unavailable (503).
+#
+# + return - The adapter, `()` when not configured, or an error
+isolated function newReachAdapter() returns linkedin:MemberAnalyticsPort?|error {
+    if linkedinPageClientId.trim() == "" || linkedinRedirectUri.trim() == "" {
+        return ();
+    }
+    check checkRedirectUri(linkedinRedirectUri, environment);
+    return check new linkedin:CommunityAdapter({
+        apiBaseUrl: linkedinApiBaseUrl,
+        authBaseUrl: linkedinAuthBaseUrl,
+        authorizeBaseUrl: linkedinAuthorizeBaseUrl,
+        clientId: linkedinPageClientId.trim(),
+        clientSecret: linkedinPageClientSecret,
+        redirectUri: linkedinRedirectUri
+    });
+}
+
+# Test seam: the Reach client.
+#
+# + return - The client, or `()` when not configured
+isolated function reachProvider() returns linkedin:MemberAnalyticsPort? => reachAdapter;
+
+# Test seam: the Community Management client.
+#
+# + return - The client, or `()` when not configured
+isolated function communityProvider() returns linkedin:CommunityPort? => communityAdapter;
+
+# Test seam: the page connection's redirect URI (the admin callback page).
+#
+# + return - The URI
+isolated function pageRedirectUri() returns string => linkedinPageRedirectUri;
+
 # Test seam: the configured LinkedIn redirect URI (what the authorize request and the token exchange carry).
 #
 # + return - The URI
@@ -335,7 +405,9 @@ isolated function breakerStates(BreakerReport jwks) returns map<BreakerReport> {
         linkedinOAuth: liStates["auth"] ?: "NOT_CONFIGURED",
         linkedinApi: liStates["api"] ?: "NOT_CONFIGURED",
         // Reported, not gating (like linkedinOAuth): only the connect flow needs it.
-        linkedinIdTokenJwks: idv is () ? "NOT_CONFIGURED" : idv.breaker()
+        linkedinIdTokenJwks: idv is () ? "NOT_CONFIGURED" : idv.breaker(),
+        // Reported, not gating: only the wallet capture needs it.
+        coins: coinsBreaker()
     };
 }
 
@@ -411,6 +483,8 @@ type DirectoryRecord record {
     string? house = ();
     # House id (the HR Entity's `houseId`, an integer), `()` when the employee has no house
     int? houseId = ();
+    # Work location, under the configured `hrEntityLocationField` name (`workLocation` by default)
+    string? workLocation = ();
 };
 
 # Everyone's team, built from one directory response.
@@ -445,6 +519,8 @@ type DirectoryIndex record {|
     int total;
     # Lowercase email to display name (first and last name; people without a name are left out)
     map<string> nameOf;
+    # Lowercase email to work location (people without one are left out)
+    map<string> locationOf = {};
     # Everyone's lowercase email, in directory order (the company roster)
     string[] everyone;
 |};
@@ -476,6 +552,7 @@ isolated function indexDirectory(DirectoryRecord[] records) returns DirectoryInd
     map<string[]> departmentMembers = {};
     map<string> departmentBu = {};
     map<string> nameOf = {};
+    map<string> locationOf = {};
     string[] everyone = [];
     map<boolean> seen = {};
     foreach DirectoryRecord r in records {
@@ -493,6 +570,10 @@ isolated function indexDirectory(DirectoryRecord[] records) returns DirectoryInd
         string subTeam = (r.subTeam ?: "").trim();
         string bu = (r.businessUnit ?: "").trim();
         string house = (r.house ?: "").trim();
+        string location = locationIn(r);
+        if location != "" {
+            locationOf[email] = location;
+        }
         if house != "" {
             houseOf[email] = house;
             string[] houseList = houseMembers[house] ?: [];
@@ -527,7 +608,7 @@ isolated function indexDirectory(DirectoryRecord[] records) returns DirectoryInd
         members[key] = list;
     }
     return {teamOf, teamNames, members, buOf, buMembers, houseOf, houseMembers, teamBu, departmentOf,
-            departmentNames, departmentMembers, departmentBu, total: seen.length(), nameOf, everyone}.cloneReadOnly();
+            departmentNames, departmentMembers, departmentBu, total: seen.length(), nameOf, everyone, locationOf}.cloneReadOnly();
 }
 
 # The viewer's roster from the index.
@@ -624,11 +705,35 @@ const string HOUSE_FIELDS = "houseId house";
 # The query, one page of current employees. Only the fields Amplify uses are asked for.
 #
 # + includeHouse - Also ask for `houseId` and `house` (the default; `false` only for an HR Entity older than 1.1.1)
+# + includeLocation - Also ask for the location field (`hrEntityLocationField`), when one is configured
 # + return - The GraphQL document
-isolated function employeesQuery(boolean includeHouse = true) returns string =>
-    "query getEmployees($filter: EmployeeFilter!, $limit: Int, $offset: Int) { "
-    + "employees(filter: $filter, limit: $limit, offset: $offset) { " + EMPLOYEE_FIELDS
-    + (includeHouse ? " " + HOUSE_FIELDS : "") + " } }";
+isolated function employeesQuery(boolean includeHouse = true, boolean includeLocation = false) returns string {
+    string? location = includeLocation ? locationField() : ();
+    return "query getEmployees($filter: EmployeeFilter!, $limit: Int, $offset: Int) { "
+        + "employees(filter: $filter, limit: $limit, offset: $offset) { " + EMPLOYEE_FIELDS
+        + (includeHouse ? " " + HOUSE_FIELDS : "") + (location is string ? " " + location : "") + " } }";
+}
+
+# The configured location field when it is a plain GraphQL name, else `()` (a bad value never reaches the query).
+#
+# + return - The field name, or `()`
+isolated function locationField() returns string? {
+    string f = hrEntityLocationField.trim();
+    return f != "" && re `[A-Za-z_][A-Za-z0-9_]{0,63}`.isFullMatch(f) ? f : ();
+}
+
+# A record's work location, read under the configured field name.
+#
+# + r - Directory row
+# + return - The location, trimmed, or "" when it has none
+isolated function locationIn(DirectoryRecord r) returns string {
+    string? f = locationField();
+    if f is () {
+        return "";
+    }
+    anydata v = f == "workLocation" ? r.workLocation : r[f];
+    return v is string ? v.trim() : "";
+}
 
 # The HR Entity refused the query itself: HTTP 400, or a GraphQL `errors` answer. A service older than
 # hr_entity 1.1.1 answers this way when asked for a field it does not have (`houseId`, `house`).
@@ -650,8 +755,16 @@ isolated function fetchDirectory(string? correlationId) returns (DirectoryIndex 
     // teams, BUs and the employee count unavailable, so the first page is asked again without house and the read
     // goes on without it (no House column until the service is upgraded).
     boolean withHouse = true;
+    // Location likewise: a service that doesn't know the configured field refuses the query, so it is dropped first.
+    boolean withLocation = locationField() is string;
     foreach int _ in 0 ..< MAX_DIRECTORY_PAGES {
-        DirectoryRecord[]|error asked = fetchDirectoryPage(c, headers, pageSize, offset, withHouse);
+        DirectoryRecord[]|error asked = fetchDirectoryPage(c, headers, pageSize, offset, withHouse, withLocation);
+        if asked is DirectoryQueryRefused && withLocation && offset == 0 {
+            log:printWarn("People directory refused the location field; reading without location",
+                    locationField = hrEntityLocationField, correlationId = correlationId);
+            withLocation = false;
+            asked = fetchDirectoryPage(c, headers, pageSize, offset, withHouse, false);
+        }
         if asked is DirectoryQueryRefused && withHouse && offset == 0 {
             log:printWarn("People directory refused the house fields; reading without house (needs hr_entity 1.1.1 or later)",
                     correlationId = correlationId);
@@ -677,12 +790,13 @@ isolated function fetchDirectory(string? correlationId) returns (DirectoryIndex 
 # + pageSize - Rows asked for
 # + offset - Rows to skip
 # + includeHouse - Also ask for `houseId` and `house`
+# + includeLocation - Also ask for the location field
 # + return - The rows, or an error that never carries the response body (it names people). A refused query
 # (400 or GraphQL `errors`) is a `DirectoryQueryRefused`
 isolated function fetchDirectoryPage(http:Client c, map<string> headers, int pageSize, int offset,
-        boolean includeHouse = true) returns DirectoryRecord[]|error {
+        boolean includeHouse = true, boolean includeLocation = false) returns DirectoryRecord[]|error {
     json body = {
-        query: employeesQuery(includeHouse),
+        query: employeesQuery(includeHouse, includeLocation),
         variables: {filter: {employeeStatus: hrEntityStatuses}, 'limit: pageSize, offset}
     };
     http:Response res = check c->post("", body, headers);

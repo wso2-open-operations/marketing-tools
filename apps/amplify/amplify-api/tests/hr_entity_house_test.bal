@@ -38,7 +38,8 @@ function testAnHrEntityWithoutHouseStillGivesTheDirectory() returns error? {
         setDirectory(mode);
         _ = takeDirectoryFetches();
         DirectoryIndex index = check fetchDirectory(());
-        test:assertEquals(takeDirectoryFetches(), 2, mode + ": asked with house, then once without");
+        test:assertEquals(takeDirectoryFetches(), 3,
+                mode + ": asked with house and location, then without location, then without house");
         test:assertEquals(index.total, 4, mode + ": every employee is read");
         test:assertTrue(index.teamOf["rv-a@wso2.com"] is string, mode + ": teams still come");
         test:assertEquals(index.houseMembers.length(), 0, mode + ": just no house");
@@ -67,4 +68,26 @@ function testAnEntityEmployeeWithAHouseFeedsTheIndex() returns error? {
     test:assertEquals(index.houseOf["ada@wso2.com"], "Titans");
     test:assertEquals(index.houseOf["ken@wso2.com"], (), "no house is left out, not an error");
     test:assertEquals(index.houseMembers["Titans"], ["ada@wso2.com", "grace@wso2.com"]);
+}
+
+@test:Config {groups: ["reads"]}
+function testTheQueryAsksForTheConfiguredLocationField() {
+    test:assertTrue(employeesQuery(true, true).includes("houseId house workLocation"));
+    test:assertFalse(employeesQuery(true, false).includes("workLocation"));
+    test:assertEquals(locationField(), "workLocation", "the default, as the people-app directory names it");
+}
+
+@test:Config {groups: ["reads"]}
+function testTheDirectoryCarriesLocationsAndSurvivesAServiceWithoutTheField() returns error? {
+    setDirectory("ok");
+    DirectoryIndex index = check fetchDirectory(());
+    test:assertEquals(index.locationOf["rv-a@wso2.com"], "Colombo");
+    test:assertEquals(index.locationOf["rv-noteam@wso2.com"], (), "no location is left out");
+
+    setDirectory("nolocation");
+    _ = takeDirectoryFetches();
+    DirectoryIndex without = check fetchDirectory(());
+    test:assertEquals(takeDirectoryFetches(), 2, "asked with location, then once without");
+    test:assertEquals(without.total, 4, "every employee is still read");
+    setDirectory("ok");
 }

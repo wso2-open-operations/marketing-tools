@@ -34,16 +34,18 @@ Route groups follow the tags in `openapi.yaml`. `EMPLOYEE` means any signed-in e
 | Identity | `GET /me` | The caller's profile | `EMPLOYEE` | `service.bal`, `identity_resolution.bal` |
 | S1 Campaign | `/campaigns`, `/campaigns/{id}`, `/tags`, `/categories` | List and read campaigns; create, edit and archive them | Read `EMPLOYEE`; write `CAN_CAMPAIGN` | `handlers.bal` (writes), `reads.bal` (reads) |
 | S2 Connection | `/connections/linkedin/start`, `/complete`, `/decline`, `DELETE /connections/linkedin` | Connect or disconnect the caller's LinkedIn account | `EMPLOYEE` | `handlers.bal`, `outbound.bal` (LinkedIn) |
+| | `/me/connections/reach/start`, `/complete`, `GET` and `DELETE /me/connections/reach` | The caller's Reach connection (#1781): consent through the Community Management app to `r_member_postAnalytics` only; comes back to the member callback page with a `reach-` state; tokens sealed as `MEMBER_ANALYTICS`; disconnect revokes and deletes; `REACH_SCOPE_MISSING` | `EMPLOYEE` | `reach_connection.bal`, `outbound.bal` (`reachProvider`) |
 | C1 Sharing | `POST /campaigns/{id}/shares`, `GET /me/shares` | Record a share of a campaign; list the caller's | `EMPLOYEE` | `handlers.bal`, `reads.bal` |
 | S3 External Sharing | `/external-shares`, `/me/external-shares` | Employees claim a share made outside Amplify and list their claims | `EMPLOYEE` | `handlers.bal`, `reads.bal` |
 | | `/po/external-shares` and its `approve`, `reject`, `amplified` actions | Review those claims | `CAN_REVIEW_SHARES` | `handlers.bal`, `reads.bal` |
 | C2 Scoring | `/po/point-rules` | List and add point rules | `CAN_POINT_RULES` | `handlers.bal`, `reads.bal` |
 | | `POST /po/points/adjustments`, `POST /po/points/{reference}/reverse` | Adjust points; reverse a ledger entry | `CAN_ADJUST_POINTS` | `handlers.bal` |
 | S4 Recognition | `/leaderboard`, `/leaderboard/people`, `/leaderboard/groups`, `/headcount`, `/me/points`, `/team`, `/team/{employeeId}/history` | Leaderboards, the viewer's points, My Team and the employee count | `EMPLOYEE` | `reads.bal`, `groups.bal` |
+| | `POST /me/coins/wallet` | Capture the caller's WSO2 Coins wallet for the automatic Coins conversion (ADR-048); `GET /me/points` shows it masked | `EMPLOYEE` | `coins.bal` |
 | | `/leaderboard/top` | Celebrate top three and the caller's position (ADR-037) | `EMPLOYEE` | `topboard.bal` |
 | | `GET /po/dashboard` | Program owner dashboard for a month | `CAN_PO_DASHBOARD` | `reads.bal` |
-| S6 Dashboards | `/dashboards/operations`, `/campaigns`, `/participation`, `/glance`, `/scorecard`, `/people/{employeeId}` | The `amplify_*` boards over one cached snapshot (ADR-036) | `CAN_DASHBOARD` | `dashboards.bal`, `dashboard_data.bal` |
-| | `GET /dashboards/export` | CSV export | `CAN_EXPORT` | `dashboards.bal` |
+| S6 Dashboards | `/dashboards/operations`, `/campaigns`, `/participation`, `/glance`, `/scorecard`, `/people/{employeeId}` | The `amplify_*` boards over one cached snapshot (ADR-036). Post Performance (`/campaigns`) has reactions, comments and reach per post and `monthTotals`; reach is approximate, with `reachConsenting`. Participation has `byLocation` (HR Entity work location; groups under `dashboards.min_group_size` merged into Other). Reposts count share actions only, never synced reactions or comments | `CAN_DASHBOARD` | `dashboards.bal`, `dashboard_data.bal` |
+| | `GET /dashboards/export` | CSV export, with `location`, `reactions`, `comments`, `reach` | `CAN_EXPORT` | `dashboards.bal` |
 | S5 Admin | `/admin/announcements`, `/admin/announcements/{id}/retry`, `/admin/settings` (GET, PUT) | Failed announcements and retry; read and change settings | `CAN_ADMIN` | `reads.bal`, `handlers.bal`, `settings.bal` |
 | | `POST /admin/scheduler/sync` | Push the schedule settings to the scheduler | `CAN_ADMIN` | `scheduler_sync.bal` |
 
@@ -53,7 +55,7 @@ Every POST accepts `Idempotency-Key` (`idempotency.bal`, ADR-024): a repeat with
 
 File: `outbound.bal`.
 
-Calls to amplify-jobs (trigger a run), the HR Entity GraphQL directory (teams, business units, names, headcount, and house name and id; OAuth2 client credentials, ADR-045; the team is the HR Entity's `department`, and an HR Entity older than 1.1.1 is read without house instead of failing) and LinkedIn (OAuth, ID-token check, token cipher, revoke). Each client has a timeout and a circuit breaker. The breaker states show on `/ready`.
+Calls to amplify-jobs (trigger a run), the HR Entity GraphQL directory (teams, business units, names, headcount, and house name and id; OAuth2 client credentials, ADR-045; the team is the HR Entity's `department`, and an HR Entity older than 1.1.1 is read without house instead of failing), LinkedIn (OAuth, ID-token check, token cipher, revoke) and the WSO2 Coins transaction service (`coins.bal`: `GET /wallets/me` with the caller's own JWT as `X-User-Assertion` and a client-credentials service token, for the wallet capture; ADR-048). Each client has a timeout and a circuit breaker. The breaker states show on `/ready`.
 
 ## Scheduler sync
 

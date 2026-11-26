@@ -46,7 +46,26 @@ public type OAuthState record {|
     time:Utc createdAt;
     # Expiry (`createdAt` + 10 minutes)
     time:Utc expiresAt;
+    # Which flow: `SHARE_ON_LINKEDIN` (an employee's own connection) or `COMMUNITY_MANAGEMENT` (an admin connecting
+    # the company page). Each flow refuses the other's state
+    types:ProviderApi providerApi = types:SHARE_ON_LINKEDIN;
+    # Which flow issued it (V028): `CONNECT` (the employee's Share on LinkedIn connection), `PAGE` (the company page)
+    # or `REACH` (the employee's Reach connection). Each flow refuses the others' states
+    OAuthPurpose purpose = CONNECT;
 |};
+
+# Which flow an OAuth state belongs to.
+public enum OAuthPurpose {
+    # The employee's Share on LinkedIn connection
+    CONNECT,
+    # An admin connecting the company page
+    PAGE,
+    # The employee's Reach connection (Community Management app, post analytics)
+    REACH
+}
+
+# Prefix of a Reach state, so the shared callback page (`/amplify/connect/callback`) knows to complete Reach.
+public const string REACH_STATE_PREFIX = "reach-";
 
 # Persistence port for `connection_oauth_state`.
 public type OAuthStateRepository isolated object {
@@ -81,6 +100,41 @@ public isolated function newOAuthState(types:EmployeeId employeeId, string? retu
     pendingCampaignId,
     createdAt: now,
     expiresAt: time:utcAddSeconds(now, <decimal>oauthStateTtlSeconds)
+};
+
+# Builds a fresh state for an admin connecting the company page (Community Management app).
+#
+# + employeeId - Signed-in admin
+# + now - Current time
+# + return - The state, or an error when the random source fails
+public isolated function newPageOAuthState(types:EmployeeId employeeId, time:Utc now) returns OAuthState|error => {
+    state: check randomToken(),
+    employeeId,
+    nonce: check randomToken(),
+    returnTo: (),
+    pendingCampaignId: (),
+    createdAt: now,
+    expiresAt: time:utcAddSeconds(now, <decimal>oauthStateTtlSeconds),
+    providerApi: types:COMMUNITY_MANAGEMENT,
+    purpose: PAGE
+};
+
+# Builds a fresh state for an employee connecting Reach (Community Management app, post analytics). The value starts
+# with `REACH_STATE_PREFIX`: Reach comes back to the member callback page, which routes on it.
+#
+# + employeeId - Signed-in employee
+# + now - Current time
+# + return - The state, or an error when the random source fails
+public isolated function newReachOAuthState(types:EmployeeId employeeId, time:Utc now) returns OAuthState|error => {
+    state: REACH_STATE_PREFIX + check randomToken(),
+    employeeId,
+    nonce: check randomToken(),
+    returnTo: (),
+    pendingCampaignId: (),
+    createdAt: now,
+    expiresAt: time:utcAddSeconds(now, <decimal>oauthStateTtlSeconds),
+    providerApi: types:COMMUNITY_MANAGEMENT,
+    purpose: REACH
 };
 
 # Checks the `nonce` claim of the ID token a connect returns against the one Amplify sent on the
@@ -125,6 +179,8 @@ type OAuthStateRow record {|
     string? pending_campaign_id;
     time:Utc created_at;
     time:Utc expires_at;
+    string provider_api;
+    string purpose;
 |};
 
 # `OAuthStateRepository` over PostgreSQL.
@@ -141,10 +197,10 @@ public isolated class PgOAuthStateRepository {
     public isolated function issue(OAuthState s) returns error? {
         _ = check self.db->execute(`
             INSERT INTO connection_oauth_state (state, employee_id, provider, provider_api, nonce, return_to,
-                                                pending_campaign_id, created_at, expires_at)
-            VALUES (${s.state}, ${s.employeeId}, ${types:LINKEDIN}, ${types:SHARE_ON_LINKEDIN}, ${s.nonce},
+                                                pending_campaign_id, created_at, expires_at, purpose)
+            VALUES (${s.state}, ${s.employeeId}, ${types:LINKEDIN}, ${s.providerApi}, ${s.nonce},
                     ${s.returnTo}, CAST(${s.pendingCampaignId} AS uuid), CAST(${store:ts(s.createdAt)} AS timestamptz),
-                    CAST(${store:ts(s.expiresAt)} AS timestamptz))`);
+                    CAST(${store:ts(s.expiresAt)} AS timestamptz), ${s.purpose})`);
     }
 
     public isolated function consume(string state, types:EmployeeId employeeId, time:Utc now) returns OAuthState|error? {
@@ -154,7 +210,7 @@ public isolated class PgOAuthStateRepository {
             WHERE state = ${state} AND employee_id = ${employeeId}
               AND expires_at > CAST(${store:ts(now)} AS timestamptz)
             RETURNING state, employee_id, nonce, return_to, pending_campaign_id::text AS pending_campaign_id,
-                      created_at, expires_at`);
+                      created_at, expires_at, provider_api, purpose`);
         if row is error {
             return store:isNoRows(row) ? () : row;
         }
@@ -165,7 +221,9 @@ public isolated class PgOAuthStateRepository {
             returnTo: row.return_to,
             pendingCampaignId: row.pending_campaign_id,
             createdAt: row.created_at,
-            expiresAt: row.expires_at
+            expiresAt: row.expires_at,
+            providerApi: check row.provider_api.ensureType(),
+            purpose: check row.purpose.ensureType()
         };
     }
 }

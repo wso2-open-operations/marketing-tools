@@ -61,11 +61,17 @@ authorization signs in as the configured `member` and approves straight away.
 Rules the mock enforces, matching LinkedIn:
 
 - `client_id` and `redirect_uri` must match the config exactly, or you get a `400` and no redirect.
-- Unsupported scopes (anything other than `w_member_social`, `openid`, `profile`, `email`)
+- Unsupported scopes (anything other than `w_member_social`, `openid`, `profile`, `email` and the Community Management
+  scopes `r_organization_social_feed`, `rw_organization_admin`, `r_member_postAnalytics`)
   redirect back with `error=unauthorized_scope_error`.
 - Add `mock_consent=deny` to simulate the member cancelling (`error=user_cancelled_authorize`).
   This parameter is mock only.
-- Tokens last 60 days. There are no refresh tokens.
+- Tokens last 60 days. Only a Community Management grant (`r_organization_social_feed`, `rw_organization_admin` or
+  `r_member_postAnalytics`) also gets a refresh token (`refresh_token`, `refresh_token_expires_in`, 365 days); `grant_type=refresh_token`
+  returns a new access token and the same refresh token.
+- A Community Management grant stands for a separate LinkedIn app, so it never revokes the member's Share on
+  LinkedIn token (and the other way round), although the mock serves both with one client. A page grant and a Reach
+  grant are the same app here: for the one mock member, the later replaces the earlier.
 - Issuing a token with a **different scope set** revokes the member's earlier tokens.
 
 ## Share API behaviour
@@ -102,13 +108,25 @@ The exact binding error goes to the debug log, not the caller.
 URNs in paths can be URL encoded (`urn%3Ali%3Ashare%3A123`) as LinkedIn requires.
 Every response on both hosts carries an `x-li-uuid` correlation id that also appears in the logs.
 
+## Community Management API behaviour
+
+| Call | Needs | Mock behaviour |
+|---|---|---|
+| `GET /rest/organizationAcls?q=roleAssignee&role=ADMINISTRATOR&state=APPROVED` | `rw_organization_admin` | The configured member is an approved `ADMINISTRATOR` of `organizationUrn` (default `urn:li:organization:1477`). |
+| `GET /rest/reactions/(entity:{urn})?q=entity` | `r_organization_social_feed` | Reactions injected on that post, newest first, oldest first with `sort=(value:CHRONOLOGICAL)`; `start`/`count` paging. |
+| `GET /rest/socialActions/{urn}/comments` | `r_organization_social_feed` | Comments injected on that post, oldest first. The text is a placeholder: the mock keeps none. |
+| `GET /rest/organizationalEntityNotifications?q=criteria&actions=List(SHARE,...)&organizationalEntity={org}&timeRange=(start:{ms},end:{ms})` | `r_organization_social_feed` | Reshares injected in the time range, as `SHARE` notifications (`sourcePost`, `generatedActivity`, `decoratedGeneratedActivity.share.owner`). 403 for another page. |
+| `GET /rest/memberCreatorPostAnalytics?q=entity&entity=(share:{urn})&queryType=IMPRESSION&aggregation=TOTAL` | `r_member_postAnalytics` | Lifetime analytics of a post the signed-in member created (`(ugc:{urn})` for a ugcPost). Stable mock counts: impressions 100 + 25 per injected reaction, comment or reshare on the post, members reached 60 + 15 per engagement; `REACTION`, `COMMENT`, `RESHARE` count them. `MEMBERS_REACHED` is `TOTAL` only. 404 unknown post, 403 another member's post. Amplify's reach refresh (#1781). |
+
 ## Admin endpoints (local only)
 
 With `enableMockAdmin = true` (off by default) and `mockAdminKey` set to at least 32 characters, the API
 listener also serves:
 
 - `GET /mock/posts` lists every post the mock holds.
-- `POST /mock/reset` clears tokens, codes, posts, uploads and rate counters.
+- `POST /mock/engagement` `{kind: REACTION|COMMENT|RESHARE, targetUrn, actorUrn, commentary?}` stores an engagement
+  the Community Management finders above return. `commentary` only marks a reshare as having words.
+- `POST /mock/reset` clears tokens, codes, posts, uploads, engagements and rate counters.
 
 Every call must carry the key in `X-Amplify-Internal-Key`, the same header amplify-jobs uses for its own
 endpoints; a missing or wrong key gets a `401`. With the flag on but no usable key, the endpoints are not

@@ -153,6 +153,14 @@ function testParticipationAndGlanceBoards() returns error? {
     string token = check boardToken(SLT_GROUP);
     json funnel = check (check send("GET", "/dashboards/participation", (), token)).getJsonPayload();
     test:assertEquals(check funnel.funnel, {employees: 4, connected: 2, reposted: 30, active30Days: 25, expired: 1});
+    // Four people in the directory: Colombo (3) is under the smallest group (5), so everyone is in Other.
+    test:assertEquals(check funnel.minGroupSize, 5);
+    test:assertEquals(check funnel.reachConsenting, 12);
+    json[] locations = check (check funnel.byLocation).ensureType();
+    test:assertEquals(locations.length(), 1);
+    test:assertEquals(check locations[0].location, "Other");
+    test:assertEquals(check locations[0].size, 4);
+    test:assertEquals(check locations[0].connected, 2, "a person the directory doesn't know lands in Other too");
 
     json glance = check (check send("GET", "/dashboards/glance", (), token)).getJsonPayload();
     test:assertEquals(check glance.month, "2025-10");
@@ -240,10 +248,10 @@ function testExportIsAnEscapedCsvForDashboardReadersOnly() returns error? {
     test:assertEquals(header(res, "Content-Disposition"), "attachment; filename=\"amplify-2025-10-01-to-2025-10-31.csv\"");
     string csv = check res.getTextPayload();
     string[] lines = re `\r\n`.split(csv.trim());
-    test:assertEquals(lines[0], "record_type,occurred_at,campaign_id,campaign_title,category,is_priority,employee_id,employee_name,employee_email,action,status,points,detail");
-    test:assertEquals(lines[1], "ENGAGEMENT,2025-10-20T10:00:00Z,p-launch,\"Launch, big\",Product,true,e1,\"'=Ada \"\"AL\"\" Lovelace\",ada@example.com,REPOST,ACTIVE,,",
-            "quoted, quote doubled, formula neutralised");
-    test:assertEquals(lines[2], "POINTS,2025-10-20T10:00:01Z,,,,,e1,,,REPOST,HELD,5,ENGAGEMENT");
+    test:assertEquals(lines[0], "record_type,occurred_at,campaign_id,campaign_title,category,is_priority,employee_id,employee_name,employee_email,action,status,points,detail,location,reactions,comments,reach");
+    test:assertEquals(lines[1], "ENGAGEMENT,2025-10-20T10:00:00Z,p-launch,\"Launch, big\",Product,true,e1,\"'=Ada \"\"AL\"\" Lovelace\",ada@example.com,REPOST,ACTIVE,,,,,,420",
+            "quoted, quote doubled, formula neutralised; the share's reach");
+    test:assertEquals(lines[2], "POINTS,2025-10-20T10:00:01Z,,,,,e1,,,REPOST,HELD,5,ENGAGEMENT,,,,");
 
     http:Response plain = check send("GET", "/dashboards/export?from=2025-10-01&to=2025-10-31", (), check rvToken("dash-plain"));
     test:assertEquals(plain.statusCode, 403);
@@ -260,7 +268,7 @@ function testCsvKeepsNegativePointsNumericAndStillGuardsText() {
         status: "PAID", points: -10, detail: "REVERSAL"};
     string[] lines = re `\r\n`.split(exportCsv([row]).trim());
     // A reversal's -10 stays a number a spreadsheet can sum; the name starting with `=` is still neutralised.
-    test:assertEquals(lines[1], "POINTS,2025-10-20T10:00:02Z,,,,,e1,'=Ada,,REPOST,PAID,-10,REVERSAL");
+    test:assertEquals(lines[1], "POINTS,2025-10-20T10:00:02Z,,,,,e1,'=Ada,,REPOST,PAID,-10,REVERSAL,,,,");
 }
 
 @test:Config {groups: ["dashboards"]}
@@ -279,4 +287,57 @@ function testPersonBoardCountsOnePersonsPosts() returns error? {
         {code: "EVENT", label: "Event", reposts: 0, repostsWithCommentary: 1, points: 10}]);
     test:assertEquals((check send("GET", "/dashboards/people/nobody", (), token)).statusCode, 404);
     test:assertEquals((check send("GET", "/dashboards/people/e1", (), check rvToken("dash-plain"))).statusCode, 403);
+}
+
+@test:Config {groups: ["dashboards"]}
+function testLocationBreakdownMergesSmallGroups() returns error? {
+    string[] everyone = [];
+    map<string> locationOf = {};
+    foreach int i in 0 ..< 6 {
+        everyone.push(string `lk${i}@wso2.com`);
+        locationOf[string `lk${i}@wso2.com`] = "Colombo";
+    }
+    foreach int i in 0 ..< 2 {
+        everyone.push(string `us${i}@wso2.com`);
+        locationOf[string `us${i}@wso2.com`] = "Mountain View";
+    }
+    everyone.push("nowhere@wso2.com");
+    reporting:PersonParticipation[] people = [
+        {email: "lk0@wso2.com", connected: true, reposted: true, active30Days: true, pointsThisMonth: 40, membersReached: 300},
+        {email: "lk1@wso2.com", connected: true, reposted: false, active30Days: false, pointsThisMonth: 0, membersReached: 0},
+        {email: "us0@wso2.com", connected: true, reposted: true, active30Days: false, pointsThisMonth: 10, membersReached: 50},
+        {email: "nowhere@wso2.com", connected: false, reposted: false, active30Days: false, pointsThisMonth: 5, membersReached: 0}
+    ];
+    json[] groups = locationBreakdown(people, locationOf, everyone, 5);
+    test:assertEquals(groups.length(), 2);
+    test:assertEquals(groups[0], {location: "Colombo", size: 6, employees: 6, connected: 2, reposted: 1, active30Days: 1,
+        pointsThisMonth: 40, reach: {membersReached: 300, approximate: true}});
+    test:assertEquals(groups[1], {location: "Other", size: 3, employees: 3, connected: 1, reposted: 1, active30Days: 0,
+        pointsThisMonth: 15, reach: {membersReached: 50, approximate: true}}, "Mountain View (2) merged with no location");
+    json[] noDirectory = locationBreakdown(people, (), [], 5);
+    test:assertEquals(noDirectory.length(), 1);
+    test:assertEquals(check noDirectory[0].size, 4, "without the directory the people counted are the size");
+    test:assertEquals(check noDirectory[0].employees, ());
+    test:assertEquals(locationBreakdown(people, locationOf, everyone, 1).length(), 3,
+            "min 1 keeps every group: Colombo, Mountain View and Other (no location)");
+}
+
+@test:Config {groups: ["dashboards"]}
+function testPostPerformanceCarriesReactionsCommentsAndReach() returns error? {
+    setSnapshot();
+    string token = check boardToken(SLT_GROUP);
+    json body = check (check send("GET", "/dashboards/campaigns?days=30&campaignId=p-launch", (), token)).getJsonPayload();
+    test:assertEquals(check body.monthTotals, {month: "2025-10", reposts: 90, reactions: 11, comments: 3,
+        reach: {impressions: 9000, membersReached: 3100, measuredReposts: 6, approximate: true}, reachConsenting: 12});
+    test:assertEquals(check body.selected.reactions, 7);
+    test:assertEquals(check body.selected.comments, 2);
+    test:assertEquals(check body.selected.reach, {impressions: 5000, membersReached: 1800, measuredReposts: 4,
+        approximate: true});
+    json[] rows = check (check body.campaigns).ensureType();
+    foreach json r in rows {
+        if (check r.campaignId) == "p-event" {
+            test:assertEquals(check r.reach.membersReached, 0);
+            test:assertEquals(check r.reactions, 0);
+        }
+    }
 }

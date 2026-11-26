@@ -71,6 +71,11 @@ public type Snapshot record {|
     sharing:ShareHealth shares;
     # Cards for campaigns opened in the cards window (default 30 days)
     CardCounts cards;
+    # Reactions, comments and reach this calendar month (UTC)
+    EngagementTotals engagementThisMonth = {reactions: 0, comments: 0, impressions: 0, membersReached: 0,
+        measuredReposts: 0};
+    # Employees with a Reach connection (reach is approximate: only their reposts are measured)
+    int reachConsenting = 0;
 |};
 
 # Reads the snapshot in one gated, repeatable-read, read-only transaction (R-13).
@@ -109,7 +114,9 @@ isolated function snapshotTx(postgresql:Client db, time:Utc now) returns Snapsho
             campaigns,
             delivery: check deliveryOf(db, ids),
             shares: check sharing:shareHealth(db, monthStart),
-            cards: check cardCounts(db, time:utcAddSeconds(now, -<decimal>dashboardCardsWindowDays * 86400d))
+            cards: check cardCounts(db, time:utcAddSeconds(now, -<decimal>dashboardCardsWindowDays * 86400d)),
+            engagementThisMonth: check engagementTotalsBetween(db, monthStart, soon),
+            reachConsenting: check reachConsenting(db)
         };
         check commit;
     }
