@@ -19,11 +19,22 @@ const SCOPE_W_MEMBER_SOCIAL = "w_member_social";
 const SCOPE_OPENID = "openid";
 const SCOPE_PROFILE = "profile";
 const SCOPE_EMAIL = "email";
-final readonly & string[] SUPPORTED_SCOPES = [SCOPE_W_MEMBER_SOCIAL, SCOPE_OPENID, SCOPE_PROFILE, SCOPE_EMAIL];
+// Community Management (the company page connection and the engagement reads).
+const SCOPE_R_ORGANIZATION_SOCIAL_FEED = "r_organization_social_feed";
+const SCOPE_RW_ORGANIZATION_ADMIN = "rw_organization_admin";
+// Member post analytics (Community Management app): the Reach connection.
+const SCOPE_R_MEMBER_POST_ANALYTICS = "r_member_postAnalytics";
+final readonly & string[] SUPPORTED_SCOPES = [SCOPE_W_MEMBER_SOCIAL, SCOPE_OPENID, SCOPE_PROFILE, SCOPE_EMAIL,
+    SCOPE_R_ORGANIZATION_SOCIAL_FEED, SCOPE_RW_ORGANIZATION_ADMIN, SCOPE_R_MEMBER_POST_ANALYTICS];
+// Scopes of the Community Management app (page scopes and member post analytics): its grants get a refresh token and
+// never revoke a Share on LinkedIn token (a separate app at LinkedIn).
+final readonly & string[] ORGANIZATION_SCOPES = [SCOPE_R_ORGANIZATION_SOCIAL_FEED, SCOPE_RW_ORGANIZATION_ADMIN,
+    SCOPE_R_MEMBER_POST_ANALYTICS];
 
 // OAuth 2.0 protocol values.
 const RESPONSE_TYPE_CODE = "code";
 const GRANT_TYPE_AUTHORIZATION_CODE = "authorization_code";
+const GRANT_TYPE_REFRESH_TOKEN = "refresh_token";
 const TOKEN_TYPE_BEARER = "Bearer";
 const BEARER_PREFIX = "Bearer ";
 const MOCK_CONSENT_DENY = "deny";
@@ -55,6 +66,16 @@ const PERSON_URN_PREFIX = "urn:li:person:";
 const SHARE_URN_PREFIX = "urn:li:share:";
 const IMAGE_URN_PREFIX = "urn:li:image:";
 const ASSET_URN_PREFIX = "urn:li:digitalmediaAsset:";
+const ACTIVITY_URN_PREFIX = "urn:li:activity:";
+
+// Community Management engagement kinds `POST /mock/engagement` takes.
+const ENGAGEMENT_REACTION = "REACTION";
+const ENGAGEMENT_COMMENT = "COMMENT";
+const ENGAGEMENT_RESHARE = "RESHARE";
+const ROLE_ADMINISTRATOR = "ADMINISTRATOR";
+const STATE_APPROVED = "APPROVED";
+const NOTIFICATION_SHARE = "SHARE";
+const int MAX_ENGAGEMENT_PAGE = 100;
 
 // Paths.
 const VERSIONED_PATH_PREFIX = "rest";

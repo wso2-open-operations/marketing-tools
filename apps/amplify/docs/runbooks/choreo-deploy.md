@@ -116,6 +116,7 @@ Same names in two components (`DBHOST`, `DBPORT`, `DBNAME`, `DBUSER`, `DBPASSWOR
 | `HRENTITYTOKENURL` | cfg | O | | TBD (C7) |
 | `HRENTITYCLIENTID` | cfg | O | | TBD (C7) |
 | `HRENTITYCLIENTSECRET` | secret | O | | TBD (C7) |
+| `HRENTITYLOCATIONFIELD` | cfg | O | `workLocation` | The HR Entity field with the work location (SLT reports by location); confirm the name in the HR Entity GraphQL schema |
 | `LINKEDINCLIENTID` | cfg | R | `amplify-local` (mock) | TBD, from the LinkedIn app owner |
 | `LINKEDINCLIENTSECRET` | secret | R | | TBD, from the LinkedIn app owner |
 | `LINKEDINREDIRECTURI` | cfg | R | `http://localhost:3000/amplify/connect/callback` | TBD, the prod One WSO2 callback page |
@@ -137,6 +138,11 @@ Same names in two components (`DBHOST`, `DBPORT`, `DBNAME`, `DBUSER`, `DBPASSWOR
 | `LINKEDINNONCEMODE` | cfg | O | `OFF` | `OFF`, `SEND` (checked when LinkedIn echoes the nonce) or `REQUIRE`. Only with ID-token validation on. Empty = `OFF` |
 | `INTERNALAPIKEY` | secret | R | | Ops-generated, at least 32 characters, the same value as Jobs (C2) |
 | `SCHEDULERAPIKEY` | secret | R | | Ops-generated, at least 32 characters, different from the internal key, the same value as Jobs (C2) |
+| `COINSBASEURL` | cfg | O | empty | TBD, the WSO2 Coins transaction service's gateway URL (https). Empty = wallet capture answers 503 `COINS_UNAVAILABLE` (ADR-048) |
+| `COINSTOKENURL` | cfg | O | | TBD, the token endpoint of the application subscribed to the Coins API |
+| `COINSCLIENTID` | cfg | O | | TBD, that application's client id (the same application as Jobs is fine) |
+| `COINSCLIENTSECRET` | secret | O | | TBD |
+| `COINSSCOPES` | cfg | O | empty | Empty unless the Coins API needs a scope |
 
 ### G2. Amplify Jobs
 
@@ -165,12 +171,17 @@ Same names in two components (`DBHOST`, `DBPORT`, `DBNAME`, `DBUSER`, `DBPASSWOR
 | `AMPLIFYONNOVERA` | cfg | O | `false` locally (default `true`) | TBD, the open item in `prod-deploy-handoff.md` |
 | `AMPLIFYONWEBHOOK` | cfg | O | `true` locally (default `false`) | TBD, same open item |
 | `INTERNALAPIKEY` | secret | R | | Ops-generated, at least 32 characters, the same value as the Backend (C5) |
-| `SCHEDULERAPIKEY` | secret | R | | Ops-generated, at least 32 characters, different from the internal key; accepted only for `POST /runs` and `POST /maintenance/partitions`; the same value as the Backend |
+| `SCHEDULERAPIKEY` | secret | R | | Ops-generated, at least 32 characters, different from the internal key; accepted only for `POST /runs`, `POST /maintenance/partitions`, `POST /engagement/sync`, `POST /coins/convert` and `POST /reach/refresh`; the same value as the Backend |
 | `LEAVERSWEEPMODE` | cfg | O | `OFF` | `OFF`, `DRY_RUN` or `ERASE`. Start with `DRY_RUN` (ADR-040) |
 | `HRENTITYBASEURL` | cfg | O | | HR Entity GraphQL URL for the leaver sweep |
 | `HRENTITYTOKENURL` | cfg | O | | HR Entity OAuth token URL |
 | `HRENTITYCLIENTID` | cfg | O | | HR Entity client id |
 | `HRENTITYCLIENTSECRET` | secret | O | | HR Entity client secret |
+| `COINSBASEURL` | cfg | O | empty | TBD, the WSO2 Coins transaction service's gateway URL (https). Empty = `POST /coins/convert` answers `SKIPPED COINS_NOT_CONFIGURED` (ADR-048) |
+| `COINSTOKENURL` | cfg | O | | TBD, the token endpoint of the application subscribed to the Coins API |
+| `COINSCLIENTID` | cfg | O | | TBD, the application the Coins team maps to Amplify's funded master wallet (`client_master_wallet`) |
+| `COINSCLIENTSECRET` | secret | O | | TBD |
+| `COINSSCOPES` | cfg | O | empty | Empty unless the Coins API needs a scope |
 
 ### G3. Amplify Scheduler
 
@@ -204,3 +215,19 @@ Same names in two components (`DBHOST`, `DBPORT`, `DBNAME`, `DBUSER`, `DBPASSWOR
 ## Go-live config review (M10)
 
 No environment has `BAL_CONFIG_VAR_ENVIRONMENT=local`, `DEVLOCALJWTENABLED`, `CHATALLOWINSECUREHTTP` or a LinkedIn Mock URL in prod. `scripts/check-descriptors.sh` passes.
+
+## Post reach (Reach connection, #1781)
+
+Employees consent to Amplify reading the analytics of their own posts through the Community Management app (the same
+app and `LINKEDINPAGECLIENTID` / `LINKEDINPAGECLIENTSECRET` as the page connection; no new config). Before turning it on:
+
+1. On the Community Management app at LinkedIn, make sure the Member Post Analytics product (`r_member_postAnalytics`)
+   is granted, and add the member callback page (`LINKEDINREDIRECTURI`, `/amplify/connect/callback`) to its authorized
+   redirect URLs. Reach comes back to that page with a state starting `reach-`; the page posts it to
+   `POST /me/connections/reach/complete`. Without `LINKEDINREDIRECTURI` or the page client id, Reach answers 503.
+2. Employees connect Reach (`POST /me/connections/reach/start`). Their tokens are sealed as `MEMBER_ANALYTICS` with the
+   same `TOKENKEYS`.
+3. Set `reach.enabled` to `true` on Amplify Admin (settings). The scheduler job `amplify-reach-refresh` (default
+   `30 3 * * *`) calls Jobs `POST /reach/refresh`: two calls per post against `engagement.daily_call_budget`, shared
+   with the engagement sync, so raise the budget if both run. `reach.window_days` (default 30) bounds the posts read.
+4. The boards label reach approximate with the number of consenting employees (`reachConsenting`).

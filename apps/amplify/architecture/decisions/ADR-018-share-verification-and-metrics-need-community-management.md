@@ -27,6 +27,25 @@ Research ([2026-10-16-linkedin-deletion-and-analytics.md](../../docs/research/20
 - The `ENGAGEMENT_DELETED` reversal path and `engagement_verification` table stay in the model, so turning verification on later needs no schema change.
 - Community Management adds a vetting step (legal entity, privacy policy, screen recording) and dev-tier limits (500 calls/app/day, 100/member/day, no BATCH_GET) to phase 2 planning.
 
+## Amendment 2026-11-26: post reach is read with each employee's consent (#1781, #1780)
+
+The share-metrics part of decision 3 is built on the Community Management app that the page connection (V025) already
+uses, so no new app or config:
+
+- An employee connects **Reach** (`/me/connections/reach`): an OAuth grant of `r_member_postAnalytics` only, on the
+  member callback page with a `reach-` state (`connection_oauth_state.purpose = REACH`). The tokens are sealed as
+  `MEMBER_ANALYTICS` in `connection_provider_token` and pointed at by `connection_member_analytics`; disconnect revokes
+  and deletes them, and erasure deletes them.
+- amplify-jobs `POST /reach/refresh` (daily, off until `reach.enabled`) reads `IMPRESSION` and `MEMBERS_REACHED` with
+  `TOTAL` aggregation for in-app shares of the last `reach.window_days` days, two calls per post against the same daily
+  budget as the engagement sync (`sharing_api_usage`).
+- `sharing_engagement_metric` keeps the latest reading per engagement per UTC day: impressions and members reached only.
+  Reactions and comments are the engagement sync's rows, not metrics.
+- Reach is display and reporting only (decision 4 holds). The boards call it approximate and show how many employees
+  consented: only their shares are measured, and one member reached by two shares counts twice.
+- Verification (decision 1) is still not built: a deleted post now shows as a refused reading, which is logged as
+  skipped and not acted on.
+
 ## Links
 
 - [Research note](../../docs/research/2026-10-16-linkedin-deletion-and-analytics.md)

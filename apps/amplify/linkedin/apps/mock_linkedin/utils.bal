@@ -218,3 +218,104 @@ isolated function tooManyRequests(string message) returns ErrorTooManyRequests =
 
 isolated function oauthBadRequest(string 'error, string description) returns OAuthErrorBadRequest =>
     {body: {'error, error_description: description}};
+
+# The entity of a Rest.li reaction finder key, `(entity:{urn})`, percent-encoded or not.
+#
+# + key - Path key
+# + return - The URN, or `()` when the key has another shape
+isolated function entityOfKey(string key) returns string? {
+    string k = decoded(key);
+    if !k.startsWith("(entity:") || !k.endsWith(")") {
+        return ();
+    }
+    return k.substring(8, k.length() - 1);
+}
+
+# Percent-decodes a Rest.li value (the listener may already have decoded it).
+#
+# + value - Value
+# + return - Decoded value, or the value as it was when it doesn't decode
+isolated function decoded(string value) returns string {
+    if !value.includes("%") {
+        return value;
+    }
+    string|url:Error d = url:decode(value, "UTF-8");
+    return d is string ? d : value;
+}
+
+# `(start:{ms},end:{ms})` as a pair.
+#
+# + value - Time range
+# + return - `[start, end]`, or `()` when malformed
+isolated function parseTimeRange(string value) returns [int, int]? {
+    if !value.startsWith("(") || !value.endsWith(")") {
+        return ();
+    }
+    int? low = ();
+    int? high = ();
+    foreach string part in re `,`.split(value.substring(1, value.length() - 1)) {
+        string[] kv = re `:`.split(part.trim());
+        if kv.length() != 2 {
+            return ();
+        }
+        int|error n = int:fromString(kv[1]);
+        if n is error {
+            return ();
+        }
+        if kv[0] == "start" {
+            low = n;
+        } else if kv[0] == "end" {
+            high = n;
+        }
+    }
+    if low is int && high is int {
+        return [low, high];
+    }
+    return ();
+}
+
+# One page of a list.
+#
+# + all - Everything, in order
+# + 'start - Offset
+# + count - Page size (capped)
+# + return - The page
+isolated function pageOf(store:Engagement[] all, int 'start, int count) returns store:Engagement[] {
+    int size = count < 1 ? 1 : count > MAX_ENGAGEMENT_PAGE ? MAX_ENGAGEMENT_PAGE : count;
+    int 'from = 'start < 0 ? 0 : 'start;
+    if 'from >= all.length() {
+        return [];
+    }
+    int to = 'from + size < all.length() ? 'from + size : all.length();
+    return all.slice('from, to);
+}
+
+# A Rest.li collection response.
+#
+# + elements - Elements
+# + 'start - Offset
+# + count - Page size asked for
+# + total - Elements across pages
+# + return - `{paging, elements}`
+isolated function collection(json[] elements, int 'start, int count, int total) returns json =>
+    {paging: {'start, count, links: [], total}, elements};
+
+# Epoch milliseconds of epoch seconds.
+#
+# + seconds - Epoch seconds with fraction
+# + return - Milliseconds
+isolated function epochMillis(decimal seconds) returns int => <int>(seconds * 1000d);
+
+# The post URN of a member post analytics `entity`: `(share:{urn})` or `(ugc:{urn})`, already decoded.
+#
+# + value - Decoded `entity`
+# + return - The URN, or `()` when the value has another shape
+isolated function analyticsEntityUrn(string value) returns string? {
+    foreach [string, string] [prefix, kind] in [["(share:", "urn:li:share:"], ["(ugc:", "urn:li:ugcPost:"]] {
+        if value.startsWith(prefix) && value.endsWith(")") {
+            string urn = value.substring(prefix.length(), value.length() - 1);
+            return urn.startsWith(kind) ? urn : ();
+        }
+    }
+    return ();
+}

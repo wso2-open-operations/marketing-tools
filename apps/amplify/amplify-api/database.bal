@@ -188,6 +188,20 @@ isolated function tokenRepository() returns connection:TokenRepository|error =>
 isolated function oauthStateRepository() returns connection:OAuthStateRepository|error =>
     new connection:PgOAuthStateRepository(check db());
 
+isolated function orgConnectionRepository(store:Actor actor) returns connection:OrgConnectionRepository|error =>
+    new connection:PgOrgConnectionRepository(check db(), actor);
+
+isolated function reachConnectionRepository(store:Actor actor) returns connection:ReachConnectionRepository|error =>
+    new connection:PgReachConnectionRepository(check db(), actor);
+
+isolated function nativeIntentRepository() returns sharing:NativeIntentRepository|error =>
+    new sharing:PgNativeIntentRepository(check db());
+
+# Community Management calls made today, UTC (a seam the tests replace).
+#
+# + return - Calls, or an error
+isolated function apiCallsToday() returns int|error => sharing:apiCallsOn(check db(), time:utcNow());
+
 isolated function campaignRepository(store:Actor actor) returns campaign:CampaignRepository|error =>
     new campaign:PgCampaignRepository(check db(), actor);
 
@@ -199,6 +213,19 @@ isolated function externalShareRepository(store:Actor actor, int topN) returns e
 
 isolated function ledgerRepository(store:Actor actor, int topN) returns scoring:LedgerRepository|error =>
     new scoring:PgLedgerRepository(check db(), actor, topN);
+
+isolated function coinWalletRepository(store:Actor actor) returns scoring:CoinWalletRepository|error =>
+    new scoring:PgCoinWalletRepository(check db(), actor);
+
+# The caller's Coins: received, carry, captured wallet (a seam the tests replace).
+#
+# + employeeId - Employee
+# + return - The summary, or an error
+isolated function coinSummary(types:EmployeeId employeeId) returns scoring:CoinSummary|error {
+    retry<resilience:TransientDbRetry> (dbReadRetries) {
+        return check scoring:coinSummaryOf(check db(), employeeId);
+    }
+}
 
 isolated function pointRuleRepository(store:Actor actor) returns scoring:PointRuleRepository|error =>
     new scoring:PgPointRuleRepository(check db(), actor);
@@ -277,9 +304,15 @@ isolated function claimsForReview(external_sharing:ExternalShareStatus? status, 
     }
 }
 
-isolated function ledgerHistory(types:EmployeeId employeeId, int page, int size) returns scoring:LedgerPage|error {
+# One person's history: ledger rows and Coins conversions in one paged list (a seam the tests replace).
+#
+# + employeeId - Employee
+# + page - Zero-based page
+# + size - Page size
+# + return - The page, or an error
+isolated function ledgerTimeline(types:EmployeeId employeeId, int page, int size) returns scoring:TimelinePage|error {
     retry<resilience:TransientDbRetry> (dbReadRetries) {
-        return check scoring:historyOf(check db(), employeeId, page, size);
+        return check scoring:timelineOf(check db(), employeeId, page, size);
     }
 }
 
@@ -361,3 +394,57 @@ isolated function completeIdempotency(types:EmployeeId employeeId, string key, i
 
 isolated function releaseIdempotency(types:EmployeeId employeeId, string key) returns error? =>
     store:releaseIdempotencyKey(check db(), employeeId, key);
+
+# People search over `identity_employee` (a seam the tests replace).
+#
+# + text - Search text
+# + 'limit - Most results
+# + return - Matches, or an error
+isolated function searchPeople(string text, int 'limit) returns identity:EmployeeMatch[]|error =>
+    identity:searchEmployees(check db(), text, 'limit);
+
+# One employee's points summary (a seam the tests replace).
+#
+# + employeeId - Employee
+# + return - The summary, or an error
+isolated function pointsSummary(types:EmployeeId employeeId) returns scoring:PointsSummary|error {
+    retry<resilience:TransientDbRetry> (dbReadRetries) {
+        return check scoring:pointsSummaryOf(check db(), employeeId);
+    }
+}
+
+# Which of these ledger rows were reversed (a seam the tests replace).
+#
+# + references - Ledger references
+# + return - Reversed reference -> reversal reference, or an error
+isolated function reversalsAmong(types:LedgerReference[] references) returns map<string>|error {
+    retry<resilience:TransientDbRetry> (dbReadRetries) {
+        return check scoring:reversalsOf(check db(), references);
+    }
+}
+
+# Campaign titles by id (a seam the tests replace).
+#
+# + ids - Campaign ids
+# + return - Id -> title, or an error
+isolated function campaignTitles(string[] ids) returns map<string>|error {
+    retry<resilience:TransientDbRetry> (dbReadRetries) {
+        return check campaign:titlesOf(check db(), ids);
+    }
+}
+
+# Employees by id, for the review queue (a seam the tests replace).
+#
+# + ids - Employee ids
+# + return - Id -> match, or an error
+isolated function employeesIn(types:EmployeeId[] ids) returns map<identity:EmployeeMatch>|error {
+    retry<resilience:TransientDbRetry> (dbReadRetries) {
+        return check identity:employeesByIds(check db(), ids);
+    }
+}
+
+# Every point rule version, for `GET /point-values`.
+#
+# + return - Rules, or an error
+isolated function pointRulesNow() returns scoring:PointRule[]|error =>
+    (check pointRuleRepository(store:SYSTEM)).all();

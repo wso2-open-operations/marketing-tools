@@ -14,7 +14,7 @@ Ballerina backend for WSO2 Amplify phase 1. Three Ballerina deployables, the sch
 ## Architecture
 - `amplify-api`: published API, fronted by the Choreo API proxy at the cell edge (ADR-004). Only the proxy is published; the backend endpoint is Organization-visible so the proxy's gateway can reach it (ADR-004 amendment).
 - `amplify-jobs`: HTTP-triggered worker, no internal timer (ADR-003).
-- `amplify-scheduler`: pinned `akorn/scheduler` image (ADR-026, replaces amplify-cron). Calls `amplify-jobs POST /runs` and `/maintenance/partitions`; amplify-api pushes the schedules from `config_app_setting`. Its API has no auth: internal only, own Postgres database/user. Scheduler IT: `scripts/it-scheduler.sh`.
+- `amplify-scheduler`: pinned `akorn/scheduler` image (ADR-026, replaces amplify-cron). Calls `amplify-jobs POST /runs`, `/maintenance/partitions`, `/engagement/sync` (off unless `engagement.sync_enabled`) and `/coins/convert` (off unless `coin.wallets_enabled`, ADR-048); amplify-api pushes the schedules from `config_app_setting`. Its API has no auth: internal only, own Postgres database/user. Scheduler IT: `scripts/it-scheduler.sh`.
 - `amplify-database`: Amplify DB Migrate (Manual Task / Compose one-shot), forward-only `V###__name.sql`.
 - `amplify-common`: shared types, events, crypto and adapters (ADR-020).
 - `amplify-domain`: bounded contexts (domain + repository ports + PostgreSQL repositories) and `store` (client, outbox/audit writers), used by api and jobs (ADR-021).
@@ -32,5 +32,5 @@ PostgreSQL 15 or later (staging runs 17, ADR-044). One login user and one schema
 
 ## Cell rules
 - Ingress only through the API proxy; `amplify-jobs`, the scheduler and the DBs are never published.
-- Egress only to the declared endpoints, set per environment as config or secrets: LinkedIn (API and OAuth base URLs), Novera (its notifications URL and a client-credentials application, secret as a secret) and Google Chat (webhook URL as a secret; in prod it points at the WSO2 Club group chat space, in dev at a test space), people-app directory for team rosters.
+- Egress only to the declared endpoints, set per environment as config or secrets: LinkedIn (API and OAuth base URLs), Novera (its notifications URL and a client-credentials application, secret as a secret) and Google Chat (webhook URL as a secret; in prod it points at the WSO2 Club group chat space, in dev at a test space), people-app directory for team rosters, and the WSO2 Coins transaction service (ADR-048; from amplify-api for the wallet capture and from amplify-jobs for the conversion: its gateway URL, token endpoint and a client-credentials application mapped to Amplify's master wallet, secret as a secret).
 - Containers run as `USER 10014`.

@@ -287,6 +287,200 @@ service http:InterceptableService / on apiListener {
             }
         };
     }
+
+    // ---- Community Management (page connection and engagement reads) -------------------------------
+
+    # Reactions on a post (`q=entity`). Newest first unless `sort=(value:CHRONOLOGICAL)`.
+    #
+    # + ctx - Request context
+    # + key - `(entity:{urn})`
+    # + q - Must be `entity`
+    # + sort - `(value:CHRONOLOGICAL)` or `(value:REVERSE_CHRONOLOGICAL)` (default)
+    # + 'start - Offset
+    # + count - Page size
+    # + return - The reactions, or an error
+    isolated resource function get rest/reactions/[string key](http:RequestContext ctx, "entity" q, string? sort,
+            int 'start = 0, int count = 10) returns json|ErrorBadRequest|ErrorUnauthorized|ErrorForbidden {
+        store:AccessToken|ErrorUnauthorized|ErrorForbidden token =
+            authorize(ctx, [SCOPE_R_ORGANIZATION_SOCIAL_FEED], "GET /rest/reactions");
+        if token !is store:AccessToken {
+            return token;
+        }
+        string? entity = entityOfKey(key);
+        if entity is () {
+            return badRequest("The key must be (entity:{urn})");
+        }
+        store:Engagement[] all = store:listEngagements(ENGAGEMENT_REACTION, entity);
+        if sort != "(value:CHRONOLOGICAL)" {
+            all = all.reverse();
+        }
+        json[] elements = from store:Engagement e in pageOf(all, 'start, count)
+            let int time = epochMillis(e.createdAt)
+            select {
+                id: string `urn:li:reaction:(${e.actorUrn},${e.targetUrn})`,
+                reactionType: "LIKE",
+                root: e.targetUrn,
+                created: {actor: e.actorUrn, time},
+                lastModified: {actor: e.actorUrn, time}
+            };
+        return collection(elements, 'start, count, all.length());
+    }
+
+    # Top-level comments on a post, oldest first. The mock keeps no comment text.
+    #
+    # + ctx - Request context
+    # + socialActionUrn - Post URN
+    # + 'start - Offset
+    # + count - Page size
+    # + return - The comments, or an error
+    isolated resource function get rest/socialActions/[string socialActionUrn]/comments(http:RequestContext ctx,
+            int 'start = 0, int count = 10) returns json|ErrorUnauthorized|ErrorForbidden {
+        store:AccessToken|ErrorUnauthorized|ErrorForbidden token =
+            authorize(ctx, [SCOPE_R_ORGANIZATION_SOCIAL_FEED], "GET /rest/socialActions/{urn}/comments");
+        if token !is store:AccessToken {
+            return token;
+        }
+        string target = decoded(socialActionUrn);
+        store:Engagement[] all = store:listEngagements(ENGAGEMENT_COMMENT, target);
+        json[] elements = from store:Engagement e in pageOf(all, 'start, count)
+            let int time = epochMillis(e.createdAt), string id = e.activityUrn ?: "0"
+            select {
+                actor: e.actorUrn,
+                agent: e.actorUrn,
+                id,
+                commentUrn: string `urn:li:comment:(${target},${id})`,
+                'object: target,
+                created: {actor: e.actorUrn, time},
+                lastModified: {actor: e.actorUrn, time},
+                message: {attributes: [], text: "(mock comment)"}
+            };
+        return collection(elements, 'start, count, all.length());
+    }
+
+    # The page's share notifications (`q=criteria`): reshares of its posts in a time range.
+    #
+    # + ctx - Request context
+    # + q - Must be `criteria`
+    # + actions - `List(SHARE,...)` (the listener splits a query value on commas, so it arrives in parts)
+    # + organizationalEntity - The page URN
+    # + timeRange - `(start:{ms},end:{ms})`, in parts like `actions`
+    # + 'start - Offset
+    # + count - Page size
+    # + return - The notifications, or an error
+    isolated resource function get rest/organizationalEntityNotifications(http:RequestContext ctx, "criteria" q,
+            string[] actions, string organizationalEntity, string[] timeRange, int 'start = 0, int count = 10)
+            returns json|ErrorBadRequest|ErrorUnauthorized|ErrorForbidden {
+        store:AccessToken|ErrorUnauthorized|ErrorForbidden token =
+            authorize(ctx, [SCOPE_R_ORGANIZATION_SOCIAL_FEED], "GET /rest/organizationalEntityNotifications");
+        if token !is store:AccessToken {
+            return token;
+        }
+        string org = decoded(organizationalEntity);
+        if org != organizationUrn {
+            return forbidden(string `Member is not an administrator of ${org}`);
+        }
+        [int, int]? range = parseTimeRange(decoded(string:'join(",", ...timeRange)));
+        if range is () {
+            return badRequest("timeRange must be (start:{ms},end:{ms})");
+        }
+        if !decoded(string:'join(",", ...actions)).includes(NOTIFICATION_SHARE) {
+            return collection([], 'start, count, 0);
+        }
+        store:Engagement[] all = from store:Engagement e in store:listEngagements(ENGAGEMENT_RESHARE)
+            let int at = epochMillis(e.createdAt)
+            where at >= range[0] && at <= range[1]
+            select e;
+        json[] elements = from store:Engagement e in pageOf(all, 'start, count)
+            let string activity = e.activityUrn ?: ""
+            select {
+                action: NOTIFICATION_SHARE,
+                organizationalEntity: org,
+                sourcePost: e.targetUrn,
+                generatedActivity: activity,
+                lastModifiedAt: epochMillis(e.createdAt),
+                decoratedGeneratedActivity: {
+                    share: e.hasCommentary
+                        ? {owner: e.actorUrn, entity: activity, text: "(mock commentary)"}
+                        : {owner: e.actorUrn, entity: activity}
+                }
+            };
+        return collection(elements, 'start, count, all.length());
+    }
+
+    # Lifetime analytics of a post the signed-in member authored (`q=entity`, member post analytics). The mock answers
+    # stable counts from the post's engagement: impressions 100 + 25 per reaction, comment or reshare, members reached
+    # 60 + 15 per engagement. Only `TOTAL` aggregation; `MEMBERS_REACHED` supports nothing else at LinkedIn either.
+    #
+    # + ctx - Request context
+    # + q - Must be `entity`
+    # + entity - `(share:{urn})` or `(ugc:{urn})`, the URN encoded
+    # + queryType - `IMPRESSION`, `MEMBERS_REACHED`, `REACTION`, `COMMENT` or `RESHARE`
+    # + aggregation - `TOTAL` (default) or `DAILY`
+    # + return - One element with the count, or an error (404 unknown post, 403 another member's post)
+    isolated resource function get rest/memberCreatorPostAnalytics(http:RequestContext ctx, "entity" q, string entity,
+            string queryType, string? aggregation) returns json|ErrorBadRequest|ErrorUnauthorized|ErrorForbidden|ErrorNotFound {
+        store:AccessToken|ErrorUnauthorized|ErrorForbidden token =
+            authorize(ctx, [SCOPE_R_MEMBER_POST_ANALYTICS], "GET /rest/memberCreatorPostAnalytics");
+        if token !is store:AccessToken {
+            return token;
+        }
+        string value = decoded(entity);
+        string? urn = analyticsEntityUrn(value);
+        if urn is () {
+            return badRequest("entity must be (share:{urn}) or (ugc:{urn})");
+        }
+        if ["IMPRESSION", "MEMBERS_REACHED", "REACTION", "COMMENT", "RESHARE"].indexOf(queryType) is () {
+            return badRequest("Unknown queryType");
+        }
+        if aggregation is string && aggregation != "TOTAL" && (aggregation != "DAILY" || queryType == "MEMBERS_REACHED") {
+            return badRequest("Unsupported aggregation");
+        }
+        store:Post? post = store:getPost(urn);
+        if post is () {
+            return notFound(string `Post ${urn} not found`);
+        }
+        if post.authorUrn != personUrn(token.memberSub) {
+            return forbidden("Analytics are only available for the member's own posts");
+        }
+        int reactions = store:listEngagements(ENGAGEMENT_REACTION, urn).length();
+        int comments = store:listEngagements(ENGAGEMENT_COMMENT, urn).length();
+        int reshares = (from store:Engagement e in store:listEngagements(ENGAGEMENT_RESHARE)
+            where e.targetUrn == urn
+            select e).length();
+        int engagement = reactions + comments + reshares;
+        int count = queryType == "IMPRESSION" ? 100 + 25 * engagement
+            : queryType == "MEMBERS_REACHED" ? 60 + 15 * engagement
+            : queryType == "REACTION" ? reactions : queryType == "COMMENT" ? comments : reshares;
+        string key = urn.startsWith("urn:li:ugcPost:") ? "ugc" : "share";
+        return collection([{
+            count,
+            metricType: {"com.linkedin.adsexternalapi.memberanalytics.v1.CreatorPostAnalyticsMetricTypeV1": queryType},
+            targetEntity: {[key]: urn}
+        }], 0, 10, 1);
+    }
+
+    # The signed-in member's roles on organizations (`q=roleAssignee`). The configured member is an approved
+    # administrator of `organizationUrn`.
+    #
+    # + ctx - Request context
+    # + q - `roleAssignee`
+    # + role - Only this role
+    # + state - Only this state
+    # + return - The ACLs, or an error
+    isolated resource function get rest/organizationAcls(http:RequestContext ctx, "roleAssignee" q, string? role,
+            string? state) returns json|ErrorUnauthorized|ErrorForbidden {
+        store:AccessToken|ErrorUnauthorized|ErrorForbidden token =
+            authorize(ctx, [SCOPE_RW_ORGANIZATION_ADMIN], "GET /rest/organizationAcls");
+        if token !is store:AccessToken {
+            return token;
+        }
+        json[] elements = [];
+        if (role is () || role == ROLE_ADMINISTRATOR) && (state is () || state == STATE_APPROVED) {
+            elements.push({roleAssignee: personUrn(token.memberSub), role: ROLE_ADMINISTRATOR, state: STATE_APPROVED,
+                organization: organizationUrn});
+        }
+        return collection(elements, 0, 10, elements.length());
+    }
 }
 
 # Deletes a post the member owns. Unknown posts return 204 because delete is idempotent.

@@ -235,23 +235,7 @@ public isolated function adjustment(types:EmployeeId employeeId, int points, str
     });
 }
 
-# Settlement change: only `status` and `statusChangedAt` move; every fact stays as it was. `PAID` is
-# refused in phase 1 (Coins are phase 2).
-#
-# + entry - Ledger row
-# + status - `HELD`, or `()` for action required
-# + now - Change time
-# + return - The row with new settlement fields, or `PAID_NOT_ALLOWED`
-public isolated function changeSettlement(types:LedgerEntry entry, types:LedgerStatus? status, time:Utc now)
-        returns types:LedgerEntry|types:DomainError {
-    if status == types:PAID {
-        return types:domainError(types:ERR_PAID_NOT_ALLOWED, "Points can't be paid out in phase 1");
-    }
-    types:LedgerEntry changed = entry.clone();
-    changed.status = status;
-    changed.statusChangedAt = now;
-    return changed;
-}
+// `changeSettlement` (the settlement rule, PAID included) is in coins.bal with the conversion.
 
 // ---- Use cases ------------------------------------------------------------------------------------
 

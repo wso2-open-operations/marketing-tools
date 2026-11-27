@@ -35,8 +35,9 @@ public type Rule record {|
     boolean built = true;
 |};
 
-# The matrix. First match wins; a route that isn't here is denied (default deny).
-public final Rule[] & readonly ACTIVITY_MATRIX = [
+// The matrix is three literals joined: one literal of every row trips a Ballerina 2201.13 code-generation bug
+// (java.lang.VerifyError in the split module initialiser) once it passes about 65 rows.
+final Rule[] & readonly MATRIX_PART_1 = [
     // Identity
     {method: "GET", path: "/me", requires: EMPLOYEE, capability: "me.read", useCase: "Own row only; upserts identity_employee"},
     // S1 Campaign
@@ -55,6 +56,8 @@ public final Rule[] & readonly ACTIVITY_MATRIX = [
     // C1 Sharing
     {method: "POST", path: "/campaigns/{id}/shares", requires: EMPLOYEE, capability: "shares.create", useCase: "Own; campaign OPEN; connection ACTIVE/EXPIRING; one per campaign (retry reuses row, ADR-015); sharing.enabled"},
     {method: "GET", path: "/me/shares", requires: EMPLOYEE, capability: "shares.read_own"},
+    {method: "POST", path: "/campaigns/{id}/native-intent", requires: EMPLOYEE, capability: "shares.native", useCase: "Own; campaign OPEN, else 404; a later click restarts the 24 h look unless detected"},
+    {method: "GET", path: "/me/native-intents", requires: EMPLOYEE, capability: "shares.native", useCase: "Own; nativeStatus LOOKING (under 24 h) / DETECTED / NOT_FOUND"},
     // S3 External Sharing
     {method: "POST", path: "/external-shares", requires: EMPLOYEE, capability: "external_shares.submit", useCase: "Own; (evidence_url, action) unique (ADR-017); host allow-list"},
     {method: "GET", path: "/me/external-shares", requires: EMPLOYEE, capability: "external_shares.read_own"},
@@ -67,8 +70,13 @@ public final Rule[] & readonly ACTIVITY_MATRIX = [
     {method: "POST", path: "/po/point-rules", requires: CAN_POINT_RULES, capability: "point_rules.manage", useCase: "New version; past awards keep their value"},
     {method: "POST", path: "/po/points/adjustments", requires: CAN_ADJUST_POINTS, capability: "points.adjust", useCase: "Reason required; recognition in the same transaction (B12)"},
     {method: "POST", path: "/po/points/{reference}/reverse", requires: CAN_ADJUST_POINTS, capability: "points.adjust", useCase: "Reason required; not already reversed"},
+    {method: "GET", path: "/point-values", requires: EMPLOYEE, capability: "point_values.read", useCase: "Current points per action (screens show what each activity earns)"},
+    {method: "GET", path: "/po/people", requires: CAN_ADJUST_POINTS, capability: "points.adjust", useCase: "Find a person by name or email for Points & corrections; erased people left out"},
     // S4 Recognition
-    {method: "GET", path: "/leaderboard", requires: EMPLOYEE, capability: "leaderboard.read", useCase: "Top N, personal, My Team (ADR-014)"},
+    {method: "GET", path: "/leaderboard", requires: EMPLOYEE, capability: "leaderboard.read", useCase: "Top N, personal, My Team (ADR-014)"}
+];
+
+final Rule[] & readonly MATRIX_PART_2 = [
     {method: "GET", path: "/leaderboard/top", requires: EMPLOYEE, capability: "leaderboard.top.read", useCase: "Celebrate top three and My position, this month by default, company wide, monthly totals cached 2 hours (ADR-037)"},
     {method: "GET", path: "/leaderboard/people", requires: EMPLOYEE, capability: "leaderboard.people.read", useCase: "Company, BU or team board; open to every employee (ADR-035)"},
     {method: "GET", path: "/leaderboard/groups", requires: EMPLOYEE, capability: "leaderboard.groups.read", useCase: "Teams or BUs ranked; open to every employee (ADR-035)"},
@@ -81,6 +89,7 @@ public final Rule[] & readonly ACTIVITY_MATRIX = [
     {method: "GET", path: "/dashboards/glance", requires: CAN_DASHBOARD, capability: "dashboards.glance.read", useCase: "At a glance numbers"},
     {method: "GET", path: "/dashboards/scorecard", requires: CAN_DASHBOARD, capability: "dashboards.scorecard.read", useCase: "Scorecard against the scorecard.* targets"},
     {method: "GET", path: "/me/points", requires: EMPLOYEE, capability: "points.read_own"},
+    {method: "POST", path: "/me/coins/wallet", requires: EMPLOYEE, capability: "coins.wallet", useCase: "Own; the caller's default WSO2 Coins wallet via GET /wallets/me with their own JWT (ADR-048); 404 NO_WALLET, 503 COINS_UNAVAILABLE"},
     {method: "GET", path: "/team", requires: EMPLOYEE, capability: "team.read", useCase: "Roster team or company per ADR-014/ADR-019; CAN_ADJUST_POINTS company"},
     {method: "GET", path: "/team/{employeeId}/history", requires: EMPLOYEE, capability: "team.history.read", useCase: "Without CAN_ADJUST_POINTS: the caller, or a member of the caller's roster team (team.visibility = COMPANY does not widen it, ADR-035), else 403 TEAM_SCOPE (leaderboards.md); CAN_ADJUST_POINTS any (team.history.read_any)"},
     {method: "GET", path: "/po/dashboard", requires: CAN_PO_DASHBOARD, capability: "po.dashboard"},
@@ -91,9 +100,26 @@ public final Rule[] & readonly ACTIVITY_MATRIX = [
     {method: "POST", path: "/admin/announcements/{id}/retry", requires: CAN_ADMIN, capability: "admin.announcements", useCase: "Only while FAILED; announcements.enabled"},
     {method: "POST", path: "/admin/announcements/{id}/send", requires: CAN_ADMIN, capability: "admin.announcements", useCase: "Only for a post with no announcement; announcements.enabled"},
     {method: "GET", path: "/admin/settings", requires: CAN_ADMIN, capability: "admin.settings"},
-    {method: "PUT", path: "/admin/settings", requires: CAN_ADMIN, capability: "admin.settings", useCase: "Optimistic lock; Coin settings hidden"},
+    {method: "PUT", path: "/admin/settings", requires: CAN_ADMIN, capability: "admin.settings", useCase: "Optimistic lock; every editable key, the PO settings included"},
+    {method: "GET", path: "/po/settings", requires: CAN_POINT_RULES, capability: "po.settings", useCase: "Coins rate and schedule, own-post daily limit"},
+    {method: "PUT", path: "/po/settings", requires: CAN_POINT_RULES, capability: "po.settings", useCase: "Only PO_SETTINGS keys; optimistic lock; audited"},
+    {method: "GET", path: "/admin/linkedin-page", requires: CAN_ADMIN, capability: "admin.linkedin_page", useCase: "Configured page (wso2OrganizationUrn); calls today vs engagement.daily_call_budget"},
+    {method: "POST", path: "/admin/linkedin-page/connect/start", requires: CAN_ADMIN, capability: "admin.linkedin_page", useCase: "Issues a COMMUNITY_MANAGEMENT state; page scopes only"},
+    {method: "POST", path: "/admin/linkedin-page/connect/complete", requires: CAN_ADMIN, capability: "admin.linkedin_page", useCase: "State is the caller's page state; LinkedIn ADMINISTRATOR of the page, else 403 NOT_PAGE_ADMIN; tokens sealed as ORG; audited"},
+    {method: "DELETE", path: "/admin/linkedin-page", requires: CAN_ADMIN, capability: "admin.linkedin_page", useCase: "Revokes at LinkedIn, deletes the tokens, marks revoked; audited"},
     {method: "POST", path: "/admin/scheduler/sync", requires: CAN_ADMIN, capability: "admin.settings", useCase: "Pushes the schedule settings to the scheduler (ADR-026)"}
 ];
+
+// Reach connection (post analytics, #1781)
+final Rule[] & readonly MATRIX_REACH = [
+    {method: "GET", path: "/me/connections/reach", requires: EMPLOYEE, capability: "linkedin.reach", useCase: "Own; Reach connection status"},
+    {method: "POST", path: "/me/connections/reach/start", requires: EMPLOYEE, capability: "linkedin.reach", useCase: "Own; issues a REACH state (reach- prefix); r_member_postAnalytics only"},
+    {method: "POST", path: "/me/connections/reach/complete", requires: EMPLOYEE, capability: "linkedin.reach", useCase: "Own; state is the caller's REACH state; tokens sealed as MEMBER_ANALYTICS; audited"},
+    {method: "DELETE", path: "/me/connections/reach", requires: EMPLOYEE, capability: "linkedin.reach", useCase: "Own; revokes at LinkedIn, deletes the row and its tokens; audited"}
+];
+
+# The matrix. First match wins; a route that isn't here is denied (default deny).
+public final Rule[] & readonly ACTIVITY_MATRIX = [...MATRIX_PART_1, ...MATRIX_PART_2, ...MATRIX_REACH];
 
 # Capabilities checked inside a use case rather than per route. Reported by `GET /me` so the UI can
 # show the right controls.
