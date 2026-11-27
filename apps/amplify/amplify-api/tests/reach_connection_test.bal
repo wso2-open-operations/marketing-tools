@@ -99,6 +99,8 @@ isolated class FakeReachConnections {
         }
     }
 
+    public isolated function recordRefreshFailure(types:EmployeeId employeeId, string reason) returns error? => ();
+
     isolated function deletedSoFar() returns string[] {
         lock {
             return self.deleted.clone();

@@ -32,6 +32,13 @@ final time:Utc REACH_T0 = [1790100000, 0];
 isolated class FakeAnalytics {
     *linkedin:MemberAnalyticsPort;
     private string[] calls = [];
+    private linkedin:ProviderErrorCode? refreshFails = ();
+
+    isolated function failRefresh(linkedin:ProviderErrorCode code) {
+        lock {
+            self.refreshFails = code;
+        }
+    }
 
     isolated function log() returns string[] {
         lock {
@@ -48,6 +55,14 @@ isolated class FakeAnalytics {
     public isolated function refresh(string refreshToken) returns linkedin:TokenGrant|linkedin:ProviderError {
         lock {
             self.calls.push("refresh " + refreshToken);
+        }
+        linkedin:ProviderErrorCode? fails;
+        lock {
+            fails = self.refreshFails;
+        }
+        if fails is linkedin:ProviderErrorCode {
+            return error linkedin:ProviderError("refresh refused", code = fails, httpStatus = 400,
+                serviceErrorCode = (), retryable = false);
         }
         return {accessToken: "reach-access-2", expiresInSeconds: 5184000, scopes: []};
     }
@@ -101,6 +116,7 @@ isolated class FakeReachJobStore {
     private final map<connection:StoredToken> tokens;
     private final MemoryReachStore inner;
     private int saves = 0;
+    private string[] refreshFailures = [];
 
     isolated function init(ReachSettings s, connection:ReachConnection[] conns, connection:StoredToken[] tokens,
             sharing:ReachTarget[] targets) {
@@ -135,6 +151,18 @@ isolated class FakeReachJobStore {
                 self.tokens[t.tokenId] = t.clone();
             }
             self.saves += 1;
+        }
+    }
+
+    isolated function recordRefreshFailure(types:EmployeeId employeeId, string errorCode) returns error? {
+        lock {
+            self.refreshFailures.push(employeeId + " " + errorCode);
+        }
+    }
+
+    isolated function audits() returns string[] {
+        lock {
+            return self.refreshFailures.clone();
         }
     }
 
@@ -233,4 +261,22 @@ function testReachProviderErrorMapping() {
     linkedin:ProviderError down = error linkedin:ProviderError("x", code = linkedin:UNAVAILABLE, httpStatus = 503,
         serviceErrorCode = (), retryable = true);
     test:assertEquals(reachSourceError(down).detail().reason, "UNAVAILABLE");
+}
+
+@test:Config {}
+function testReachAuditsARefusedRefreshButNotAnOutage() returns error? {
+    var [b, bTokens] = check reachConn("emp-b", 3600, true);
+    sharing:ReachTarget[] targets = [{engagementId: "e2", employeeId: "emp-b", postUrn: "urn:li:share:2"}];
+    FakeAnalytics refused = new;
+    refused.failRefresh(linkedin:UNAUTHORIZED);
+    FakeReachJobStore st = new ({enabled: true}, [b], bTokens, targets);
+    _ = check runReachRefresh(st, refused, syncCipher, 10, REACH_T0);
+    test:assertEquals(st.audits(), ["emp-b UNAUTHORIZED"], "a refused Reach refresh is audited, without a token");
+    test:assertEquals(st.savedCount(), 0);
+
+    FakeAnalytics down = new;
+    down.failRefresh(linkedin:UNAVAILABLE);
+    FakeReachJobStore st2 = new ({enabled: true}, [b], bTokens, targets);
+    _ = check runReachRefresh(st2, down, syncCipher, 10, REACH_T0);
+    test:assertEquals(st2.audits().length(), 0, "an outage is not audited");
 }

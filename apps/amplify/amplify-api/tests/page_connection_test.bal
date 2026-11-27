@@ -86,6 +86,7 @@ isolated class FakeOrgConnections {
     *connection:OrgConnectionRepository;
     private map<connection:OrgConnection> rows = {};
     private connection:OrgConnectionChange[] changes = [];
+    private string[] attempts = [];
 
     public isolated function find(types:Provider provider, string orgUrn) returns connection:OrgConnection|error? {
         lock {
@@ -113,6 +114,19 @@ isolated class FakeOrgConnections {
             }
             self.rows[change.connection.orgUrn] = change.connection.clone();
             self.changes.push(change.clone());
+        }
+    }
+
+    public isolated function recordAttempt(string orgUrn, connection:OrgAttemptAction action, string reason)
+            returns error? {
+        lock {
+            self.attempts.push(string `${action} ${orgUrn} ${reason}`);
+        }
+    }
+
+    isolated function attemptsSoFar() returns string[] {
+        lock {
+            return self.attempts.clone();
         }
     }
 
@@ -217,6 +231,9 @@ function testPageConnectIsForAdminsAndChecksThePageRole() returns error? {
     test:assertEquals(notAdmin.statusCode, 403);
     test:assertEquals(check codeIn(notAdmin), "NOT_PAGE_ADMIN");
     test:assertTrue(pageRevokedSoFar().indexOf("page-token-c-nope") !is ());
+    string[] attempts = fakeOrgConnections.attemptsSoFar();
+    test:assertEquals(attempts.length(), 1, "the refused attempt is audited once");
+    test:assertTrue(attempts[0].startsWith("OrgConnectionDenied ") && attempts[0].endsWith(" NOT_PAGE_ADMIN"));
 }
 
 @test:Config {groups: ["page"], dependsOn: [testPageConnectIsForAdminsAndChecksThePageRole]}

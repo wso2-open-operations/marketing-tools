@@ -38,6 +38,13 @@ isolated class FakeCommunity {
     *linkedin:CommunityPort;
     private string[] calls = [];
     private boolean limited = false;
+    private linkedin:ProviderErrorCode? refreshFails = ();
+
+    isolated function failRefresh(linkedin:ProviderErrorCode code) {
+        lock {
+            self.refreshFails = code;
+        }
+    }
 
     isolated function rateLimit() {
         lock {
@@ -59,6 +66,14 @@ isolated class FakeCommunity {
     public isolated function refresh(string refreshToken) returns linkedin:TokenGrant|linkedin:ProviderError {
         lock {
             self.calls.push("refresh " + refreshToken);
+        }
+        linkedin:ProviderErrorCode? fails;
+        lock {
+            fails = self.refreshFails;
+        }
+        if fails is linkedin:ProviderErrorCode {
+            return error linkedin:ProviderError("refresh refused", code = fails, httpStatus = 400,
+                serviceErrorCode = (), retryable = false);
         }
         return {accessToken: "page-access-2", expiresInSeconds: 5184000, scopes: [], refreshToken: refreshToken,
             refreshExpiresInSeconds: 30000000};
@@ -143,6 +158,7 @@ isolated class FakeEngagementStore {
     private connection:OrgConnection? org;
     private map<connection:StoredToken> tokens = {};
     private int saves = 0;
+    private string[] refreshFailures = [];
     private final MemorySyncStore sync = new;
 
     isolated function init(boolean enabled, connection:OrgConnection? org, connection:StoredToken[] tokens) {
@@ -187,6 +203,18 @@ isolated class FakeEngagementStore {
     isolated function saveCount() returns int {
         lock {
             return self.saves;
+        }
+    }
+
+    isolated function recordRefreshFailure(string orgUrn, string errorCode) returns error? {
+        lock {
+            self.refreshFailures.push(orgUrn + " " + errorCode);
+        }
+    }
+
+    isolated function audits() returns string[] {
+        lock {
+            return self.refreshFailures.clone();
         }
     }
 
@@ -264,4 +292,26 @@ function testSchedulerKeyMayCallTheSync() {
         {key: "engagement.sync_enabled", value: true, updatedBy: "x", updatedAt: SYNC_T0, version: 1},
         {key: "engagement.daily_call_budget", value: 100, updatedBy: "x", updatedAt: SYNC_T0, version: 1}
     ]), {enabled: true, dailyBudget: 100});
+}
+
+@test:Config
+function testEngagementSyncAuditsARefusedRefresh() returns error? {
+    FakeCommunity community = new;
+    community.failRefresh(linkedin:UNAUTHORIZED);
+    [connection:OrgConnection, connection:StoredToken[]] [org, tokens] = check pageConnection(-10);
+    FakeEngagementStore st = new (true, org, tokens);
+    EngagementSyncResult result = check runEngagementSync(st, community, syncCipher, SYNC_T0);
+    test:assertEquals(result.status, "NEEDS_RECONNECT");
+    test:assertEquals(st.audits(), [SYNC_PAGE + " UNAUTHORIZED"], "a refused refresh is audited once, without a token");
+}
+
+@test:Config
+function testEngagementSyncDoesNotAuditAnOutage() returns error? {
+    FakeCommunity community = new;
+    community.failRefresh(linkedin:UNAVAILABLE);
+    [connection:OrgConnection, connection:StoredToken[]] [org, tokens] = check pageConnection(-10);
+    FakeEngagementStore st = new (true, org, tokens);
+    EngagementSyncResult result = check runEngagementSync(st, community, syncCipher, SYNC_T0);
+    test:assertEquals(result.status, "UNAVAILABLE");
+    test:assertEquals(st.audits().length(), 0, "an outage is retried, not audited");
 }

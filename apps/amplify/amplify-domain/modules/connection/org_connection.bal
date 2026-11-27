@@ -34,6 +34,10 @@ public const string ORG_CONNECTED = "OrgConnectionConnected";
 public const string ORG_TOKEN_REFRESHED = "OrgTokenRefreshed";
 # Audit action for a page disconnect.
 public const string ORG_CONNECTION_REVOKED = "OrgConnectionRevoked";
+# Audit action: someone tried to connect the page without being one of its administrators (outcome DENIED).
+public const string ORG_CONNECTION_DENIED = "OrgConnectionDenied";
+# Audit action: LinkedIn refused to refresh the page token (outcome FAILED); the sync may need a reconnect.
+public const string ORG_TOKEN_REFRESH_FAILED = "OrgTokenRefreshFailed";
 
 # Refresh the access token when it expires within this many seconds (7 days): LinkedIn's programmatic refresh
 # works any time before the refresh token expires.
@@ -124,7 +128,19 @@ public type OrgConnectionRepository isolated object {
     # + expectedVersion - Version read before the change; `()` for an insert
     # + return - `VERSION_CONFLICT`, or another error
     public isolated function save(OrgConnectionChange change, int? expectedVersion) returns error?;
+
+    # Audits an attempt that changed nothing: a refused page connect (`ORG_CONNECTION_DENIED`, outcome DENIED) or a
+    # token refresh LinkedIn refused (`ORG_TOKEN_REFRESH_FAILED`, outcome FAILED). Never a token, only the code.
+    #
+    # + orgUrn - The page
+    # + action - `ORG_CONNECTION_DENIED` or `ORG_TOKEN_REFRESH_FAILED`
+    # + reason - Error code, for example `NOT_PAGE_ADMIN` or LinkedIn's provider code
+    # + return - An error on failure
+    public isolated function recordAttempt(string orgUrn, OrgAttemptAction action, string reason) returns error?;
 };
+
+# Audit actions for an attempt that changed nothing.
+public type OrgAttemptAction ORG_CONNECTION_DENIED|ORG_TOKEN_REFRESH_FAILED;
 
 // ---- Rules (pure) ---------------------------------------------------------------------------------
 
@@ -350,6 +366,20 @@ public isolated class PgOrgConnectionRepository {
             return store:versionConflict("page connection");
         }
         return result;
+    }
+
+    public isolated function recordAttempt(string orgUrn, OrgAttemptAction action, string reason) returns error? {
+        store:AuditEntry entry = store:auditOf(self.actor, action, ORG_CONNECTION_TABLE, orgUrn, (), reason);
+        entry.outcome = action == ORG_CONNECTION_DENIED ? "DENIED" : "FAILED";
+        final readonly & store:AuditEntry row = entry.cloneReadOnly();
+        return store:inTransaction(isolated function () returns error? => self.attemptTx(row));
+    }
+
+    private isolated function attemptTx(store:AuditEntry entry) returns error? {
+        transaction {
+            check store:writeAudit(self.db, entry);
+            check commit;
+        }
     }
 
     private isolated function saveTx(OrgConnectionChange change, int? expectedVersion) returns error? {

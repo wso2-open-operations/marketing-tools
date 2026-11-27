@@ -73,6 +73,7 @@ type ReachJobStore isolated object {
     isolated function connections() returns connection:ReachConnection[]|error;
     isolated function token(connection:TokenRef ref) returns connection:StoredToken|error?;
     isolated function saveReach(connection:ReachChange change, int expectedVersion) returns error?;
+    isolated function recordRefreshFailure(types:EmployeeId employeeId, string errorCode) returns error?;
     isolated function reachStore(types:EmployeeId[] employeeIds) returns sharing:ReachStore;
 };
 
@@ -210,6 +211,12 @@ isolated class ReachTokenReader {
         linkedin:TokenGrant|linkedin:ProviderError grant = self.analytics.refresh(refreshToken);
         if grant is linkedin:ProviderError {
             log:printWarn("Reach token refresh failed", errorCode = grant.detail().code);
+            if isRefusal(grant) {
+                error? audited = self.st.recordRefreshFailure(c.employeeId, grant.detail().code);
+                if audited is error {
+                    log:printError("Could not audit the refused Reach token refresh", audited);
+                }
+            }
             return "NO_TOKEN";
         }
         connection:StoredToken access = check connection:sealReachToken(self.cipher, grant.accessToken, c.employeeId,
@@ -290,6 +297,9 @@ isolated class PgReachJobStore {
 
     isolated function saveReach(connection:ReachChange change, int expectedVersion) returns error? =>
         (new connection:PgReachConnectionRepository(self.db)).save(change, expectedVersion);
+
+    isolated function recordRefreshFailure(types:EmployeeId employeeId, string errorCode) returns error? =>
+        (new connection:PgReachConnectionRepository(self.db)).recordRefreshFailure(employeeId, errorCode);
 
     isolated function reachStore(types:EmployeeId[] employeeIds) returns sharing:ReachStore =>
         new PgReachStore(self.db, employeeIds);

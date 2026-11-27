@@ -34,6 +34,8 @@ const string REACH_TABLE = "connection_member_analytics";
 public const string REACH_CONNECTED_AUDIT = "ReachConnected";
 # Audit action for a Reach token refresh.
 public const string REACH_TOKEN_REFRESHED = "ReachTokenRefreshed";
+# Audit action: LinkedIn refused to refresh an employee's Reach token (outcome FAILED); they need to allow Reach again.
+public const string REACH_TOKEN_REFRESH_FAILED = "ReachTokenRefreshFailed";
 # Audit action for a Reach disconnect (the row and its tokens deleted).
 public const string REACH_DISCONNECTED = "ReachDisconnected";
 
@@ -97,6 +99,13 @@ public type ReachConnectionRepository isolated object {
     # + existing - The connection as read
     # + return - True when a row was deleted, false when it was already gone, or an error
     public isolated function delete(ReachConnection existing) returns boolean|error;
+
+    # Audits a Reach token refresh LinkedIn refused (`REACH_TOKEN_REFRESH_FAILED`, outcome FAILED). Never a token.
+    #
+    # + employeeId - The employee
+    # + reason - LinkedIn's provider code
+    # + return - An error on failure
+    public isolated function recordRefreshFailure(types:EmployeeId employeeId, string reason) returns error?;
 };
 
 // ---- Rules (pure) ---------------------------------------------------------------------------------
@@ -301,6 +310,20 @@ public isolated class PgReachConnectionRepository {
         final readonly & ReachConnection c = existing.cloneReadOnly();
         return (check store:inTransactionValue(isolated function () returns boolean|error => self.deleteTx(c)))
             .ensureType();
+    }
+
+    public isolated function recordRefreshFailure(types:EmployeeId employeeId, string reason) returns error? {
+        store:AuditEntry entry = store:auditOf(self.actor, REACH_TOKEN_REFRESH_FAILED, REACH_TABLE, employeeId, (), reason);
+        entry.outcome = "FAILED";
+        final readonly & store:AuditEntry row = entry.cloneReadOnly();
+        return store:inTransaction(isolated function () returns error? => self.refreshFailureTx(row));
+    }
+
+    private isolated function refreshFailureTx(store:AuditEntry entry) returns error? {
+        transaction {
+            check store:writeAudit(self.db, entry);
+            check commit;
+        }
     }
 
     private isolated function saveTx(ReachChange change, int? expectedVersion) returns error? {

@@ -96,6 +96,11 @@ isolated function completePageConnect(auth:Principal p, string? correlationId, C
                 log:printWarn("Could not revoke a non-admin page token", errorCode = revoked.detail().code,
                         correlationId = correlationId);
             }
+            error? audited = (check orgConnectionRepository(actorOf(p, correlationId))).recordAttempt(
+                    wso2OrganizationUrn, connection:ORG_CONNECTION_DENIED, NOT_PAGE_ADMIN);
+            if audited is error {
+                log:printError("Could not audit the refused page connect", audited, correlationId = correlationId);
+            }
             return forbidden(NOT_PAGE_ADMIN, correlationId,
                     "Your LinkedIn account isn't an administrator of the company page");
         }

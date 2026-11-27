@@ -77,6 +77,7 @@ type EngagementStore isolated object {
     isolated function orgConnection() returns connection:OrgConnection|error?;
     isolated function token(connection:TokenRef ref) returns connection:StoredToken|error?;
     isolated function saveOrg(connection:OrgConnectionChange change, int expectedVersion) returns error?;
+    isolated function recordRefreshFailure(string orgUrn, string errorCode) returns error?;
     isolated function syncStore(string orgUrn) returns sharing:SyncStore;
 };
 
@@ -156,6 +157,12 @@ isolated function refreshPageToken(EngagementStore st, linkedin:CommunityPort co
     linkedin:TokenGrant|linkedin:ProviderError grant = community.refresh(refreshToken);
     if grant is linkedin:ProviderError {
         log:printWarn("Page token refresh failed", errorCode = grant.detail().code);
+        if isRefusal(grant) {
+            error? audited = st.recordRefreshFailure(org.orgUrn, grant.detail().code);
+            if audited is error {
+                log:printError("Could not audit the refused page token refresh", audited);
+            }
+        }
         if accessValid {
             return [org, false];
         }
@@ -274,6 +281,16 @@ isolated function toEngagementSettings(store:Setting[] rows) returns EngagementS
 
 // ---- PostgreSQL -----------------------------------------------------------------------------------
 
+# Whether LinkedIn refused a token refresh (worth an audit row), as opposed to an outage or a rate limit that a
+# later run retries.
+#
+# + err - The provider error
+# + return - True for a refusal
+isolated function isRefusal(linkedin:ProviderError err) returns boolean {
+    linkedin:ProviderErrorCode code = err.detail().code;
+    return code != linkedin:UNAVAILABLE && code != linkedin:RATE_LIMITED;
+}
+
 # `EngagementStore` over the sync's own single-connection client.
 isolated class PgEngagementStore {
     *EngagementStore;
@@ -294,6 +311,10 @@ isolated class PgEngagementStore {
 
     isolated function saveOrg(connection:OrgConnectionChange change, int expectedVersion) returns error? =>
         (new connection:PgOrgConnectionRepository(self.db)).save(change, expectedVersion);
+
+    isolated function recordRefreshFailure(string orgUrn, string errorCode) returns error? =>
+        (new connection:PgOrgConnectionRepository(self.db)).recordAttempt(orgUrn, connection:ORG_TOKEN_REFRESH_FAILED,
+                errorCode);
 
     isolated function syncStore(string orgUrn) returns sharing:SyncStore => new PgSyncStore(self.db, orgUrn);
 }
